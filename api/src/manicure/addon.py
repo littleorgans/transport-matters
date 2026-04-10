@@ -9,11 +9,13 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import time
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any  # Any: mitmproxy loader type is untyped
 
 import uvicorn
 
+from manicure import breakpoint as bp
 from manicure import broadcast
 
 if TYPE_CHECKING:
@@ -179,13 +181,11 @@ class ManicureAddon:
         storage = get_storage()
 
         # Apply pipeline rules
+        audit = None
         try:
             rules_data = await storage.load_rules()
             rules = [Rule.model_validate(r) for r in rules_data]
             curated_ir, audit = pipeline_apply(rules, ir)
-
-            # Rewrite the forwarded request body
-            flow.request.set_text(adapter.outbound_request(curated_ir).decode())
 
             flow.metadata["manicure_curated_ir"] = curated_ir
             flow.metadata["manicure_audit"] = audit
@@ -220,6 +220,47 @@ class ManicureAddon:
         flow.metadata["manicure_adapter"] = adapter
         flow.metadata["manicure_ir"] = ir
         flow.metadata["manicure_raw_req"] = raw
+
+        # Breakpoint: pause if armed, otherwise rewrite immediately
+        if bp.is_armed():
+            paused_at_ms = int(time.time() * 1000)
+            event = bp.pause(flow, curated_ir)
+
+            broadcast.emit(
+                {
+                    "type": "paused",
+                    "flow_id": flow.id,
+                    "ir": curated_ir.model_dump(mode="json"),
+                    "audit": audit.model_dump(mode="json") if audit else None,
+                    "paused_at_ms": paused_at_ms,
+                }
+            )
+
+            await event.wait()
+
+            pf = bp.get_paused().pop(flow.id, None)
+            if pf is None:
+                return
+
+            if pf.dropped:
+                from mitmproxy.http import Response as MitmResponse
+
+                flow.response = MitmResponse.make(
+                    400,
+                    b'{"error": "dropped by user"}',
+                    {"content-type": "application/json"},
+                )
+                return
+
+            final_ir = pf.mutated_ir if pf.mutated_ir is not None else curated_ir
+            flow.request.set_text(adapter.outbound_request(final_ir).decode())
+            flow.metadata["manicure_mutated_manually"] = pf.mutated_ir is not None
+        else:
+            # Rewrite the forwarded request body
+            flow.request.set_text(adapter.outbound_request(curated_ir).decode())
+
+    def done(self) -> None:
+        bp.clear_all()
 
     async def response(self, flow: http.HTTPFlow) -> None:
         adapter = flow.metadata.get("manicure_adapter")
@@ -264,6 +305,8 @@ class ManicureAddon:
                 tokens_approx=audit.tokens_approx,
             )
 
+        mutated_manually = flow.metadata.get("manicure_mutated_manually", False)
+
         ts_slug = ts.strftime("%Y%m%dT%H%M%S")
         entry = IndexEntry(
             id=exchange_id,
@@ -274,6 +317,7 @@ class ManicureAddon:
             req=req_stats,
             pipeline=pipeline_stats,
             res=res_stats,
+            mutated_manually=mutated_manually,
         )
 
         artifacts = ExchangeArtifacts(

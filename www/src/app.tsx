@@ -2,15 +2,18 @@ import { useState } from "react";
 import { CreateRuleForm } from "./components/CreateRuleForm";
 import { ExchangeDetail } from "./components/ExchangeDetail";
 import { ExchangeList } from "./components/ExchangeList";
+import { BreakpointEditor } from "./components/editor/BreakpointEditor";
 import { RulesList } from "./components/RulesList";
+import { useBreakpoint } from "./hooks/useBreakpoint";
 import { useExchangeStream } from "./hooks/useExchangeStream";
 import { useRules } from "./hooks/useRules";
 
 type Tab = "log" | "rules";
 
 export function App() {
-  const { exchanges, connected } = useExchangeStream();
+  const { exchanges, connected, pausedFlow } = useExchangeStream();
   const { rules, createRule, toggleRule, deleteRule } = useRules();
+  const { mode, arm, disarm } = useBreakpoint();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>("log");
 
@@ -19,7 +22,31 @@ export function App() {
       {/* Left panel */}
       <div className="flex w-1/3 min-w-70 flex-col border-r border-zinc-800">
         <div className="flex items-center justify-between border-b border-zinc-800 px-3 py-2">
-          <h1 className="text-sm font-semibold tracking-wide text-zinc-300">Manicure</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-sm font-semibold tracking-wide text-zinc-300">Manicure</h1>
+            {mode === "off" ? (
+              <button
+                type="button"
+                onClick={arm}
+                className="rounded border border-emerald-700 px-2 py-0.5 text-xs text-emerald-400 hover:bg-emerald-900/30 cursor-pointer"
+              >
+                Arm
+              </button>
+            ) : (
+              <div className="flex items-center gap-1">
+                <span className="rounded bg-amber-900/40 px-2 py-0.5 text-xs font-medium text-amber-400">
+                  Armed
+                </span>
+                <button
+                  type="button"
+                  onClick={disarm}
+                  className="rounded px-1.5 py-0.5 text-xs text-zinc-500 hover:text-zinc-300 cursor-pointer"
+                >
+                  Disarm
+                </button>
+              </div>
+            )}
+          </div>
           <span
             className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs ${
               connected ? "bg-emerald-900/40 text-emerald-400" : "bg-red-900/40 text-red-400"
@@ -70,7 +97,9 @@ export function App() {
 
       {/* Right panel */}
       <div className="flex-1 overflow-hidden">
-        {activeTab === "log" && selectedId ? (
+        {pausedFlow != null ? (
+          <BreakpointEditor pausedFlow={pausedFlow} onResolved={() => {}} />
+        ) : activeTab === "log" && selectedId ? (
           <ExchangeDetail id={selectedId} />
         ) : (
           <div className="flex h-full items-center justify-center text-zinc-600">
