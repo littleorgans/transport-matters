@@ -56,14 +56,14 @@ class TestArmDisarm:
 
 
 class TestPause:
-    def test_pause_disarms_and_registers(self) -> None:
+    def test_pause_stays_armed_and_registers(self) -> None:
         bp.arm()
         flow = _mock_flow()
         ir = _make_ir()
 
         event = bp.pause(flow, ir)
 
-        assert bp.get_mode() == "off"
+        assert bp.get_mode() == "armed_once"
         assert "flow-001" in bp.get_paused()
         assert not event.is_set()
 

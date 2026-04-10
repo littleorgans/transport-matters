@@ -29,7 +29,7 @@ class PausedFlow:
     dropped: bool = False
 
 
-_mode: Literal["off", "armed_once"] = "off"
+_mode: Literal["off", "armed_once"] = "armed_once"
 _paused: dict[str, PausedFlow] = {}
 
 
@@ -52,9 +52,7 @@ def is_armed() -> bool:
 
 
 def pause(flow: http.HTTPFlow, curated_ir: InternalRequest) -> asyncio.Event:
-    """Register flow, disarm, return event to await on."""
-    global _mode
-    _mode = "off"
+    """Register flow, re-arm for next request, return event to await on."""
     event: asyncio.Event = asyncio.Event()
     _paused[flow.id] = PausedFlow(
         flow=flow,
