@@ -12,6 +12,10 @@ install:
 dev:
     uv run python -m manicure
 
+[no-exit-message]
+spike:
+    uv run mitmdump --mode reverse:https://api.anthropic.com --listen-port 8787 -s spike.py
+
 # ------------- Build & Test -------------
 test:
     uv run pytest

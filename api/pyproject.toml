@@ -10,6 +10,8 @@ dependencies = [
     "fastapi[standard]>=0.115.0",
     "pydantic-settings>=2.6",
     "httpx>=0.28",
+    "mitmproxy>=12.0",
+    "aiofiles>=24.0",
 ]
 
 [dependency-groups]
@@ -20,6 +22,7 @@ dev = [
     "ruff>=0.15",
     "mypy>=1.14",
     "pre-commit>=4.0",
+    "types-aiofiles>=25.1.0.20260409",
 ]
 
 [build-system]
@@ -61,6 +64,9 @@ ignore = [
 
 [tool.ruff.lint.isort]
 known-first-party = ["manicure"]
+
+[tool.ruff.lint.flake8-type-checking]
+runtime-evaluated-base-classes = ["pydantic.BaseModel"]
 
 [tool.ruff.format]
 quote-style = "double"

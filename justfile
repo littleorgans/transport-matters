@@ -16,6 +16,10 @@ www *args:
 
 # --- Combined ---
 
+check:
+    cd www && just check
+    cd api && just check
+
 [no-exit-message]
 dev:
     overmind start
