@@ -73,7 +73,7 @@ WITH_THINKING_REQUEST: dict[str, Any] = {
             "content": [
                 {
                     "type": "thinking",
-                    "text": "Let me consider...",
+                    "thinking": "Let me consider...",
                     "signature": "abc123",
                 },
                 {"type": "text", "text": "Here is my answer."},

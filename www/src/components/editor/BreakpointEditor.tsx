@@ -71,9 +71,9 @@ export function BreakpointEditor({ pausedFlow, onResolved }: BreakpointEditorPro
             model={editedIr.model}
             onChange={setSamplingAndModel}
           />
+          <MessagesSection messages={pausedFlow.ir.messages} onChange={setMessages} />
           <SystemSection parts={pausedFlow.ir.system} onChange={setSystem} />
           <ToolsSection tools={pausedFlow.ir.tools} onChange={setTools} />
-          <MessagesSection messages={pausedFlow.ir.messages} onChange={setMessages} />
         </div>
 
         {/* Sidebar */}

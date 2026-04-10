@@ -24,6 +24,7 @@ export interface IndexEntry {
   model: string;
   path: string;
   req: ReqStats;
+  pipeline: PipelineStats | null;
   res: ResStats | null;
   mutated_manually: boolean;
 }

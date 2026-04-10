@@ -6,12 +6,16 @@ Persists exchange artifacts and index to ``~/.manicure/exchanges/``
 
 from __future__ import annotations
 
+import asyncio
 import json
+import logging
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any  # Any: opaque rule definitions
 
 import aiofiles
+
+logger = logging.getLogger(__name__)
 
 from manicure.ir import InternalRequest, InternalResponse
 from manicure.storage.base import (
@@ -29,6 +33,7 @@ class DiskStorageBackend(StorageBackend):
     def __init__(self, root: str | Path | None = None) -> None:
         self._root = Path(root) if root else _DEFAULT_ROOT
         self._root.mkdir(parents=True, exist_ok=True)
+        self._index_lock = asyncio.Lock()
 
     @property
     def root(self) -> Path:
@@ -39,8 +44,9 @@ class DiskStorageBackend(StorageBackend):
     async def append_index(self, entry: IndexEntry) -> None:
         index_path = self._root / "index.jsonl"
         line = entry.model_dump_json() + "\n"
-        async with aiofiles.open(index_path, mode="a") as f:
-            await f.write(line)
+        async with self._index_lock:
+            async with aiofiles.open(index_path, mode="a") as f:
+                await f.write(line)
 
     async def read_index(self, limit: int, offset: int) -> list[IndexEntry]:
         index_path = self._root / "index.jsonl"
@@ -48,9 +54,23 @@ class DiskStorageBackend(StorageBackend):
             return []
         async with aiofiles.open(index_path) as f:
             lines = await f.readlines()
-        entries = [
-            IndexEntry.model_validate_json(line) for line in lines if line.strip()
-        ]
+        entries: list[IndexEntry] = []
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+            # A line may contain multiple concatenated JSON objects due to a past
+            # concurrent-write bug. Extract all valid objects from the line.
+            pos = 0
+            decoder = json.JSONDecoder()
+            while pos < len(line):
+                try:
+                    obj, end = decoder.raw_decode(line, pos)
+                    entries.append(IndexEntry.model_validate(obj))
+                    pos = end
+                except (json.JSONDecodeError, Exception) as exc:
+                    logger.warning("Skipping malformed index entry at pos %d: %s", pos, exc)
+                    break
         return entries[offset : offset + limit]
 
     # ── exchange artifacts ──────────────────────────────────────────

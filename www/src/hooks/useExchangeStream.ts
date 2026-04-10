@@ -58,7 +58,7 @@ export function useExchangeStream(): {
   useEffect(() => {
     fetchExchanges(MAX_ENTRIES, 0)
       .then((data) => setExchanges(data.slice().reverse().slice(0, MAX_ENTRIES)))
-      .catch(() => {/* non-fatal: live events will still arrive */});
+      .catch((err) => console.warn("[useExchangeStream] failed to load persisted exchanges:", err));
   }, []);
 
   useEffect(() => {

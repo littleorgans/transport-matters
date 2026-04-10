@@ -133,6 +133,8 @@ class AnthropicAdapter(ProviderAdapter):
     # ── inbound response ────────────────────────────────────────────
 
     def inbound_response(self, raw_body: bytes, content_type: str) -> InternalResponse:
+        if "event-stream" in content_type:
+            return self._inbound_response_sse(raw_body)
         data: dict[str, Any] = json.loads(raw_body)  # Any: raw JSON
 
         usage_raw = data.get("usage", {})
@@ -158,6 +160,84 @@ class AnthropicAdapter(ProviderAdapter):
             usage=usage,
             content=content_blocks,
             provider_extras=extras,
+        )
+
+    def _inbound_response_sse(self, raw_body: bytes) -> InternalResponse:
+        """Reconstruct InternalResponse from a buffered SSE stream."""
+        msg_id = ""
+        model = ""
+        stop_reason: str | None = None
+        usage = UsageStats()
+        content_blocks: list[Any] = []  # Any: partially built block dicts
+        block_buffers: dict[int, dict[str, Any]] = {}  # index → partial block
+
+        for line in raw_body.decode(errors="replace").splitlines():
+            if not line.startswith("data:"):
+                continue
+            payload = line[5:].strip()
+            if payload in ("[DONE]", ""):
+                continue
+            try:
+                ev: dict[str, Any] = json.loads(payload)  # Any: raw SSE event
+            except json.JSONDecodeError:
+                continue
+
+            ev_type = ev.get("type", "")
+            if ev_type == "message_start":
+                msg = ev.get("message", {})
+                msg_id = msg.get("id", "")
+                model = msg.get("model", "")
+                u = msg.get("usage", {})
+                usage = UsageStats(
+                    input_tokens=u.get("input_tokens", 0),
+                    cache_read_input_tokens=u.get("cache_read_input_tokens", 0),
+                    cache_creation_input_tokens=u.get("cache_creation_input_tokens", 0),
+                )
+            elif ev_type == "content_block_start":
+                idx = ev.get("index", 0)
+                block_buffers[idx] = dict(ev.get("content_block", {}))
+            elif ev_type == "content_block_delta":
+                idx = ev.get("index", 0)
+                delta = ev.get("delta", {})
+                buf = block_buffers.setdefault(idx, {})
+                delta_type = delta.get("type", "")
+                if delta_type == "text_delta":
+                    buf["text"] = buf.get("text", "") + delta.get("text", "")
+                elif delta_type == "thinking_delta":
+                    buf["thinking"] = buf.get("thinking", "") + delta.get("thinking", "")
+                elif delta_type == "input_json_delta":
+                    buf["_input_partial"] = (
+                        buf.get("_input_partial", "") + delta.get("partial_json", "")
+                    )
+            elif ev_type == "content_block_stop":
+                idx = ev.get("index", 0)
+                buf = block_buffers.pop(idx, None)
+                if buf:
+                    if "_input_partial" in buf:
+                        try:
+                            buf["input"] = json.loads(buf.pop("_input_partial"))
+                        except json.JSONDecodeError:
+                            buf["input"] = {}
+                    content_blocks.append(buf)
+            elif ev_type == "message_delta":
+                delta = ev.get("delta", {})
+                stop_reason = delta.get("stop_reason", stop_reason)
+                u = ev.get("usage", {})
+                usage = UsageStats(
+                    input_tokens=usage.input_tokens,
+                    output_tokens=u.get("output_tokens", usage.output_tokens),
+                    cache_read_input_tokens=usage.cache_read_input_tokens,
+                    cache_creation_input_tokens=usage.cache_creation_input_tokens,
+                )
+
+        parsed_blocks = self._parse_response_content(content_blocks)
+        return InternalResponse(
+            id=msg_id,
+            model=self._normalise_model(model) if model else "anthropic/unknown",
+            provider="anthropic",
+            stop_reason=stop_reason,
+            usage=usage,
+            content=parsed_blocks,
         )
 
     # ── private helpers ─────────────────────────────────────────────
@@ -283,11 +363,14 @@ class AnthropicAdapter(ProviderAdapter):
                 is_error=raw.get("is_error", False),
             )
         if block_type == "thinking":
+            # Anthropic uses 'thinking' field in conversation history, 'text' in some
+            # response contexts — accept both for robustness.
+            text = raw.get("thinking") or raw.get("text", "")
             provider_data: dict[str, Any] | None = None  # Any: extra fields
-            extra_keys = set(raw.keys()) - {"type", "text"}
+            extra_keys = set(raw.keys()) - {"type", "text", "thinking"}
             if extra_keys:
                 provider_data = {k: raw[k] for k in sorted(extra_keys)}
-            return ThinkingBlock(text=raw["text"], provider_data=provider_data)
+            return ThinkingBlock(text=text, provider_data=provider_data)
         if block_type == "image":
             return ImageBlock(source=raw["source"])
         return UnknownBlock(raw=raw)
@@ -329,9 +412,10 @@ class AnthropicAdapter(ProviderAdapter):
                 result["is_error"] = block.is_error
             return result
         if isinstance(block, ThinkingBlock):
+            # Anthropic expects 'thinking' field name (not 'text') for round-trips
             d: dict[str, Any] = {
                 "type": "thinking",
-                "text": block.text,
+                "thinking": block.text,
             }  # Any: raw JSON
             if block.provider_data:
                 d.update(block.provider_data)

@@ -13,7 +13,7 @@ router = APIRouter()
 
 @router.get("")
 async def list_exchanges(
-    limit: int = Query(default=50, ge=1, le=200),
+    limit: int = Query(default=50, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
     storage: StorageBackend = Depends(get_storage),
 ) -> list[IndexEntry]:
