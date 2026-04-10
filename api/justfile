@@ -1,0 +1,44 @@
+set shell := ["bash", "-cu"]
+
+# Default task
+default: check test
+
+# ------------- Setup -------------
+install:
+    uv sync --all-extras --dev
+    cp -n .env.example .env 2>/dev/null || true
+
+# ------------- Dev -------------
+dev:
+    uv run python -m manicure
+
+# ------------- Build & Test -------------
+test:
+    uv run pytest
+
+coverage:
+    uv run pytest --cov=manicure --cov-report=term-missing --cov-report=html
+
+# ------------- Quality Gates -------------
+typecheck:
+    uv run mypy src/
+
+lint:
+    uv run ruff check src/ --fix
+
+format:
+    uv run ruff format src/
+
+check: format lint typecheck
+
+# CI mode: no auto-fixing, fail on issues
+ci:
+    uv run ruff format --check src/
+    uv run ruff check src/
+    uv run mypy src/
+    uv run pytest
+
+# ------------- Maintenance -------------
+clean:
+    rm -rf __pycache__ .pytest_cache .ruff_cache .mypy_cache htmlcov .coverage *.egg-info build dist
+    find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true

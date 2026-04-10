@@ -1,0 +1,91 @@
+#:schema https://json.schemastore.org/pyproject.json
+
+[project]
+name = "manicure"
+version = "0.1.0"
+description = "Production-ready FastAPI template with modern 2026 stack"
+readme = "../README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi[standard]>=0.115.0",
+    "pydantic-settings>=2.6",
+    "httpx>=0.28",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=1.0",
+    "pytest-cov>=6.0",
+    "ruff>=0.15",
+    "mypy>=1.14",
+    "pre-commit>=4.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/manicure"]
+exclude = ["**/test_*.py"]
+
+# ---- Ruff ----
+[tool.ruff]
+target-version = "py312"
+line-length = 88
+
+[tool.ruff.lint]
+select = [
+    "E",     # pycodestyle errors
+    "W",     # pycodestyle warnings
+    "F",     # pyflakes
+    "I",     # isort
+    "UP",    # pyupgrade
+    "B",     # flake8-bugbear
+    "SIM",   # flake8-simplify
+    "C4",    # flake8-comprehensions
+    "RET",   # flake8-return
+    "PTH",   # flake8-use-pathlib
+    "TCH",   # flake8-type-checking
+]
+ignore = [
+    "E501",  # line too long (handled by formatter)
+    "B008",  # function call in default arg (required by FastAPI Depends)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = [
+    "E402",    # imports after os.environ setup in conftest
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["manicure"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+# ---- mypy ----
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+exclude = ["tests/", ".venv/"]
+plugins = ["pydantic.mypy"]
+
+# ---- pytest ----
+[tool.pytest.ini_options]
+testpaths = ["src", "tests"]
+asyncio_mode = "auto"
+addopts = "-v --tb=short"
+
+# ---- coverage ----
+[tool.coverage.run]
+source = ["manicure"]
+omit = ["*/test_*"]
+
+[tool.coverage.report]
+show_missing = true
+fail_under = 80
