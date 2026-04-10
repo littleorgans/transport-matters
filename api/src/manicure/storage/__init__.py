@@ -24,10 +24,11 @@ def init_storage(root: Path | None = None) -> StorageBackend:
 
 
 def get_storage() -> StorageBackend:
-    """FastAPI Depends() target. Lazy-inits with defaults if not yet initialised."""
+    """FastAPI Depends() target. Lazy-inits using settings.storage_dir if not yet initialised."""
     global _backend  # noqa: PLW0603
     if _backend is None:
-        _backend = DiskStorageBackend()
+        from manicure.config import get_settings
+        _backend = DiskStorageBackend(root=get_settings().storage_dir)
     return _backend
 
 
