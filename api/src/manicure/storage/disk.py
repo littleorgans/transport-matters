@@ -26,7 +26,7 @@ _DEFAULT_ROOT = Path.home() / ".manicure" / "exchanges"
 class DiskStorageBackend(StorageBackend):
     """Append-only JSONL index with per-exchange artifact directories."""
 
-    def __init__(self, root: str | None = None) -> None:
+    def __init__(self, root: str | Path | None = None) -> None:
         self._root = Path(root) if root else _DEFAULT_ROOT
         self._root.mkdir(parents=True, exist_ok=True)
 

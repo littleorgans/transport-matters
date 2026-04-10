@@ -39,8 +39,12 @@ class PipelineStats(BaseModel):
 class ResStats(BaseModel):
     model_config = ConfigDict(frozen=True)
 
+    stop_reason: str | None = None
     input_tokens: int = 0
     output_tokens: int = 0
+    cache_read_input_tokens: int = 0
+    text_chars: int = 0
+    tool_calls: int = 0
 
 
 # ── Index entry ─────────────────────────────────────────────────────

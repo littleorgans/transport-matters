@@ -15,6 +15,9 @@ start:
 
 # ------------- quality gates -------------
 
+test:
+    pnpm test
+    
 typecheck:
     pnpm typecheck
 
@@ -27,6 +30,7 @@ format:
 check: format lint typecheck
 
 # ------------- utilities -------------
+
 clean:
     pnpm clean
 

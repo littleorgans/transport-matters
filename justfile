@@ -16,6 +16,10 @@ www *args:
 
 # --- Combined ---
 
+test:
+    cd www && just test
+    cd api && just test
+
 check:
     cd www && just check
     cd api && just check

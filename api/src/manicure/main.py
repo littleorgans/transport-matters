@@ -81,7 +81,16 @@ def create_app() -> FastAPI:
     async def health() -> dict[str, str]:
         return {"status": "ok"}
 
-    app.include_router(api_router, prefix="/api/v1")
+    app.include_router(api_router, prefix="/api")
+
+    from pathlib import Path
+
+    from fastapi.staticfiles import StaticFiles
+
+    www_dir = Path(__file__).parent / "www"
+    if www_dir.exists():
+        app.mount("/", StaticFiles(directory=www_dir, html=True), name="www")
+
     return app
 
 

@@ -9,6 +9,14 @@ export default defineConfig({
       "@": "/src",
     },
   },
+  server: {
+    proxy: {
+      "/api": {
+        target: "http://localhost:8788",
+        changeOrigin: true,
+      },
+    },
+  },
   build: {
     outDir: "../api/src/manicure/www",
     emptyOutDir: true,

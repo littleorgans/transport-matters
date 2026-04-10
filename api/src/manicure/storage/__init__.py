@@ -1,23 +1,46 @@
 """Storage layer exports."""
 
+from pathlib import Path
+
 from manicure.storage.base import (
     ExchangeArtifacts,
     IndexEntry,
+    ReqStats,
+    ResStats,
     StorageBackend,
 )
 from manicure.storage.disk import DiskStorageBackend
 
+_backend: StorageBackend | None = None
 
-def get_storage(root: str | None = None) -> StorageBackend:
-    """Return the default disk storage backend."""
-    if root is not None:
-        return DiskStorageBackend(root=root)
-    return DiskStorageBackend()
+
+def init_storage(root: Path | None = None) -> StorageBackend:
+    """Called once by the addon at startup."""
+    global _backend  # noqa: PLW0603
+    _backend = DiskStorageBackend(root=root)
+    return _backend
+
+
+def get_storage() -> StorageBackend:
+    """FastAPI Depends() target. Raises if not initialised."""
+    if _backend is None:
+        raise RuntimeError("Storage not initialised — call init_storage() first")
+    return _backend
+
+
+def reset_storage() -> None:
+    """Reset the singleton. Used by tests only."""
+    global _backend  # noqa: PLW0603
+    _backend = None
 
 
 __all__ = [
     "ExchangeArtifacts",
     "IndexEntry",
+    "ReqStats",
+    "ResStats",
     "StorageBackend",
     "get_storage",
+    "init_storage",
+    "reset_storage",
 ]

@@ -4,6 +4,7 @@ set shell := ["bash", "-cu"]
 default: check test
 
 # ------------- Setup -------------
+
 install:
     uv sync --all-extras --dev
     cp -n .env.example .env 2>/dev/null || true
@@ -13,10 +14,15 @@ dev:
     uv run python -m manicure
 
 [no-exit-message]
+proxy:
+    uv run mitmdump --mode reverse:https://api.anthropic.com --listen-port 8787 -s src/manicure/addon.py
+
+[no-exit-message]
 spike:
     uv run mitmdump --mode reverse:https://api.anthropic.com --listen-port 8787 -s spike.py
 
 # ------------- Build & Test -------------
+
 test:
     uv run pytest
 
@@ -24,6 +30,7 @@ coverage:
     uv run pytest --cov=manicure --cov-report=term-missing --cov-report=html
 
 # ------------- Quality Gates -------------
+
 typecheck:
     uv run mypy src/
 
@@ -43,6 +50,7 @@ ci:
     uv run pytest
 
 # ------------- Maintenance -------------
+
 clean:
     rm -rf __pycache__ .pytest_cache .ruff_cache .mypy_cache htmlcov .coverage *.egg-info build dist
     find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true

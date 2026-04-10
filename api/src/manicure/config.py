@@ -1,4 +1,5 @@
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -18,6 +19,10 @@ class Settings(BaseSettings):
 
     secret_key: str = "change-me-in-production"
     access_token_expire_minutes: int = 30
+
+    proxy_port: int = 8787
+    web_port: int = 8788
+    storage_dir: Path = Path.home() / ".manicure"
 
     @model_validator(mode="after")
     def validate_secret_key(self) -> "Settings":
