@@ -24,9 +24,10 @@ def init_storage(root: Path | None = None) -> StorageBackend:
 
 
 def get_storage() -> StorageBackend:
-    """FastAPI Depends() target. Raises if not initialised."""
+    """FastAPI Depends() target. Lazy-inits with defaults if not yet initialised."""
+    global _backend  # noqa: PLW0603
     if _backend is None:
-        raise RuntimeError("Storage not initialised — call init_storage() first")
+        _backend = DiskStorageBackend()
     return _backend
 
 
