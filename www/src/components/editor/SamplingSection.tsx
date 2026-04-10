@@ -48,16 +48,22 @@ export function SamplingSection({ sampling, model, onChange }: SamplingSectionPr
       <h3 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Sampling</h3>
       <div className="grid grid-cols-3 gap-2">
         <div>
-          <label className={labelClass}>Model</label>
+          <label htmlFor="model" className={labelClass}>
+            Model
+          </label>
           <input
+            id="model"
             className={inputClass}
             value={model}
             onChange={(e) => handleModel(e.target.value)}
           />
         </div>
         <div>
-          <label className={labelClass}>Max tokens</label>
+          <label htmlFor="max-tokens" className={labelClass}>
+            Max tokens
+          </label>
           <input
+            id="max-tokens"
             type="number"
             className={inputClass}
             value={sampling.max_tokens}
@@ -65,8 +71,11 @@ export function SamplingSection({ sampling, model, onChange }: SamplingSectionPr
           />
         </div>
         <div>
-          <label className={labelClass}>Temperature</label>
+          <label htmlFor="temperature" className={labelClass}>
+            Temperature
+          </label>
           <input
+            id="temperature"
             type="number"
             step="0.1"
             className={inputClass}
@@ -75,8 +84,11 @@ export function SamplingSection({ sampling, model, onChange }: SamplingSectionPr
           />
         </div>
         <div>
-          <label className={labelClass}>Top P</label>
+          <label htmlFor="top-p" className={labelClass}>
+            Top P
+          </label>
           <input
+            id="top-p"
             type="number"
             step="0.05"
             className={inputClass}
@@ -85,8 +97,11 @@ export function SamplingSection({ sampling, model, onChange }: SamplingSectionPr
           />
         </div>
         <div>
-          <label className={labelClass}>Top K</label>
+          <label htmlFor="top-k" className={labelClass}>
+            Top K
+          </label>
           <input
+            id="top-k"
             type="number"
             className={inputClass}
             value={sampling.top_k ?? ""}
@@ -94,8 +109,11 @@ export function SamplingSection({ sampling, model, onChange }: SamplingSectionPr
           />
         </div>
         <div>
-          <label className={labelClass}>Stop sequences</label>
+          <label htmlFor="stop-sequences" className={labelClass}>
+            Stop sequences
+          </label>
           <input
+            id="stop-sequences"
             className={inputClass}
             value={sampling.stop_sequences.join(", ")}
             placeholder="comma-separated"

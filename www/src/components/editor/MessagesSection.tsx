@@ -87,19 +87,34 @@ function BlockRow({
   );
 }
 
+function blockKey(block: ContentBlock, index: number): string {
+  switch (block.type) {
+    case "tool_use":
+      return block.id;
+    case "tool_result":
+      return `result-${block.tool_use_id}`;
+    default:
+      return `${block.type}-${index}`;
+  }
+}
+
 function MessageCard({
   message,
-  messageIndex,
   checkedBlocks,
   onToggleBlock,
 }: {
   message: Message;
-  messageIndex: number;
   checkedBlocks: Set<number>;
   onToggleBlock: (blockIndex: number) => void;
 }) {
   const roleBadge =
     message.role === "user" ? "bg-blue-900/40 text-blue-400" : "bg-emerald-900/40 text-emerald-400";
+
+  const keyedBlocks = message.content.map((block, idx) => ({
+    block,
+    idx,
+    key: blockKey(block, idx),
+  }));
 
   return (
     <div className="rounded border border-zinc-800">
@@ -112,12 +127,12 @@ function MessageCard({
         </span>
       </div>
       <div className="divide-y divide-zinc-800/50">
-        {message.content.map((block, bi) => (
+        {keyedBlocks.map((entry) => (
           <BlockRow
-            key={`${messageIndex}-${bi}`}
-            block={block}
-            checked={checkedBlocks.has(bi)}
-            onToggle={() => onToggleBlock(bi)}
+            key={entry.key}
+            block={entry.block}
+            checked={checkedBlocks.has(entry.idx)}
+            onToggle={() => onToggleBlock(entry.idx)}
           />
         ))}
       </div>
@@ -159,19 +174,24 @@ export function MessagesSection({ messages, onChange }: MessagesSectionProps) {
     });
   };
 
+  const keyedMessages = messages.map((msg, idx) => ({
+    msg,
+    idx,
+    key: `${msg.role}-${idx}`,
+  }));
+
   return (
     <div className="space-y-2">
       <h3 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">
         Messages ({messages.length})
       </h3>
       <div className="space-y-1">
-        {messages.map((msg, mi) => (
+        {keyedMessages.map((entry) => (
           <MessageCard
-            key={mi}
-            message={msg}
-            messageIndex={mi}
-            checkedBlocks={checkedMap.get(mi) ?? new Set<number>()}
-            onToggleBlock={(bi) => toggleBlock(mi, bi)}
+            key={entry.key}
+            message={entry.msg}
+            checkedBlocks={checkedMap.get(entry.idx) ?? new Set<number>()}
+            onToggleBlock={(bi) => toggleBlock(entry.idx, bi)}
           />
         ))}
       </div>

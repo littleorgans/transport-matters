@@ -43,14 +43,10 @@ function SystemCard({
         <span className="ml-auto text-xs text-zinc-600 truncate max-w-60">{preview}</span>
       </div>
       {checked && (
-        <div
-          className="cursor-pointer px-3 py-1"
+        <button
+          type="button"
+          className="cursor-pointer px-3 py-1 w-full text-left bg-transparent border-none"
           onClick={() => setExpanded((v) => !v)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === " ") setExpanded((v) => !v);
-          }}
-          role="button"
-          tabIndex={0}
         >
           {expanded ? (
             <textarea
@@ -62,7 +58,7 @@ function SystemCard({
           ) : (
             <span className="text-xs text-zinc-500">Click to expand</span>
           )}
-        </div>
+        </button>
       )}
     </div>
   );
@@ -90,20 +86,26 @@ export function SystemSection({ parts, onChange }: SystemSectionProps) {
     onChange(updated.filter((_, i) => checkedSet.has(i)));
   };
 
+  const keyedParts = parts.map((part, idx) => ({
+    part,
+    idx,
+    key: `system-${idx}-${part.text.slice(0, 20)}`,
+  }));
+
   return (
     <div className="space-y-2">
       <h3 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">
         System ({parts.length} parts)
       </h3>
       <div className="space-y-1">
-        {parts.map((part, i) => (
+        {keyedParts.map((entry) => (
           <SystemCard
-            key={i}
-            part={part}
-            index={i}
-            checked={checkedSet.has(i)}
-            onToggle={() => handleToggle(i)}
-            onTextChange={(text) => handleTextChange(i, text)}
+            key={entry.key}
+            part={entry.part}
+            index={entry.idx}
+            checked={checkedSet.has(entry.idx)}
+            onToggle={() => handleToggle(entry.idx)}
+            onTextChange={(text) => handleTextChange(entry.idx, text)}
           />
         ))}
       </div>
