@@ -1,7 +1,7 @@
-"""mitmproxy addon for Manicure Phase 2.
+"""mitmproxy addon for Manicure.
 
-Captures /v1/messages exchanges, stores them, and emits SSE events.
-No pipeline, no breakpoint.
+Captures /v1/messages exchanges, applies pipeline rules, stores
+artifacts, and emits SSE events.
 """
 
 from __future__ import annotations
@@ -22,7 +22,9 @@ from manicure.adapters import get_adapter
 from manicure.config import get_settings
 from manicure.ir import InternalRequest, InternalResponse, TextBlock, ToolUseBlock
 from manicure.main import create_app
-from manicure.storage import IndexEntry, ReqStats, ResStats, init_storage
+from manicure.pipeline import apply as pipeline_apply
+from manicure.rules import Rule
+from manicure.storage import IndexEntry, PipelineStats, ReqStats, ResStats, init_storage
 from manicure.storage.base import ExchangeArtifacts
 
 logger = logging.getLogger(__name__)
@@ -172,6 +174,49 @@ class ManicureAddon:
             logger.exception("Failed to parse request for flow %s", flow.id)
             return
 
+        from manicure.storage import get_storage
+
+        storage = get_storage()
+
+        # Apply pipeline rules
+        try:
+            rules_data = await storage.load_rules()
+            rules = [Rule.model_validate(r) for r in rules_data]
+            curated_ir, audit = pipeline_apply(rules, ir)
+
+            # Rewrite the forwarded request body
+            flow.request.set_text(adapter.outbound_request(curated_ir).decode())
+
+            flow.metadata["manicure_curated_ir"] = curated_ir
+            flow.metadata["manicure_audit"] = audit
+
+            # Update applied_count for matched rules
+            if audit.rules_applied:
+                applied_ids = {e.id for e in audit.rules_applied}
+                updated: list[Rule] = []
+                for rule in rules:
+                    if rule.id in applied_ids:
+                        updated.append(
+                            Rule.model_validate(
+                                {
+                                    **rule.model_dump(by_alias=True),
+                                    "applied_count": rule.applied_count + 1,
+                                }
+                            )
+                        )
+                    else:
+                        updated.append(rule)
+                await storage.save_rules(
+                    [r.model_dump(mode="json", by_alias=True) for r in updated]
+                )
+        except Exception:
+            logger.exception(
+                "Pipeline failed for flow %s, forwarding unmodified", flow.id
+            )
+            curated_ir = ir
+            flow.metadata["manicure_curated_ir"] = ir
+            flow.metadata["manicure_audit"] = None
+
         flow.metadata["manicure_adapter"] = adapter
         flow.metadata["manicure_ir"] = ir
         flow.metadata["manicure_raw_req"] = raw
@@ -186,6 +231,9 @@ class ManicureAddon:
         from manicure.storage import get_storage
 
         storage = get_storage()
+
+        curated_ir = flow.metadata.get("manicure_curated_ir", ir)
+        audit = flow.metadata.get("manicure_audit")
 
         exchange_id = flow.id
         ts = datetime.now(UTC)
@@ -207,6 +255,15 @@ class ManicureAddon:
 
         req_stats = _build_req_stats(ir)
 
+        pipeline_stats: PipelineStats | None = None
+        if audit is not None:
+            pipeline_stats = PipelineStats(
+                rules_applied=list(audit.rules_applied),
+                chars_before=audit.chars_before,
+                chars_after=audit.chars_after,
+                tokens_approx=audit.tokens_approx,
+            )
+
         ts_slug = ts.strftime("%Y%m%dT%H%M%S")
         entry = IndexEntry(
             id=exchange_id,
@@ -215,12 +272,14 @@ class ManicureAddon:
             model=ir.model,
             path=f"exchanges/{ts_slug}-{exchange_id[:8]}/",
             req=req_stats,
+            pipeline=pipeline_stats,
             res=res_stats,
         )
 
         artifacts = ExchangeArtifacts(
             request_raw=raw_req,
             request_ir=ir,
+            request_curated_ir=curated_ir if curated_ir is not ir else None,
             response_raw=raw_res or None,
             response_ir=res_ir,
         )

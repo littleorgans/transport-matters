@@ -1,11 +1,18 @@
 import { useState } from "react";
+import { CreateRuleForm } from "./components/CreateRuleForm";
 import { ExchangeDetail } from "./components/ExchangeDetail";
 import { ExchangeList } from "./components/ExchangeList";
+import { RulesList } from "./components/RulesList";
 import { useExchangeStream } from "./hooks/useExchangeStream";
+import { useRules } from "./hooks/useRules";
+
+type Tab = "log" | "rules";
 
 export function App() {
   const { exchanges, connected } = useExchangeStream();
+  const { rules, createRule, toggleRule, deleteRule } = useRules();
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<Tab>("log");
 
   return (
     <div className="flex h-screen bg-zinc-950 text-zinc-100">
@@ -24,16 +31,52 @@ export function App() {
             {connected ? "Live" : "Disconnected"}
           </span>
         </div>
-        <ExchangeList exchanges={exchanges} selectedId={selectedId} onSelect={setSelectedId} />
+
+        {/* Tab bar */}
+        <div className="flex border-b border-zinc-800">
+          <button
+            type="button"
+            onClick={() => setActiveTab("log")}
+            className={`flex-1 px-3 py-1.5 text-xs font-medium cursor-pointer ${
+              activeTab === "log"
+                ? "text-zinc-100 border-b-2 border-emerald-500"
+                : "text-zinc-500 hover:text-zinc-300"
+            }`}
+          >
+            Log
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("rules")}
+            className={`flex-1 px-3 py-1.5 text-xs font-medium cursor-pointer ${
+              activeTab === "rules"
+                ? "text-zinc-100 border-b-2 border-emerald-500"
+                : "text-zinc-500 hover:text-zinc-300"
+            }`}
+          >
+            Rules
+          </button>
+        </div>
+
+        {activeTab === "log" ? (
+          <ExchangeList exchanges={exchanges} selectedId={selectedId} onSelect={setSelectedId} />
+        ) : (
+          <div className="flex flex-col overflow-y-auto">
+            <RulesList rules={rules} onToggle={toggleRule} onDelete={deleteRule} />
+            <CreateRuleForm onCreated={createRule} />
+          </div>
+        )}
       </div>
 
       {/* Right panel */}
       <div className="flex-1 overflow-hidden">
-        {selectedId ? (
+        {activeTab === "log" && selectedId ? (
           <ExchangeDetail id={selectedId} />
         ) : (
           <div className="flex h-full items-center justify-center text-zinc-600">
-            Select an exchange to view details
+            {activeTab === "log"
+              ? "Select an exchange to view details"
+              : "Select the Log tab to view exchange details"}
           </div>
         )}
       </div>

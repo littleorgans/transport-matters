@@ -10,7 +10,7 @@ from abc import ABC, abstractmethod
 from datetime import datetime
 from typing import Any  # Any: opaque pipeline stats and provider blobs
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from manicure.ir import InternalRequest, InternalResponse
 
@@ -29,11 +29,22 @@ class ReqStats(BaseModel):
     total_chars: int = 0
 
 
+class RuleAuditEntry(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    id: str
+    name: str
+    action: str
+    removed: dict[str, int]  # int: always integers (tools, chars, blocks)
+
+
 class PipelineStats(BaseModel):
     model_config = ConfigDict(frozen=True)
 
-    rules_applied: int = 0
-    tokens_removed: int = 0
+    rules_applied: list[RuleAuditEntry] = Field(default_factory=list)
+    chars_before: int = 0
+    chars_after: int = 0
+    tokens_approx: int = 0
 
 
 class ResStats(BaseModel):

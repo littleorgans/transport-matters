@@ -5,8 +5,10 @@ from pathlib import Path
 from manicure.storage.base import (
     ExchangeArtifacts,
     IndexEntry,
+    PipelineStats,
     ReqStats,
     ResStats,
+    RuleAuditEntry,
     StorageBackend,
 )
 from manicure.storage.disk import DiskStorageBackend
@@ -37,8 +39,10 @@ def reset_storage() -> None:
 __all__ = [
     "ExchangeArtifacts",
     "IndexEntry",
+    "PipelineStats",
     "ReqStats",
     "ResStats",
+    "RuleAuditEntry",
     "StorageBackend",
     "get_storage",
     "init_storage",
