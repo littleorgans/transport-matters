@@ -5,6 +5,7 @@ interface PausedHeaderProps {
   provider: string;
   model: string;
   pausedAtMs: number;
+  children?: React.ReactNode;
 }
 
 function formatElapsed(ms: number): string {
@@ -16,13 +17,10 @@ function formatElapsed(ms: number): string {
 
 function displayModel(provider: string, model: string): string {
   const prefix = `${provider}/`;
-  if (model.startsWith(prefix)) {
-    return model.slice(prefix.length);
-  }
-  return model;
+  return model.startsWith(prefix) ? model.slice(prefix.length) : model;
 }
 
-export function PausedHeader({ flowId, provider, model, pausedAtMs }: PausedHeaderProps) {
+export function PausedHeader({ flowId, provider, model, pausedAtMs, children }: PausedHeaderProps) {
   const [elapsed, setElapsed] = useState(Date.now() - pausedAtMs);
 
   useEffect(() => {
@@ -33,15 +31,23 @@ export function PausedHeader({ flowId, provider, model, pausedAtMs }: PausedHead
   }, [pausedAtMs]);
 
   return (
-    <div className="flex items-center gap-4 border-b border-zinc-800 bg-zinc-900 px-4 py-2">
-      <span className="font-mono text-xs text-amber-400">{flowId.slice(0, 8)}</span>
-      <span className="text-xs text-zinc-400">
-        {provider} / {displayModel(provider, model)}
-      </span>
-      <span className="font-mono text-xs text-zinc-300">{formatElapsed(elapsed)}</span>
-      <span className="ml-auto text-xs text-zinc-600">
-        Client timeout: set API_TIMEOUT_MS=3600000 for 1h window
-      </span>
+    <div className="border-b border-edge bg-surface px-6 py-4">
+      <div className="flex items-center justify-between gap-4">
+        {/* Left: flow info */}
+        <div className="flex items-center gap-4 min-w-0">
+          <span className="text-[11px] text-amber tabular-nums">{flowId.slice(0, 8)}</span>
+          <span className="text-[11px] text-txt-2">
+            {provider} / {displayModel(provider, model)}
+          </span>
+          <span className="flex items-center gap-1.5 text-[11px] text-txt tabular-nums">
+            <span className="h-1.5 w-1.5 rounded-full bg-amber pulse-dot" />
+            {formatElapsed(elapsed)}
+          </span>
+        </div>
+
+        {/* Right: action buttons (passed as children) */}
+        {children}
+      </div>
     </div>
   );
 }

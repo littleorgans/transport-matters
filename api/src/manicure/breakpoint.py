@@ -63,7 +63,7 @@ def pause(flow: http.HTTPFlow, curated_ir: InternalRequest) -> asyncio.Event:
     return event
 
 
-def release(flow_id: str, mutated_ir: InternalRequest) -> bool:
+def release(flow_id: str, mutated_ir: InternalRequest | None = None) -> bool:
     pf = _paused.get(flow_id)
     if pf is None:
         return False

@@ -22,20 +22,26 @@ function displayModel(model: string): string {
 }
 
 function formatKB(chars: number): string {
-  return `${(chars / 1024).toFixed(1)}KB`;
+  return `${(chars / 1024).toFixed(1)}K`;
 }
+
+const STOP_STYLES: Record<string, string> = {
+  end_turn: "text-sage bg-sage/8",
+  tool_use: "text-sky bg-sky/8",
+};
 
 export function ExchangeList({ exchanges, selectedId, onSelect }: ExchangeListProps) {
   if (exchanges.length === 0) {
     return (
-      <div className="flex items-center justify-center p-8 text-zinc-500">
-        No exchanges captured yet
+      <div className="flex flex-col items-center justify-center gap-2 p-12 text-txt-3">
+        <span className="text-[12px]">No exchanges captured</span>
+        <span className="text-[10px]">Waiting for traffic</span>
       </div>
     );
   }
 
   return (
-    <div className="divide-y divide-zinc-800 overflow-y-auto">
+    <div className="overflow-y-auto">
       {exchanges.map((entry) => {
         const isSelected = entry.id === selectedId;
         return (
@@ -43,30 +49,39 @@ export function ExchangeList({ exchanges, selectedId, onSelect }: ExchangeListPr
             type="button"
             key={entry.id}
             onClick={() => onSelect(entry.id)}
-            className={`w-full cursor-pointer px-3 py-2.5 text-left transition-colors ${
-              isSelected ? "bg-zinc-800 text-white" : "text-zinc-300 hover:bg-zinc-800/50"
+            className={`w-full cursor-pointer px-5 py-3.5 text-left transition-all duration-100 border-b border-edge-subtle ${
+              isSelected ? "bg-raised text-txt" : "text-txt-2 hover:bg-surface hover:text-txt"
             }`}
           >
-            <div className="flex items-center justify-between gap-2">
-              <span className="truncate text-sm font-medium">{displayModel(entry.model)}</span>
-              <span className="shrink-0 text-xs text-zinc-500">{formatRelativeTime(entry.ts)}</span>
+            <div className="flex items-center justify-between gap-3">
+              <span className="truncate text-[12px] font-medium text-txt">
+                {displayModel(entry.model)}
+              </span>
+              <span className="shrink-0 text-[10px] text-txt-3 tabular-nums">
+                {formatRelativeTime(entry.ts)}
+              </span>
             </div>
-            <div className="mt-1 flex items-center gap-3 text-xs text-zinc-500">
-              <span>{entry.req.tools_count} tools</span>
-              <span>{formatKB(entry.req.total_chars)}</span>
-              {entry.res?.stop_reason ? (
+            <div className="mt-2 flex items-center gap-2.5 text-[10px]">
+              <span className="tabular-nums">{entry.req.tools_count} tools</span>
+              <span className="text-txt-3">|</span>
+              <span className="tabular-nums">{formatKB(entry.req.total_chars)}</span>
+              {entry.res?.output_tokens != null && (
+                <>
+                  <span className="text-txt-3">|</span>
+                  <span className="tabular-nums text-sky">
+                    {entry.res.output_tokens.toLocaleString()} out
+                  </span>
+                </>
+              )}
+              {entry.res?.stop_reason && (
                 <span
-                  className={`rounded px-1.5 py-0.5 text-xs ${
-                    entry.res.stop_reason === "end_turn"
-                      ? "bg-emerald-900/40 text-emerald-400"
-                      : entry.res.stop_reason === "tool_use"
-                        ? "bg-blue-900/40 text-blue-400"
-                        : "bg-zinc-700 text-zinc-300"
+                  className={`ml-auto rounded px-1.5 py-0.5 text-[10px] ${
+                    STOP_STYLES[entry.res.stop_reason] ?? "text-txt-2 bg-raised"
                   }`}
                 >
                   {entry.res.stop_reason}
                 </span>
-              ) : null}
+              )}
             </div>
           </button>
         );

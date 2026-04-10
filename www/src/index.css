@@ -1,1 +1,138 @@
 @import "tailwindcss";
+
+@theme {
+  /* ── Canvas layers (charcoal blacks, slight blue undertone) ── */
+  --color-canvas: #08080c;
+  --color-surface: #0e0e14;
+  --color-raised: #16161e;
+  --color-hover: #1e1e28;
+
+  /* ── Borders ── */
+  --color-edge: #1c1c26;
+  --color-edge-subtle: #131318;
+
+  /* ── Text ── */
+  --color-txt: #d4d4dc;
+  --color-txt-2: #6e6e82;
+  --color-txt-3: #3e3e4e;
+
+  /* ── Muted pastel accents ── */
+  --color-sage: #7ec9a0;
+  --color-rose: #d4879c;
+  --color-lavender: #a88bda;
+  --color-sky: #7ab3d4;
+  --color-amber: #d4b07e;
+  --color-teal: #6ebcb0;
+
+  /* ── Typography ── */
+  --font-sans: "JetBrains Mono", monospace;
+  --font-mono: "JetBrains Mono", monospace;
+}
+
+/* ── Global resets ── */
+body {
+  background: var(--color-canvas);
+  color: var(--color-txt);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ── Scrollbar styling ── */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-edge);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-hover);
+}
+
+/* ── Button press feedback ── */
+.btn {
+  transition:
+    transform 80ms ease,
+    opacity 80ms ease,
+    box-shadow 120ms ease;
+}
+.btn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* ── Spinner animation ── */
+@keyframes spin-slow {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.spinner {
+  animation: spin-slow 0.8s linear infinite;
+}
+
+/* ── Pulse dot ── */
+@keyframes pulse-dot {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
+.pulse-dot {
+  animation: pulse-dot 1.5s ease-in-out infinite;
+}
+
+/* ── Fade in ── */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.fade-in {
+  animation: fade-in 200ms ease-out;
+}
+
+/* ── Selection ── */
+::selection {
+  background: rgba(122, 179, 212, 0.25);
+  color: var(--color-txt);
+}
+
+/* ── Focus ring ── */
+:focus-visible {
+  outline: 1px solid var(--color-sky);
+  outline-offset: 1px;
+}
+
+/* ── Input styling ── */
+input[type="checkbox"] {
+  accent-color: var(--color-sage);
+}
+
+/* ── Noise texture overlay ── */
+.noise::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  opacity: 0.015;
+  pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-repeat: repeat;
+  background-size: 256px 256px;
+}

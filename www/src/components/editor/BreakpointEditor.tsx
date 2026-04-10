@@ -1,8 +1,8 @@
 import { useState } from "react";
-import { dropFlow, releaseFlow } from "../../api";
+import { dropFlow, releaseFlow, releaseFlowUnmodified } from "../../api";
 import type { InternalRequest, Message, PausedFlow, SystemPart, ToolDef } from "../../types";
 import { AuditPanel } from "./AuditPanel";
-import { EditorFooter } from "./EditorFooter";
+import { EditorActions } from "./EditorActions";
 import { MessagesSection } from "./MessagesSection";
 import { PausedHeader } from "./PausedHeader";
 import { SamplingSection } from "./SamplingSection";
@@ -37,7 +37,7 @@ export function BreakpointEditor({ pausedFlow, onResolved }: BreakpointEditorPro
   const handleForwardUnmodified = async () => {
     setLoading(true);
     try {
-      await releaseFlow(pausedFlow.flow_id, pausedFlow.ir);
+      await releaseFlowUnmodified(pausedFlow.flow_id);
       onResolved();
     } finally {
       setLoading(false);
@@ -56,16 +56,27 @@ export function BreakpointEditor({ pausedFlow, onResolved }: BreakpointEditorPro
 
   return (
     <div className="flex h-full flex-col">
+      {/* Header with flow info and actions */}
       <PausedHeader
         flowId={pausedFlow.flow_id}
         provider={pausedFlow.ir.provider}
         model={pausedFlow.ir.model}
         pausedAtMs={pausedFlow.paused_at_ms}
-      />
+      >
+        <EditorActions
+          originalIr={pausedFlow.ir}
+          pipelineAudit={pausedFlow.audit}
+          editedIr={editedIr}
+          onForward={handleForward}
+          onForwardUnmodified={handleForwardUnmodified}
+          onDrop={handleDrop}
+          loading={loading}
+        />
+      </PausedHeader>
 
       <div className="flex flex-1 overflow-hidden">
         {/* Main editing area */}
-        <div className="flex-[2] overflow-y-auto p-4 space-y-4">
+        <div className="flex-[2] overflow-y-auto px-6 py-5 space-y-6">
           <SamplingSection
             sampling={editedIr.sampling}
             model={editedIr.model}
@@ -77,20 +88,10 @@ export function BreakpointEditor({ pausedFlow, onResolved }: BreakpointEditorPro
         </div>
 
         {/* Sidebar */}
-        <div className="flex-[1] border-l border-zinc-800 overflow-y-auto">
+        <div className="flex-[1] border-l border-edge overflow-y-auto">
           <AuditPanel audit={pausedFlow.audit} />
         </div>
       </div>
-
-      <EditorFooter
-        originalIr={pausedFlow.ir}
-        pipelineAudit={pausedFlow.audit}
-        editedIr={editedIr}
-        onForward={handleForward}
-        onForwardUnmodified={handleForwardUnmodified}
-        onDrop={handleDrop}
-        loading={loading}
-      />
     </div>
   );
 }

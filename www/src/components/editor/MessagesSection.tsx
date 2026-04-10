@@ -15,11 +15,11 @@ function blockLabel(block: ContentBlock): string {
     case "tool_result":
       return `tool_result: ${block.tool_use_id.slice(0, 12)}${block.is_error ? " [error]" : ""}`;
     case "thinking":
-      return `[thinking block, ${block.text.length.toLocaleString()} chars]`;
+      return `[thinking, ${block.text.length.toLocaleString()} chars]`;
     case "image":
-      return "[image block]";
+      return "[image]";
     case "unknown":
-      return "[unknown block]";
+      return "[unknown]";
   }
 }
 
@@ -37,47 +37,42 @@ function BlockRow({
   onToggle: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
-
   const canExpand = block.type === "text" || block.type === "tool_use";
-  const label = blockLabel(block);
 
   return (
-    <div className={`${checked ? "" : "opacity-50"}`}>
-      <div className="flex items-start gap-2 px-2 py-1">
-        <input
-          type="checkbox"
-          checked={checked}
-          onChange={onToggle}
-          className="accent-emerald-500 mt-0.5"
-        />
+    <div className={`transition-opacity ${checked ? "" : "opacity-40"}`}>
+      <div className="flex items-start gap-2.5 px-3 py-2">
+        <input type="checkbox" checked={checked} onChange={onToggle} className="mt-0.5" />
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            <span className="rounded bg-zinc-800 px-1 py-0.5 text-xs text-zinc-500 font-mono">
+            <span className="rounded bg-raised px-1.5 py-0.5 text-[9px] uppercase text-txt-3">
               {block.type}
             </span>
-            <span className="text-xs text-zinc-600">{blockSize(block).toLocaleString()}</span>
+            <span className="text-[10px] text-txt-3 tabular-nums">
+              {blockSize(block).toLocaleString()}
+            </span>
             {block.type === "tool_result" && block.is_error && (
-              <span className="rounded bg-red-900/40 px-1 py-0.5 text-xs text-red-400">error</span>
+              <span className="rounded bg-rose/10 px-1.5 py-0.5 text-[10px] text-rose">error</span>
             )}
           </div>
           {canExpand ? (
             <button
               type="button"
-              className="text-xs text-zinc-400 mt-0.5 text-left cursor-pointer hover:text-zinc-200 truncate block max-w-full"
+              className="text-[11px] text-txt-2 mt-1 text-left cursor-pointer hover:text-txt truncate block max-w-full transition-colors"
               onClick={() => setExpanded((v) => !v)}
             >
-              {label}
+              {blockLabel(block)}
             </button>
           ) : (
-            <span className="text-xs text-zinc-500 mt-0.5 block">{label}</span>
+            <span className="text-[11px] text-txt-3 mt-1 block">{blockLabel(block)}</span>
           )}
           {expanded && block.type === "text" && (
-            <pre className="mt-1 max-h-48 overflow-auto rounded bg-zinc-800 p-2 text-xs text-zinc-300 whitespace-pre-wrap font-mono">
+            <pre className="mt-2 max-h-48 overflow-auto rounded-md bg-canvas p-3 text-[10px] text-txt-2 whitespace-pre-wrap">
               {block.text}
             </pre>
           )}
           {expanded && block.type === "tool_use" && (
-            <pre className="mt-1 max-h-48 overflow-auto rounded bg-zinc-800 p-2 text-xs text-zinc-300 whitespace-pre-wrap font-mono">
+            <pre className="mt-2 max-h-48 overflow-auto rounded-md bg-canvas p-3 text-[10px] text-txt-2 whitespace-pre-wrap">
               {JSON.stringify(block.input, null, 2)}
             </pre>
           )}
@@ -107,8 +102,7 @@ function MessageCard({
   checkedBlocks: Set<number>;
   onToggleBlock: (blockIndex: number) => void;
 }) {
-  const roleBadge =
-    message.role === "user" ? "bg-blue-900/40 text-blue-400" : "bg-emerald-900/40 text-emerald-400";
+  const roleBadge = message.role === "user" ? "text-sky bg-sky/8" : "text-sage bg-sage/8";
 
   const keyedBlocks = message.content.map((block, idx) => ({
     block,
@@ -117,16 +111,16 @@ function MessageCard({
   }));
 
   return (
-    <div className="rounded border border-zinc-800">
-      <div className="flex items-center gap-2 px-3 py-1.5 bg-zinc-900">
-        <span className={`rounded px-1.5 py-0.5 text-xs font-medium uppercase ${roleBadge}`}>
+    <div className="rounded-md border border-edge overflow-hidden">
+      <div className="flex items-center gap-2.5 px-4 py-2.5 bg-surface">
+        <span className={`rounded px-2 py-0.5 text-[10px] font-medium uppercase ${roleBadge}`}>
           {message.role}
         </span>
-        <span className="text-xs text-zinc-500">
+        <span className="text-[10px] text-txt-3">
           {message.content.length} block{message.content.length !== 1 ? "s" : ""}
         </span>
       </div>
-      <div className="divide-y divide-zinc-800/50">
+      <div className="divide-y divide-edge-subtle">
         {keyedBlocks.map((entry) => (
           <BlockRow
             key={entry.key}
@@ -141,7 +135,6 @@ function MessageCard({
 }
 
 export function MessagesSection({ messages, onChange }: MessagesSectionProps) {
-  // Track which blocks are checked per message: map of messageIndex -> Set<blockIndex>
   const [checkedMap, setCheckedMap] = useState<Map<number, Set<number>>>(() => {
     const map = new Map<number, Set<number>>();
     messages.forEach((msg, mi) => {
@@ -181,11 +174,11 @@ export function MessagesSection({ messages, onChange }: MessagesSectionProps) {
   }));
 
   return (
-    <div className="space-y-2">
-      <h3 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">
+    <div className="space-y-3">
+      <h3 className="text-[10px] font-medium text-txt-3 uppercase tracking-[0.12em]">
         Messages ({messages.length})
       </h3>
-      <div className="space-y-1">
+      <div className="space-y-2">
         {keyedMessages.map((entry) => (
           <MessageCard
             key={entry.key}

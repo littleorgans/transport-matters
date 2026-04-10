@@ -28,6 +28,7 @@ def get_storage() -> StorageBackend:
     global _backend  # noqa: PLW0603
     if _backend is None:
         from manicure.config import get_settings
+
         _backend = DiskStorageBackend(root=get_settings().storage_dir)
     return _backend
 

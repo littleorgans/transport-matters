@@ -27,6 +27,7 @@ function makeEntry(overrides: Partial<IndexEntry> = {}): IndexEntry {
       text_chars: 200,
       tool_calls: 0,
     },
+    pipeline: null,
     mutated_manually: false,
     ...overrides,
   };
@@ -58,6 +59,6 @@ describe("ExchangeList", () => {
   it("shows empty state when no exchanges", () => {
     render(<ExchangeList exchanges={[]} selectedId={null} onSelect={() => {}} />);
 
-    expect(screen.getByText("No exchanges captured yet")).toBeInTheDocument();
+    expect(screen.getByText("No exchanges captured")).toBeInTheDocument();
   });
 });

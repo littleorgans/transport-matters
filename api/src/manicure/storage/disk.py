@@ -15,14 +15,14 @@ from typing import Any  # Any: opaque rule definitions
 
 import aiofiles
 
-logger = logging.getLogger(__name__)
-
 from manicure.ir import InternalRequest, InternalResponse
 from manicure.storage.base import (
     ExchangeArtifacts,
     IndexEntry,
     StorageBackend,
 )
+
+logger = logging.getLogger(__name__)
 
 _DEFAULT_ROOT = Path.home() / ".manicure" / "exchanges"
 
@@ -44,9 +44,8 @@ class DiskStorageBackend(StorageBackend):
     async def append_index(self, entry: IndexEntry) -> None:
         index_path = self._root / "index.jsonl"
         line = entry.model_dump_json() + "\n"
-        async with self._index_lock:
-            async with aiofiles.open(index_path, mode="a") as f:
-                await f.write(line)
+        async with self._index_lock, aiofiles.open(index_path, mode="a") as f:
+            await f.write(line)
 
     async def read_index(self, limit: int, offset: int) -> list[IndexEntry]:
         index_path = self._root / "index.jsonl"
@@ -69,7 +68,9 @@ class DiskStorageBackend(StorageBackend):
                     entries.append(IndexEntry.model_validate(obj))
                     pos = end
                 except (json.JSONDecodeError, Exception) as exc:
-                    logger.warning("Skipping malformed index entry at pos %d: %s", pos, exc)
+                    logger.warning(
+                        "Skipping malformed index entry at pos %d: %s", pos, exc
+                    )
                     break
         return entries[offset : offset + limit]
 

@@ -204,14 +204,16 @@ class AnthropicAdapter(ProviderAdapter):
                 if delta_type == "text_delta":
                     buf["text"] = buf.get("text", "") + delta.get("text", "")
                 elif delta_type == "thinking_delta":
-                    buf["thinking"] = buf.get("thinking", "") + delta.get("thinking", "")
+                    buf["thinking"] = buf.get("thinking", "") + delta.get(
+                        "thinking", ""
+                    )
                 elif delta_type == "input_json_delta":
-                    buf["_input_partial"] = (
-                        buf.get("_input_partial", "") + delta.get("partial_json", "")
+                    buf["_input_partial"] = buf.get("_input_partial", "") + delta.get(
+                        "partial_json", ""
                     )
             elif ev_type == "content_block_stop":
                 idx = ev.get("index", 0)
-                buf = block_buffers.pop(idx, None)
+                buf = block_buffers.pop(idx, None)  # type: ignore[arg-type]
                 if buf:
                     if "_input_partial" in buf:
                         try:

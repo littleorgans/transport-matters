@@ -24,7 +24,7 @@ const PARAM_EXAMPLES: Record<ActionType, string> = {
 };
 
 const inputClass =
-  "w-full rounded bg-zinc-800 border border-zinc-700 px-2 py-1.5 text-sm text-zinc-200 placeholder-zinc-500 focus:border-zinc-500 focus:outline-none";
+  "w-full rounded-md bg-canvas border border-edge px-3 py-2 text-[11px] text-txt placeholder-txt-3 focus:border-sky/40 focus:outline-none transition-colors";
 
 export function CreateRuleForm({ onCreated }: CreateRuleFormProps) {
   const [name, setName] = useState("");
@@ -86,8 +86,8 @@ export function CreateRuleForm({ onCreated }: CreateRuleFormProps) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-3 border-t border-zinc-800 px-3 py-3">
-      <h3 className="text-xs font-medium text-zinc-400 uppercase tracking-wide">New Rule</h3>
+    <form onSubmit={handleSubmit} className="space-y-3 border-t border-edge px-5 py-5">
+      <h3 className="text-[10px] font-medium text-txt-3 uppercase tracking-[0.12em]">New Rule</h3>
 
       <input
         type="text"
@@ -115,16 +115,11 @@ export function CreateRuleForm({ onCreated }: CreateRuleFormProps) {
         onChange={(e) => setParamsText(e.target.value)}
         placeholder={PARAM_EXAMPLES[action]}
         rows={3}
-        className={`${inputClass} font-mono text-xs`}
+        className={`${inputClass} resize-none`}
       />
 
-      <label className="flex items-center gap-2 text-sm text-zinc-300 cursor-pointer">
-        <input
-          type="checkbox"
-          checked={isGlobal}
-          onChange={(e) => setIsGlobal(e.target.checked)}
-          className="accent-emerald-500"
-        />
+      <label className="flex items-center gap-2.5 text-[11px] text-txt-2 cursor-pointer">
+        <input type="checkbox" checked={isGlobal} onChange={(e) => setIsGlobal(e.target.checked)} />
         Global scope
       </label>
 
@@ -161,14 +156,21 @@ export function CreateRuleForm({ onCreated }: CreateRuleFormProps) {
         </div>
       )}
 
-      {error && <p className="text-xs text-red-400">{error}</p>}
+      {error && <p className="text-[11px] text-rose">{error}</p>}
 
       <button
         type="submit"
         disabled={submitting || !name.trim()}
-        className="w-full rounded bg-emerald-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+        className="btn w-full rounded-md bg-sage/15 border border-sage/20 px-3 py-2 text-[11px] font-medium text-sage hover:bg-sage/20 cursor-pointer transition-colors"
       >
-        {submitting ? "Creating..." : "Create Rule"}
+        {submitting ? (
+          <span className="flex items-center justify-center gap-2">
+            <span className="inline-block h-3 w-3 rounded-full border-2 border-sage/30 border-t-sage spinner" />
+            Creating
+          </span>
+        ) : (
+          "Create Rule"
+        )}
       </button>
     </form>
   );

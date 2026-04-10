@@ -100,6 +100,15 @@ export async function releaseFlow(flowId: string, ir: InternalRequest): Promise<
   }
 }
 
+export async function releaseFlowUnmodified(flowId: string): Promise<void> {
+  const res = await fetch(`/api/breakpoint/release-unmodified/${encodeURIComponent(flowId)}`, {
+    method: "POST",
+  });
+  if (!res.ok) {
+    throw new Error(`Failed to release flow ${flowId}: ${res.status}`);
+  }
+}
+
 export async function dropFlow(flowId: string): Promise<void> {
   const res = await fetch(`/api/breakpoint/drop/${encodeURIComponent(flowId)}`, {
     method: "POST",

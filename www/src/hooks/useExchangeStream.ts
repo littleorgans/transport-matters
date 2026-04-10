@@ -36,6 +36,7 @@ export function useExchangeStream(): {
           model: data.model as string,
           path: "",
           req: data.req as IndexEntry["req"],
+          pipeline: (data.pipeline as IndexEntry["pipeline"]) ?? null,
           res: (data.res as IndexEntry["res"]) ?? null,
           mutated_manually: false,
         };

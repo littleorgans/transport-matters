@@ -6,6 +6,9 @@ interface SamplingSectionProps {
   onChange: (updates: Partial<InternalRequest>) => void;
 }
 
+const inputClass =
+  "w-full rounded-md bg-canvas border border-edge px-3 py-2 text-[11px] text-txt focus:border-sky/40 focus:outline-none transition-colors";
+
 export function SamplingSection({ sampling, model, onChange }: SamplingSectionProps) {
   const handleModel = (value: string) => {
     onChange({ model: value });
@@ -25,7 +28,6 @@ export function SamplingSection({ sampling, model, onChange }: SamplingSectionPr
       if (Number.isNaN(n)) return;
       parsed = { ...sampling, max_tokens: n };
     } else {
-      // Nullable numeric fields: temperature, top_p, top_k
       const val = raw.trim() === "" ? null : Number(raw);
       if (val !== null && Number.isNaN(val)) return;
 
@@ -39,16 +41,12 @@ export function SamplingSection({ sampling, model, onChange }: SamplingSectionPr
     onChange({ sampling: parsed });
   };
 
-  const labelClass = "text-xs text-zinc-500";
-  const inputClass =
-    "w-full rounded bg-zinc-800 px-2 py-1 text-xs text-zinc-200 border border-zinc-700 focus:border-zinc-500 focus:outline-none";
-
   return (
-    <div className="space-y-2">
-      <h3 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Sampling</h3>
-      <div className="grid grid-cols-3 gap-2">
-        <div>
-          <label htmlFor="model" className={labelClass}>
+    <div className="space-y-3">
+      <h3 className="text-[10px] font-medium text-txt-3 uppercase tracking-[0.12em]">Sampling</h3>
+      <div className="grid grid-cols-3 gap-3">
+        <div className="space-y-1">
+          <label htmlFor="model" className="text-[10px] text-txt-3">
             Model
           </label>
           <input
@@ -58,8 +56,8 @@ export function SamplingSection({ sampling, model, onChange }: SamplingSectionPr
             onChange={(e) => handleModel(e.target.value)}
           />
         </div>
-        <div>
-          <label htmlFor="max-tokens" className={labelClass}>
+        <div className="space-y-1">
+          <label htmlFor="max-tokens" className="text-[10px] text-txt-3">
             Max tokens
           </label>
           <input
@@ -70,8 +68,8 @@ export function SamplingSection({ sampling, model, onChange }: SamplingSectionPr
             onChange={(e) => handleSampling("max_tokens", e.target.value)}
           />
         </div>
-        <div>
-          <label htmlFor="temperature" className={labelClass}>
+        <div className="space-y-1">
+          <label htmlFor="temperature" className="text-[10px] text-txt-3">
             Temperature
           </label>
           <input
@@ -83,8 +81,8 @@ export function SamplingSection({ sampling, model, onChange }: SamplingSectionPr
             onChange={(e) => handleSampling("temperature", e.target.value)}
           />
         </div>
-        <div>
-          <label htmlFor="top-p" className={labelClass}>
+        <div className="space-y-1">
+          <label htmlFor="top-p" className="text-[10px] text-txt-3">
             Top P
           </label>
           <input
@@ -96,8 +94,8 @@ export function SamplingSection({ sampling, model, onChange }: SamplingSectionPr
             onChange={(e) => handleSampling("top_p", e.target.value)}
           />
         </div>
-        <div>
-          <label htmlFor="top-k" className={labelClass}>
+        <div className="space-y-1">
+          <label htmlFor="top-k" className="text-[10px] text-txt-3">
             Top K
           </label>
           <input
@@ -108,15 +106,15 @@ export function SamplingSection({ sampling, model, onChange }: SamplingSectionPr
             onChange={(e) => handleSampling("top_k", e.target.value)}
           />
         </div>
-        <div>
-          <label htmlFor="stop-sequences" className={labelClass}>
+        <div className="space-y-1">
+          <label htmlFor="stop-sequences" className="text-[10px] text-txt-3">
             Stop sequences
           </label>
           <input
             id="stop-sequences"
             className={inputClass}
             value={sampling.stop_sequences.join(", ")}
-            placeholder="comma-separated"
+            placeholder="comma separated"
             onChange={(e) => handleSampling("stop_sequences", e.target.value)}
           />
         </div>

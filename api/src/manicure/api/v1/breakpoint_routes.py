@@ -56,6 +56,14 @@ async def release_flow(flow_id: str, ir: InternalRequest) -> dict[str, str]:
     return {"status": "released"}
 
 
+@router.post("/release-unmodified/{flow_id}")
+async def release_flow_unmodified(flow_id: str) -> dict[str, str]:
+    ok = bp.release(flow_id)
+    if not ok:
+        raise NotFoundError(f"Flow {flow_id} not found or already resolved")
+    return {"status": "released"}
+
+
 @router.post("/drop/{flow_id}")
 async def drop_flow(flow_id: str) -> dict[str, str]:
     ok = bp.drop(flow_id)

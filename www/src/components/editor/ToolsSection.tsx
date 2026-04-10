@@ -48,7 +48,6 @@ function groupTools(tools: ToolDef[]): ToolGroup[] {
     });
   }
 
-  // Put "Built-in" first, then alphabetical
   return groups.sort((a, b) => {
     if (a.prefix === "Built-in") return -1;
     if (b.prefix === "Built-in") return 1;
@@ -73,31 +72,33 @@ function ToolGroupSection({
   const checkedCount = group.tools.filter((t) => checkedNames.has(t.name)).length;
 
   return (
-    <div className="border border-zinc-800 rounded">
-      <div className="flex items-center gap-2 px-3 py-1.5 bg-zinc-900">
+    <div className="border border-edge rounded-md overflow-hidden">
+      <div className="flex items-center gap-2.5 px-4 py-2.5 bg-surface">
         <button
           type="button"
-          className="text-xs text-zinc-500 cursor-pointer"
+          className="text-[11px] text-txt-3 cursor-pointer w-4"
           onClick={() => setCollapsed((v) => !v)}
         >
-          {collapsed ? "+" : "-"}
+          {collapsed ? "+" : "\u2212"}
         </button>
-        <span className="text-xs font-medium text-zinc-300">{group.prefix}</span>
-        <span className="text-xs text-zinc-500">
+        <span className="text-[11px] font-medium text-txt-2">{group.prefix}</span>
+        <span className="text-[10px] text-txt-3 tabular-nums">
           {checkedCount}/{group.tools.length}
         </span>
-        <span className="text-xs text-zinc-600">{group.totalChars.toLocaleString()} chars</span>
+        <span className="text-[10px] text-txt-3 tabular-nums">
+          {group.totalChars.toLocaleString()} chars
+        </span>
         <div className="ml-auto flex gap-1">
           <button
             type="button"
-            className="text-xs text-zinc-500 hover:text-zinc-300 cursor-pointer px-1"
+            className="btn text-[10px] text-txt-3 hover:text-txt-2 cursor-pointer px-1.5 py-0.5 rounded bg-raised transition-colors"
             onClick={onGroupAll}
           >
             all
           </button>
           <button
             type="button"
-            className="text-xs text-zinc-500 hover:text-zinc-300 cursor-pointer px-1"
+            className="btn text-[10px] text-txt-3 hover:text-txt-2 cursor-pointer px-1.5 py-0.5 rounded bg-raised transition-colors"
             onClick={onGroupNone}
           >
             none
@@ -105,17 +106,16 @@ function ToolGroupSection({
         </div>
       </div>
       {!collapsed && (
-        <div className="divide-y divide-zinc-800/50">
+        <div className="divide-y divide-edge-subtle">
           {group.tools.map((tool) => (
-            <div key={tool.name} className="flex items-center gap-2 px-3 py-1">
+            <div key={tool.name} className="flex items-center gap-2.5 px-4 py-2">
               <input
                 type="checkbox"
                 checked={checkedNames.has(tool.name)}
                 onChange={() => onToggle(tool.name)}
-                className="accent-emerald-500"
               />
-              <span className="font-mono text-xs text-zinc-300">{displayName(tool.name)}</span>
-              <span className="text-xs text-zinc-600 ml-auto">
+              <span className="text-[11px] text-txt-2">{displayName(tool.name)}</span>
+              <span className="text-[10px] text-txt-3 ml-auto tabular-nums">
                 {toolCharCount(tool).toLocaleString()}
               </span>
             </div>
@@ -196,36 +196,36 @@ export function ToolsSection({ tools, onChange }: ToolsSectionProps) {
   };
 
   return (
-    <div className="space-y-2">
-      <div className="flex items-center gap-2">
-        <h3 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">
+    <div className="space-y-3">
+      <div className="flex items-center gap-3">
+        <h3 className="text-[10px] font-medium text-txt-3 uppercase tracking-[0.12em]">
           Tools ({tools.length})
         </h3>
-        <div className="ml-auto flex gap-1">
+        <div className="ml-auto flex gap-1.5">
           <button
             type="button"
-            className="text-xs text-zinc-500 hover:text-zinc-300 cursor-pointer px-1.5 py-0.5 rounded bg-zinc-800"
+            className="btn text-[10px] text-txt-3 hover:text-txt-2 cursor-pointer px-2 py-1 rounded-md bg-raised transition-colors"
             onClick={checkAll}
           >
             Check all
           </button>
           <button
             type="button"
-            className="text-xs text-zinc-500 hover:text-zinc-300 cursor-pointer px-1.5 py-0.5 rounded bg-zinc-800"
+            className="btn text-[10px] text-txt-3 hover:text-txt-2 cursor-pointer px-2 py-1 rounded-md bg-raised transition-colors"
             onClick={uncheckAll}
           >
             Uncheck all
           </button>
           <button
             type="button"
-            className="text-xs text-zinc-500 hover:text-zinc-300 cursor-pointer px-1.5 py-0.5 rounded bg-zinc-800"
+            className="btn text-[10px] text-txt-3 hover:text-txt-2 cursor-pointer px-2 py-1 rounded-md bg-raised transition-colors"
             onClick={dropAllMcp}
           >
-            Drop all MCP
+            Drop MCP
           </button>
         </div>
       </div>
-      <div className="space-y-1">
+      <div className="space-y-2">
         {groups.map((group) => (
           <ToolGroupSection
             key={group.prefix}

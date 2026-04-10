@@ -23,6 +23,6 @@ describe("App", () => {
 
   it("shows empty state prompt", () => {
     render(<App />);
-    expect(screen.getByText("Select an exchange to view details")).toBeInTheDocument();
+    expect(screen.getByText("Select an exchange to inspect")).toBeInTheDocument();
   });
 });

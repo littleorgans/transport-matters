@@ -16,6 +16,14 @@ wheels/
 *.swp
 *.swo
 
+# FMM
+.fmm.db
+.fmm.db-shm
+.fmm.db-wal
+
+# Vite build output (served by the Python addon)
+api/src/manicure/www/
+
 # Testing
 .pytest_cache/
 .coverage

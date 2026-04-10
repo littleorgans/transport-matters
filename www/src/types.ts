@@ -24,7 +24,7 @@ export interface IndexEntry {
   model: string;
   path: string;
   req: ReqStats;
-  pipeline: PipelineStats | null;
+  pipeline: PipelineAudit | null;
   res: ResStats | null;
   mutated_manually: boolean;
 }
@@ -154,6 +154,25 @@ export interface InternalRequest {
   sampling: SamplingParams;
   metadata: RequestMetadata;
   stream: boolean;
+  provider_extras: Record<string, unknown>;
+}
+
+// ── Response IR ──────────────────────────────────────────────────
+
+export interface UsageStats {
+  input_tokens: number;
+  output_tokens: number;
+  cache_creation_input_tokens: number;
+  cache_read_input_tokens: number;
+}
+
+export interface InternalResponse {
+  id: string;
+  model: string;
+  provider: string;
+  stop_reason: string | null;
+  usage: UsageStats;
+  content: ContentBlock[];
   provider_extras: Record<string, unknown>;
 }
 
