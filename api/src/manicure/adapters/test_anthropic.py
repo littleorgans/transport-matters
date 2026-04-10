@@ -242,6 +242,52 @@ SAMPLE_RESPONSE: dict[str, Any] = {
 }
 
 
+RESPONSE_WITH_THINKING: dict[str, Any] = {
+    "id": "msg_01ThinkingExample",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-4-20250514",
+    "stop_reason": "end_turn",
+    "usage": {
+        "input_tokens": 40,
+        "output_tokens": 120,
+        "cache_read_input_tokens": 0,
+        "cache_creation_input_tokens": 0,
+    },
+    "content": [
+        {
+            "type": "thinking",
+            "thinking": "The user wants to know the capital of France.",
+            "signature": "sig_abc123",
+        },
+        {"type": "text", "text": "The capital of France is Paris."},
+    ],
+}
+
+
+# A minimal Anthropic SSE stream that produces a thinking block followed
+# by a text block. Buffered verbatim so _inbound_response_sse is exercised
+# end to end.
+SSE_WITH_THINKING_STREAM = (
+    'data: {"type":"message_start","message":{"id":"msg_sse_think","model":'
+    '"claude-sonnet-4-20250514","usage":{"input_tokens":12,'
+    '"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}}\n'
+    'data: {"type":"content_block_start","index":0,"content_block":'
+    '{"type":"thinking","thinking":""}}\n'
+    'data: {"type":"content_block_delta","index":0,"delta":'
+    '{"type":"thinking_delta","thinking":"Let me think about this."}}\n'
+    'data: {"type":"content_block_stop","index":0}\n'
+    'data: {"type":"content_block_start","index":1,"content_block":'
+    '{"type":"text","text":""}}\n'
+    'data: {"type":"content_block_delta","index":1,"delta":'
+    '{"type":"text_delta","text":"Done."}}\n'
+    'data: {"type":"content_block_stop","index":1}\n'
+    'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},'
+    '"usage":{"output_tokens":7}}\n'
+    "data: [DONE]\n"
+)
+
+
 class TestResponseParsing:
     def test_basic_response(self, adapter: AnthropicAdapter) -> None:
         raw = json.dumps(SAMPLE_RESPONSE).encode()
@@ -253,3 +299,40 @@ class TestResponseParsing:
         assert resp.usage.output_tokens == 150
         assert resp.usage.cache_read_input_tokens == 10
         assert len(resp.content) == 1
+
+    def test_json_response_with_thinking(self, adapter: AnthropicAdapter) -> None:
+        """Thinking blocks in JSON responses carry a 'thinking' field, not 'text'.
+
+        Regression: _parse_response_content previously indexed item["text"]
+        and raised KeyError on every response containing a thinking block.
+        """
+        from manicure.ir import TextBlock, ThinkingBlock
+
+        raw = json.dumps(RESPONSE_WITH_THINKING).encode()
+        resp = adapter.inbound_response(raw, "application/json")
+        assert len(resp.content) == 2
+        thinking = resp.content[0]
+        assert isinstance(thinking, ThinkingBlock)
+        assert thinking.text == "The user wants to know the capital of France."
+        assert thinking.provider_data == {"signature": "sig_abc123"}
+        text = resp.content[1]
+        assert isinstance(text, TextBlock)
+        assert text.text == "The capital of France is Paris."
+
+    def test_sse_response_with_thinking(self, adapter: AnthropicAdapter) -> None:
+        """SSE stream containing a thinking block parses end to end."""
+        from manicure.ir import TextBlock, ThinkingBlock
+
+        raw = SSE_WITH_THINKING_STREAM.encode()
+        resp = adapter.inbound_response(raw, "text/event-stream")
+        assert resp.id == "msg_sse_think"
+        assert resp.stop_reason == "end_turn"
+        assert resp.usage.input_tokens == 12
+        assert resp.usage.output_tokens == 7
+        assert len(resp.content) == 2
+        thinking = resp.content[0]
+        assert isinstance(thinking, ThinkingBlock)
+        assert thinking.text == "Let me think about this."
+        text = resp.content[1]
+        assert isinstance(text, TextBlock)
+        assert text.text == "Done."

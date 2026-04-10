@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { ContentBlock, Message } from "../../types";
+import { Toggle } from "../Toggle";
 
 interface MessagesSectionProps {
   messages: Message[];
@@ -41,38 +42,40 @@ function BlockRow({
 
   return (
     <div className={`transition-opacity ${checked ? "" : "opacity-40"}`}>
-      <div className="flex items-start gap-2.5 px-3 py-2">
-        <input type="checkbox" checked={checked} onChange={onToggle} className="mt-0.5" />
+      <div className="flex items-start gap-3 px-4 py-2.5">
+        <div className="mt-0.5">
+          <Toggle
+            checked={checked}
+            onChange={() => onToggle()}
+            label={`Toggle ${block.type} block`}
+          />
+        </div>
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="rounded bg-raised px-1.5 py-0.5 text-[9px] uppercase text-txt-3">
-              {block.type}
-            </span>
-            <span className="text-[10px] text-txt-3 tabular-nums">
-              {blockSize(block).toLocaleString()}
-            </span>
+          <div className="flex items-center gap-3">
+            <span className="chip">{block.type}</span>
+            <span className="label text-txt-3 metric-num">{blockSize(block).toLocaleString()}</span>
             {block.type === "tool_result" && block.is_error && (
-              <span className="rounded bg-rose/10 px-1.5 py-0.5 text-[10px] text-rose">error</span>
+              <span className="chip text-rose">error</span>
             )}
           </div>
           {canExpand ? (
             <button
               type="button"
-              className="text-[11px] text-txt-2 mt-1 text-left cursor-pointer hover:text-txt truncate block max-w-full transition-colors"
+              className="text-[11px] text-txt-2 mt-1.5 text-left cursor-pointer hover:text-txt truncate block max-w-full transition-colors"
               onClick={() => setExpanded((v) => !v)}
             >
               {blockLabel(block)}
             </button>
           ) : (
-            <span className="text-[11px] text-txt-3 mt-1 block">{blockLabel(block)}</span>
+            <span className="text-[11px] text-txt-3 mt-1.5 block">{blockLabel(block)}</span>
           )}
           {expanded && block.type === "text" && (
-            <pre className="mt-2 max-h-48 overflow-auto rounded-md bg-canvas p-3 text-[10px] text-txt-2 whitespace-pre-wrap">
+            <pre className="mt-2 max-h-48 overflow-auto bg-canvas p-3 text-[10px] text-txt-2 whitespace-pre-wrap border border-edge-subtle">
               {block.text}
             </pre>
           )}
           {expanded && block.type === "tool_use" && (
-            <pre className="mt-2 max-h-48 overflow-auto rounded-md bg-canvas p-3 text-[10px] text-txt-2 whitespace-pre-wrap">
+            <pre className="mt-2 max-h-48 overflow-auto bg-canvas p-3 text-[10px] text-txt-2 whitespace-pre-wrap border border-edge-subtle">
               {JSON.stringify(block.input, null, 2)}
             </pre>
           )}
@@ -102,7 +105,10 @@ function MessageCard({
   checkedBlocks: Set<number>;
   onToggleBlock: (blockIndex: number) => void;
 }) {
-  const roleBadge = message.role === "user" ? "text-sky bg-sky/8" : "text-sage bg-sage/8";
+  const roleTone =
+    message.role === "user"
+      ? { text: "text-sky", bg: "bg-sky/5" }
+      : { text: "text-sage", bg: "bg-sage/5" };
 
   const keyedBlocks = message.content.map((block, idx) => ({
     block,
@@ -111,23 +117,24 @@ function MessageCard({
   }));
 
   return (
-    <div className="rounded-md border border-edge overflow-hidden">
-      <div className="flex items-center gap-2.5 px-4 py-2.5 bg-surface">
-        <span className={`rounded px-2 py-0.5 text-[10px] font-medium uppercase ${roleBadge}`}>
-          {message.role}
-        </span>
-        <span className="text-[10px] text-txt-3">
+    <div className="card-flush">
+      <div className={`flex items-center gap-3 px-4 py-2.5 ${roleTone.bg}`}>
+        <span className={`chip ${roleTone.text}`}>{message.role}</span>
+        <span className="text-[11px] text-txt-3 metric-num">
           {message.content.length} block{message.content.length !== 1 ? "s" : ""}
         </span>
       </div>
-      <div className="divide-y divide-edge-subtle">
-        {keyedBlocks.map((entry) => (
-          <BlockRow
-            key={entry.key}
-            block={entry.block}
-            checked={checkedBlocks.has(entry.idx)}
-            onToggle={() => onToggleBlock(entry.idx)}
-          />
+      <div className="hairline-x" />
+      <div>
+        {keyedBlocks.map((entry, i) => (
+          <div key={entry.key}>
+            <BlockRow
+              block={entry.block}
+              checked={checkedBlocks.has(entry.idx)}
+              onToggle={() => onToggleBlock(entry.idx)}
+            />
+            {i < keyedBlocks.length - 1 && <div className="hairline-x mx-4" />}
+          </div>
         ))}
       </div>
     </div>
@@ -174,11 +181,11 @@ export function MessagesSection({ messages, onChange }: MessagesSectionProps) {
   }));
 
   return (
-    <div className="space-y-3">
-      <h3 className="text-[10px] font-medium text-txt-3 uppercase tracking-[0.12em]">
-        Messages ({messages.length})
-      </h3>
-      <div className="space-y-2">
+    <section className="space-y-4">
+      <div className="section-rule">
+        <span className="label">Messages &middot; {messages.length}</span>
+      </div>
+      <div className="space-y-3">
         {keyedMessages.map((entry) => (
           <MessageCard
             key={entry.key}
@@ -188,6 +195,6 @@ export function MessagesSection({ messages, onChange }: MessagesSectionProps) {
           />
         ))}
       </div>
-    </div>
+    </section>
   );
 }

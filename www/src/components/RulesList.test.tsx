@@ -40,8 +40,8 @@ describe("RulesList", () => {
     const onToggle = vi.fn();
     const rule = makeRule({ id: "rule_1", name: "My Rule", enabled: true });
     render(<RulesList rules={[rule]} onToggle={onToggle} onDelete={() => {}} />);
-    const checkbox = screen.getByRole("checkbox", { name: /Toggle My Rule/i });
-    fireEvent.click(checkbox);
+    const toggle = screen.getByRole("switch", { name: /Toggle My Rule/i });
+    fireEvent.click(toggle);
     expect(onToggle).toHaveBeenCalledWith("rule_1", false);
   });
 

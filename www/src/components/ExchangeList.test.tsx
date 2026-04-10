@@ -59,6 +59,6 @@ describe("ExchangeList", () => {
   it("shows empty state when no exchanges", () => {
     render(<ExchangeList exchanges={[]} selectedId={null} onSelect={() => {}} />);
 
-    expect(screen.getByText("No exchanges captured")).toBeInTheDocument();
+    expect(screen.getByText("Waiting for traffic")).toBeInTheDocument();
   });
 });

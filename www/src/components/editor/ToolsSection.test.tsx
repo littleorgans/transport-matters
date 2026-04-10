@@ -24,7 +24,10 @@ describe("ToolsSection", () => {
 
     expect(screen.getByText("Built-in")).toBeInTheDocument();
     expect(screen.getByText("mcp")).toBeInTheDocument();
-    expect(screen.getByText("Tools (3)")).toBeInTheDocument();
+    // Header renders "Tools · 3" with the count in a separate text node.
+    expect(
+      screen.getAllByText((_, el) => el?.textContent?.trim() === "Tools · 3").length,
+    ).toBeGreaterThan(0);
   });
 
   it("uncheck removes tool from output", () => {
@@ -36,17 +39,15 @@ describe("ToolsSection", () => {
 
     render(<ToolsSection tools={tools} onChange={onChange} />);
 
-    // Both checkboxes should be checked initially
-    const checkboxes = screen.getAllByRole("checkbox");
-    // Find the tool checkbox (not the global ones)
-    // The group has checkboxes for each tool
-    const toolCheckboxes = checkboxes.filter((cb) => (cb as HTMLInputElement).checked);
-    expect(toolCheckboxes.length).toBeGreaterThanOrEqual(2);
+    // Each tool renders as a role="switch" toggle.
+    const toggles = screen.getAllByRole("switch");
+    const checked = toggles.filter((t) => t.getAttribute("aria-checked") === "true");
+    expect(checked.length).toBeGreaterThanOrEqual(2);
 
-    // Uncheck the first tool checkbox (after group-level buttons)
-    const bashCheckbox = toolCheckboxes[0];
-    if (bashCheckbox) {
-      fireEvent.click(bashCheckbox);
+    // Uncheck the first tool toggle.
+    const firstToggle = checked[0];
+    if (firstToggle) {
+      fireEvent.click(firstToggle);
       expect(onChange).toHaveBeenCalled();
       const lastCall = onChange.mock.calls[onChange.mock.calls.length - 1];
       const result = lastCall?.[0] as ToolDef[];

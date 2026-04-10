@@ -1,63 +1,51 @@
-import type { InternalRequest, SamplingParams } from "../../types";
+import type { SamplingParams } from "../../types";
 
 interface SamplingSectionProps {
   sampling: SamplingParams;
-  model: string;
-  onChange: (updates: Partial<InternalRequest>) => void;
+  onChange: (sampling: SamplingParams) => void;
 }
 
 const inputClass =
-  "w-full rounded-md bg-canvas border border-edge px-3 py-2 text-[11px] text-txt focus:border-sky/40 focus:outline-none transition-colors";
+  "w-full bg-canvas border border-edge px-3 py-2 text-[11px] text-txt focus:border-sky/50 focus:outline-none transition-colors metric-num";
 
-export function SamplingSection({ sampling, model, onChange }: SamplingSectionProps) {
-  const handleModel = (value: string) => {
-    onChange({ model: value });
-  };
+const labelClass = "label block";
 
+export function SamplingSection({ sampling, onChange }: SamplingSectionProps) {
   const handleSampling = (field: keyof SamplingParams, raw: string) => {
-    let parsed: SamplingParams;
-
     if (field === "stop_sequences") {
       const seqs = raw
         .split(",")
         .map((s) => s.trim())
         .filter(Boolean);
-      parsed = { ...sampling, stop_sequences: seqs };
-    } else if (field === "max_tokens") {
-      const n = Number.parseInt(raw, 10);
-      if (Number.isNaN(n)) return;
-      parsed = { ...sampling, max_tokens: n };
-    } else {
-      const val = raw.trim() === "" ? null : Number(raw);
-      if (val !== null && Number.isNaN(val)) return;
-
-      if (field === "top_k") {
-        parsed = { ...sampling, top_k: val === null ? null : Math.round(val) };
-      } else {
-        parsed = { ...sampling, [field]: val };
-      }
+      onChange({ ...sampling, stop_sequences: seqs });
+      return;
     }
 
-    onChange({ sampling: parsed });
+    if (field === "max_tokens") {
+      const n = Number.parseInt(raw, 10);
+      if (Number.isNaN(n)) return;
+      onChange({ ...sampling, max_tokens: n });
+      return;
+    }
+
+    const val = raw.trim() === "" ? null : Number(raw);
+    if (val !== null && Number.isNaN(val)) return;
+
+    if (field === "top_k") {
+      onChange({ ...sampling, top_k: val === null ? null : Math.round(val) });
+    } else {
+      onChange({ ...sampling, [field]: val });
+    }
   };
 
   return (
-    <div className="space-y-3">
-      <h3 className="text-[10px] font-medium text-txt-3 uppercase tracking-[0.12em]">Sampling</h3>
-      <div className="grid grid-cols-3 gap-3">
-        <div className="space-y-1">
-          <label htmlFor="model" className="text-[10px] text-txt-3">
-            Model
-          </label>
-          <input
-            id="model"
-            className={inputClass}
-            value={model}
-            onChange={(e) => handleModel(e.target.value)}
-          />
-        </div>
-        <div className="space-y-1">
-          <label htmlFor="max-tokens" className="text-[10px] text-txt-3">
+    <section className="space-y-4">
+      <div className="section-rule">
+        <span className="label">Sampling</span>
+      </div>
+      <div className="grid grid-cols-3 gap-4">
+        <div className="space-y-2">
+          <label htmlFor="max-tokens" className={labelClass}>
             Max tokens
           </label>
           <input
@@ -68,8 +56,8 @@ export function SamplingSection({ sampling, model, onChange }: SamplingSectionPr
             onChange={(e) => handleSampling("max_tokens", e.target.value)}
           />
         </div>
-        <div className="space-y-1">
-          <label htmlFor="temperature" className="text-[10px] text-txt-3">
+        <div className="space-y-2">
+          <label htmlFor="temperature" className={labelClass}>
             Temperature
           </label>
           <input
@@ -81,8 +69,8 @@ export function SamplingSection({ sampling, model, onChange }: SamplingSectionPr
             onChange={(e) => handleSampling("temperature", e.target.value)}
           />
         </div>
-        <div className="space-y-1">
-          <label htmlFor="top-p" className="text-[10px] text-txt-3">
+        <div className="space-y-2">
+          <label htmlFor="top-p" className={labelClass}>
             Top P
           </label>
           <input
@@ -94,8 +82,8 @@ export function SamplingSection({ sampling, model, onChange }: SamplingSectionPr
             onChange={(e) => handleSampling("top_p", e.target.value)}
           />
         </div>
-        <div className="space-y-1">
-          <label htmlFor="top-k" className="text-[10px] text-txt-3">
+        <div className="space-y-2">
+          <label htmlFor="top-k" className={labelClass}>
             Top K
           </label>
           <input
@@ -106,8 +94,8 @@ export function SamplingSection({ sampling, model, onChange }: SamplingSectionPr
             onChange={(e) => handleSampling("top_k", e.target.value)}
           />
         </div>
-        <div className="space-y-1">
-          <label htmlFor="stop-sequences" className="text-[10px] text-txt-3">
+        <div className="space-y-2 col-span-2">
+          <label htmlFor="stop-sequences" className={labelClass}>
             Stop sequences
           </label>
           <input
@@ -119,6 +107,6 @@ export function SamplingSection({ sampling, model, onChange }: SamplingSectionPr
           />
         </div>
       </div>
-    </div>
+    </section>
   );
 }

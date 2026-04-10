@@ -1,20 +1,31 @@
 @import "tailwindcss";
 
 @theme {
-  /* ── Canvas layers (charcoal blacks, slight blue undertone) ── */
+  /* ── Canvas layers (charcoal blacks, slight blue undertone) ──
+     Each step is deliberate: canvas is the deepest void, surface
+     the default card plane, raised the hover/active state. ── */
+  --color-well: #040408;
   --color-canvas: #08080c;
   --color-surface: #0e0e14;
   --color-raised: #16161e;
-  --color-hover: #1e1e28;
+  --color-hover: #1e1e2a;
 
-  /* ── Borders ── */
-  --color-edge: #1c1c26;
-  --color-edge-subtle: #131318;
+  /* ── Borders ──
+     edge is the default hairline; edge-strong marks primary
+     containers; edge-subtle lives inside nested blocks. ── */
+  --color-edge: #23232f;
+  --color-edge-strong: #2c2c3a;
+  --color-edge-subtle: #16161e;
 
-  /* ── Text ── */
-  --color-txt: #d4d4dc;
-  --color-txt-2: #6e6e82;
-  --color-txt-3: #3e3e4e;
+  /* ── Text ──
+     txt:   primary content (body values)
+     txt-2: secondary text (helper copy, inline metadata)
+     txt-3: labels — uppercase section titles, metric captions
+     label: explicit alias for txt-3 at call sites ── */
+  --color-txt: #dcdce4;
+  --color-txt-2: #9292a8;
+  --color-txt-3: #6e6e82;
+  --color-label: #7a7a92;
 
   /* ── Muted pastel accents ── */
   --color-sage: #7ec9a0;
@@ -27,18 +38,40 @@
   /* ── Typography ── */
   --font-sans: "JetBrains Mono", monospace;
   --font-mono: "JetBrains Mono", monospace;
+
+  /* ── Corner policy ──
+     The design language is square. Override Tailwind's default
+     radius scale to 0 so every rounded-* utility generates with
+     no radius. rounded-full stays circular because it uses
+     calc(infinity * 1px), not the scale. ── */
+  --radius-xs: 0;
+  --radius-sm: 0;
+  --radius-md: 0;
+  --radius-lg: 0;
+  --radius-xl: 0;
+  --radius-2xl: 0;
+  --radius-3xl: 0;
+  --radius-4xl: 0;
+  --radius: 0;
+
+  /* ── Layout constants ── */
+  --max-frame: 1600px;
 }
 
 /* ── Global resets ── */
+html,
 body {
   background: var(--color-canvas);
+}
+body {
   color: var(--color-txt);
   font-family: var(--font-sans);
+  font-feature-settings: "ss01", /* JetBrains stylistic alt */ "zero"; /* slashed zero */
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* ── Scrollbar styling ── */
+/* ── Scrollbar styling — square, whisper-thin ── */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -47,8 +80,8 @@ body {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: var(--color-edge);
-  border-radius: 3px;
+  background: var(--color-edge-strong);
+  border-radius: 0;
 }
 ::-webkit-scrollbar-thumb:hover {
   background: var(--color-hover);
@@ -120,11 +153,6 @@ body {
   outline-offset: 1px;
 }
 
-/* ── Input styling ── */
-input[type="checkbox"] {
-  accent-color: var(--color-sage);
-}
-
 /* ── Noise texture overlay ── */
 .noise::after {
   content: "";
@@ -135,4 +163,261 @@ input[type="checkbox"] {
   background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
   background-repeat: repeat;
   background-size: 256px 256px;
+}
+
+/* ────────────────────────────────────────────────────────────────
+   CRAFT PRIMITIVES
+   Reusable atoms that give every surface a consistent identity.
+   ──────────────────────────────────────────────────────────────── */
+
+/* ── Frame ──
+   Constrains the app to a readable maximum width and draws two
+   faint vertical rules at its boundary so the viewport never
+   feels empty on ultrawide screens. ── */
+.frame {
+  max-width: var(--max-frame);
+  margin-inline: auto;
+  position: relative;
+}
+.frame::before,
+.frame::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: linear-gradient(
+    to bottom,
+    transparent,
+    var(--color-edge) 8%,
+    var(--color-edge) 92%,
+    transparent
+  );
+  pointer-events: none;
+}
+.frame::before {
+  left: 0;
+}
+.frame::after {
+  right: 0;
+}
+
+/* ── Hairlines ──
+   1px gradient lines that fade at the ends, replacing flat
+   borders for dividers and section rules. ── */
+.hairline-x {
+  height: 1px;
+  background: linear-gradient(
+    to right,
+    transparent,
+    var(--color-edge) 12%,
+    var(--color-edge) 88%,
+    transparent
+  );
+}
+.hairline-y {
+  width: 1px;
+  background: linear-gradient(
+    to bottom,
+    transparent,
+    var(--color-edge) 12%,
+    var(--color-edge) 88%,
+    transparent
+  );
+}
+
+/* ── Card ──
+   Default elevated surface. A flat fill plus:
+   - top inset highlight (1px light from above)
+   - bottom inset shadow (1px gravity)
+   - outer shadow (catches raking light)
+   All at opacity low enough to feel like honest materials. ── */
+.card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-edge);
+  box-shadow:
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.025),
+    inset 0 -1px 0 0 rgba(0, 0, 0, 0.25),
+    0 1px 0 0 rgba(0, 0, 0, 0.4),
+    0 2px 10px -4px rgba(0, 0, 0, 0.6);
+}
+
+/* ── Card, flush (no outer shadow) ──
+   For cards that sit inside another card. ── */
+.card-flush {
+  background: var(--color-surface);
+  border: 1px solid var(--color-edge);
+  box-shadow:
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.02),
+    inset 0 -1px 0 0 rgba(0, 0, 0, 0.2);
+}
+
+/* ── Label ──
+   Uppercase micro-label typography. One source of truth for
+   every section title, metric caption, and axis label. ── */
+.label {
+  font-size: 9px;
+  line-height: 1;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--color-label);
+  font-weight: 500;
+}
+
+/* ── Chip ──
+   Filled dark badge used for content-block type markers and
+   role markers. The same label typography as .label, but with
+   a recessed darker fill and a 1px edge so it reads as its own
+   element inside a card. Corners are square by design; colour
+   is overridable with utility text-* / border-* classes. ── */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 7px 3px;
+  background: var(--color-raised);
+  border: 1px solid var(--color-edge-subtle);
+  font-size: 9px;
+  line-height: 1;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  font-weight: 500;
+  color: var(--color-label);
+  box-shadow:
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.02),
+    inset 0 -1px 0 0 rgba(0, 0, 0, 0.25);
+}
+
+/* ── Section rule ──
+   A label flanked by gradient hairlines. Used for top-level
+   section headers inside a tab body. ── */
+.section-rule {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.section-rule::before,
+.section-rule::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(to right, transparent, var(--color-edge) 50%, var(--color-edge));
+}
+.section-rule::after {
+  background: linear-gradient(to right, var(--color-edge), var(--color-edge) 50%, transparent);
+}
+
+/* ── Metric number ──
+   Numeric display tuned for readability: tabular figures,
+   slashed zero, tight leading. ── */
+.metric-num {
+  font-feature-settings: "tnum", "zero";
+  font-variant-numeric: tabular-nums slashed-zero;
+  line-height: 1;
+}
+
+/* ── Top highlight ──
+   1px gradient along the top edge suggesting light from above.
+   Apply to headers and the primary detail frame. ── */
+.top-highlight {
+  position: relative;
+}
+.top-highlight::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(
+    to right,
+    transparent,
+    rgba(255, 255, 255, 0.04) 20%,
+    rgba(255, 255, 255, 0.04) 80%,
+    transparent
+  );
+  pointer-events: none;
+}
+
+/* ── Accent tick ──
+   A 2px coloured bar placed beside text — used to mark the
+   active tab, current selection, or live state. ── */
+.accent-tick {
+  position: relative;
+}
+.accent-tick::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 15%;
+  bottom: 15%;
+  width: 2px;
+  background: currentColor;
+}
+
+/* ── Tab: pressed-key active state ──
+   A physical recess cut into the tab bar. The active tab becomes
+   a well: the surrounding surface is raised, this tile drops into
+   the canvas. A thin sky strip runs across the top lip catching
+   light from an imaginary bezel; below it a sky bloom bleeds
+   downward into the cavity; a raking shadow darkens the upper
+   cavity so the eye reads depth; side walls trap shadow at the
+   left and right edges. The label color is unchanged from the
+   hover state — the shadow stack carries all the weight. ── */
+.tab-pressed {
+  background: var(--color-well);
+  box-shadow:
+    inset 0 2px 0 0 var(--color-sky),
+    inset 0 8px 14px -6px rgba(122, 179, 212, 0.22),
+    inset 0 12px 20px -10px rgba(0, 0, 0, 0.8),
+    inset 2px 0 4px -2px rgba(0, 0, 0, 0.55),
+    inset -2px 0 4px -2px rgba(0, 0, 0, 0.55),
+    inset 0 -1px 0 0 rgba(255, 255, 255, 0.02);
+}
+.tab-pressed::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: 6px;
+  width: 14px;
+  height: 1px;
+  transform: translateX(-50%);
+  background: linear-gradient(
+    to right,
+    transparent,
+    rgba(122, 179, 212, 0.45) 30%,
+    rgba(122, 179, 212, 0.45) 70%,
+    transparent
+  );
+}
+
+/* ── Tab rest state ──
+   Counterpart to .tab-pressed. Sits on the surface with a faint
+   top highlight so the whole bar reads as raised — which in turn
+   makes the pressed tab read as a well cut through it. ── */
+.tab-rest {
+  background: var(--color-surface);
+  box-shadow:
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.025),
+    inset 0 -1px 0 0 rgba(0, 0, 0, 0.3);
+}
+.tab-rest:hover {
+  background: var(--color-raised);
+}
+
+/* ── Row: selected state ──
+   A list row that has been locked in for inspection. Sky rail on
+   the left (3px hard edge + soft bloom bleeding rightward), 1px
+   top highlight, 1px bottom gravity, and a pair of sky hairlines
+   along the top and bottom edges so the row is framed and lit
+   from the left. The conceptual opposite of .tab-pressed: tabs
+   press in, list rows latch forward. ── */
+.row-selected {
+  background: var(--color-raised);
+  box-shadow:
+    inset 3px 0 0 0 var(--color-sky),
+    inset 12px 0 24px -10px rgba(122, 179, 212, 0.28),
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.04),
+    inset 0 -1px 0 0 rgba(0, 0, 0, 0.5),
+    0 1px 0 0 rgba(122, 179, 212, 0.22),
+    0 -1px 0 0 rgba(122, 179, 212, 0.22);
 }

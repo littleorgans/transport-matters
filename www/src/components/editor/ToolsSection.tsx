@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import type { ToolDef } from "../../types";
+import { Toggle } from "../Toggle";
 
 interface ToolsSectionProps {
   tools: ToolDef[];
@@ -72,33 +73,33 @@ function ToolGroupSection({
   const checkedCount = group.tools.filter((t) => checkedNames.has(t.name)).length;
 
   return (
-    <div className="border border-edge rounded-md overflow-hidden">
-      <div className="flex items-center gap-2.5 px-4 py-2.5 bg-surface">
+    <div className="card-flush">
+      <div className="flex items-center gap-3 px-4 py-3">
         <button
           type="button"
-          className="text-[11px] text-txt-3 cursor-pointer w-4"
+          className="text-[11px] text-txt-3 cursor-pointer w-4 hover:text-txt-2"
           onClick={() => setCollapsed((v) => !v)}
         >
           {collapsed ? "+" : "\u2212"}
         </button>
-        <span className="text-[11px] font-medium text-txt-2">{group.prefix}</span>
-        <span className="text-[10px] text-txt-3 tabular-nums">
+        <span className="text-[11px] font-medium text-txt">{group.prefix}</span>
+        <span className="label text-txt-3 metric-num">
           {checkedCount}/{group.tools.length}
         </span>
-        <span className="text-[10px] text-txt-3 tabular-nums">
+        <span className="label text-txt-3 metric-num">
           {group.totalChars.toLocaleString()} chars
         </span>
-        <div className="ml-auto flex gap-1">
+        <div className="ml-auto flex gap-0">
           <button
             type="button"
-            className="btn text-[10px] text-txt-3 hover:text-txt-2 cursor-pointer px-1.5 py-0.5 rounded bg-raised transition-colors"
+            className="btn label text-txt-3 hover:text-txt cursor-pointer px-2 py-1 transition-colors"
             onClick={onGroupAll}
           >
             all
           </button>
           <button
             type="button"
-            className="btn text-[10px] text-txt-3 hover:text-txt-2 cursor-pointer px-1.5 py-0.5 rounded bg-raised transition-colors"
+            className="btn label text-txt-3 hover:text-txt cursor-pointer px-2 py-1 transition-colors"
             onClick={onGroupNone}
           >
             none
@@ -106,21 +107,28 @@ function ToolGroupSection({
         </div>
       </div>
       {!collapsed && (
-        <div className="divide-y divide-edge-subtle">
-          {group.tools.map((tool) => (
-            <div key={tool.name} className="flex items-center gap-2.5 px-4 py-2">
-              <input
-                type="checkbox"
-                checked={checkedNames.has(tool.name)}
-                onChange={() => onToggle(tool.name)}
-              />
-              <span className="text-[11px] text-txt-2">{displayName(tool.name)}</span>
-              <span className="text-[10px] text-txt-3 ml-auto tabular-nums">
-                {toolCharCount(tool).toLocaleString()}
-              </span>
-            </div>
-          ))}
-        </div>
+        <>
+          <div className="hairline-x" />
+          <div>
+            {group.tools.map((tool, i) => (
+              <div key={tool.name}>
+                <div className="flex items-center gap-3 px-4 py-2">
+                  <Toggle
+                    checked={checkedNames.has(tool.name)}
+                    onChange={() => onToggle(tool.name)}
+                    label={`Toggle ${tool.name}`}
+                    size="sm"
+                  />
+                  <span className="text-[11px] text-txt-2">{displayName(tool.name)}</span>
+                  <span className="label text-txt-3 ml-auto metric-num">
+                    {toolCharCount(tool).toLocaleString()}
+                  </span>
+                </div>
+                {i < group.tools.length - 1 && <div className="hairline-x mx-4" />}
+              </div>
+            ))}
+          </div>
+        </>
       )}
     </div>
   );
@@ -196,29 +204,29 @@ export function ToolsSection({ tools, onChange }: ToolsSectionProps) {
   };
 
   return (
-    <div className="space-y-3">
+    <section className="space-y-4">
       <div className="flex items-center gap-3">
-        <h3 className="text-[10px] font-medium text-txt-3 uppercase tracking-[0.12em]">
-          Tools ({tools.length})
-        </h3>
-        <div className="ml-auto flex gap-1.5">
+        <div className="section-rule flex-1">
+          <span className="label">Tools &middot; {tools.length}</span>
+        </div>
+        <div className="flex gap-0 shrink-0">
           <button
             type="button"
-            className="btn text-[10px] text-txt-3 hover:text-txt-2 cursor-pointer px-2 py-1 rounded-md bg-raised transition-colors"
+            className="btn label text-txt-3 hover:text-txt cursor-pointer px-3 py-1.5 border border-edge transition-colors"
             onClick={checkAll}
           >
-            Check all
+            All
           </button>
           <button
             type="button"
-            className="btn text-[10px] text-txt-3 hover:text-txt-2 cursor-pointer px-2 py-1 rounded-md bg-raised transition-colors"
+            className="btn label text-txt-3 hover:text-txt cursor-pointer px-3 py-1.5 border border-edge border-l-0 transition-colors"
             onClick={uncheckAll}
           >
-            Uncheck all
+            None
           </button>
           <button
             type="button"
-            className="btn text-[10px] text-txt-3 hover:text-txt-2 cursor-pointer px-2 py-1 rounded-md bg-raised transition-colors"
+            className="btn label text-rose/80 hover:text-rose cursor-pointer px-3 py-1.5 border border-edge border-l-0 transition-colors"
             onClick={dropAllMcp}
           >
             Drop MCP
@@ -237,6 +245,6 @@ export function ToolsSection({ tools, onChange }: ToolsSectionProps) {
           />
         ))}
       </div>
-    </div>
+    </section>
   );
 }

@@ -1,5 +1,6 @@
 import { type FormEvent, useState } from "react";
 import type { ActionType, CreateRuleBody } from "../types";
+import { Toggle } from "./Toggle";
 
 interface CreateRuleFormProps {
   onCreated: (body: CreateRuleBody) => Promise<void>;
@@ -24,7 +25,7 @@ const PARAM_EXAMPLES: Record<ActionType, string> = {
 };
 
 const inputClass =
-  "w-full rounded-md bg-canvas border border-edge px-3 py-2 text-[11px] text-txt placeholder-txt-3 focus:border-sky/40 focus:outline-none transition-colors";
+  "w-full bg-canvas border border-edge px-3 py-2 text-[11px] text-txt placeholder-txt-3 focus:border-sky/50 focus:outline-none transition-colors";
 
 export function CreateRuleForm({ onCreated }: CreateRuleFormProps) {
   const [name, setName] = useState("");
@@ -86,8 +87,11 @@ export function CreateRuleForm({ onCreated }: CreateRuleFormProps) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-3 border-t border-edge px-5 py-5">
-      <h3 className="text-[10px] font-medium text-txt-3 uppercase tracking-[0.12em]">New Rule</h3>
+    <form onSubmit={handleSubmit} className="space-y-4 border-t border-edge px-5 py-5">
+      <div className="flex items-center gap-2.5">
+        <span className="inline-block h-3 w-px bg-sage/50" />
+        <span className="label">New Rule</span>
+      </div>
 
       <input
         type="text"
@@ -118,10 +122,10 @@ export function CreateRuleForm({ onCreated }: CreateRuleFormProps) {
         className={`${inputClass} resize-none`}
       />
 
-      <label className="flex items-center gap-2.5 text-[11px] text-txt-2 cursor-pointer">
-        <input type="checkbox" checked={isGlobal} onChange={(e) => setIsGlobal(e.target.checked)} />
-        Global scope
-      </label>
+      <div className="flex items-center gap-2.5 text-[11px] text-txt-2">
+        <Toggle checked={isGlobal} onChange={setIsGlobal} label="Global scope" />
+        <span>Global scope</span>
+      </div>
 
       {!isGlobal && (
         <div className="grid grid-cols-2 gap-2">
@@ -161,7 +165,7 @@ export function CreateRuleForm({ onCreated }: CreateRuleFormProps) {
       <button
         type="submit"
         disabled={submitting || !name.trim()}
-        className="btn w-full rounded-md bg-sage/15 border border-sage/20 px-3 py-2 text-[11px] font-medium text-sage hover:bg-sage/20 cursor-pointer transition-colors"
+        className="btn w-full bg-sage/8 border border-sage/30 px-3 py-2.5 text-[10px] font-medium uppercase tracking-[0.14em] text-sage hover:bg-sage/15 cursor-pointer transition-colors"
       >
         {submitting ? (
           <span className="flex items-center justify-center gap-2">

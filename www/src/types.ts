@@ -31,7 +31,14 @@ export interface IndexEntry {
 
 export interface ExchangeDetail {
   entry: IndexEntry;
+  /** Original request IR as received from the client, pre-pipeline and pre-edit. */
   request_ir: Record<string, unknown>;
+  /**
+   * Final request IR actually sent to the provider: pipeline output merged
+   * with any user edits made at a breakpoint. Null when neither the pipeline
+   * nor the user mutated the original request.
+   */
+  request_curated_ir: Record<string, unknown> | null;
   response_ir: Record<string, unknown> | null;
 }
 

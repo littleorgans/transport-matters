@@ -37,6 +37,11 @@ async def get_exchange(
     return {
         "entry": entry.model_dump(mode="json") if entry else None,
         "request_ir": artifacts.request_ir.model_dump(mode="json"),
+        "request_curated_ir": (
+            artifacts.request_curated_ir.model_dump(mode="json")
+            if artifacts.request_curated_ir
+            else None
+        ),
         "response_ir": (
             artifacts.response_ir.model_dump(mode="json")
             if artifacts.response_ir

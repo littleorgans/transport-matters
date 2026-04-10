@@ -492,13 +492,15 @@ class AnthropicAdapter(ProviderAdapter):
                     ToolUseBlock(id=item["id"], name=item["name"], input=item["input"])
                 )
             elif block_type == "thinking":
+                # Anthropic uses 'thinking' field in the JSON wire format and
+                # SSE-buffered blocks; some historical payloads use 'text'.
+                # Accept both for parity with _parse_content_block.
+                text = item.get("thinking") or item.get("text", "")
                 provider_data: dict[str, Any] | None = None  # Any: extra fields
-                extra_keys = set(item.keys()) - {"type", "text"}
+                extra_keys = set(item.keys()) - {"type", "text", "thinking"}
                 if extra_keys:
                     provider_data = {k: item[k] for k in sorted(extra_keys)}
-                blocks.append(
-                    ThinkingBlock(text=item["text"], provider_data=provider_data)
-                )
+                blocks.append(ThinkingBlock(text=text, provider_data=provider_data))
             else:
                 blocks.append(UnknownBlock(raw=item))
         return blocks

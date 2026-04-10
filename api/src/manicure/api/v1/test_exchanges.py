@@ -113,4 +113,45 @@ class TestGetExchange:
         assert response.status_code == 200
         data = response.json()
         assert data["request_ir"]["model"] == "anthropic/claude-sonnet-4-20250514"
+        assert data["request_curated_ir"] is None
         assert data["response_ir"] is None
+
+    async def test_get_existing_surfaces_curated_ir(self, client: AsyncClient) -> None:
+        """When a curated IR was persisted (pipeline or breakpoint edit), the
+        route must surface it so the UI can show what was actually sent.
+
+        Regression: the route previously dropped request_curated_ir on the
+        floor, so edits made at a breakpoint were invisible in the UI even
+        though they were correctly written to disk.
+        """
+        from manicure.storage import get_storage
+
+        storage = get_storage()
+        entry = _make_index_entry()
+        ir = _make_ir()
+        # Simulate a user edit: curated carries a different message body.
+        curated_ir = ir.model_copy(
+            update={
+                "messages": [
+                    Message(role="user", content=[TextBlock(text="edited")]),
+                ],
+            }
+        )
+        raw = b'{"model":"claude-sonnet-4-20250514","max_tokens":1024}'
+        artifacts = ExchangeArtifacts(
+            request_raw=raw,
+            request_ir=ir,
+            request_curated_ir=curated_ir,
+        )
+
+        await storage.append_index(entry)
+        await storage.write_exchange("ex-001", artifacts)
+
+        response = await client.get("/api/exchanges/ex-001")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["request_ir"]["messages"][0]["content"][0]["text"] == "hi"
+        assert data["request_curated_ir"] is not None
+        assert (
+            data["request_curated_ir"]["messages"][0]["content"][0]["text"] == "edited"
+        )

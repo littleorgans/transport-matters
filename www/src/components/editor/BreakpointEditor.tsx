@@ -1,6 +1,13 @@
 import { useState } from "react";
 import { dropFlow, releaseFlow, releaseFlowUnmodified } from "../../api";
-import type { InternalRequest, Message, PausedFlow, SystemPart, ToolDef } from "../../types";
+import type {
+  InternalRequest,
+  Message,
+  PausedFlow,
+  SamplingParams,
+  SystemPart,
+  ToolDef,
+} from "../../types";
 import { AuditPanel } from "./AuditPanel";
 import { EditorActions } from "./EditorActions";
 import { MessagesSection } from "./MessagesSection";
@@ -21,8 +28,7 @@ export function BreakpointEditor({ pausedFlow, onResolved }: BreakpointEditorPro
   const setTools = (tools: ToolDef[]) => setEditedIr((ir) => ({ ...ir, tools }));
   const setSystem = (system: SystemPart[]) => setEditedIr((ir) => ({ ...ir, system }));
   const setMessages = (messages: Message[]) => setEditedIr((ir) => ({ ...ir, messages }));
-  const setSamplingAndModel = (updates: Partial<InternalRequest>) =>
-    setEditedIr((ir) => ({ ...ir, ...updates }));
+  const setSampling = (sampling: SamplingParams) => setEditedIr((ir) => ({ ...ir, sampling }));
 
   const handleForward = async () => {
     setLoading(true);
@@ -56,39 +62,34 @@ export function BreakpointEditor({ pausedFlow, onResolved }: BreakpointEditorPro
 
   return (
     <div className="flex h-full flex-col">
-      {/* Header with flow info and actions */}
-      <PausedHeader
-        flowId={pausedFlow.flow_id}
-        provider={pausedFlow.ir.provider}
-        model={pausedFlow.ir.model}
-        pausedAtMs={pausedFlow.paused_at_ms}
-      >
-        <EditorActions
-          originalIr={pausedFlow.ir}
-          pipelineAudit={pausedFlow.audit}
-          editedIr={editedIr}
-          onForward={handleForward}
-          onForwardUnmodified={handleForwardUnmodified}
-          onDrop={handleDrop}
-          loading={loading}
-        />
-      </PausedHeader>
+      <PausedHeader flowId={pausedFlow.flow_id} pausedAtMs={pausedFlow.paused_at_ms} />
 
       <div className="flex flex-1 overflow-hidden">
-        {/* Main editing area */}
-        <div className="flex-[2] overflow-y-auto px-6 py-5 space-y-6">
-          <SamplingSection
-            sampling={editedIr.sampling}
+        {/* Central column: fixed masthead on top, scrollable editor below */}
+        <div className="flex flex-[2] flex-col overflow-hidden">
+          <EditorActions
+            originalIr={pausedFlow.ir}
+            pipelineAudit={pausedFlow.audit}
+            editedIr={editedIr}
+            provider={pausedFlow.ir.provider}
             model={editedIr.model}
-            onChange={setSamplingAndModel}
+            onForward={handleForward}
+            onForwardUnmodified={handleForwardUnmodified}
+            onDrop={handleDrop}
+            loading={loading}
           />
-          <MessagesSection messages={pausedFlow.ir.messages} onChange={setMessages} />
-          <SystemSection parts={pausedFlow.ir.system} onChange={setSystem} />
-          <ToolsSection tools={pausedFlow.ir.tools} onChange={setTools} />
+
+          <div className="flex-1 overflow-y-auto px-8 py-7 space-y-8">
+            <SamplingSection sampling={editedIr.sampling} onChange={setSampling} />
+            <MessagesSection messages={pausedFlow.ir.messages} onChange={setMessages} />
+            <SystemSection parts={pausedFlow.ir.system} onChange={setSystem} />
+            <ToolsSection tools={pausedFlow.ir.tools} onChange={setTools} />
+            <div className="h-8" />
+          </div>
         </div>
 
         {/* Sidebar */}
-        <div className="flex-[1] border-l border-edge overflow-y-auto">
+        <div className="flex-[1] border-l border-edge overflow-y-auto bg-surface/40">
           <AuditPanel audit={pausedFlow.audit} />
         </div>
       </div>

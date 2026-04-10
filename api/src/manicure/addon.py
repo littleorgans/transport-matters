@@ -255,6 +255,12 @@ class ManicureAddon:
             final_ir = pf.mutated_ir if pf.mutated_ir is not None else curated_ir
             flow.request.set_text(adapter.outbound_request(final_ir).decode())
             flow.metadata["manicure_mutated_manually"] = pf.mutated_ir is not None
+            # Persist the IR that was actually sent to the provider (pipeline
+            # output + any user edits from the breakpoint editor) so response()
+            # writes it to request.curated.ir.json. Without this rebinding,
+            # only the pre-edit pipeline output lands on disk and the UI has
+            # no way to show what was really sent.
+            flow.metadata["manicure_curated_ir"] = final_ir
         else:
             # Rewrite the forwarded request body
             flow.request.set_text(adapter.outbound_request(curated_ir).decode())
@@ -294,7 +300,12 @@ class ManicureAddon:
             except Exception:
                 logger.exception("Failed to parse response for flow %s", exchange_id)
 
-        req_stats = _build_req_stats(ir)
+        # Build stats from the IR that was actually sent to the provider,
+        # not the original client payload. Otherwise the list card + detail
+        # header keep showing pre-pipeline counts (e.g. 148 tools) while the
+        # Tools section below shows the curated list, leaving the user
+        # "none the wiser" that rules or edits took effect.
+        req_stats = _build_req_stats(curated_ir)
 
         pipeline_stats: PipelineStats | None = None
         if audit is not None:
