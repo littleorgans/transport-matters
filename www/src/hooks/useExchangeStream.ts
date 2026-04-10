@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { fetchExchanges } from "../api";
 import type { IndexEntry, PausedFlow } from "../types";
 
 const MAX_ENTRIES = 500;
@@ -51,6 +52,13 @@ export function useExchangeStream(): {
     } catch {
       // Ignore malformed events
     }
+  }, []);
+
+  // Load persisted exchanges from disk on mount
+  useEffect(() => {
+    fetchExchanges(MAX_ENTRIES, 0)
+      .then((data) => setExchanges(data.slice().reverse().slice(0, MAX_ENTRIES)))
+      .catch(() => {/* non-fatal: live events will still arrive */});
   }, []);
 
   useEffect(() => {
