@@ -59,6 +59,17 @@ class Rule(BaseModel):
     applied_count: int = 0
 
 
+class RuleAuditEntry(BaseModel):
+    """Immutable record of a single rule applied during a pipeline run."""
+
+    model_config = ConfigDict(frozen=True)
+
+    id: str
+    name: str
+    action: str
+    removed: dict[str, int]  # int: always integers (tools, chars, blocks)
+
+
 # ── Scope matching ─────────────────────────────────────────────────
 
 

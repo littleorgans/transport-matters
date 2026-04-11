@@ -45,10 +45,10 @@ export function useExchangeStream(): { connected: boolean } {
             req: data.req as IndexEntry["req"],
             pipeline: (data.pipeline as IndexEntry["pipeline"]) ?? null,
             res: (data.res as IndexEntry["res"]) ?? null,
-            mutated_manually: false,
+            mutated_manually: (data.mutated_manually as boolean) ?? false,
           };
           queryClient.setQueryData<IndexEntry[]>(["exchanges"], (prev = []) =>
-            [entry, ...prev].slice(0, MAX_ENTRIES),
+            [entry, ...prev.filter((e) => e.id !== entry.id)].slice(0, MAX_ENTRIES),
           );
           // Secondary clear: if SSE delivers the matching exchange, also clear the
           // overlay. Primary clear is onResolved in BreakpointEditor after mutation.

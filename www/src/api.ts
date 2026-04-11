@@ -5,6 +5,7 @@ import type {
   IndexEntry,
   InternalRequest,
   PatchRuleBody,
+  PausedFlow,
   Rule,
 } from "./types";
 
@@ -116,4 +117,12 @@ export async function dropFlow(flowId: string): Promise<void> {
   if (!res.ok) {
     throw new Error(`Failed to drop flow ${flowId}: ${res.status}`);
   }
+}
+
+export async function fetchPausedFlowDetail(flowId: string): Promise<PausedFlow> {
+  const res = await fetch(`/api/breakpoint/paused/${encodeURIComponent(flowId)}`);
+  if (!res.ok) {
+    throw new Error(`Failed to fetch paused flow ${flowId}: ${res.status}`);
+  }
+  return (await res.json()) as PausedFlow;
 }

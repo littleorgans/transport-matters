@@ -1,4 +1,6 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as api from "../../api";
 import type { InternalRequest, PausedFlow } from "../../types";
@@ -29,15 +31,30 @@ const mockPausedFlow: PausedFlow = {
   paused_at_ms: Date.now() - 5000,
 };
 
+function makeWrapper() {
+  const qc = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+  return {
+    qc,
+    wrapper: ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+    ),
+  };
+}
+
 describe("BreakpointEditor — onResolved path", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
   it("Forward: calls releaseFlow then onResolved — no SSE needed", async () => {
+    const { qc: _, wrapper } = makeWrapper();
     const { releaseFlow } = await import("../../api");
     const onResolved = vi.fn();
-    render(<BreakpointEditor pausedFlow={mockPausedFlow} onResolved={onResolved} />);
+    render(<BreakpointEditor pausedFlow={mockPausedFlow} onResolved={onResolved} />, {
+      wrapper,
+    });
 
     fireEvent.click(screen.getByRole("button", { name: "Forward" }));
 
@@ -51,9 +68,10 @@ describe("BreakpointEditor — onResolved path", () => {
   });
 
   it("Drop: calls dropFlow then onResolved — no SSE needed", async () => {
+    const { wrapper } = makeWrapper();
     const { dropFlow } = await import("../../api");
     const onResolved = vi.fn();
-    render(<BreakpointEditor pausedFlow={mockPausedFlow} onResolved={onResolved} />);
+    render(<BreakpointEditor pausedFlow={mockPausedFlow} onResolved={onResolved} />, { wrapper });
 
     fireEvent.click(screen.getByRole("button", { name: "Drop" }));
 
@@ -62,9 +80,10 @@ describe("BreakpointEditor — onResolved path", () => {
   });
 
   it("Pass Through: calls releaseFlowUnmodified then onResolved — no SSE needed", async () => {
+    const { wrapper } = makeWrapper();
     const { releaseFlowUnmodified } = await import("../../api");
     const onResolved = vi.fn();
-    render(<BreakpointEditor pausedFlow={mockPausedFlow} onResolved={onResolved} />);
+    render(<BreakpointEditor pausedFlow={mockPausedFlow} onResolved={onResolved} />, { wrapper });
 
     fireEvent.click(screen.getByRole("button", { name: "Pass Through" }));
 
@@ -79,9 +98,10 @@ describe("BreakpointEditor — error path", () => {
   });
 
   it("Forward failure: shows error banner, does not call onResolved", async () => {
+    const { wrapper } = makeWrapper();
     vi.mocked(api.releaseFlow).mockRejectedValueOnce(new Error("Network error"));
     const onResolved = vi.fn();
-    render(<BreakpointEditor pausedFlow={mockPausedFlow} onResolved={onResolved} />);
+    render(<BreakpointEditor pausedFlow={mockPausedFlow} onResolved={onResolved} />, { wrapper });
 
     fireEvent.click(screen.getByRole("button", { name: "Forward" }));
 
@@ -90,9 +110,10 @@ describe("BreakpointEditor — error path", () => {
   });
 
   it("Drop failure: shows error banner, does not call onResolved", async () => {
+    const { wrapper } = makeWrapper();
     vi.mocked(api.dropFlow).mockRejectedValueOnce(new Error("Drop failed"));
     const onResolved = vi.fn();
-    render(<BreakpointEditor pausedFlow={mockPausedFlow} onResolved={onResolved} />);
+    render(<BreakpointEditor pausedFlow={mockPausedFlow} onResolved={onResolved} />, { wrapper });
 
     fireEvent.click(screen.getByRole("button", { name: "Drop" }));
 
@@ -101,9 +122,10 @@ describe("BreakpointEditor — error path", () => {
   });
 
   it("Pass Through failure: shows error banner, does not call onResolved", async () => {
+    const { wrapper } = makeWrapper();
     vi.mocked(api.releaseFlowUnmodified).mockRejectedValueOnce(new Error("Timeout"));
     const onResolved = vi.fn();
-    render(<BreakpointEditor pausedFlow={mockPausedFlow} onResolved={onResolved} />);
+    render(<BreakpointEditor pausedFlow={mockPausedFlow} onResolved={onResolved} />, { wrapper });
 
     fireEvent.click(screen.getByRole("button", { name: "Pass Through" }));
 
@@ -112,11 +134,12 @@ describe("BreakpointEditor — error path", () => {
   });
 
   it("error clears on subsequent attempt", async () => {
+    const { wrapper } = makeWrapper();
     vi.mocked(api.dropFlow)
       .mockRejectedValueOnce(new Error("first failure"))
       .mockResolvedValueOnce(undefined);
     const onResolved = vi.fn();
-    render(<BreakpointEditor pausedFlow={mockPausedFlow} onResolved={onResolved} />);
+    render(<BreakpointEditor pausedFlow={mockPausedFlow} onResolved={onResolved} />, { wrapper });
 
     // First click — should fail
     fireEvent.click(screen.getByRole("button", { name: "Drop" }));
@@ -126,5 +149,25 @@ describe("BreakpointEditor — error path", () => {
     fireEvent.click(screen.getByRole("button", { name: "Drop" }));
     await waitFor(() => expect(onResolved).toHaveBeenCalledTimes(1));
     expect(screen.queryByText("first failure")).toBeNull();
+  });
+});
+
+describe("BreakpointEditor — cache invalidation", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("Forward: invalidates exchange detail cache before resolving", async () => {
+    const { qc, wrapper } = makeWrapper();
+    const invalidateSpy = vi.spyOn(qc, "invalidateQueries");
+    const onResolved = vi.fn();
+    render(<BreakpointEditor pausedFlow={mockPausedFlow} onResolved={onResolved} />, { wrapper });
+
+    fireEvent.click(screen.getByRole("button", { name: "Forward" }));
+
+    await waitFor(() => expect(onResolved).toHaveBeenCalledTimes(1));
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: ["exchange", mockPausedFlow.flow_id],
+    });
   });
 });

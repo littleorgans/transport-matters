@@ -45,9 +45,10 @@ async def patch_rule(
     body: dict[str, Any],  # Any: partial update body
     storage: StorageBackend = Depends(get_storage),
 ) -> Rule:
-    updated: list[Rule] = []  # out-param: set inside _patch, read after
+    updated_rule: Rule | None = None
 
     def _patch(data: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        nonlocal updated_rule
         for i, raw in enumerate(data):
             rule = Rule.model_validate(raw)
             if rule.id == rule_id:
@@ -56,7 +57,7 @@ async def patch_rule(
                     if key in body:
                         merged[key] = body[key]
                 patched = Rule.model_validate(merged)
-                updated.append(patched)
+                updated_rule = patched
                 return [
                     *data[:i],
                     patched.model_dump(mode="json", by_alias=True),
@@ -65,7 +66,10 @@ async def patch_rule(
         raise NotFoundError(detail=f"Rule {rule_id} not found")
 
     await storage.modify_rules(_patch)
-    return updated[0]
+    assert (
+        updated_rule is not None
+    )  # _patch raises before returning without setting this
+    return updated_rule
 
 
 @router.delete("/{rule_id}", status_code=204)

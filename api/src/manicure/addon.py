@@ -214,7 +214,7 @@ async def _handle_breakpoint(
     from mitmproxy.http import Response as MitmResponse
 
     paused_at_ms = int(time.time() * 1000)
-    event = bp.pause(flow, curated_ir)
+    event = bp.pause(flow, curated_ir, audit)
     broadcast.emit(
         {
             "type": "paused",
@@ -301,6 +301,8 @@ def _emit_exchange(
     res_stats: ResStats | None,
     exchange_id: str,
     ts: datetime,
+    mutated_manually: bool = False,
+    pipeline_stats: PipelineStats | None = None,
 ) -> None:
     """Broadcast the exchange event to SSE subscribers."""
     broadcast.emit(
@@ -312,6 +314,10 @@ def _emit_exchange(
             "model": ir.model,
             "req": req_stats.model_dump(mode="json"),
             "res": res_stats.model_dump(mode="json") if res_stats else None,
+            "mutated_manually": mutated_manually,
+            "pipeline": pipeline_stats.model_dump(mode="json")
+            if pipeline_stats
+            else None,
         }
     )
 
@@ -422,7 +428,9 @@ class ManicureAddon:
         if not await _persist_exchange(storage, entry, artifacts, exchange_id):
             return
 
-        _emit_exchange(ir, req_stats, res_stats, exchange_id, ts)
+        _emit_exchange(
+            ir, req_stats, res_stats, exchange_id, ts, mutated_manually, pipeline_stats
+        )
 
 
 addons = [ManicureAddon()]

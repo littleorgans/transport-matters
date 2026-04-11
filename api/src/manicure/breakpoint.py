@@ -3,7 +3,8 @@
 Supports arming the proxy so the next request pauses mid-flight,
 allowing the user to inspect and edit the IR before forwarding.
 
-This module imports only from ``manicure.ir``.
+Runtime imports: nothing from ``manicure``.
+TYPE_CHECKING-only: ``manicure.ir.InternalRequest``, ``manicure.pipeline.PipelineAudit``.
 """
 
 from __future__ import annotations
@@ -17,6 +18,7 @@ if TYPE_CHECKING:
     from mitmproxy import http
 
     from manicure.ir import InternalRequest
+    from manicure.pipeline import PipelineAudit
 
 
 @dataclass
@@ -25,6 +27,7 @@ class PausedFlow:
     event: asyncio.Event
     curated_ir: InternalRequest
     paused_at_ms: int
+    audit: PipelineAudit | None = None  # pipeline audit for this paused flow
     mutated_ir: InternalRequest | None = None
     dropped: bool = False
 
@@ -51,13 +54,18 @@ def is_armed() -> bool:
     return _mode == "armed_once"
 
 
-def pause(flow: http.HTTPFlow, curated_ir: InternalRequest) -> asyncio.Event:
+def pause(
+    flow: http.HTTPFlow,
+    curated_ir: InternalRequest,
+    audit: PipelineAudit | None = None,
+) -> asyncio.Event:
     """Register flow, re-arm for next request, return event to await on."""
     event: asyncio.Event = asyncio.Event()
     _paused[flow.id] = PausedFlow(
         flow=flow,
         event=event,
         curated_ir=curated_ir,
+        audit=audit,
         paused_at_ms=int(time.time() * 1000),
     )
     return event

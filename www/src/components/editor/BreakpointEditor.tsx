@@ -1,3 +1,4 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { dropFlow, releaseFlow, releaseFlowUnmodified } from "../../api";
 import type {
@@ -22,6 +23,7 @@ interface BreakpointEditorProps {
 }
 
 export function BreakpointEditor({ pausedFlow, onResolved }: BreakpointEditorProps) {
+  const queryClient = useQueryClient();
   const [editedIr, setEditedIr] = useState<InternalRequest>(() => structuredClone(pausedFlow.ir));
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -31,11 +33,18 @@ export function BreakpointEditor({ pausedFlow, onResolved }: BreakpointEditorPro
   const setMessages = (messages: Message[]) => setEditedIr((ir) => ({ ...ir, messages }));
   const setSampling = (sampling: SamplingParams) => setEditedIr((ir) => ({ ...ir, sampling }));
 
+  const invalidateExchange = () => {
+    // Mark the exchange detail stale so the next open refetches updated data.
+    // The list ("exchanges") is kept fresh by the SSE pump; no invalidation needed there.
+    void queryClient.invalidateQueries({ queryKey: ["exchange", pausedFlow.flow_id] });
+  };
+
   const handleForward = async () => {
     setError(null);
     setLoading(true);
     try {
       await releaseFlow(pausedFlow.flow_id, editedIr);
+      invalidateExchange();
       onResolved();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Forward failed");
@@ -49,6 +58,7 @@ export function BreakpointEditor({ pausedFlow, onResolved }: BreakpointEditorPro
     setLoading(true);
     try {
       await releaseFlowUnmodified(pausedFlow.flow_id);
+      invalidateExchange();
       onResolved();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Pass through failed");
@@ -62,6 +72,7 @@ export function BreakpointEditor({ pausedFlow, onResolved }: BreakpointEditorPro
     setLoading(true);
     try {
       await dropFlow(pausedFlow.flow_id);
+      invalidateExchange();
       onResolved();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Drop failed");

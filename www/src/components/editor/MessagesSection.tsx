@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { ContentBlock, Message } from "../../types";
 import { Toggle } from "../Toggle";
 
@@ -149,6 +149,16 @@ export function MessagesSection({ messages, onChange }: MessagesSectionProps) {
     });
     return map;
   });
+
+  // Reseed when the messages prop changes (e.g. a second paused flow with
+  // different content arrives without the component unmounting).
+  useEffect(() => {
+    const map = new Map<number, Set<number>>();
+    messages.forEach((msg, mi) => {
+      map.set(mi, new Set(msg.content.map((_, bi) => bi)));
+    });
+    setCheckedMap(map);
+  }, [messages]);
 
   const emitChange = (nextMap: Map<number, Set<number>>) => {
     const result: Message[] = messages.map((msg, mi) => {

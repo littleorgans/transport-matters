@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Any  # Any: opaque pipeline stats and provider
 from pydantic import BaseModel, ConfigDict, Field
 
 from manicure.ir import InternalRequest, InternalResponse
+from manicure.rules import RuleAuditEntry as RuleAuditEntry  # explicit re-export
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -30,15 +31,6 @@ class ReqStats(BaseModel):
     messages_count: int = 0
     messages_chars: int = 0
     total_chars: int = 0
-
-
-class RuleAuditEntry(BaseModel):
-    model_config = ConfigDict(frozen=True)
-
-    id: str
-    name: str
-    action: str
-    removed: dict[str, int]  # int: always integers (tools, chars, blocks)
 
 
 class PipelineStats(BaseModel):
@@ -128,6 +120,11 @@ class StorageBackend(ABC):
         Implementations must hold the write lock for the entire read→fn→write
         sequence so concurrent callers cannot interleave. This is the only
         write path for rules; no unlocked ``save_rules`` exists.
+
+        ``fn`` must be a regular (synchronous) callable. Async callables are
+        not supported: the implementation calls ``result = fn(data)``
+        synchronously inside the lock; an async ``fn`` would return a coroutine
+        that gets serialised to disk instead of the transformed rule list.
         """
         ...
 

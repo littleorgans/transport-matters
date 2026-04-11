@@ -1,8 +1,7 @@
 """Pipeline engine: applies matching rules to an InternalRequest.
 
 Imports from ``manicure.rules`` and ``manicure.ir``.
-``RuleAuditEntry`` is defined in ``manicure.storage.base`` and
-re-used here to avoid duplication.
+``RuleAuditEntry`` is defined alongside the Rule model in ``manicure.rules``.
 """
 
 from __future__ import annotations
@@ -17,6 +16,7 @@ if TYPE_CHECKING:
 
 from manicure.rules import (
     Rule,
+    RuleAuditEntry,
     matches_scope,
     rewrite_tool_description,
     strip_system_part,
@@ -25,7 +25,6 @@ from manicure.rules import (
     truncate_system_part,
     truncate_tool_result,
 )
-from manicure.storage.base import RuleAuditEntry
 
 
 class PipelineAudit(BaseModel):

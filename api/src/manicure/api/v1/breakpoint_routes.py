@@ -11,12 +11,24 @@ from pydantic import BaseModel
 from manicure import breakpoint as bp
 from manicure.exceptions import NotFoundError
 from manicure.ir import InternalRequest  # noqa: TC001 — FastAPI needs runtime access
+from manicure.pipeline import (
+    PipelineAudit,  # noqa: TC001 — FastAPI needs runtime access
+)
 
 router = APIRouter()
 
 
 class PausedFlowInfo(BaseModel):
     flow_id: str
+    paused_at_ms: int
+
+
+class PausedFlowDetail(BaseModel):
+    """Full paused flow data for hydrating the UI after a browser refresh."""
+
+    flow_id: str
+    ir: InternalRequest
+    audit: PipelineAudit | None
     paused_at_ms: int
 
 
@@ -33,6 +45,26 @@ async def get_status() -> BreakpointStatusDetail:
             PausedFlowInfo(flow_id=fid, paused_at_ms=pf.paused_at_ms)
             for fid, pf in bp.get_paused().items()
         ],
+    )
+
+
+@router.get("/paused/{flow_id}")
+async def get_paused_flow(flow_id: str) -> PausedFlowDetail:
+    """Return the full IR and audit for a currently-paused flow.
+
+    Used by the frontend to hydrate the breakpoint overlay after a browser
+    refresh, when the SSE "paused" event has already been missed.
+    """
+    pf = bp.get_paused().get(flow_id)
+    if pf is None:
+        raise NotFoundError(
+            f"Flow {flow_id} is not paused or has already been resolved"
+        )
+    return PausedFlowDetail(
+        flow_id=flow_id,
+        ir=pf.curated_ir,
+        audit=pf.audit,
+        paused_at_ms=pf.paused_at_ms,
     )
 
 

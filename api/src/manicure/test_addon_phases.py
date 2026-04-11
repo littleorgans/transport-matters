@@ -5,9 +5,11 @@ from __future__ import annotations
 import asyncio
 from typing import TYPE_CHECKING, Any  # Any: opaque rule dicts match StorageBackend API
 
+from manicure import broadcast
 from manicure.addon import (
     _build_pipeline_stats,
     _build_req_stats,
+    _emit_exchange,
     _parse_sse_stats,
     _run_pipeline,
 )
@@ -21,8 +23,8 @@ from manicure.ir import (
     ToolDef,
 )
 from manicure.pipeline import PipelineAudit
-from manicure.rules import Rule, RuleScope
-from manicure.storage.base import RuleAuditEntry
+from manicure.rules import Rule, RuleAuditEntry, RuleScope
+from manicure.storage.base import PipelineStats
 from manicure.storage.disk import DiskStorageBackend
 
 if TYPE_CHECKING:
@@ -261,3 +263,60 @@ async def test_run_pipeline_preserves_output_when_bump_fails(
     assert curated_ir is not None
     assert audit is not None
     assert len(audit.rules_applied) == 1
+
+
+class TestEmitExchange:
+    """_emit_exchange SSE payload includes mutated_manually and pipeline fields."""
+
+    def setup_method(self) -> None:
+        broadcast._subscribers.clear()
+
+    def teardown_method(self) -> None:
+        broadcast._subscribers.clear()
+
+    def test_payload_includes_mutated_manually_and_pipeline(self) -> None:
+        import json
+        from datetime import UTC, datetime
+
+        ir = _make_ir()
+        req_stats = _build_req_stats(ir)
+        pipeline_stats = PipelineStats(
+            rules_applied=[],
+            chars_before=100,
+            chars_after=80,
+            tokens_approx=60,
+        )
+        q = broadcast.subscribe()
+
+        _emit_exchange(
+            ir,
+            req_stats,
+            None,
+            "exchange-1",
+            datetime(2026, 1, 1, tzinfo=UTC),
+            mutated_manually=True,
+            pipeline_stats=pipeline_stats,
+        )
+
+        assert not q.empty()
+        data = json.loads(q.get_nowait())
+        assert data["mutated_manually"] is True
+        assert data["pipeline"]["chars_before"] == 100
+        assert data["pipeline"]["chars_after"] == 80
+
+    def test_defaults_omit_pipeline_and_mutated_false(self) -> None:
+        import json
+        from datetime import UTC, datetime
+
+        ir = _make_ir()
+        req_stats = _build_req_stats(ir)
+        q = broadcast.subscribe()
+
+        _emit_exchange(
+            ir, req_stats, None, "exchange-2", datetime(2026, 1, 1, tzinfo=UTC)
+        )
+
+        assert not q.empty()
+        data = json.loads(q.get_nowait())
+        assert data["mutated_manually"] is False
+        assert data["pipeline"] is None
