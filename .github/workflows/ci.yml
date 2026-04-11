@@ -73,6 +73,8 @@ jobs:
 
       - name: Install pnpm
         uses: pnpm/action-setup@v4
+        with:
+          package_json_file: www/package.json
 
       - name: Install Node
         uses: actions/setup-node@v4

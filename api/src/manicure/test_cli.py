@@ -32,6 +32,20 @@ runner = CliRunner()
 # --------------------------------------------------------------------------- #
 
 
+@pytest.fixture(autouse=True)
+def _no_color(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Disable rich color output globally in tests.
+
+    Typer builds its own `rich.Console` per command, which honours
+    `NO_COLOR` (and ignores Click's `CliRunner(color=False)`). Without
+    this, CI and any shell with `FORCE_COLOR=1` produce help text with
+    ANSI escapes interleaved between `-` characters, breaking plain
+    substring assertions like `"--json" in result.output`.
+    """
+    monkeypatch.setenv("NO_COLOR", "1")
+    monkeypatch.delenv("FORCE_COLOR", raising=False)
+
+
 @pytest.fixture
 def free_port() -> Iterator[int]:
     """Grab an OS-assigned free port, then immediately release it."""
