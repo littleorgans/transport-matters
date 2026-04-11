@@ -18,10 +18,10 @@ jobs:
       run:
         working-directory: api
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
 
@@ -48,10 +48,10 @@ jobs:
       matrix:
         python-version: ["3.12", "3.13"]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
           python-version: ${{ matrix.python-version }}
@@ -69,15 +69,15 @@ jobs:
       run:
         working-directory: www
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v5
         with:
           package_json_file: www/package.json
 
       - name: Install Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: 20
           cache: pnpm
@@ -101,7 +101,7 @@ jobs:
       # Hand the built bundle off to the `package` job so it can embed
       # it in the wheel without re-running pnpm.
       - name: Upload www bundle
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: www-bundle
           path: api/src/manicure/www/
@@ -120,13 +120,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout (full history for hatch-vcs)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
           fetch-tags: true
 
       - name: Download www bundle
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: www-bundle
           path: /tmp/www-bundle
@@ -154,7 +154,7 @@ jobs:
           ls -lh api/src/manicure/www/
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
 
