@@ -10,6 +10,7 @@ a clean seam.
 from __future__ import annotations
 
 import json
+import re
 import socket
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -25,6 +26,30 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
 
 runner = CliRunner()
+
+# Typer's `OptionHighlighter` (typer/rich_utils.py) registers two
+# overlapping regex groups on flag strings:
+#
+#   (?P<switch>\-\w+)          # matches `-json` inside `--json`
+#   (?P<option>\-\-[\w\-]+)    # matches the full `--json`
+#
+# On `--json`, both fire: the `option` span covers [0,6), the `switch`
+# span covers [1,6). Rich's `Text.render` splits at every span boundary,
+# producing two adjacent runs — `[0,1) = "-"` and `[1,6) = "-json"`,
+# each styled bold — which serialises as
+# `\x1b[1m-\x1b[0m\x1b[1m-json\x1b[0m` and breaks substring matches for
+# the raw flag.
+#
+# `NO_COLOR=1` strips color (`Segment.remove_color`) but not style
+# (bold/underline SGR codes still render), and on GitHub Actions Typer
+# hard-forces `FORCE_TERMINAL=True` whenever `GITHUB_ACTIONS` is set, so
+# neither env var alone silences the problem. Stripping SGR escapes
+# before asserting is the simplest fix.
+_ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def _plain(text: str) -> str:
+    return _ANSI_ESCAPE.sub("", text)
 
 
 # --------------------------------------------------------------------------- #
@@ -327,18 +352,19 @@ def test_root_help_includes_quick_start_epilog() -> None:
 def test_start_help_includes_examples() -> None:
     result = runner.invoke(main, ["start", "--help"])
     assert result.exit_code == 0
-    assert "Examples" in result.output or "example" in result.output.lower()
-    assert "--proxy-port" in result.output
-    assert "--print-command" in result.output
+    output = _plain(result.output)
+    assert "Examples" in output or "example" in output.lower()
+    assert "--proxy-port" in output
+    assert "--print-command" in output
 
 
 def test_doctor_help_renders() -> None:
     result = runner.invoke(main, ["doctor", "--help"])
     assert result.exit_code == 0
-    assert "diagnose" in result.output.lower()
+    assert "diagnose" in _plain(result.output).lower()
 
 
 def test_paths_help_renders() -> None:
     result = runner.invoke(main, ["paths", "--help"])
     assert result.exit_code == 0
-    assert "--json" in result.output
+    assert "--json" in _plain(result.output)
