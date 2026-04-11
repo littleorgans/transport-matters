@@ -160,18 +160,16 @@ export function MessagesSection({ messages, onChange }: MessagesSectionProps) {
   };
 
   const toggleBlock = (messageIndex: number, blockIndex: number) => {
-    setCheckedMap((prev) => {
-      const next = new Map(prev);
-      const blockSet = new Set(next.get(messageIndex) ?? new Set<number>());
-      if (blockSet.has(blockIndex)) {
-        blockSet.delete(blockIndex);
-      } else {
-        blockSet.add(blockIndex);
-      }
-      next.set(messageIndex, blockSet);
-      emitChange(next);
-      return next;
-    });
+    const next = new Map(checkedMap);
+    const blockSet = new Set(next.get(messageIndex) ?? new Set<number>());
+    if (blockSet.has(blockIndex)) {
+      blockSet.delete(blockIndex);
+    } else {
+      blockSet.add(blockIndex);
+    }
+    next.set(messageIndex, blockSet);
+    setCheckedMap(next);
+    emitChange(next);
   };
 
   const keyedMessages = messages.map((msg, idx) => ({

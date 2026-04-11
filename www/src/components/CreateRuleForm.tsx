@@ -1,4 +1,4 @@
-import { type FormEvent, useState } from "react";
+import { type FormEvent, useReducer } from "react";
 import type { ActionType, CreateRuleBody } from "../types";
 import { Toggle } from "./Toggle";
 
@@ -24,35 +24,99 @@ const PARAM_EXAMPLES: Record<ActionType, string> = {
   rewrite_tool_description: '{"name": "bash", "new": "Execute shell"}',
 };
 
+export interface FormState {
+  name: string;
+  action: ActionType;
+  paramsText: string;
+  isGlobal: boolean;
+  sessionId: string;
+  deviceId: string;
+  accountId: string;
+  model: string;
+  error: string | null;
+  submitting: boolean;
+}
+
+export type FormAction =
+  | { type: "setName"; value: string }
+  | { type: "setAction"; value: ActionType }
+  | { type: "setParamsText"; value: string }
+  | { type: "setIsGlobal"; value: boolean }
+  | { type: "setSessionId"; value: string }
+  | { type: "setDeviceId"; value: string }
+  | { type: "setAccountId"; value: string }
+  | { type: "setModel"; value: string }
+  | { type: "setError"; value: string | null }
+  | { type: "setSubmitting"; value: boolean }
+  | { type: "reset" };
+
+export const initialFormState: FormState = {
+  name: "",
+  action: "strip_tools",
+  paramsText: PARAM_EXAMPLES.strip_tools,
+  isGlobal: true,
+  sessionId: "",
+  deviceId: "",
+  accountId: "",
+  model: "",
+  error: null,
+  submitting: false,
+};
+
+export function formReducer(state: FormState, action: FormAction): FormState {
+  switch (action.type) {
+    case "setName":
+      return { ...state, name: action.value };
+    case "setAction":
+      return { ...state, action: action.value, paramsText: PARAM_EXAMPLES[action.value] };
+    case "setParamsText":
+      return { ...state, paramsText: action.value };
+    case "setIsGlobal":
+      return { ...state, isGlobal: action.value };
+    case "setSessionId":
+      return { ...state, sessionId: action.value };
+    case "setDeviceId":
+      return { ...state, deviceId: action.value };
+    case "setAccountId":
+      return { ...state, accountId: action.value };
+    case "setModel":
+      return { ...state, model: action.value };
+    case "setError":
+      return { ...state, error: action.value };
+    case "setSubmitting":
+      return { ...state, submitting: action.value };
+    case "reset":
+      return initialFormState;
+  }
+}
+
 const inputClass =
   "w-full bg-canvas border border-edge px-3 py-2 text-[11px] text-txt placeholder-txt-3 focus:border-sky/50 focus:outline-none transition-colors";
 
 export function CreateRuleForm({ onCreated }: CreateRuleFormProps) {
-  const [name, setName] = useState("");
-  const [action, setAction] = useState<ActionType>("strip_tools");
-  const [paramsText, setParamsText] = useState(PARAM_EXAMPLES.strip_tools);
-  const [isGlobal, setIsGlobal] = useState(true);
-  const [sessionId, setSessionId] = useState("");
-  const [deviceId, setDeviceId] = useState("");
-  const [accountId, setAccountId] = useState("");
-  const [model, setModel] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-
-  function handleActionChange(newAction: ActionType) {
-    setAction(newAction);
-    setParamsText(PARAM_EXAMPLES[newAction]);
-  }
+  const [state, dispatch] = useReducer(formReducer, initialFormState);
+  const {
+    name,
+    action,
+    paramsText,
+    isGlobal,
+    sessionId,
+    deviceId,
+    accountId,
+    model,
+    error,
+    submitting,
+  } = state;
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
-    setError(null);
+    dispatch({ type: "setError", value: null });
 
     let params: Record<string, unknown>;
     try {
       params = JSON.parse(paramsText) as Record<string, unknown>;
     } catch {
-      setError("Params must be valid JSON");
+      dispatch({ type: "setError", value: "Params must be valid JSON" });
       return;
     }
 
@@ -69,20 +133,17 @@ export function CreateRuleForm({ onCreated }: CreateRuleFormProps) {
       },
     };
 
-    setSubmitting(true);
+    dispatch({ type: "setSubmitting", value: true });
     try {
       await onCreated(body);
-      setName("");
-      setParamsText(PARAM_EXAMPLES[action]);
-      setIsGlobal(true);
-      setSessionId("");
-      setDeviceId("");
-      setAccountId("");
-      setModel("");
+      dispatch({ type: "reset" });
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Failed to create rule");
+      dispatch({
+        type: "setError",
+        value: err instanceof Error ? err.message : "Failed to create rule",
+      });
     } finally {
-      setSubmitting(false);
+      dispatch({ type: "setSubmitting", value: false });
     }
   }
 
@@ -97,14 +158,14 @@ export function CreateRuleForm({ onCreated }: CreateRuleFormProps) {
         type="text"
         placeholder="Rule name"
         value={name}
-        onChange={(e) => setName(e.target.value)}
+        onChange={(e) => dispatch({ type: "setName", value: e.target.value })}
         required
         className={inputClass}
       />
 
       <select
         value={action}
-        onChange={(e) => handleActionChange(e.target.value as ActionType)}
+        onChange={(e) => dispatch({ type: "setAction", value: e.target.value as ActionType })}
         className={inputClass}
       >
         {ACTIONS.map((a) => (
@@ -116,14 +177,18 @@ export function CreateRuleForm({ onCreated }: CreateRuleFormProps) {
 
       <textarea
         value={paramsText}
-        onChange={(e) => setParamsText(e.target.value)}
+        onChange={(e) => dispatch({ type: "setParamsText", value: e.target.value })}
         placeholder={PARAM_EXAMPLES[action]}
         rows={3}
         className={`${inputClass} resize-none`}
       />
 
       <div className="flex items-center gap-2.5 text-[11px] text-txt-2">
-        <Toggle checked={isGlobal} onChange={setIsGlobal} label="Global scope" />
+        <Toggle
+          checked={isGlobal}
+          onChange={(v) => dispatch({ type: "setIsGlobal", value: v })}
+          label="Global scope"
+        />
         <span>Global scope</span>
       </div>
 
@@ -133,28 +198,28 @@ export function CreateRuleForm({ onCreated }: CreateRuleFormProps) {
             type="text"
             placeholder="session_id"
             value={sessionId}
-            onChange={(e) => setSessionId(e.target.value)}
+            onChange={(e) => dispatch({ type: "setSessionId", value: e.target.value })}
             className={inputClass}
           />
           <input
             type="text"
             placeholder="device_id"
             value={deviceId}
-            onChange={(e) => setDeviceId(e.target.value)}
+            onChange={(e) => dispatch({ type: "setDeviceId", value: e.target.value })}
             className={inputClass}
           />
           <input
             type="text"
             placeholder="account_id"
             value={accountId}
-            onChange={(e) => setAccountId(e.target.value)}
+            onChange={(e) => dispatch({ type: "setAccountId", value: e.target.value })}
             className={inputClass}
           />
           <input
             type="text"
             placeholder="model"
             value={model}
-            onChange={(e) => setModel(e.target.value)}
+            onChange={(e) => dispatch({ type: "setModel", value: e.target.value })}
             className={inputClass}
           />
         </div>
