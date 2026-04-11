@@ -54,6 +54,21 @@ class TestArmDisarm:
         bp.arm()
         assert bp.is_armed()
 
+    def test_import_time_default_is_off(self) -> None:
+        """Regression: the import-time default must be 'off'.
+
+        A prior version defaulted to 'armed_once' so the very first proxied
+        request would pause unexpectedly. The autouse _reset_state fixture
+        masks this by calling disarm() before every test, so we force a
+        fresh module load here to see the actual default assignment.
+        """
+        import importlib
+
+        importlib.reload(bp)
+        assert bp._mode == "off"
+        assert bp.get_mode() == "off"
+        assert not bp.is_armed()
+
 
 class TestPause:
     def test_pause_stays_armed_and_registers(self) -> None:

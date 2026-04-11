@@ -159,31 +159,49 @@ async def _run_pipeline(
     ir: InternalRequest,
     flow_id: str,
 ) -> tuple[InternalRequest, PipelineAudit | None]:
-    """Load rules, apply pipeline, bump applied_count. Never raises."""
+    """Load rules, apply pipeline, bump applied_count transactionally.
+
+    The applied_count bump goes through ``storage.modify_rules`` so it cannot
+    resurrect rules deleted concurrently via the API. The bump iterates over
+    the fresh state inside the lock; any rule missing from that fresh state
+    stays missing. A failed bump does not invalidate the pipeline output.
+
+    Never raises.
+    """
     try:
         rules_data = await storage.load_rules()
         rules = [Rule.model_validate(r) for r in rules_data]
         curated_ir, audit = pipeline_apply(rules, ir)
-        if audit.rules_applied:
-            applied_ids = {e.id for e in audit.rules_applied}
-            updated = [
-                Rule.model_validate(
-                    {
-                        **r.model_dump(by_alias=True),
-                        "applied_count": r.applied_count + 1,
-                    }
-                )
-                if r.id in applied_ids
-                else r
-                for r in rules
-            ]
-            await storage.save_rules(
-                [r.model_dump(mode="json", by_alias=True) for r in updated]
-            )
-        return curated_ir, audit
     except Exception:
         logger.exception("Pipeline failed for flow %s, forwarding unmodified", flow_id)
         return ir, None
+
+    if audit.rules_applied:
+        applied_ids = {e.id for e in audit.rules_applied}
+
+        def _bump(data: list[dict[str, Any]]) -> list[dict[str, Any]]:
+            out: list[dict[str, Any]] = []
+            for raw in data:
+                rule = Rule.model_validate(raw)
+                if rule.id in applied_ids:
+                    rule = Rule.model_validate(
+                        {
+                            **rule.model_dump(by_alias=True),
+                            "applied_count": rule.applied_count + 1,
+                        }
+                    )
+                out.append(rule.model_dump(mode="json", by_alias=True))
+            return out
+
+        try:
+            await storage.modify_rules(_bump)
+        except Exception:
+            logger.exception(
+                "Failed to bump applied_count for flow %s; pipeline output preserved",
+                flow_id,
+            )
+
+    return curated_ir, audit
 
 
 async def _handle_breakpoint(

@@ -9,10 +9,9 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any  # Any: opaque rule definitions
+from typing import TYPE_CHECKING, Any  # Any: opaque rule definitions
 
 import aiofiles
 
@@ -22,6 +21,9 @@ from manicure.storage.base import (
     IndexEntry,
     StorageBackend,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 logger = logging.getLogger(__name__)
 
@@ -174,14 +176,6 @@ class DiskStorageBackend(StorageBackend):
             content = await f.read()
         result: list[dict[str, Any]] = json.loads(content)  # Any: opaque rule defs
         return result
-
-    async def save_rules(
-        self,
-        rules: list[dict[str, Any]],  # Any: opaque rule defs
-    ) -> None:
-        rules_path = self._root / "rules.json"
-        async with self._rules_lock, aiofiles.open(rules_path, mode="w") as f:
-            await f.write(json.dumps(rules, indent=2))
 
     async def modify_rules(
         self,

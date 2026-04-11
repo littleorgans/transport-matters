@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import asyncio
+from typing import TYPE_CHECKING, Any  # Any: opaque rule dicts match StorageBackend API
+
 from manicure.addon import (
     _build_pipeline_stats,
     _build_req_stats,
     _parse_sse_stats,
+    _run_pipeline,
 )
 from manicure.ir import (
     InternalRequest,
@@ -17,7 +21,28 @@ from manicure.ir import (
     ToolDef,
 )
 from manicure.pipeline import PipelineAudit
+from manicure.rules import Rule, RuleScope
 from manicure.storage.base import RuleAuditEntry
+from manicure.storage.disk import DiskStorageBackend
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+    from pathlib import Path
+
+
+class _FailingModifyStorage(DiskStorageBackend):
+    """DiskStorageBackend whose modify_rules always raises.
+
+    Used to test that _run_pipeline preserves its pipeline output when the
+    applied_count bookkeeping write fails.
+    """
+
+    async def modify_rules(
+        self,
+        fn: Callable[[list[dict[str, Any]]], list[dict[str, Any]]],
+    ) -> None:
+        msg = "simulated disk failure"
+        raise OSError(msg)
 
 
 def _make_ir(
@@ -153,3 +178,86 @@ def test_parse_sse_stats_ignores_malformed_lines() -> None:
     raw = b"data: not-json\ndata: [DONE]\n"
     stats = _parse_sse_stats(raw)
     assert stats.input_tokens == 0
+
+
+# ── _run_pipeline concurrency ───────────────────────────────────────
+
+
+def _make_global_rule(rule_id: str, name: str) -> Rule:
+    """Eligible, no-op global rule: matches every IR, removes nothing."""
+    return Rule(
+        id=rule_id,
+        name=name,
+        enabled=True,
+        scope=RuleScope(global_=True),
+        action="strip_tools",
+        params={"name": "tool-name-that-never-matches"},
+    )
+
+
+async def test_run_pipeline_bump_survives_concurrent_delete(tmp_path: Path) -> None:
+    """_run_pipeline's applied_count bump must not resurrect a concurrently-deleted rule.
+
+    Regression for the old load_rules+save_rules RMW: under that implementation a
+    user DELETE that interleaved between the pipeline's read and write was
+    silently undone, because save_rules would write back the stale list including
+    the deleted rule. With modify_rules the bump iterates over fresh state inside
+    the lock, so any rule absent from that fresh state stays absent.
+    """
+    storage = DiskStorageBackend(root=str(tmp_path))
+
+    firing_rule = _make_global_rule("r-firing", "firing")
+    victim_rule = _make_global_rule("r-victim", "victim")
+
+    def _seed(_: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        return [
+            firing_rule.model_dump(mode="json", by_alias=True),
+            victim_rule.model_dump(mode="json", by_alias=True),
+        ]
+
+    await storage.modify_rules(_seed)
+
+    ir = _make_ir()
+
+    def _delete_victim(data: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        return [r for r in data if r.get("id") != "r-victim"]
+
+    await asyncio.gather(
+        _run_pipeline(storage, ir, "test-flow"),
+        storage.modify_rules(_delete_victim),
+    )
+
+    loaded = await storage.load_rules()
+    ids = {r["id"] for r in loaded}
+    assert "r-victim" not in ids, (
+        "Pipeline's applied_count bump resurrected a concurrently-deleted rule"
+    )
+    assert "r-firing" in ids
+    firing_loaded = next(r for r in loaded if r["id"] == "r-firing")
+    assert firing_loaded["applied_count"] == 1
+
+
+async def test_run_pipeline_preserves_output_when_bump_fails(
+    tmp_path: Path,
+) -> None:
+    """A failed applied_count bump must not invalidate the pipeline's curated IR.
+
+    The pipeline read+apply and the counter bump are independent concerns.
+    If modify_rules raises (e.g. disk I/O failure), we still return the
+    curated IR so the proxy forwards the transformed request.
+    """
+    # Seed via a real backend so the on-disk rules.json has one rule.
+    seed_storage = DiskStorageBackend(root=str(tmp_path))
+    rule = _make_global_rule("r1", "rule-1")
+    await seed_storage.modify_rules(
+        lambda _: [rule.model_dump(mode="json", by_alias=True)]
+    )
+
+    # Read via a backend whose modify_rules always raises.
+    failing = _FailingModifyStorage(root=str(tmp_path))
+    curated_ir, audit = await _run_pipeline(failing, _make_ir(), "test-flow")
+
+    # Pipeline output is preserved even though the bump failed.
+    assert curated_ir is not None
+    assert audit is not None
+    assert len(audit.rules_applied) == 1

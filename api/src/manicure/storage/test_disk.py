@@ -6,11 +6,13 @@ Uses ``tmp_path`` to avoid touching the real filesystem.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable
 from datetime import UTC, datetime
-from typing import Any  # Any: opaque rule dicts match StorageBackend API
+from typing import TYPE_CHECKING, Any  # Any: opaque rule dicts match StorageBackend API
 
 import pytest
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 from manicure.ir import (
     InternalRequest,
@@ -132,37 +134,45 @@ class TestRules:
         rules = await storage.load_rules()
         assert rules == []
 
-    async def test_save_and_load(self, storage: DiskStorageBackend) -> None:
-        rules = [{"name": "strip-thinking", "enabled": True}]
-        await storage.save_rules(rules)
-        loaded = await storage.load_rules()
-        assert loaded == rules
+    async def test_modify_rules_appends(self, storage: DiskStorageBackend) -> None:
+        def _seed(data: list[dict[str, Any]]) -> list[dict[str, Any]]:
+            return [*data, {"id": "r1", "name": "strip-thinking", "enabled": True}]
 
-    async def test_overwrite(self, storage: DiskStorageBackend) -> None:
-        await storage.save_rules([{"name": "r1"}])
-        await storage.save_rules([{"name": "r2"}])
+        await storage.modify_rules(_seed)
         loaded = await storage.load_rules()
         assert len(loaded) == 1
-        assert loaded[0]["name"] == "r2"
+        assert loaded[0]["name"] == "strip-thinking"
 
-    async def test_concurrent_saves_no_corruption(
+    async def test_modify_rules_replaces(self, storage: DiskStorageBackend) -> None:
+        await storage.modify_rules(lambda _: [{"id": "r1", "name": "first"}])
+        await storage.modify_rules(lambda _: [{"id": "r2", "name": "second"}])
+        loaded = await storage.load_rules()
+        assert len(loaded) == 1
+        assert loaded[0]["name"] == "second"
+
+    async def test_modify_rules_aborts_on_raise(
         self, storage: DiskStorageBackend
     ) -> None:
-        """Concurrent save_rules calls must not corrupt rules.json."""
-        rules_sets = [[{"id": f"rule-{i}", "data": "x" * 500}] for i in range(8)]
-        await asyncio.gather(*[storage.save_rules(r) for r in rules_sets])
+        """If fn raises, the write is skipped and state is preserved."""
+        await storage.modify_rules(lambda _: [{"id": "r1", "name": "seed"}])
+
+        def _boom(_data: list[dict[str, Any]]) -> list[dict[str, Any]]:
+            msg = "intentional"
+            raise RuntimeError(msg)
+
+        with pytest.raises(RuntimeError):
+            await storage.modify_rules(_boom)
 
         loaded = await storage.load_rules()
-        assert isinstance(loaded, list)
         assert len(loaded) == 1
-        assert any(loaded == r for r in rules_sets)
+        assert loaded[0]["name"] == "seed"
 
-    async def test_concurrent_modify_no_race(
-        self, storage: DiskStorageBackend
-    ) -> None:
+    async def test_concurrent_modify_no_race(self, storage: DiskStorageBackend) -> None:
         """Concurrent modify_rules appends must not overwrite each other."""
 
-        def make_append(n: int) -> Callable[[list[dict[str, Any]]], list[dict[str, Any]]]:
+        def make_append(
+            n: int,
+        ) -> Callable[[list[dict[str, Any]]], list[dict[str, Any]]]:
             def _fn(rules: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 return [*rules, {"id": f"rule-{n}"}]
 

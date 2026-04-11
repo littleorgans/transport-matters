@@ -57,7 +57,11 @@ async def patch_rule(
                         merged[key] = body[key]
                 patched = Rule.model_validate(merged)
                 updated.append(patched)
-                return [*data[:i], patched.model_dump(mode="json", by_alias=True), *data[i + 1 :]]
+                return [
+                    *data[:i],
+                    patched.model_dump(mode="json", by_alias=True),
+                    *data[i + 1 :],
+                ]
         raise NotFoundError(detail=f"Rule {rule_id} not found")
 
     await storage.modify_rules(_patch)

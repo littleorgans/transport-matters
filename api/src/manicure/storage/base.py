@@ -7,13 +7,15 @@ and the append-only index used by the dashboard.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from collections.abc import Callable
 from datetime import datetime
-from typing import Any  # Any: opaque pipeline stats and provider blobs
+from typing import TYPE_CHECKING, Any  # Any: opaque pipeline stats and provider blobs
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from manicure.ir import InternalRequest, InternalResponse
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 # ── Stats models ────────────────────────────────────────────────────
 
@@ -115,12 +117,6 @@ class StorageBackend(ABC):
     ) -> list[dict[str, Any]]: ...  # Any: rule definitions are opaque
 
     @abstractmethod
-    async def save_rules(
-        self,
-        rules: list[dict[str, Any]],  # Any: rule definitions are opaque
-    ) -> None: ...
-
-    @abstractmethod
     async def modify_rules(
         self,
         fn: Callable[[list[dict[str, Any]]], list[dict[str, Any]]],
@@ -130,7 +126,8 @@ class StorageBackend(ABC):
         ``fn`` receives the current list (empty if rules.json does not exist),
         must return the replacement list, and may raise to abort the write.
         Implementations must hold the write lock for the entire read→fn→write
-        sequence so concurrent callers cannot interleave.
+        sequence so concurrent callers cannot interleave. This is the only
+        write path for rules; no unlocked ``save_rules`` exists.
         """
         ...
 
