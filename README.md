@@ -18,7 +18,10 @@ A single Claude Code session routinely sends 285 KB payloads — 147 tools, 3 sy
 
 ```bash
 # Install
-curl -fsSL https://manicure.sh/install.sh | bash
+curl -fsSL https://github.com/srobinson/manicure/releases/latest/download/install.sh | bash
+
+# Or, if you already have uv:
+uv tool install manicure
 
 # Start the workbench
 manicure start

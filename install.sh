@@ -3,7 +3,9 @@
 # manicure — one-shot installer
 #
 # Usage:
-#   curl -fsSL https://manicure.sh/install.sh | bash
+#   curl -fsSL https://github.com/srobinson/manicure/releases/latest/download/install.sh | bash
+#
+# (A shorter manicure.sh alias will go live alongside the first release.)
 #
 # What it does:
 #   1. Installs `uv` if it is not already on PATH (official astral installer).
@@ -90,7 +92,7 @@ else
             "Try installing uv manually:" \
             "  curl -LsSf https://astral.sh/uv/install.sh | sh" \
             "Then re-run:" \
-            "  curl -fsSL https://manicure.sh/install.sh | bash"
+            "  curl -fsSL https://github.com/srobinson/manicure/releases/latest/download/install.sh | bash"
     fi
 
     # The official uv installer drops a binary at ~/.local/bin/uv on Linux
@@ -107,7 +109,7 @@ else
             "Add uv's bin directory to your shell rc, e.g.:" \
             "  echo 'export PATH=\"\$HOME/.local/bin:\$PATH\"' >> ~/.zshrc" \
             "Then re-open your terminal and re-run:" \
-            "  curl -fsSL https://manicure.sh/install.sh | bash"
+            "  curl -fsSL https://github.com/srobinson/manicure/releases/latest/download/install.sh | bash"
     fi
     ok "uv installed ($(uv --version))"
 fi

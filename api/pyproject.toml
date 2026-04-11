@@ -48,7 +48,7 @@ dependencies = [
 manicure = "manicure.cli:main"
 
 [project.urls]
-Homepage = "https://manicure.sh"
+Homepage = "https://github.com/srobinson/manicure"
 Repository = "https://github.com/srobinson/manicure"
 Issues = "https://github.com/srobinson/manicure/issues"
 Changelog = "https://github.com/srobinson/manicure/releases"

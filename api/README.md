@@ -9,14 +9,14 @@ No cert install. No system proxy settings. No sudo.
 ## Install
 
 ```bash
-curl -fsSL https://manicure.sh/install.sh | bash
-```
-
-Or install directly from PyPI:
-
-```bash
 uv tool install manicure     # recommended
 pipx install manicure        # alternative
+```
+
+Or via the bootstrap script (installs uv first if missing):
+
+```bash
+curl -fsSL https://github.com/srobinson/manicure/releases/latest/download/install.sh | bash
 ```
 
 ## Quick start
