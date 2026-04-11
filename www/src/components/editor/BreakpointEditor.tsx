@@ -24,6 +24,7 @@ interface BreakpointEditorProps {
 export function BreakpointEditor({ pausedFlow, onResolved }: BreakpointEditorProps) {
   const [editedIr, setEditedIr] = useState<InternalRequest>(() => structuredClone(pausedFlow.ir));
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const setTools = (tools: ToolDef[]) => setEditedIr((ir) => ({ ...ir, tools }));
   const setSystem = (system: SystemPart[]) => setEditedIr((ir) => ({ ...ir, system }));
@@ -31,30 +32,39 @@ export function BreakpointEditor({ pausedFlow, onResolved }: BreakpointEditorPro
   const setSampling = (sampling: SamplingParams) => setEditedIr((ir) => ({ ...ir, sampling }));
 
   const handleForward = async () => {
+    setError(null);
     setLoading(true);
     try {
       await releaseFlow(pausedFlow.flow_id, editedIr);
       onResolved();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Forward failed");
     } finally {
       setLoading(false);
     }
   };
 
   const handleForwardUnmodified = async () => {
+    setError(null);
     setLoading(true);
     try {
       await releaseFlowUnmodified(pausedFlow.flow_id);
       onResolved();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Pass through failed");
     } finally {
       setLoading(false);
     }
   };
 
   const handleDrop = async () => {
+    setError(null);
     setLoading(true);
     try {
       await dropFlow(pausedFlow.flow_id);
       onResolved();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Drop failed");
     } finally {
       setLoading(false);
     }
@@ -63,6 +73,11 @@ export function BreakpointEditor({ pausedFlow, onResolved }: BreakpointEditorPro
   return (
     <div className="flex h-full flex-col">
       <PausedHeader flowId={pausedFlow.flow_id} pausedAtMs={pausedFlow.paused_at_ms} />
+      {error && (
+        <p className="mx-5 mt-3 border border-rose/25 bg-rose/5 px-4 py-2.5 text-[11px] text-rose">
+          {error}
+        </p>
+      )}
 
       <div className="flex flex-1 overflow-hidden">
         {/* Central column: fixed masthead on top, scrollable editor below */}

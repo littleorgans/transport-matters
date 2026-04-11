@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import * as api from "../../api";
 import type { InternalRequest, PausedFlow } from "../../types";
 import { BreakpointEditor } from "./BreakpointEditor";
 
@@ -69,5 +70,61 @@ describe("BreakpointEditor — onResolved path", () => {
 
     await waitFor(() => expect(releaseFlowUnmodified).toHaveBeenCalledWith("flow-abc123"));
     await waitFor(() => expect(onResolved).toHaveBeenCalledTimes(1));
+  });
+});
+
+describe("BreakpointEditor — error path", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("Forward failure: shows error banner, does not call onResolved", async () => {
+    vi.mocked(api.releaseFlow).mockRejectedValueOnce(new Error("Network error"));
+    const onResolved = vi.fn();
+    render(<BreakpointEditor pausedFlow={mockPausedFlow} onResolved={onResolved} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Forward" }));
+
+    await waitFor(() => expect(screen.getByText("Network error")).toBeTruthy());
+    expect(onResolved).not.toHaveBeenCalled();
+  });
+
+  it("Drop failure: shows error banner, does not call onResolved", async () => {
+    vi.mocked(api.dropFlow).mockRejectedValueOnce(new Error("Drop failed"));
+    const onResolved = vi.fn();
+    render(<BreakpointEditor pausedFlow={mockPausedFlow} onResolved={onResolved} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Drop" }));
+
+    await waitFor(() => expect(screen.getByText("Drop failed")).toBeTruthy());
+    expect(onResolved).not.toHaveBeenCalled();
+  });
+
+  it("Pass Through failure: shows error banner, does not call onResolved", async () => {
+    vi.mocked(api.releaseFlowUnmodified).mockRejectedValueOnce(new Error("Timeout"));
+    const onResolved = vi.fn();
+    render(<BreakpointEditor pausedFlow={mockPausedFlow} onResolved={onResolved} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Pass Through" }));
+
+    await waitFor(() => expect(screen.getByText("Timeout")).toBeTruthy());
+    expect(onResolved).not.toHaveBeenCalled();
+  });
+
+  it("error clears on subsequent attempt", async () => {
+    vi.mocked(api.dropFlow)
+      .mockRejectedValueOnce(new Error("first failure"))
+      .mockResolvedValueOnce(undefined);
+    const onResolved = vi.fn();
+    render(<BreakpointEditor pausedFlow={mockPausedFlow} onResolved={onResolved} />);
+
+    // First click — should fail
+    fireEvent.click(screen.getByRole("button", { name: "Drop" }));
+    await waitFor(() => expect(screen.getByText("first failure")).toBeTruthy());
+
+    // Second click — should succeed and clear the error
+    fireEvent.click(screen.getByRole("button", { name: "Drop" }));
+    await waitFor(() => expect(onResolved).toHaveBeenCalledTimes(1));
+    expect(screen.queryByText("first failure")).toBeNull();
   });
 });
