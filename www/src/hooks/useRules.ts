@@ -9,6 +9,7 @@ import type { CreateRuleBody, Rule } from "../types";
 
 export function useRules(): {
   rules: Rule[];
+  error: Error | null;
   createRule: (body: CreateRuleBody) => Promise<void>;
   toggleRule: (id: string, enabled: boolean) => Promise<void>;
   deleteRule: (id: string) => Promise<void>;
@@ -16,7 +17,7 @@ export function useRules(): {
   const queryClient = useQueryClient();
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ["rules"] });
 
-  const { data: rules = [] } = useQuery({
+  const { data: rules = [], error } = useQuery({
     queryKey: ["rules"],
     queryFn: fetchRules,
   });
@@ -38,6 +39,7 @@ export function useRules(): {
 
   return {
     rules,
+    error: error instanceof Error ? error : null,
     createRule: async (body: CreateRuleBody) => {
       await createMutation.mutateAsync(body);
     },

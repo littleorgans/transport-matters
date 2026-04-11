@@ -48,7 +48,8 @@ export type FormAction =
   | { type: "setModel"; value: string }
   | { type: "setError"; value: string | null }
   | { type: "setSubmitting"; value: boolean }
-  | { type: "reset" };
+  | { type: "reset" }
+  | { type: "submitReset" }; // post-submit: clear fields but keep selected action
 
 export const initialFormState: FormState = {
   name: "",
@@ -87,6 +88,14 @@ export function formReducer(state: FormState, action: FormAction): FormState {
       return { ...state, submitting: action.value };
     case "reset":
       return initialFormState;
+    case "submitReset":
+      // Preserve the selected action so the user can quickly create another
+      // rule of the same type. Matches the pre-reducer behaviour.
+      return {
+        ...initialFormState,
+        action: state.action,
+        paramsText: PARAM_EXAMPLES[state.action],
+      };
   }
 }
 
@@ -136,7 +145,7 @@ export function CreateRuleForm({ onCreated }: CreateRuleFormProps) {
     dispatch({ type: "setSubmitting", value: true });
     try {
       await onCreated(body);
-      dispatch({ type: "reset" });
+      dispatch({ type: "submitReset" });
     } catch (err: unknown) {
       dispatch({
         type: "setError",

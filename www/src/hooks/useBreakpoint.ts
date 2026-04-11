@@ -5,10 +5,11 @@ export function useBreakpoint(): {
   mode: "off" | "armed_once";
   arm: () => Promise<void>;
   disarm: () => Promise<void>;
+  error: Error | null;
 } {
   const queryClient = useQueryClient();
 
-  const { data } = useQuery({
+  const { data, error } = useQuery({
     queryKey: ["breakpoint-status"],
     queryFn: fetchBreakpointStatus,
   });
@@ -27,5 +28,6 @@ export function useBreakpoint(): {
     mode: data?.mode ?? "off",
     arm: () => armMutation.mutateAsync(),
     disarm: () => disarmMutation.mutateAsync(),
+    error: error instanceof Error ? error : null,
   };
 }

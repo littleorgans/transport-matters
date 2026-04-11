@@ -32,9 +32,10 @@ async def create_rule(
     body.pop("applied_count", None)
     rule = Rule.model_validate(body)
 
-    data = await storage.load_rules()
-    data.append(rule.model_dump(mode="json", by_alias=True))
-    await storage.save_rules(data)
+    def _append(data: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        return [*data, rule.model_dump(mode="json", by_alias=True)]
+
+    await storage.modify_rules(_append)
     return rule
 
 
@@ -44,20 +45,23 @@ async def patch_rule(
     body: dict[str, Any],  # Any: partial update body
     storage: StorageBackend = Depends(get_storage),
 ) -> Rule:
-    data = await storage.load_rules()
-    for i, raw in enumerate(data):
-        rule = Rule.model_validate(raw)
-        if rule.id == rule_id:
-            merged = {**rule.model_dump(mode="json", by_alias=True)}
-            for key in ("name", "enabled", "params"):
-                if key in body:
-                    merged[key] = body[key]
-            updated = Rule.model_validate(merged)
-            data[i] = updated.model_dump(mode="json", by_alias=True)
-            await storage.save_rules(data)
-            return updated
+    updated: list[Rule] = []  # out-param: set inside _patch, read after
 
-    raise NotFoundError(detail=f"Rule {rule_id} not found")
+    def _patch(data: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        for i, raw in enumerate(data):
+            rule = Rule.model_validate(raw)
+            if rule.id == rule_id:
+                merged = {**rule.model_dump(mode="json", by_alias=True)}
+                for key in ("name", "enabled", "params"):
+                    if key in body:
+                        merged[key] = body[key]
+                patched = Rule.model_validate(merged)
+                updated.append(patched)
+                return [*data[:i], patched.model_dump(mode="json", by_alias=True), *data[i + 1 :]]
+        raise NotFoundError(detail=f"Rule {rule_id} not found")
+
+    await storage.modify_rules(_patch)
+    return updated[0]
 
 
 @router.delete("/{rule_id}", status_code=204)
@@ -65,11 +69,11 @@ async def delete_rule(
     rule_id: str,
     storage: StorageBackend = Depends(get_storage),
 ) -> Response:
-    data = await storage.load_rules()
-    original_len = len(data)
-    data = [r for r in data if Rule.model_validate(r).id != rule_id]
-    if len(data) == original_len:
-        raise NotFoundError(detail=f"Rule {rule_id} not found")
+    def _delete(data: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        result = [r for r in data if Rule.model_validate(r).id != rule_id]
+        if len(result) == len(data):
+            raise NotFoundError(detail=f"Rule {rule_id} not found")
+        return result
 
-    await storage.save_rules(data)
+    await storage.modify_rules(_delete)
     return Response(status_code=204)

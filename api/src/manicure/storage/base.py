@@ -7,6 +7,7 @@ and the append-only index used by the dashboard.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from datetime import datetime
 from typing import Any  # Any: opaque pipeline stats and provider blobs
 
@@ -118,6 +119,20 @@ class StorageBackend(ABC):
         self,
         rules: list[dict[str, Any]],  # Any: rule definitions are opaque
     ) -> None: ...
+
+    @abstractmethod
+    async def modify_rules(
+        self,
+        fn: Callable[[list[dict[str, Any]]], list[dict[str, Any]]],
+    ) -> None:
+        """Atomically read, transform, and write rules under a single lock.
+
+        ``fn`` receives the current list (empty if rules.json does not exist),
+        must return the replacement list, and may raise to abort the write.
+        Implementations must hold the write lock for the entire read→fn→write
+        sequence so concurrent callers cannot interleave.
+        """
+        ...
 
     @abstractmethod
     async def read_index_entry(self, exchange_id: str) -> IndexEntry | None: ...

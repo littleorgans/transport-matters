@@ -49,15 +49,37 @@ describe("formReducer", () => {
     const next = formReducer(dirty, { type: "reset" });
     expect(next).toEqual(initialFormState);
   });
+
+  it("submitReset clears form fields but preserves action and syncs paramsText", () => {
+    const dirty = {
+      ...initialFormState,
+      action: "strip_thinking" as const,
+      paramsText: "custom",
+      name: "my rule",
+      sessionId: "sess-1",
+      error: "oops",
+    };
+    const next = formReducer(dirty, { type: "submitReset" });
+    expect(next.name).toBe("");
+    expect(next.sessionId).toBe("");
+    expect(next.error).toBeNull();
+    // action is preserved and paramsText reset to its canonical example
+    expect(next.action).toBe("strip_thinking");
+    expect(next.paramsText).toBe("{}");
+  });
 });
 
 // ── Component integration tests ───────────────────────────────────
 
 describe("CreateRuleForm — submit paths", () => {
-  it("submit success: calls onCreated and resets form", async () => {
+  it("submit success: calls onCreated, clears name, preserves action", async () => {
     const onCreated = vi.fn().mockResolvedValue(undefined);
     render(<CreateRuleForm onCreated={onCreated} />);
 
+    // Change action to strip_thinking, then submit
+    fireEvent.change(screen.getByRole("combobox"), {
+      target: { value: "strip_thinking" },
+    });
     fireEvent.change(screen.getByPlaceholderText("Rule name"), {
       target: { value: "my-rule" },
     });
@@ -65,8 +87,10 @@ describe("CreateRuleForm — submit paths", () => {
     if (form) fireEvent.submit(form);
 
     await waitFor(() => expect(onCreated).toHaveBeenCalledTimes(1));
-    // After success the form resets — name input is empty again
+    // Name cleared after success
     expect((screen.getByPlaceholderText("Rule name") as HTMLInputElement).value).toBe("");
+    // Action preserved (not reset to strip_tools)
+    expect((screen.getByRole("combobox") as HTMLSelectElement).value).toBe("strip_thinking");
   });
 
   it("submit failure: shows error and does not reset", async () => {

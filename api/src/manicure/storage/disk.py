@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any  # Any: opaque rule definitions
@@ -181,6 +182,27 @@ class DiskStorageBackend(StorageBackend):
         rules_path = self._root / "rules.json"
         async with self._rules_lock, aiofiles.open(rules_path, mode="w") as f:
             await f.write(json.dumps(rules, indent=2))
+
+    async def modify_rules(
+        self,
+        fn: Callable[[list[dict[str, Any]]], list[dict[str, Any]]],
+    ) -> None:
+        """Hold _rules_lock across the full read→fn→write transaction.
+
+        Concurrent callers queue behind the lock; no two RMW cycles interleave.
+        If ``fn`` raises, the write is skipped and the exception propagates.
+        """
+        rules_path = self._root / "rules.json"
+        async with self._rules_lock:
+            if rules_path.exists():
+                async with aiofiles.open(rules_path) as f:
+                    content = await f.read()
+                data: list[dict[str, Any]] = json.loads(content)
+            else:
+                data = []
+            result = fn(data)  # may raise — write is then skipped
+            async with aiofiles.open(rules_path, mode="w") as f:
+                await f.write(json.dumps(result, indent=2))
 
     # ── private helpers ─────────────────────────────────────────────
 

@@ -12,8 +12,8 @@ import { useUIStore } from "./stores/uiStore";
 export function App() {
   const { exchanges } = useExchanges();
   const { connected } = useExchangeStream();
-  const { rules, createRule, toggleRule, deleteRule } = useRules();
-  const { mode, arm, disarm } = useBreakpoint();
+  const { rules, createRule, toggleRule, deleteRule, error: rulesError } = useRules();
+  const { mode, arm, disarm, error: breakpointError } = useBreakpoint();
   const { selectedId, setSelectedId, activeTab, setActiveTab, pausedFlow, clearPausedFlow } =
     useUIStore();
 
@@ -31,7 +31,11 @@ export function App() {
               <span className="text-[9px] text-txt-3 tracking-wider tabular-nums">v0.0.1</span>
             </div>
             <div className="flex items-center gap-3">
-              {mode === "off" ? (
+              {breakpointError ? (
+                <span className="text-[10px] text-rose uppercase tracking-wider">
+                  Breakpoint unavailable
+                </span>
+              ) : mode === "off" ? (
                 <button
                   type="button"
                   onClick={arm}
@@ -91,6 +95,11 @@ export function App() {
             <ExchangeList exchanges={exchanges} selectedId={selectedId} onSelect={setSelectedId} />
           ) : (
             <div className="flex flex-col overflow-y-auto">
+              {rulesError && (
+                <p className="mx-5 mt-4 border border-rose/25 bg-rose/5 px-3 py-2 text-[10px] text-rose">
+                  {rulesError.message}
+                </p>
+              )}
               <RulesList rules={rules} onToggle={toggleRule} onDelete={deleteRule} />
               <CreateRuleForm onCreated={createRule} />
             </div>

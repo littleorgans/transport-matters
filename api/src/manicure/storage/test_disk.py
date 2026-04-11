@@ -6,7 +6,9 @@ Uses ``tmp_path`` to avoid touching the real filesystem.
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable
 from datetime import UTC, datetime
+from typing import Any  # Any: opaque rule dicts match StorageBackend API
 
 import pytest
 
@@ -154,6 +156,24 @@ class TestRules:
         assert isinstance(loaded, list)
         assert len(loaded) == 1
         assert any(loaded == r for r in rules_sets)
+
+    async def test_concurrent_modify_no_race(
+        self, storage: DiskStorageBackend
+    ) -> None:
+        """Concurrent modify_rules appends must not overwrite each other."""
+
+        def make_append(n: int) -> Callable[[list[dict[str, Any]]], list[dict[str, Any]]]:
+            def _fn(rules: list[dict[str, Any]]) -> list[dict[str, Any]]:
+                return [*rules, {"id": f"rule-{n}"}]
+
+            return _fn
+
+        await asyncio.gather(*[storage.modify_rules(make_append(i)) for i in range(8)])
+
+        loaded = await storage.load_rules()
+        assert len(loaded) == 8
+        ids = {r["id"] for r in loaded}
+        assert ids == {f"rule-{i}" for i in range(8)}
 
 
 class TestReadIndexEntry:
