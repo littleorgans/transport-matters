@@ -6,8 +6,13 @@ on:
   pull_request:
     branches: [main]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  lint:
+  backend-lint:
+    name: backend · lint
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -32,12 +37,14 @@ jobs:
       - name: Type check
         run: uv run mypy src/
 
-  test:
+  backend-test:
+    name: backend · test
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: api
     strategy:
+      fail-fast: false
       matrix:
         python-version: ["3.12", "3.13"]
     steps:
@@ -52,11 +59,39 @@ jobs:
       - name: Install dependencies
         run: uv sync --locked --dev
 
-      - name: Run tests
-        run: uv run pytest tests/ --cov=app --cov-report=xml
+      - name: Run tests with coverage
+        run: uv run pytest --cov=manicure --cov-report=term
 
-      - name: Upload coverage
-        if: matrix.python-version == '3.13'
-        uses: codecov/codecov-action@v4
+  frontend:
+    name: frontend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: www
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Install Node
+        uses: actions/setup-node@v4
         with:
-          file: ./coverage.xml
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: www/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Lint (biome)
+        run: pnpm lint
+
+      - name: Type check
+        run: pnpm typecheck
+
+      - name: Unit tests
+        run: pnpm test
+
+      - name: Build
+        run: pnpm build
