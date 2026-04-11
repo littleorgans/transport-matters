@@ -126,7 +126,7 @@ jobs:
           fetch-tags: true
 
       - name: Download www bundle
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v6
         with:
           name: www-bundle
           path: /tmp/www-bundle
