@@ -95,3 +95,89 @@ jobs:
 
       - name: Build
         run: pnpm build
+
+      # Hand the built bundle off to the `package` job so it can embed
+      # it in the wheel without re-running pnpm.
+      - name: Upload www bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: www-bundle
+          path: api/src/manicure/www/
+          if-no-files-found: error
+          retention-days: 1
+
+  # ------------------------------------------------------------------- #
+  # Prove the release chain on every push: build the wheel, install it #
+  # in a clean venv, run the CLI, assert the www/ bundle is embedded.  #
+  # Without this job there is a gap between "CI green" and "tag push   #
+  # will release cleanly" — with it, `git push --tags` is mechanical.  #
+  # ------------------------------------------------------------------- #
+  package:
+    name: backend · package
+    needs: [backend-lint, backend-test, frontend]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (full history for hatch-vcs)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Download www bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: www-bundle
+          path: /tmp/www-bundle
+
+      - name: Stage www bundle into the package
+        run: |
+          mkdir -p api/src/manicure/www
+          # upload-artifact@v4 preserves the LCA of the uploaded paths.
+          # Handle both possible layouts: flat (index.html at artifact
+          # root) or nested (www/index.html at artifact root). Either
+          # gives us the same result after staging.
+          if [ -f /tmp/www-bundle/index.html ]; then
+            cp -r /tmp/www-bundle/. api/src/manicure/www/
+          elif [ -f /tmp/www-bundle/www/index.html ]; then
+            cp -r /tmp/www-bundle/www/. api/src/manicure/www/
+          else
+            echo "::error::www bundle artifact has unexpected structure"
+            find /tmp/www-bundle -type f
+            exit 1
+          fi
+          if [ ! -f api/src/manicure/www/index.html ]; then
+            echo "::error::staging did not produce api/src/manicure/www/index.html"
+            exit 1
+          fi
+          ls -lh api/src/manicure/www/
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Build wheel + sdist
+        working-directory: api
+        run: uv build
+
+      - name: Smoke-test the wheel in a clean venv
+        working-directory: api
+        run: |
+          python -m venv /tmp/smoke
+          /tmp/smoke/bin/pip install --quiet dist/manicure-*.whl
+          /tmp/smoke/bin/manicure --version
+          /tmp/smoke/bin/manicure version
+          /tmp/smoke/bin/manicure paths --json
+          /tmp/smoke/bin/manicure --help > /dev/null
+          /tmp/smoke/bin/manicure start --help > /dev/null
+          /tmp/smoke/bin/manicure doctor --help > /dev/null
+
+      - name: Confirm embedded www/ inside the wheel
+        working-directory: api
+        run: |
+          wheel=$(ls dist/manicure-*.whl | head -1)
+          if ! python -m zipfile -l "$wheel" | grep -q 'manicure/www/index.html'; then
+            echo "::error::wheel $wheel does not contain manicure/www/index.html"
+            python -m zipfile -l "$wheel"
+            exit 1
+          fi
