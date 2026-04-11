@@ -101,7 +101,7 @@ jobs:
       # Hand the built bundle off to the `package` job so it can embed
       # it in the wheel without re-running pnpm.
       - name: Upload www bundle
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: www-bundle
           path: api/src/manicure/www/
