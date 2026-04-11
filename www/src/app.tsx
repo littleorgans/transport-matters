@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { CreateRuleForm } from "./components/CreateRuleForm";
 import { ExchangeDetail } from "./components/ExchangeDetail";
 import { ExchangeList } from "./components/ExchangeList";
@@ -6,16 +5,17 @@ import { BreakpointEditor } from "./components/editor/BreakpointEditor";
 import { RulesList } from "./components/RulesList";
 import { useBreakpoint } from "./hooks/useBreakpoint";
 import { useExchangeStream } from "./hooks/useExchangeStream";
+import { useExchanges } from "./hooks/useExchanges";
 import { useRules } from "./hooks/useRules";
-
-type Tab = "log" | "rules";
+import { useUIStore } from "./stores/uiStore";
 
 export function App() {
-  const { exchanges, connected, pausedFlow } = useExchangeStream();
+  const { exchanges } = useExchanges();
+  const { connected } = useExchangeStream();
   const { rules, createRule, toggleRule, deleteRule } = useRules();
   const { mode, arm, disarm } = useBreakpoint();
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<Tab>("log");
+  const { selectedId, setSelectedId, activeTab, setActiveTab, pausedFlow, clearPausedFlow } =
+    useUIStore();
 
   return (
     <div className="h-screen bg-canvas text-txt">
@@ -69,7 +69,7 @@ export function App() {
 
           <div className="hairline-x mx-5" />
 
-          {/* Tab bar — pressed-key active state */}
+          {/* Tab bar */}
           <div className="flex border-b border-edge">
             {(["log", "rules"] as const).map((tab) => (
               <button
@@ -100,7 +100,7 @@ export function App() {
         {/* Right panel */}
         <main className="flex-1 overflow-hidden">
           {pausedFlow != null ? (
-            <BreakpointEditor pausedFlow={pausedFlow} onResolved={() => {}} />
+            <BreakpointEditor pausedFlow={pausedFlow} onResolved={clearPausedFlow} />
           ) : activeTab === "log" && selectedId ? (
             <ExchangeDetail id={selectedId} />
           ) : (

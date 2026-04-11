@@ -1,45 +1,31 @@
-import { useCallback, useEffect, useState } from "react";
-import {
-  armBreakpoint,
-  disarmBreakpoint,
-  dropFlow,
-  fetchBreakpointStatus,
-  releaseFlow,
-} from "../api";
-import type { InternalRequest } from "../types";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { armBreakpoint, disarmBreakpoint, fetchBreakpointStatus } from "../api";
 
 export function useBreakpoint(): {
   mode: "off" | "armed_once";
   arm: () => Promise<void>;
   disarm: () => Promise<void>;
-  forward: (flowId: string, ir: InternalRequest) => Promise<void>;
-  drop: (flowId: string) => Promise<void>;
 } {
-  const [mode, setMode] = useState<"off" | "armed_once">("off");
+  const queryClient = useQueryClient();
 
-  useEffect(() => {
-    fetchBreakpointStatus()
-      .then((s) => setMode(s.mode))
-      .catch(() => {});
-  }, []);
+  const { data } = useQuery({
+    queryKey: ["breakpoint-status"],
+    queryFn: fetchBreakpointStatus,
+  });
 
-  const arm = useCallback(async () => {
-    await armBreakpoint();
-    setMode("armed_once");
-  }, []);
+  const armMutation = useMutation({
+    mutationFn: armBreakpoint,
+    onSuccess: () => queryClient.setQueryData(["breakpoint-status"], { mode: "armed_once" }),
+  });
 
-  const disarm = useCallback(async () => {
-    await disarmBreakpoint();
-    setMode("off");
-  }, []);
+  const disarmMutation = useMutation({
+    mutationFn: disarmBreakpoint,
+    onSuccess: () => queryClient.setQueryData(["breakpoint-status"], { mode: "off" }),
+  });
 
-  const forward = useCallback(async (flowId: string, ir: InternalRequest) => {
-    await releaseFlow(flowId, ir);
-  }, []);
-
-  const drop = useCallback(async (flowId: string) => {
-    await dropFlow(flowId);
-  }, []);
-
-  return { mode, arm, disarm, forward, drop };
+  return {
+    mode: data?.mode ?? "off",
+    arm: () => armMutation.mutateAsync(),
+    disarm: () => disarmMutation.mutateAsync(),
+  };
 }

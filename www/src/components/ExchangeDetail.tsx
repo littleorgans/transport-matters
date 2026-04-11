@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
 import { fetchExchange } from "../api";
-import type { ExchangeDetail as ExchangeDetailType } from "../types";
 import { InspectTab } from "./detail/InspectTab";
 import { JsonView } from "./detail/JsonView";
 
@@ -11,34 +11,18 @@ interface ExchangeDetailProps {
 type DetailTab = "inspect" | "request" | "response";
 
 export function ExchangeDetail({ id }: ExchangeDetailProps) {
-  const [detail, setDetail] = useState<ExchangeDetailType | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<DetailTab>("inspect");
 
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    setError(null);
-    fetchExchange(id)
-      .then((data) => {
-        if (!cancelled) {
-          setDetail(data);
-          setLoading(false);
-        }
-      })
-      .catch((err: unknown) => {
-        if (!cancelled) {
-          setError(err instanceof Error ? err.message : "Failed to load exchange");
-          setLoading(false);
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [id]);
+  const {
+    data: detail,
+    isLoading,
+    error,
+  } = useQuery({
+    queryKey: ["exchange", id],
+    queryFn: () => fetchExchange(id),
+  });
 
-  if (loading) {
+  if (isLoading) {
     return (
       <div className="flex h-full items-center justify-center">
         <div className="flex items-center gap-2.5">
@@ -52,7 +36,9 @@ export function ExchangeDetail({ id }: ExchangeDetailProps) {
   if (error) {
     return (
       <div className="flex h-full items-center justify-center">
-        <p className="border border-rose/25 bg-rose/5 px-4 py-2.5 text-[11px] text-rose">{error}</p>
+        <p className="border border-rose/25 bg-rose/5 px-4 py-2.5 text-[11px] text-rose">
+          {error instanceof Error ? error.message : "Failed to load exchange"}
+        </p>
       </div>
     );
   }

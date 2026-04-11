@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   createRule as apiCreateRule,
   deleteRule as apiDeleteRule,
@@ -9,51 +9,41 @@ import type { CreateRuleBody, Rule } from "../types";
 
 export function useRules(): {
   rules: Rule[];
-  loading: boolean;
   createRule: (body: CreateRuleBody) => Promise<void>;
   toggleRule: (id: string, enabled: boolean) => Promise<void>;
   deleteRule: (id: string) => Promise<void>;
 } {
-  const [rules, setRules] = useState<Rule[]>([]);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ["rules"] });
 
-  const load = useCallback(() => {
-    setLoading(true);
-    fetchRules()
-      .then(setRules)
-      .catch(() => {
-        /* swallow fetch errors on load */
-      })
-      .finally(() => setLoading(false));
-  }, []);
+  const { data: rules = [] } = useQuery({
+    queryKey: ["rules"],
+    queryFn: fetchRules,
+  });
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  const createMutation = useMutation({
+    mutationFn: apiCreateRule,
+    onSuccess: invalidate,
+  });
 
-  const createRule = useCallback(
-    async (body: CreateRuleBody) => {
-      await apiCreateRule(body);
-      load();
+  const toggleMutation = useMutation({
+    mutationFn: ({ id, enabled }: { id: string; enabled: boolean }) => patchRule(id, { enabled }),
+    onSuccess: invalidate,
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: apiDeleteRule,
+    onSuccess: invalidate,
+  });
+
+  return {
+    rules,
+    createRule: async (body: CreateRuleBody) => {
+      await createMutation.mutateAsync(body);
     },
-    [load],
-  );
-
-  const toggleRule = useCallback(
-    async (id: string, enabled: boolean) => {
-      await patchRule(id, { enabled });
-      load();
+    toggleRule: async (id: string, enabled: boolean) => {
+      await toggleMutation.mutateAsync({ id, enabled });
     },
-    [load],
-  );
-
-  const deleteRule = useCallback(
-    async (id: string) => {
-      await apiDeleteRule(id);
-      load();
-    },
-    [load],
-  );
-
-  return { rules, loading, createRule, toggleRule, deleteRule };
+    deleteRule: (id: string) => deleteMutation.mutateAsync(id),
+  };
 }
