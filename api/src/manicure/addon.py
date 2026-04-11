@@ -7,7 +7,6 @@ artifacts, and emits SSE events.
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import time
 from datetime import UTC, datetime
@@ -24,26 +23,21 @@ from manicure.adapters import get_adapter
 from manicure.config import get_settings
 from manicure.ir import InternalRequest, InternalResponse, TextBlock, ToolUseBlock
 from manicure.main import create_app
+from manicure.pipeline import PipelineAudit, count_chars_parts
 from manicure.pipeline import apply as pipeline_apply
 from manicure.rules import Rule
 from manicure.storage import IndexEntry, PipelineStats, ReqStats, ResStats, init_storage
-from manicure.storage.base import ExchangeArtifacts
+from manicure.storage.base import ExchangeArtifacts, StorageBackend
 
 logger = logging.getLogger(__name__)
 
 
+# ── Stats builders ──────────────────────────────────────────────────
+
+
 def _build_req_stats(ir: InternalRequest) -> ReqStats:
     """Build request stats from an InternalRequest."""
-    system_chars = sum(len(sp.text) for sp in ir.system)
-    tools_chars = sum(
-        len(t.name) + len(t.description) + len(json.dumps(t.input_schema))
-        for t in ir.tools
-    )
-    messages_chars = 0
-    for msg in ir.messages:
-        for block in msg.content:
-            messages_chars += len(block.model_dump_json())
-
+    system_chars, tools_chars, messages_chars = count_chars_parts(ir)
     return ReqStats(
         system_parts=len(ir.system),
         system_chars=system_chars,
@@ -79,12 +73,13 @@ def _build_res_stats(
             tool_calls=tool_calls,
         )
 
-    # SSE stream: scan for message_start and message_delta events
     return _parse_sse_stats(raw_res)
 
 
 def _parse_sse_stats(raw: bytes) -> ResStats:
     """Extract stats from SSE event stream (best-effort)."""
+    import json
+
     stop_reason: str | None = None
     input_tokens = 0
     output_tokens = 0
@@ -139,6 +134,173 @@ def _parse_sse_stats(raw: bytes) -> ResStats:
     )
 
 
+# ── Request phases ──────────────────────────────────────────────────
+
+
+async def _parse_request_ir(
+    flow: http.HTTPFlow,
+    adapter: Any,  # Any: adapter protocol has no shared base
+) -> tuple[bytes, InternalRequest] | None:
+    """Decode raw request bytes and parse to IR. Returns None on failure."""
+    try:
+        req_text = flow.request.get_text()
+        if req_text is None:
+            return None
+        raw = req_text.encode()
+        ir = adapter.inbound_request(raw)
+        return raw, ir
+    except Exception:
+        logger.exception("Failed to parse request for flow %s", flow.id)
+        return None
+
+
+async def _run_pipeline(
+    storage: StorageBackend,
+    ir: InternalRequest,
+    flow_id: str,
+) -> tuple[InternalRequest, PipelineAudit | None]:
+    """Load rules, apply pipeline, bump applied_count. Never raises."""
+    try:
+        rules_data = await storage.load_rules()
+        rules = [Rule.model_validate(r) for r in rules_data]
+        curated_ir, audit = pipeline_apply(rules, ir)
+        if audit.rules_applied:
+            applied_ids = {e.id for e in audit.rules_applied}
+            updated = [
+                Rule.model_validate(
+                    {
+                        **r.model_dump(by_alias=True),
+                        "applied_count": r.applied_count + 1,
+                    }
+                )
+                if r.id in applied_ids
+                else r
+                for r in rules
+            ]
+            await storage.save_rules(
+                [r.model_dump(mode="json", by_alias=True) for r in updated]
+            )
+        return curated_ir, audit
+    except Exception:
+        logger.exception("Pipeline failed for flow %s, forwarding unmodified", flow_id)
+        return ir, None
+
+
+async def _handle_breakpoint(
+    flow: http.HTTPFlow,
+    adapter: Any,  # Any: adapter protocol has no shared base
+    curated_ir: InternalRequest,
+    audit: PipelineAudit | None,
+) -> None:
+    """Pause at breakpoint, await user action, rewrite request in place."""
+    from mitmproxy.http import Response as MitmResponse
+
+    paused_at_ms = int(time.time() * 1000)
+    event = bp.pause(flow, curated_ir)
+    broadcast.emit(
+        {
+            "type": "paused",
+            "flow_id": flow.id,
+            "ir": curated_ir.model_dump(mode="json"),
+            "audit": audit.model_dump(mode="json") if audit else None,
+            "paused_at_ms": paused_at_ms,
+        }
+    )
+    await event.wait()
+
+    pf = bp.get_paused().pop(flow.id, None)
+    if pf is None:
+        return
+
+    if pf.dropped:
+        flow.response = MitmResponse.make(
+            400,
+            b'{"error": "dropped by user"}',
+            {"content-type": "application/json"},
+        )
+        return
+
+    final_ir = pf.mutated_ir if pf.mutated_ir is not None else curated_ir
+    flow.request.set_text(adapter.outbound_request(final_ir).decode())
+    flow.metadata["manicure_mutated_manually"] = pf.mutated_ir is not None
+    # Persist the IR that was actually sent to the provider so response()
+    # writes it to request.curated.ir.json.
+    flow.metadata["manicure_curated_ir"] = final_ir
+
+
+# ── Response phases ─────────────────────────────────────────────────
+
+
+def _parse_response_ir(
+    adapter: Any,  # Any: adapter protocol has no shared base
+    raw_res: bytes,
+    content_type: str,
+    exchange_id: str,
+) -> tuple[InternalResponse | None, ResStats | None]:
+    """Parse raw response bytes to IR and stats. Returns (None, None) on failure."""
+    if not raw_res:
+        return None, None
+    try:
+        res_ir = adapter.inbound_response(raw_res, content_type)
+        res_stats = _build_res_stats(res_ir, raw_res, content_type)
+        return res_ir, res_stats
+    except Exception:
+        logger.exception("Failed to parse response for flow %s", exchange_id)
+        return None, None
+
+
+def _build_pipeline_stats(audit: PipelineAudit | None) -> PipelineStats | None:
+    """Convert a PipelineAudit to the storable PipelineStats."""
+    if audit is None:
+        return None
+    return PipelineStats(
+        rules_applied=list(audit.rules_applied),
+        chars_before=audit.chars_before,
+        chars_after=audit.chars_after,
+        tokens_approx=audit.tokens_approx,
+    )
+
+
+async def _persist_exchange(
+    storage: StorageBackend,
+    entry: IndexEntry,
+    artifacts: ExchangeArtifacts,
+    exchange_id: str,
+) -> bool:
+    """Write index entry and artifacts. Returns False on failure."""
+    try:
+        await storage.append_index(entry)
+        await storage.write_exchange(exchange_id, artifacts)
+        return True
+    except Exception:
+        logger.exception("Failed to write exchange %s", exchange_id)
+        return False
+
+
+def _emit_exchange(
+    ir: InternalRequest,
+    req_stats: ReqStats,
+    res_stats: ResStats | None,
+    exchange_id: str,
+    ts: datetime,
+) -> None:
+    """Broadcast the exchange event to SSE subscribers."""
+    broadcast.emit(
+        {
+            "type": "exchange",
+            "id": exchange_id,
+            "ts": ts.isoformat(),
+            "provider": ir.provider,
+            "model": ir.model,
+            "req": req_stats.model_dump(mode="json"),
+            "res": res_stats.model_dump(mode="json") if res_stats else None,
+        }
+    )
+
+
+# ── Addon ───────────────────────────────────────────────────────────
+
+
 class ManicureAddon:
     def load(self, loader: Any) -> None:  # Any: mitmproxy loader
         settings = get_settings()
@@ -166,103 +328,25 @@ class ManicureAddon:
         if adapter is None:
             return
 
-        try:
-            req_text = flow.request.get_text()
-            if req_text is None:
-                return
-            raw = req_text.encode()
-            ir = adapter.inbound_request(raw)
-        except Exception:
-            logger.exception("Failed to parse request for flow %s", flow.id)
+        result = await _parse_request_ir(flow, adapter)
+        if result is None:
             return
+        raw, ir = result
 
         from manicure.storage import get_storage
 
         storage = get_storage()
-
-        # Apply pipeline rules
-        audit = None
-        try:
-            rules_data = await storage.load_rules()
-            rules = [Rule.model_validate(r) for r in rules_data]
-            curated_ir, audit = pipeline_apply(rules, ir)
-
-            flow.metadata["manicure_curated_ir"] = curated_ir
-            flow.metadata["manicure_audit"] = audit
-
-            # Update applied_count for matched rules
-            if audit.rules_applied:
-                applied_ids = {e.id for e in audit.rules_applied}
-                updated: list[Rule] = []
-                for rule in rules:
-                    if rule.id in applied_ids:
-                        updated.append(
-                            Rule.model_validate(
-                                {
-                                    **rule.model_dump(by_alias=True),
-                                    "applied_count": rule.applied_count + 1,
-                                }
-                            )
-                        )
-                    else:
-                        updated.append(rule)
-                await storage.save_rules(
-                    [r.model_dump(mode="json", by_alias=True) for r in updated]
-                )
-        except Exception:
-            logger.exception(
-                "Pipeline failed for flow %s, forwarding unmodified", flow.id
-            )
-            curated_ir = ir
-            flow.metadata["manicure_curated_ir"] = ir
-            flow.metadata["manicure_audit"] = None
+        curated_ir, audit = await _run_pipeline(storage, ir, flow.id)
 
         flow.metadata["manicure_adapter"] = adapter
         flow.metadata["manicure_ir"] = ir
         flow.metadata["manicure_raw_req"] = raw
+        flow.metadata["manicure_curated_ir"] = curated_ir
+        flow.metadata["manicure_audit"] = audit
 
-        # Breakpoint: pause if armed, otherwise rewrite immediately
         if bp.is_armed():
-            paused_at_ms = int(time.time() * 1000)
-            event = bp.pause(flow, curated_ir)
-
-            broadcast.emit(
-                {
-                    "type": "paused",
-                    "flow_id": flow.id,
-                    "ir": curated_ir.model_dump(mode="json"),
-                    "audit": audit.model_dump(mode="json") if audit else None,
-                    "paused_at_ms": paused_at_ms,
-                }
-            )
-
-            await event.wait()
-
-            pf = bp.get_paused().pop(flow.id, None)
-            if pf is None:
-                return
-
-            if pf.dropped:
-                from mitmproxy.http import Response as MitmResponse
-
-                flow.response = MitmResponse.make(
-                    400,
-                    b'{"error": "dropped by user"}',
-                    {"content-type": "application/json"},
-                )
-                return
-
-            final_ir = pf.mutated_ir if pf.mutated_ir is not None else curated_ir
-            flow.request.set_text(adapter.outbound_request(final_ir).decode())
-            flow.metadata["manicure_mutated_manually"] = pf.mutated_ir is not None
-            # Persist the IR that was actually sent to the provider (pipeline
-            # output + any user edits from the breakpoint editor) so response()
-            # writes it to request.curated.ir.json. Without this rebinding,
-            # only the pre-edit pipeline output lands on disk and the UI has
-            # no way to show what was really sent.
-            flow.metadata["manicure_curated_ir"] = final_ir
+            await _handle_breakpoint(flow, adapter, curated_ir, audit)
         else:
-            # Rewrite the forwarded request body
             flow.request.set_text(adapter.outbound_request(curated_ir).decode())
 
     def done(self) -> None:
@@ -278,7 +362,6 @@ class ManicureAddon:
         from manicure.storage import get_storage
 
         storage = get_storage()
-
         curated_ir = flow.metadata.get("manicure_curated_ir", ir)
         audit = flow.metadata.get("manicure_audit")
 
@@ -291,31 +374,11 @@ class ManicureAddon:
             flow.response.headers.get("content-type", "") if flow.response else ""
         )
 
-        res_ir = None
-        res_stats = None
-        if flow.response and raw_res:
-            try:
-                res_ir = adapter.inbound_response(raw_res, content_type)
-                res_stats = _build_res_stats(res_ir, raw_res, content_type)
-            except Exception:
-                logger.exception("Failed to parse response for flow %s", exchange_id)
-
-        # Build stats from the IR that was actually sent to the provider,
-        # not the original client payload. Otherwise the list card + detail
-        # header keep showing pre-pipeline counts (e.g. 148 tools) while the
-        # Tools section below shows the curated list, leaving the user
-        # "none the wiser" that rules or edits took effect.
+        res_ir, res_stats = _parse_response_ir(
+            adapter, raw_res, content_type, exchange_id
+        )
         req_stats = _build_req_stats(curated_ir)
-
-        pipeline_stats: PipelineStats | None = None
-        if audit is not None:
-            pipeline_stats = PipelineStats(
-                rules_applied=list(audit.rules_applied),
-                chars_before=audit.chars_before,
-                chars_after=audit.chars_after,
-                tokens_approx=audit.tokens_approx,
-            )
-
+        pipeline_stats = _build_pipeline_stats(audit)
         mutated_manually = flow.metadata.get("manicure_mutated_manually", False)
 
         ts_slug = ts.strftime("%Y%m%dT%H%M%S")
@@ -330,7 +393,6 @@ class ManicureAddon:
             res=res_stats,
             mutated_manually=mutated_manually,
         )
-
         artifacts = ExchangeArtifacts(
             request_raw=raw_req,
             request_ir=ir,
@@ -339,24 +401,10 @@ class ManicureAddon:
             response_ir=res_ir,
         )
 
-        try:
-            await storage.append_index(entry)
-            await storage.write_exchange(exchange_id, artifacts)
-        except Exception:
-            logger.exception("Failed to write exchange %s", exchange_id)
+        if not await _persist_exchange(storage, entry, artifacts, exchange_id):
             return
 
-        broadcast.emit(
-            {
-                "type": "exchange",
-                "id": exchange_id,
-                "ts": ts.isoformat(),
-                "provider": ir.provider,
-                "model": ir.model,
-                "req": req_stats.model_dump(mode="json"),
-                "res": (res_stats.model_dump(mode="json") if res_stats else None),
-            }
-        )
+        _emit_exchange(ir, req_stats, res_stats, exchange_id, ts)
 
 
 addons = [ManicureAddon()]

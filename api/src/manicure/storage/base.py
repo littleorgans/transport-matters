@@ -118,3 +118,6 @@ class StorageBackend(ABC):
         self,
         rules: list[dict[str, Any]],  # Any: rule definitions are opaque
     ) -> None: ...
+
+    @abstractmethod
+    async def read_index_entry(self, exchange_id: str) -> IndexEntry | None: ...

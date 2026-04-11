@@ -34,6 +34,8 @@ class DiskStorageBackend(StorageBackend):
         self._root = Path(root) if root else _DEFAULT_ROOT
         self._root.mkdir(parents=True, exist_ok=True)
         self._index_lock = asyncio.Lock()
+        self._rules_lock = asyncio.Lock()
+        self._index_cache: dict[str, IndexEntry] | None = None
 
     @property
     def root(self) -> Path:
@@ -41,38 +43,56 @@ class DiskStorageBackend(StorageBackend):
 
     # ── index ───────────────────────────────────────────────────────
 
+    async def _ensure_index_cache(self) -> dict[str, IndexEntry]:
+        """Build the id→IndexEntry cache if not yet loaded.
+
+        Must be called while holding ``_index_lock``.
+        """
+        if self._index_cache is not None:
+            return self._index_cache
+        entries: dict[str, IndexEntry] = {}
+        index_path = self._root / "index.jsonl"
+        if index_path.exists():
+            async with aiofiles.open(index_path) as f:
+                lines = await f.readlines()
+            for line in lines:
+                line = line.strip()
+                if not line:
+                    continue
+                pos, decoder = 0, json.JSONDecoder()
+                while pos < len(line):
+                    try:
+                        obj, end = decoder.raw_decode(line, pos)
+                        entry = IndexEntry.model_validate(obj)
+                        entries[entry.id] = entry
+                        pos = end
+                    except (json.JSONDecodeError, Exception) as exc:
+                        logger.warning(
+                            "Skipping malformed index entry at pos %d: %s", pos, exc
+                        )
+                        break
+        self._index_cache = entries
+        return entries
+
     async def append_index(self, entry: IndexEntry) -> None:
         index_path = self._root / "index.jsonl"
         line = entry.model_dump_json() + "\n"
-        async with self._index_lock, aiofiles.open(index_path, mode="a") as f:
-            await f.write(line)
+        async with self._index_lock:
+            async with aiofiles.open(index_path, mode="a") as f:
+                await f.write(line)
+            if self._index_cache is not None:
+                self._index_cache[entry.id] = entry
 
     async def read_index(self, limit: int, offset: int) -> list[IndexEntry]:
-        index_path = self._root / "index.jsonl"
-        if not index_path.exists():
-            return []
-        async with aiofiles.open(index_path) as f:
-            lines = await f.readlines()
-        entries: list[IndexEntry] = []
-        for line in lines:
-            line = line.strip()
-            if not line:
-                continue
-            # A line may contain multiple concatenated JSON objects due to a past
-            # concurrent-write bug. Extract all valid objects from the line.
-            pos = 0
-            decoder = json.JSONDecoder()
-            while pos < len(line):
-                try:
-                    obj, end = decoder.raw_decode(line, pos)
-                    entries.append(IndexEntry.model_validate(obj))
-                    pos = end
-                except (json.JSONDecodeError, Exception) as exc:
-                    logger.warning(
-                        "Skipping malformed index entry at pos %d: %s", pos, exc
-                    )
-                    break
+        async with self._index_lock:
+            cache = await self._ensure_index_cache()
+        entries = list(cache.values())
         return entries[offset : offset + limit]
+
+    async def read_index_entry(self, exchange_id: str) -> IndexEntry | None:
+        async with self._index_lock:
+            cache = await self._ensure_index_cache()
+            return cache.get(exchange_id)
 
     # ── exchange artifacts ──────────────────────────────────────────
 
@@ -149,7 +169,7 @@ class DiskStorageBackend(StorageBackend):
         rules_path = self._root / "rules.json"
         if not rules_path.exists():
             return []
-        async with aiofiles.open(rules_path) as f:
+        async with self._rules_lock, aiofiles.open(rules_path) as f:
             content = await f.read()
         result: list[dict[str, Any]] = json.loads(content)  # Any: opaque rule defs
         return result
@@ -159,7 +179,7 @@ class DiskStorageBackend(StorageBackend):
         rules: list[dict[str, Any]],  # Any: opaque rule defs
     ) -> None:
         rules_path = self._root / "rules.json"
-        async with aiofiles.open(rules_path, mode="w") as f:
+        async with self._rules_lock, aiofiles.open(rules_path, mode="w") as f:
             await f.write(json.dumps(rules, indent=2))
 
     # ── private helpers ─────────────────────────────────────────────

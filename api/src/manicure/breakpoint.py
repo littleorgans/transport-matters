@@ -29,7 +29,7 @@ class PausedFlow:
     dropped: bool = False
 
 
-_mode: Literal["off", "armed_once"] = "armed_once"
+_mode: Literal["off", "armed_once"] = "off"
 _paused: dict[str, PausedFlow] = {}
 
 

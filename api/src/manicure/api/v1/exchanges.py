@@ -31,8 +31,7 @@ async def get_exchange(
         raise NotFoundError(detail=f"Exchange {exchange_id} not found") from exc
 
     # TODO: include raw bodies (base64-encoded) in a future phase
-    index_entries = await storage.read_index(limit=1000, offset=0)
-    entry = next((e for e in index_entries if e.id == exchange_id), None)
+    entry = await storage.read_index_entry(exchange_id)
 
     return {
         "entry": entry.model_dump(mode="json") if entry else None,

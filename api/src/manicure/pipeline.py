@@ -42,8 +42,8 @@ class PipelineAudit(BaseModel):
         return abs(self.chars_delta) // 4
 
 
-def _count_chars(ir: InternalRequest) -> int:
-    """Rough character count of the IR payload."""
+def count_chars_parts(ir: InternalRequest) -> tuple[int, int, int]:
+    """Return (system_chars, tools_chars, messages_chars) for an IR."""
     system_chars = sum(len(sp.text) for sp in ir.system)
     tools_chars = sum(
         len(t.name) + len(t.description) + len(json.dumps(t.input_schema))
@@ -53,25 +53,22 @@ def _count_chars(ir: InternalRequest) -> int:
     for msg in ir.messages:
         for block in msg.content:
             messages_chars += len(block.model_dump_json())
-    return system_chars + tools_chars + messages_chars
+    return system_chars, tools_chars, messages_chars
 
 
-_DISPATCH: dict[
-    str,
-    type[None] | None,
-] = None  # type: ignore[assignment]  # populated lazily to satisfy type checkers
+def _count_chars(ir: InternalRequest) -> int:
+    """Rough character count of the IR payload."""
+    return sum(count_chars_parts(ir))
 
 
-def _get_dispatch() -> dict[str, Any]:  # Any: callable dispatch table
-    """Build the action dispatch table."""
-    return {
-        "strip_tools": strip_tools,
-        "strip_thinking": strip_thinking,
-        "strip_system_part": strip_system_part,
-        "truncate_system_part": truncate_system_part,
-        "truncate_tool_result": truncate_tool_result,
-        "rewrite_tool_description": rewrite_tool_description,
-    }
+_DISPATCH_TABLE: dict[str, Any] = {  # Any: callable dispatch table
+    "strip_tools": strip_tools,
+    "strip_thinking": strip_thinking,
+    "strip_system_part": strip_system_part,
+    "truncate_system_part": truncate_system_part,
+    "truncate_tool_result": truncate_tool_result,
+    "rewrite_tool_description": rewrite_tool_description,
+}
 
 
 def _dispatch(
@@ -80,8 +77,7 @@ def _dispatch(
     params: dict[str, Any],  # Any: action params vary by action type
 ) -> tuple[InternalRequest, dict[str, int]]:
     """Dispatch to the correct action implementation."""
-    table = _get_dispatch()
-    fn = table.get(action)
+    fn = _DISPATCH_TABLE.get(action)
     if fn is None:
         return ir, {}
     result: tuple[InternalRequest, dict[str, int]] = fn(ir, params)
