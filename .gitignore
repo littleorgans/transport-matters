@@ -24,6 +24,9 @@ wheels/
 # Vite build output (served by the Python addon)
 api/src/manicure/www/
 
+# hatch-vcs generated version file
+api/src/manicure/_version.py
+
 # Testing
 .pytest_cache/
 .coverage

@@ -903,7 +903,6 @@ wheels = [
 
 [[package]]
 name = "manicure"
-version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "aiofiles" },
@@ -911,6 +910,7 @@ dependencies = [
     { name = "httpx" },
     { name = "mitmproxy" },
     { name = "pydantic-settings" },
+    { name = "typer" },
 ]
 
 [package.dev-dependencies]
@@ -929,8 +929,9 @@ requires-dist = [
     { name = "aiofiles", specifier = ">=24.0" },
     { name = "fastapi", extras = ["standard"], specifier = ">=0.115.0" },
     { name = "httpx", specifier = ">=0.28" },
-    { name = "mitmproxy", specifier = ">=12.0" },
+    { name = "mitmproxy", specifier = ">=12.2,<13" },
     { name = "pydantic-settings", specifier = ">=2.6" },
+    { name = "typer", specifier = ">=0.15" },
 ]
 
 [package.metadata.requires-dev]

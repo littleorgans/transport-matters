@@ -2,17 +2,56 @@
 
 [project]
 name = "manicure"
-version = "0.1.0"
-description = "Production-ready FastAPI template with modern 2026 stack"
-readme = "../README.md"
+dynamic = ["version"]
+description = "Provider-neutral context control plane for coding agents"
+readme = "README.md"
 requires-python = ">=3.12"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+authors = [
+    { name = "Stuart Robinson", email = "stuart@alphab.io" },
+]
+keywords = [
+    "mitmproxy",
+    "llm",
+    "claude",
+    "anthropic",
+    "context",
+    "inspector",
+    "proxy",
+    "debugging",
+    "coding-agents",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Operating System :: OS Independent",
+    "Topic :: Software Development :: Debuggers",
+    "Topic :: Internet :: Proxy Servers",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Typing :: Typed",
+]
 dependencies = [
     "fastapi[standard]>=0.115.0",
     "pydantic-settings>=2.6",
     "httpx>=0.28",
-    "mitmproxy>=12.0",
+    "mitmproxy>=12.2,<13",
     "aiofiles>=24.0",
+    "typer>=0.15",
 ]
+
+[project.scripts]
+manicure = "manicure.cli:main"
+
+[project.urls]
+Homepage = "https://manicure.sh"
+Repository = "https://github.com/srobinson/manicure"
+Issues = "https://github.com/srobinson/manicure/issues"
+Changelog = "https://github.com/srobinson/manicure/releases"
 
 [dependency-groups]
 dev = [
@@ -26,12 +65,24 @@ dev = [
 ]
 
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"
+
+[tool.hatch.version]
+source = "vcs"
+raw-options = { root = "..", version_scheme = "no-guess-dev" }
+
+[tool.hatch.build.hooks.vcs]
+version-file = "src/manicure/_version.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/manicure"]
 exclude = ["**/test_*.py"]
+artifacts = ["src/manicure/_version.py", "src/manicure/www/**"]
+
+[tool.hatch.build.targets.sdist]
+only-include = ["src/manicure", "tests", "README.md", "LICENSE"]
+artifacts = ["src/manicure/_version.py"]
 
 # ---- Ruff ----
 [tool.ruff]
