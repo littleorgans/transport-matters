@@ -1,0 +1,226 @@
+name: Release
+
+# Cuts a release when a `vX.Y.Z` tag is pushed, or on-demand via the
+# "Run workflow" button. Steps:
+#
+#   1. Build the www/ bundle with pnpm + vite. Vite's build outDir points
+#      at `api/src/manicure/www/` so the wheel picks it up through hatch's
+#      `artifacts = ["src/manicure/www/**"]` glob.
+#   2. Run `uv build` to produce the wheel and sdist. hatch-vcs reads the
+#      git tag, so the version string in the wheel filename matches the tag.
+#   3. Smoke the wheel in a clean venv: install, run `manicure --version`,
+#      run `manicure doctor --help`, and assert the embedded www/ ships.
+#   4. Publish to PyPI via trusted publishing (OIDC) — no tokens.
+#   5. Create a GitHub Release and attach the wheel, sdist, and install.sh.
+#
+# PyPI trusted publishing must be configured at:
+#   https://pypi.org/manage/account/publishing/
+# with project=manicure, owner=srobinson, repo=manicure,
+# workflow=release.yml, environment=pypi.
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Build and verify only — skip PyPI publish and GitHub Release"
+        type: boolean
+        default: true
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  # --------------------------------------------------------------------- #
+  # 1. Build wheel + sdist with the embedded www/ bundle                  #
+  # --------------------------------------------------------------------- #
+  build:
+    name: build · wheel + sdist
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Checkout (full history for hatch-vcs)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: www/pnpm-lock.yaml
+
+      - name: Install www/ dependencies
+        working-directory: www
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Gate on frontend checks
+        working-directory: www
+        run: |
+          pnpm lint
+          pnpm typecheck
+          pnpm test
+
+      - name: Build www/ bundle into api/src/manicure/www
+        working-directory: www
+        run: pnpm build
+
+      - name: Verify www/ landed inside the Python package
+        run: |
+          if [ ! -f api/src/manicure/www/index.html ]; then
+            echo "::error::vite build did not produce api/src/manicure/www/index.html"
+            exit 1
+          fi
+          ls -lh api/src/manicure/www/
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Sync backend deps (for test gate)
+        working-directory: api
+        run: uv sync --locked --dev
+
+      - name: Gate on backend checks
+        working-directory: api
+        run: |
+          uv run ruff check src/
+          uv run ruff format --check src/
+          uv run mypy src/
+          uv run pytest --cov=manicure --cov-report=term
+
+      - name: Build wheel + sdist
+        working-directory: api
+        run: uv build
+
+      - name: Resolve built version
+        id: version
+        working-directory: api
+        run: |
+          wheel=$(ls dist/manicure-*.whl | head -1)
+          version=$(basename "$wheel" | sed -E 's/^manicure-([^-]+)-.*/\1/')
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Built manicure $version"
+
+      - name: Verify tag matches built version
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          TAG: ${{ github.ref_name }}
+          BUILT: ${{ steps.version.outputs.version }}
+        run: |
+          expected="${TAG#v}"
+          if [ "$BUILT" != "$expected" ]; then
+            echo "::error::tag $TAG implies version $expected but hatch built $BUILT"
+            echo "This usually means the tag is not annotated or the checkout is shallow."
+            exit 1
+          fi
+
+      - name: Smoke-test the wheel in a clean venv
+        working-directory: api
+        run: |
+          python -m venv /tmp/smoke
+          /tmp/smoke/bin/pip install --quiet dist/manicure-*.whl
+          /tmp/smoke/bin/manicure --version
+          /tmp/smoke/bin/manicure version
+          /tmp/smoke/bin/manicure paths --json
+          /tmp/smoke/bin/manicure --help > /dev/null
+          /tmp/smoke/bin/manicure start --help > /dev/null
+          /tmp/smoke/bin/manicure doctor --help > /dev/null
+
+      - name: Confirm embedded www/ inside the wheel
+        working-directory: api
+        run: |
+          wheel=$(ls dist/manicure-*.whl | head -1)
+          if ! python -m zipfile -l "$wheel" | grep -q 'manicure/www/index.html'; then
+            echo "::error::wheel $wheel does not contain manicure/www/index.html"
+            python -m zipfile -l "$wheel"
+            exit 1
+          fi
+
+      - name: Upload dist artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-dist
+          path: api/dist/*
+          if-no-files-found: error
+          retention-days: 7
+
+  # --------------------------------------------------------------------- #
+  # 2. Publish to PyPI via trusted publishing (OIDC, no tokens)           #
+  # --------------------------------------------------------------------- #
+  publish-pypi:
+    name: publish · PyPI
+    needs: build
+    runs-on: ubuntu-latest
+    if: |
+      startsWith(github.ref, 'refs/tags/v') ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.dry_run == 'false')
+    environment:
+      name: pypi
+      url: https://pypi.org/project/manicure/${{ needs.build.outputs.version }}/
+    permissions:
+      id-token: write
+    steps:
+      - name: Download dist
+        uses: actions/download-artifact@v4
+        with:
+          name: python-dist
+          path: dist
+
+      - name: Publish
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist
+          print-hash: true
+
+  # --------------------------------------------------------------------- #
+  # 3. Create GitHub Release + attach artifacts                           #
+  # --------------------------------------------------------------------- #
+  github-release:
+    name: release · GitHub
+    needs: [build, publish-pypi]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download dist
+        uses: actions/download-artifact@v4
+        with:
+          name: python-dist
+          path: dist
+
+      - name: Generate checksums
+        working-directory: dist
+        run: sha256sum manicure-* > SHA256SUMS
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          # Include install.sh in the release so a specific version is
+          # always reachable at the tag URL even if manicure.sh goes down.
+          gh release create "$TAG" \
+            --title "manicure $VERSION" \
+            --generate-notes \
+            dist/manicure-*.whl \
+            dist/manicure-*.tar.gz \
+            dist/SHA256SUMS \
+            install.sh
