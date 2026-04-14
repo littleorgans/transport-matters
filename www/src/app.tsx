@@ -41,7 +41,7 @@ function AppBar({ connected, mode, onToggleArm, breakpointError, exchangeCount }
           </h1>
           <span className="text-edge-strong hidden sm:inline">&middot;</span>
           <span className="text-[11px] text-txt-3 tracking-[0.14em] tabular-nums hidden sm:inline">
-            v0.0.1
+            v{__MANICURE_VERSION__}
           </span>
         </div>
 

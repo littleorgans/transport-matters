@@ -35,3 +35,8 @@ build:
 install:
     cd api && just install
     cd www && pnpm install
+
+# Cut a release: annotated tag vX.Y.Z -> push -> CI publishes to PyPI.
+# Pass --dry-run to just preview, or --yes to skip the confirm.
+release *args:
+    ./release.sh {{args}}
