@@ -22,56 +22,142 @@ import socket
 import sys
 from importlib.resources import as_file, files
 from pathlib import Path
-from typing import Annotated
+from textwrap import dedent
+from typing import TYPE_CHECKING, Annotated, Any
+from urllib.parse import urlparse
 
 import typer
+
+if TYPE_CHECKING:
+    import click
+from typer.core import TyperCommand, TyperGroup
 
 from manicure import __version__
 from manicure.config import get_settings
 
 # --------------------------------------------------------------------------- #
+# Custom help — plain text, no Rich chrome                                    #
+# --------------------------------------------------------------------------- #
+
+_ROOT_HELP = dedent(f"""\
+    manicure {__version__} — context control plane for coding agents
+
+    Commands
+      start     Run the reverse proxy + web UI
+      doctor    Diagnose the local environment
+      paths     Show storage and package locations
+      version   Print installed version
+
+    Quick start
+      $ manicure start
+      $ ANTHROPIC_BASE_URL=http://localhost:8787 claude
+
+      Web UI  http://localhost:8788
+
+    Environment
+      MANICURE_PROXY_PORT       proxy port (default 8787)
+      MANICURE_WEB_PORT         web UI port (default 8788)
+      MANICURE_STORAGE_DIR      data dir (default ~/.manicure/)
+      MANICURE_UPSTREAM_URL     upstream API (default https://api.anthropic.com)
+
+    Options
+      -V, --version             Show version and exit
+      -h, --help                Show this message and exit
+
+    https://github.com/srobinson/manicure
+""")
+
+_START_HELP = dedent("""\
+    Start the reverse proxy and embedded web UI.
+
+    Spawns mitmproxy in reverse-proxy mode with the manicure addon.
+    Point your coding agent at http://localhost:<proxy-port> and open
+    http://localhost:<web-port> in a browser.
+
+    Options
+      -p, --proxy-port INT      Proxy listener port (default 8787)
+      -w, --web-port INT        Web UI port (default 8788)
+      -u, --upstream URL        Upstream provider URL (default https://api.anthropic.com)
+      -d, --storage-dir PATH    Data directory (default ~/.manicure/)
+          --debug               Verbose mitmproxy output
+          --print-command       Print the mitmdump invocation and exit
+      -h, --help                Show this message and exit
+
+    Examples
+      $ manicure start
+      $ manicure start --proxy-port 9000 --web-port 9001
+      $ manicure start --print-command
+      $ manicure start --debug
+""")
+
+_DOCTOR_HELP = dedent("""\
+    Diagnose the local environment.
+
+    Checks: Python version, mitmproxy, packaged addon, web bundle,
+    storage directory, default ports. Exit 0 if all pass, 1 otherwise.
+
+    Options
+      -h, --help                Show this message and exit
+
+    Examples
+      $ manicure doctor
+      $ manicure doctor && manicure start
+""")
+
+_PATHS_HELP = dedent("""\
+    Show where manicure stores things and where the package lives.
+
+    Options
+          --json                Emit JSON instead of aligned text
+      -h, --help                Show this message and exit
+
+    Examples
+      $ manicure paths
+      $ manicure paths --json
+""")
+
+_VERSION_HELP = dedent("""\
+    Print the installed manicure version and exit.
+
+    Equivalent to manicure --version.
+
+    Options
+      -h, --help                Show this message and exit
+""")
+
+_SUBCOMMAND_HELP = {
+    "start": _START_HELP,
+    "doctor": _DOCTOR_HELP,
+    "paths": _PATHS_HELP,
+    "version": _VERSION_HELP,
+}
+
+
+class _PlainGroup(TyperGroup):
+    """Typer group that renders help as plain text."""
+
+    def format_help(self, ctx: click.Context, formatter: Any) -> None:
+        typer.echo(_ROOT_HELP, nl=False)
+
+
+class _PlainCommand(TyperCommand):
+    """Typer command that renders help as plain text."""
+
+    def format_help(self, ctx: click.Context, formatter: Any) -> None:
+        text = _SUBCOMMAND_HELP.get(self.name or "", "")
+        typer.echo(text, nl=False)
+
+
+# --------------------------------------------------------------------------- #
 # Typer app                                                                   #
 # --------------------------------------------------------------------------- #
 
-_HELP_EPILOG = (
-    "[bold]Quick start[/bold]\n\n"
-    "    manicure start                          [dim]# run proxy + web UI[/dim]\n\n"
-    "    ANTHROPIC_BASE_URL=http://localhost:8787 claude\n\n"
-    "Then open [cyan]http://localhost:8788[/cyan] for the live log, rules UI, "
-    "and breakpoint editor.\n\n"
-    "[bold]Data location[/bold]\n\n"
-    "    ~/.manicure/                            [dim]# exchanges, rules, index[/dim]\n\n"
-    "Override with [cyan]MANICURE_STORAGE_DIR[/cyan] or "
-    "[cyan]manicure start --storage-dir[/cyan].\n\n"
-    "[bold]Environment[/bold]\n\n"
-    "    MANICURE_PROXY_PORT      [dim]reverse-proxy listen port (default 8787)[/dim]\n\n"
-    "    MANICURE_WEB_PORT        [dim]web UI port (default 8788)[/dim]\n\n"
-    "    MANICURE_STORAGE_DIR     [dim]where to persist captured exchanges[/dim]\n\n"
-    "    MANICURE_UPSTREAM_URL    [dim]upstream API base (default https://api.anthropic.com)[/dim]\n\n"
-    "    MANICURE_DEBUG           [dim]set to 1 for verbose logging[/dim]\n\n"
-    "[bold]More[/bold]\n\n"
-    "    Docs & source: [cyan]https://github.com/srobinson/manicure[/cyan]\n\n"
-    "    Report issues: [cyan]https://github.com/srobinson/manicure/issues[/cyan]\n"
-)
-
-_APP_HELP = """\
-[bold]manicure[/bold] — provider-neutral context control plane for coding agents.
-
-Sits as a reverse proxy in front of Claude, captures every /v1/messages
-exchange, normalises payloads into an internal representation, runs them
-through a deterministic curation pipeline, and optionally pauses for
-manual editing in a schema-aware editor.
-
-No cert install. No system proxy settings. No sudo.
-"""
-
 main = typer.Typer(
     name="manicure",
-    help=_APP_HELP,
-    epilog=_HELP_EPILOG,
+    cls=_PlainGroup,
     no_args_is_help=True,
-    add_completion=True,
-    rich_markup_mode="rich",
+    add_completion=False,
+    rich_markup_mode=None,
     context_settings={"help_option_names": ["-h", "--help"]},
 )
 
@@ -107,31 +193,9 @@ def _root(
 # start                                                                       #
 # --------------------------------------------------------------------------- #
 
-_START_EPILOG = (
-    "[bold]Examples[/bold]\n\n"
-    "    manicure start\n\n"
-    "    manicure start --proxy-port 9000 --web-port 9001\n\n"
-    "    manicure start --upstream https://api.anthropic.com\n\n"
-    "    manicure start --storage-dir ~/scratch/manicure\n\n"
-    "    manicure start --print-command    [dim]# show the mitmdump invocation, do not run[/dim]\n\n"
-    "    manicure start --debug            [dim]# verbose mitmproxy output[/dim]\n\n"
-    "[bold]Point a client at the proxy[/bold]\n\n"
-    "    ANTHROPIC_BASE_URL=http://localhost:8787 claude\n\n"
-    "[bold]What happens on start[/bold]\n\n"
-    "    1. Resolve the packaged mitmproxy addon inside this install.\n\n"
-    "    2. Verify mitmdump is on PATH (installed as a dependency).\n\n"
-    "    3. Verify the proxy and web ports are free.\n\n"
-    "    4. Exec mitmdump in reverse-proxy mode with the addon loaded. "
-    "The addon boots an embedded FastAPI server on the web port inside "
-    "mitmproxy's asyncio loop.\n\n"
-    "The CLI process itself is replaced by [cyan]mitmdump[/cyan] via "
-    "[cyan]os.execvpe[/cyan], so Ctrl+C goes straight to the proxy — "
-    "no relay, no pid-file dance.\n"
-)
-
 
 @main.command(
-    epilog=_START_EPILOG,
+    cls=_PlainCommand,
     no_args_is_help=False,
     context_settings={"help_option_names": ["-h", "--help"]},
 )
@@ -239,13 +303,29 @@ def start(
         )
         raise typer.Exit(2)
 
-    # 3. Apply flag overrides into the config env vars before the addon imports it.
-    if storage_dir is not None:
-        os.environ["MANICURE_STORAGE_DIR"] = str(storage_dir)
-    os.environ["MANICURE_WEB_PORT"] = str(web_port)
-    os.environ["MANICURE_PROXY_PORT"] = str(proxy_port)
+    # 3. Validate upstream URL before passing to mitmdump.
+    parsed_url = urlparse(upstream)
+    if not parsed_url.scheme or not parsed_url.hostname:
+        typer.secho(
+            f"error: invalid upstream URL: {upstream!r}",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        typer.echo(
+            "Upstream must be a valid URL with scheme and host, e.g.\n"
+            "  https://api.anthropic.com",
+            err=True,
+        )
+        raise typer.Exit(2)
 
-    # 4. Verify ports are free — cheaper than letting mitmproxy fail cryptically.
+    # 4. Build env vars for the subprocess (isolated from current process).
+    child_env = os.environ.copy()
+    if storage_dir is not None:
+        child_env["MANICURE_STORAGE_DIR"] = str(storage_dir)
+    child_env["MANICURE_WEB_PORT"] = str(web_port)
+    child_env["MANICURE_PROXY_PORT"] = str(proxy_port)
+
+    # 5. Verify ports are free.
     for label, port in (("proxy", proxy_port), ("web UI", web_port)):
         if _port_in_use(port):
             typer.secho(
@@ -260,7 +340,7 @@ def start(
             )
             raise typer.Exit(2)
 
-    # 5. Build the final invocation.
+    # 6. Build the final invocation.
     with as_file(addon_traversable) as addon_path:
         argv = [
             "mitmdump",
@@ -285,7 +365,7 @@ def start(
         # Hand the process off to mitmdump. Signals now go straight to it —
         # our CLI frame disappears. Nothing after this line runs on success.
         try:
-            os.execvpe(mitmdump, argv, os.environ)
+            os.execvpe(mitmdump, argv, child_env)
         except OSError as exc:
             typer.secho(
                 f"error: failed to exec mitmdump: {exc}",
@@ -299,17 +379,9 @@ def start(
 # doctor                                                                      #
 # --------------------------------------------------------------------------- #
 
-_DOCTOR_EPILOG = (
-    "[bold]Example[/bold]\n\n"
-    "    manicure doctor\n\n"
-    "Exit code is [cyan]0[/cyan] when every check passes, "
-    "[cyan]1[/cyan] otherwise — safe to chain in scripts:\n\n"
-    "    manicure doctor && manicure start\n"
-)
-
 
 @main.command(
-    epilog=_DOCTOR_EPILOG,
+    cls=_PlainCommand,
     context_settings={"help_option_names": ["-h", "--help"]},
 )
 def doctor() -> None:
@@ -401,8 +473,11 @@ def doctor() -> None:
             "Fix permissions or set `MANICURE_STORAGE_DIR` to a writable path.",
         )
 
-    # Default ports
-    for label, port in (("proxy port", 8787), ("web port", 8788)):
+    # Configured ports
+    for label, port in (
+        ("proxy port", settings.proxy_port),
+        ("web port", settings.web_port),
+    ):
         if _port_in_use(port):
             typer.secho(
                 f"  warn  {label} {port} in use — pick a different port with --{label.split()[0]}-port",
@@ -426,15 +501,9 @@ def doctor() -> None:
 # paths                                                                       #
 # --------------------------------------------------------------------------- #
 
-_PATHS_EPILOG = (
-    "[bold]Example[/bold]\n\n"
-    "    manicure paths           [dim]# human-readable[/dim]\n\n"
-    "    manicure paths --json    [dim]# machine-readable[/dim]\n"
-)
-
 
 @main.command(
-    epilog=_PATHS_EPILOG,
+    cls=_PlainCommand,
     context_settings={"help_option_names": ["-h", "--help"]},
 )
 def paths(
@@ -481,7 +550,10 @@ def paths(
 # --------------------------------------------------------------------------- #
 
 
-@main.command(context_settings={"help_option_names": ["-h", "--help"]})
+@main.command(
+    cls=_PlainCommand,
+    context_settings={"help_option_names": ["-h", "--help"]},
+)
 def version() -> None:
     """Print the installed manicure version and exit.
 

@@ -1,0 +1,30 @@
+import type { ReactNode } from "react";
+import { HoverCard } from "./HoverCard";
+
+interface HelpBubbleProps {
+  children: ReactNode;
+}
+
+export function HelpBubble({ children }: HelpBubbleProps) {
+  return (
+    <HoverCard
+      content={<div className="w-[432px] text-[11px] leading-relaxed">{children}</div>}
+      offset={{ x: 8, y: 12 }}
+    >
+      <svg
+        className="cursor-help w-3.5 h-3.5 ml-1.5 shrink-0 text-txt-3"
+        viewBox="0 0 24 24"
+        fill="currentColor"
+        xmlns="http://www.w3.org/2000/svg"
+        role="img"
+        aria-label="Help"
+      >
+        <path
+          fillRule="evenodd"
+          clipRule="evenodd"
+          d="M1 12C1 5.92487 5.92487 1 12 1C18.0751 1 23 5.92487 23 12C23 18.0751 18.0751 23 12 23C5.92487 23 1 18.0751 1 12ZM10.25 11C10.25 10.4477 10.6977 10 11.25 10H12.75C13.3023 10 13.75 10.4477 13.75 11V18C13.75 18.5523 13.3023 19 12.75 19H11.25C10.6977 19 10.25 18.5523 10.25 18V11ZM14 7C14 5.89543 13.1046 5 12 5C10.8954 5 10 5.89543 10 7C10 8.10457 10.8954 9 12 9C13.1046 9 14 8.10457 14 7Z"
+        />
+      </svg>
+    </HoverCard>
+  );
+}

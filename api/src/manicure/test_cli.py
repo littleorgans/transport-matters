@@ -303,6 +303,74 @@ def test_start_refuses_when_mitmdump_missing(
     exec_spy.assert_not_called()
 
 
+def test_start_rejects_malformed_upstream_url(
+    tmp_storage: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Upstream URL must have both a scheme and hostname."""
+    monkeypatch.setattr("manicure.cli.shutil.which", lambda _: "/usr/bin/mitmdump")
+    monkeypatch.setattr("manicure.cli._port_in_use", lambda _: False)
+    exec_spy = MagicMock()
+    monkeypatch.setattr("manicure.cli.os.execvpe", exec_spy)
+
+    result = runner.invoke(
+        main,
+        ["start", "--upstream", "not-a-url", "--print-command"],
+    )
+    assert result.exit_code == 2
+    assert "invalid upstream URL" in result.output
+    exec_spy.assert_not_called()
+
+
+def test_start_rejects_upstream_without_scheme(
+    tmp_storage: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("manicure.cli.shutil.which", lambda _: "/usr/bin/mitmdump")
+    monkeypatch.setattr("manicure.cli._port_in_use", lambda _: False)
+    exec_spy = MagicMock()
+    monkeypatch.setattr("manicure.cli.os.execvpe", exec_spy)
+
+    result = runner.invoke(
+        main,
+        ["start", "--upstream", "api.anthropic.com", "--print-command"],
+    )
+    assert result.exit_code == 2
+    assert "invalid upstream URL" in result.output
+    exec_spy.assert_not_called()
+
+
+def test_start_does_not_pollute_os_environ(
+    tmp_storage: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The start command builds a child_env dict instead of mutating os.environ."""
+    monkeypatch.setattr("manicure.cli.shutil.which", lambda _: "/usr/bin/mitmdump")
+    monkeypatch.setattr("manicure.cli._port_in_use", lambda _: False)
+    exec_spy = MagicMock()
+    monkeypatch.setattr("manicure.cli.os.execvpe", exec_spy)
+
+    # Ensure these keys are absent before start
+    monkeypatch.delenv("MANICURE_WEB_PORT", raising=False)
+    monkeypatch.delenv("MANICURE_PROXY_PORT", raising=False)
+
+    result = runner.invoke(
+        main,
+        [
+            "start",
+            "--proxy-port",
+            "9500",
+            "--web-port",
+            "9501",
+            "--print-command",
+        ],
+    )
+    assert result.exit_code == 0
+    # --print-command exits before execvpe, so os.environ should not
+    # contain the child ports that start prepares.
+    import os
+
+    assert os.environ.get("MANICURE_WEB_PORT") != "9501"
+    assert os.environ.get("MANICURE_PROXY_PORT") != "9500"
+
+
 def test_start_fails_when_addon_missing(
     tmp_storage: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -342,18 +410,29 @@ def test_port_in_use_reports_free_port(free_port: int) -> None:
 # --------------------------------------------------------------------------- #
 
 
-def test_root_help_includes_quick_start_epilog() -> None:
+def test_root_help_includes_quick_start() -> None:
     result = runner.invoke(main, ["--help"])
     assert result.exit_code == 0
-    assert "manicure" in result.output
-    assert "Quick start" in result.output or "quick start" in result.output.lower()
+    output = _plain(result.output)
+    assert "manicure" in output
+    assert "Quick start" in output
+    assert "Commands" in output
+    assert "start" in output
+
+
+def test_root_help_includes_environment() -> None:
+    result = runner.invoke(main, ["--help"])
+    assert result.exit_code == 0
+    output = _plain(result.output)
+    assert "MANICURE_PROXY_PORT" in output
+    assert "MANICURE_STORAGE_DIR" in output
 
 
 def test_start_help_includes_examples() -> None:
     result = runner.invoke(main, ["start", "--help"])
     assert result.exit_code == 0
     output = _plain(result.output)
-    assert "Examples" in output or "example" in output.lower()
+    assert "Examples" in output
     assert "--proxy-port" in output
     assert "--print-command" in output
 

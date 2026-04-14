@@ -28,6 +28,15 @@ class Settings(BaseSettings):
     proxy_port: int = 8787
     web_port: int = 8788
     storage_dir: Path = Path.home() / ".manicure"
+    breakpoint_timeout_s: float = 300.0
+    breakpoint_skip_models: list[str] = []
+
+    cors_origins: list[str] = [
+        "http://localhost:3000",
+        "http://localhost:5173",
+    ]
+    cors_methods: list[str] = ["GET", "POST", "PATCH", "DELETE", "OPTIONS"]
+    cors_headers: list[str] = ["Content-Type", "Authorization"]
 
 
 @lru_cache

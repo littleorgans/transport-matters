@@ -1,85 +1,114 @@
-import { useState } from "react";
-import type { SystemPart } from "../../types";
+import { useCollapsibleSet } from "../../hooks/useCollapsibleSet";
+import { useEditableOverride } from "../../hooks/useEditableOverride";
+import { useUIStore } from "../../stores/uiStore";
+import type { Override, SystemPart } from "../../types";
+import { Chevron, inputClass, MasterBar, OriginalPreview, SECTION_TONE } from "../detail/atoms";
 import { Toggle } from "../Toggle";
 
 interface SystemSectionProps {
   parts: SystemPart[];
-  onChange: (parts: SystemPart[]) => void;
+  overrides: Override[];
+  onOverride: (batch: Override[]) => void;
 }
 
-function SystemCard({
+function SystemPartRow({
   part,
   index,
-  checked,
-  onToggle,
-  onTextChange,
+  overrides,
+  onOverride,
+  expanded,
+  onToggleExpanded,
 }: {
   part: SystemPart;
   index: number;
-  checked: boolean;
-  onToggle: () => void;
-  onTextChange: (text: string) => void;
+  overrides: Override[];
+  onOverride: (batch: Override[]) => void;
+  expanded: boolean;
+  onToggleExpanded: () => void;
 }) {
-  const [expanded, setExpanded] = useState(part.text.length <= 500);
+  const target = `system:${index}`;
+  const {
+    checked,
+    isModified,
+    localText,
+    setLocalText,
+    textRef,
+    handleToggle,
+    commitText,
+    handleReset,
+  } = useEditableOverride({
+    originalValue: part.text,
+    overrides,
+    onOverride,
+    toggleKind: "system_part_toggle",
+    textKind: "system_part_text",
+    target,
+    initialExpanded: true,
+  });
 
-  const preview = part.text.slice(0, 60) + (part.text.length > 60 ? "..." : "");
   const sizeLabel = `${part.text.length.toLocaleString()} chars`;
 
   return (
-    <div className={`card-flush transition-opacity ${checked ? "" : "opacity-40"}`}>
-      <div className="flex items-center gap-3 px-4 py-2.5">
-        <Toggle checked={checked} onChange={() => onToggle()} label={`Toggle part ${index}`} />
+    <div className={`transition-opacity ${checked ? "" : "opacity-40"}`}>
+      {/* Row header — click-to-expand strip. Toggle and Reset are
+          stopPropagation islands so they never fold the row. */}
+      {/* biome-ignore lint/a11y/useSemanticElements: composite row wraps a Toggle button and a Reset button; button-in-button is invalid HTML */}
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={onToggleExpanded}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            onToggleExpanded();
+          }
+        }}
+        className="flex cursor-pointer items-center gap-3 px-4 py-2.5 transition-colors hover:bg-raised focus:outline-none focus-visible:bg-raised"
+      >
+        {/* biome-ignore lint/a11y/useKeyWithClickEvents: stopPropagation wrapper, the inner Toggle handles its own keyboard events */}
+        {/* biome-ignore lint/a11y/noStaticElementInteractions: click-swallow wrapper isolates the Toggle from the row's expand handler */}
+        <div onClick={(e) => e.stopPropagation()}>
+          <Toggle checked={checked} onChange={handleToggle} label={`Toggle part ${index}`} />
+        </div>
         <span className="chip metric-num">{`[${index}]`}</span>
         <span className="label text-txt-3 metric-num">{sizeLabel}</span>
         {part.cache_hint && <span className="chip text-amber">cached</span>}
-        <span className="ml-auto text-[11px] text-txt-3 truncate max-w-60">{preview}</span>
-      </div>
-      {checked && (
-        <>
-          <div className="hairline-x" />
+        {isModified && <span className="h-1 w-1 rounded-full bg-amber" />}
+        {isModified && (
           <button
             type="button"
-            className="cursor-pointer px-4 py-3 w-full text-left bg-transparent border-none"
-            onClick={() => setExpanded((v) => !v)}
+            className="label shrink-0 cursor-pointer text-txt-3 transition-colors hover:text-amber"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleReset();
+            }}
           >
-            {expanded ? (
-              <textarea
-                className="w-full min-h-24 max-h-64 resize-y bg-canvas px-3 py-2 text-[11px] text-txt border border-edge focus:border-sky/50 focus:outline-none transition-colors"
-                value={part.text}
-                onClick={(e) => e.stopPropagation()}
-                onChange={(e) => onTextChange(e.target.value)}
-              />
-            ) : (
-              <span className="label">Click to expand</span>
-            )}
+            reset
           </button>
-        </>
+        )}
+        <div className="flex-1" />
+        <Chevron expanded={expanded} />
+      </div>
+      {expanded && (
+        <div className="mt-2 space-y-2 px-4 pb-3">
+          <textarea
+            ref={textRef}
+            className={inputClass}
+            value={localText}
+            onChange={(e) => setLocalText(e.target.value)}
+            onBlur={commitText}
+          />
+          {isModified && <OriginalPreview text={part.text} />}
+        </div>
       )}
     </div>
   );
 }
 
-export function SystemSection({ parts, onChange }: SystemSectionProps) {
-  const [checkedSet, setCheckedSet] = useState<Set<number>>(() => new Set(parts.map((_, i) => i)));
-
-  const handleToggle = (index: number) => {
-    setCheckedSet((prev) => {
-      const next = new Set(prev);
-      if (next.has(index)) {
-        next.delete(index);
-      } else {
-        next.add(index);
-      }
-      const kept = parts.filter((_, i) => next.has(i));
-      onChange(kept);
-      return next;
-    });
-  };
-
-  const handleTextChange = (index: number, text: string) => {
-    const updated = parts.map((p, i) => (i === index ? { ...p, text } : p));
-    onChange(updated.filter((_, i) => checkedSet.has(i)));
-  };
+export function SystemSection({ parts, overrides, onOverride }: SystemSectionProps) {
+  const overrideCount = overrides.filter(
+    (o) => o.kind === "system_part_toggle" || o.kind === "system_part_text",
+  ).length;
 
   const keyedParts = parts.map((part, idx) => ({
     part,
@@ -87,22 +116,51 @@ export function SystemSection({ parts, onChange }: SystemSectionProps) {
     key: `system-${idx}-${part.text.slice(0, 20)}`,
   }));
 
+  // Seeded from the auto-expand pref in the initializer only, so
+  // mid-session flips don't retroactively collapse mounted rows.
+  const autoExpandBlocks = useUIStore((s) => s.autoExpandBlocks);
+  const { allExpanded, toggleAll, toggleOne, isExpanded } = useCollapsibleSet(
+    parts.length,
+    !autoExpandBlocks,
+  );
+
   return (
     <section className="space-y-4">
-      <div className="section-rule">
-        <span className="label">System &middot; {parts.length} parts</span>
-      </div>
-      <div className="space-y-2">
-        {keyedParts.map((entry) => (
-          <SystemCard
-            key={entry.key}
-            part={entry.part}
-            index={entry.idx}
-            checked={checkedSet.has(entry.idx)}
-            onToggle={() => handleToggle(entry.idx)}
-            onTextChange={(text) => handleTextChange(entry.idx, text)}
-          />
-        ))}
+      <div className="card-flush">
+        <MasterBar
+          label="system"
+          tone={SECTION_TONE.system}
+          count={parts.length}
+          countUnit="part"
+          extras={
+            overrideCount > 0 ? (
+              <>
+                <span className="h-1 w-1 rounded-full bg-amber" />
+                <span className="label text-amber">
+                  {overrideCount} override{overrideCount !== 1 ? "s" : ""}
+                </span>
+              </>
+            ) : undefined
+          }
+          allExpanded={allExpanded}
+          onToggleAll={toggleAll}
+        />
+        <div className="hairline-x" />
+        <div>
+          {keyedParts.map((entry, i) => (
+            <div key={entry.key}>
+              <SystemPartRow
+                part={entry.part}
+                index={entry.idx}
+                overrides={overrides}
+                onOverride={onOverride}
+                expanded={isExpanded(entry.idx)}
+                onToggleExpanded={() => toggleOne(entry.idx)}
+              />
+              {i < keyedParts.length - 1 && <div className="hairline-x mx-4" />}
+            </div>
+          ))}
+        </div>
       </div>
     </section>
   );

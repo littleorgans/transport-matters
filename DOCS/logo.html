@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Manicure — Logo Finalists</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700;800&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --page-bg: #0A0A0B;
+    --page-fg: #E4E4E7;
+    --muted: #52525B;
+    --card-bg: #141416;
+    --bdr: #27272A;
+    --logo-fg: #FAFAF9;
+    --logo-bg: #0A0A0B;
+    --display-bg: #0A0A0B;
+  }
+
+  body {
+    min-height: 100vh;
+    background: var(--page-bg);
+    color: var(--page-fg);
+    font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+    padding: 48px 24px;
+    transition: background 0.3s, color 0.3s;
+  }
+
+  .wrap { max-width: 1020px; margin: 0 auto; }
+
+  .header { display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 16px; margin-bottom: 8px; }
+  h1 { font-size: 24px; font-weight: 700; letter-spacing: -0.04em; }
+  .subtitle { font-size: 11px; color: var(--muted); margin-bottom: 32px; }
+  .controls { display: flex; gap: 8px; }
+  .btn {
+    padding: 6px 14px; font-size: 11px; border: 1px solid var(--bdr); border-radius: 6px;
+    background: transparent; color: var(--page-fg); cursor: pointer; font-family: inherit;
+    transition: all 0.15s;
+  }
+  .btn.active { background: var(--page-fg); color: var(--page-bg); }
+
+  .section-title {
+    font-size: 12px; font-weight: 700; color: #D97706; margin: 0 0 12px;
+    letter-spacing: 0.04em; text-transform: uppercase;
+  }
+
+  .grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+    gap: 8px; margin-bottom: 28px;
+  }
+
+  .card {
+    background: var(--card-bg); border-radius: 10px; border: 2px solid var(--bdr);
+    overflow: hidden; cursor: pointer; transition: border-color 0.15s;
+  }
+  .card.selected { border-color: #D97706; }
+  .card-preview {
+    padding: 18px 10px; display: flex; justify-content: center; align-items: center;
+    min-height: 88px; background: var(--display-bg);
+  }
+  .card-info { padding: 5px 8px 7px; border-top: 1px solid var(--bdr); display: flex; align-items: center; gap: 3px; }
+  .card-info .star { font-size: 8px; color: #D97706; }
+  .card-info .name { font-size: 9px; font-weight: 600; }
+
+  /* Detail panel */
+  .detail { margin-top: 24px; background: var(--card-bg); border-radius: 16px; border: 1px solid var(--bdr); overflow: hidden; display: none; }
+  .detail.visible { display: block; }
+  .detail-hero { background: var(--display-bg); padding: 60px 40px; display: flex; justify-content: center; }
+  .detail-body { padding: 28px 36px 40px; }
+  .detail-body h2 { font-size: 18px; font-weight: 700; margin-bottom: 24px; }
+  .label { font-size: 9px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 10px; }
+
+  .scale-strip {
+    display: flex; align-items: end; gap: 18px; flex-wrap: wrap; margin-bottom: 28px;
+    background: var(--display-bg); border-radius: 10px; padding: 20px 24px;
+  }
+  .scale-item { text-align: center; }
+  .scale-item .sz { font-size: 7px; color: var(--muted); margin-top: 3px; }
+
+  .bg-strip { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 28px; }
+  .bg-swatch {
+    width: 60px; height: 60px; border-radius: 10px; display: flex;
+    align-items: center; justify-content: center; border: 1px solid var(--bdr);
+  }
+
+  .lockups { display: flex; flex-direction: column; gap: 14px; }
+  .lockup { display: flex; align-items: center; gap: 16px; border-radius: 10px; padding: 20px 28px; width: fit-content; }
+  .lockup-text { font-weight: 800; letter-spacing: -0.05em; }
+  .lockup-stacked { flex-direction: column; align-items: center; gap: 12px; padding: 32px 52px; }
+  .lockup-cli { gap: 10px; border-radius: 8px; padding: 10px 16px; }
+  .lockup-cli .main { font-size: 13px; font-weight: 600; }
+  .lockup-cli .ver { font-size: 11px; color: #52525B; margin-left: 4px; }
+
+  .side-by-side {
+    display: flex; gap: 32px; align-items: center; justify-content: center;
+    background: var(--display-bg); border-radius: 12px; padding: 40px 32px;
+  }
+  .side-by-side .divider { width: 1px; height: 80px; background: var(--bdr); }
+  .side-by-side .label-sm { font-size: 9px; color: var(--muted); margin-top: 10px; }
+
+  .app-icons { display: flex; gap: 16px; align-items: end; }
+  .app-icon {
+    display: flex; align-items: center; justify-content: center;
+    background: var(--display-bg); border: 1px solid var(--bdr);
+    box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+  }
+
+  .footer { margin-top: 36px; text-align: center; font-size: 10px; color: var(--muted); }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <div class="header">
+    <h1>The Two Finalists</h1>
+    <div class="controls">
+      <button class="btn" id="btnInv" onclick="toggleInvert()">○ inv</button>
+      <button class="btn" id="btnTheme" onclick="toggleTheme()">◐ light</button>
+    </div>
+  </div>
+  <p class="subtitle">Bottom Wide + Channel Wide — crescent lunula — precision tuning</p>
+
+  <h2 class="section-title">Bottom Wide</h2>
+  <div class="grid" id="gridBW"></div>
+
+  <h2 class="section-title">Channel Wide</h2>
+  <div class="grid" id="gridCW"></div>
+
+  <div class="detail" id="detail"></div>
+
+  <p class="footer">click any card to expand</p>
+</div>
+
+<script>
+// === STATE ===
+let darkMode = true;
+let inverted = false;
+let selectedId = null;
+let selectedType = null;
+
+// === PATHS ===
+const paths = {
+  outer: { normal: "M50,2 C20,2 4,24 4,52 C4,78 18,98 50,98 C82,98 96,78 96,52 C96,24 80,2 50,2 Z", heavy: "M50,0 C16,0 0,26 0,52 C0,80 16,100 50,100 C84,100 100,80 100,52 C100,26 84,0 50,0 Z" },
+  counter: {
+    normal: { normal: "M50,18 C34,18 24,32 24,50 C24,66 32,78 50,78 C68,78 76,66 76,50 C76,32 66,18 50,18 Z", small: "M50,24 C38,24 30,36 30,50 C30,64 36,74 50,74 C64,74 70,64 70,50 C70,36 62,24 50,24 Z" },
+    heavy: { normal: "M50,20 C36,20 26,34 26,50 C26,66 34,78 50,78 C66,78 74,66 74,50 C74,34 64,20 50,20 Z", small: "M50,28 C40,28 32,38 32,52 C32,64 38,74 50,74 C62,74 68,64 68,52 C68,38 60,28 50,28 Z" }
+  },
+  lunula: {
+    normal: { normal: "M30,68 Q50,54 70,68 Q68,78 50,78 Q32,78 30,68 Z", small: "M34,64 Q50,52 66,64 Q64,74 50,74 Q36,74 34,64 Z" },
+    heavy: { normal: "M30,68 Q50,54 70,68 Q68,78 50,78 Q32,78 30,68 Z", small: "M36,64 Q50,52 64,64 Q62,74 50,74 Q38,74 36,64 Z" }
+  }
+};
+
+// === DATA ===
+const bwVars = [
+  { id:"bw1", name:"Reference", p:{slitW:12,slitH:22,rw:"normal",cs:"normal"} },
+  { id:"bw2", name:"Narrow", p:{slitW:8,slitH:20,rw:"normal",cs:"normal"} },
+  { id:"bw3", name:"Wide", p:{slitW:16,slitH:24,rw:"normal",cs:"normal"}, fav:true },
+  { id:"bw4", name:"Extra Wide", p:{slitW:20,slitH:26,rw:"normal",cs:"normal"} },
+  { id:"bw5", name:"Heavy", p:{slitW:12,slitH:22,rw:"heavy",cs:"normal"} },
+  { id:"bw6", name:"Heavy Wide", p:{slitW:16,slitH:24,rw:"heavy",cs:"normal"}, fav:true },
+  { id:"bw7", name:"Heavy XWide", p:{slitW:20,slitH:26,rw:"heavy",cs:"normal"} },
+  { id:"bw8", name:"Heavy Sm Ctr", p:{slitW:14,slitH:22,rw:"heavy",cs:"small"} },
+  { id:"bw9", name:"Deep", p:{slitW:12,slitH:34,rw:"normal",cs:"normal"} },
+  { id:"bw10", name:"Deep Wide", p:{slitW:16,slitH:32,rw:"normal",cs:"normal"} },
+];
+const cwVars = [
+  { id:"cw1", name:"Reference", p:{chanW:12,rw:"normal",cs:"normal"} },
+  { id:"cw2", name:"Narrow", p:{chanW:8,rw:"normal",cs:"normal"} },
+  { id:"cw3", name:"Wide", p:{chanW:16,rw:"normal",cs:"normal"}, fav:true },
+  { id:"cw4", name:"Extra Wide", p:{chanW:20,rw:"normal",cs:"normal"} },
+  { id:"cw5", name:"Heavy", p:{chanW:12,rw:"heavy",cs:"normal"} },
+  { id:"cw6", name:"Heavy Wide", p:{chanW:16,rw:"heavy",cs:"normal"}, fav:true },
+  { id:"cw7", name:"Heavy XWide", p:{chanW:20,rw:"heavy",cs:"normal"} },
+  { id:"cw8", name:"Heavy Sm Ctr", p:{chanW:14,rw:"heavy",cs:"small"} },
+  { id:"cw9", name:"Heavy Narrow", p:{chanW:8,rw:"heavy",cs:"normal"} },
+  { id:"cw10", name:"XWide Sm Ctr", p:{chanW:18,rw:"normal",cs:"small"} },
+];
+
+// === SVG GENERATORS ===
+function makeBW(size, fg, bg, p) {
+  const {slitW, slitH, rw='normal', cs='normal'} = p;
+  const o = paths.outer[rw] || paths.outer.normal;
+  const c = (paths.counter[rw]||paths.counter.normal)[cs] || paths.counter.normal.normal;
+  const l = (paths.lunula[rw]||paths.lunula.normal)[cs] || paths.lunula.normal.normal;
+  const sx = 50 - slitW/2;
+  return `<svg viewBox="0 0 100 100" width="${size}" height="${size}" xmlns="http://www.w3.org/2000/svg"><g transform="rotate(180 50 50)"><path d="${o}" fill="${fg}"/><path d="${c}" fill="${bg}"/><path d="${l}" fill="${fg}"/><rect x="${sx}" y="0" width="${slitW}" height="${slitH}" fill="${bg}"/></g></svg>`;
+}
+
+function makeCW(size, fg, bg, p) {
+  const {chanW, rw='normal', cs='normal'} = p;
+  const o = paths.outer[rw] || paths.outer.normal;
+  const c = (paths.counter[rw]||paths.counter.normal)[cs] || paths.counter.normal.normal;
+  const l = (paths.lunula[rw]||paths.lunula.normal)[cs] || paths.lunula.normal.normal;
+  const cx = 50 - chanW/2;
+  const uid = `m-${size}-${chanW}-${rw}-${cs}-${Math.random().toString(36).slice(2,7)}`;
+  return `<svg viewBox="0 0 100 100" width="${size}" height="${size}" xmlns="http://www.w3.org/2000/svg"><defs><mask id="${uid}"><rect width="100" height="100" fill="white"/><rect x="${cx}" y="0" width="${chanW}" height="100" fill="black"/></mask></defs><g transform="rotate(180 50 50)"><g mask="url(#${uid})"><path d="${o}" fill="${fg}"/><path d="${c}" fill="${bg}"/><path d="${l}" fill="${fg}"/></g></g></svg>`;
+}
+
+function makeSVG(type, size, fg, bg, p) {
+  return type === 'bw' ? makeBW(size, fg, bg, p) : makeCW(size, fg, bg, p);
+}
+
+// === COLORS ===
+function getColors() {
+  const pageBg = darkMode ? '#0A0A0B' : '#F5F5F4';
+  const pageFg = darkMode ? '#E4E4E7' : '#18181B';
+  const muted = darkMode ? '#52525B' : '#A1A1AA';
+  const cardBg = darkMode ? '#141416' : '#FFFFFF';
+  const bdr = darkMode ? '#27272A' : '#E4E4E7';
+  const logoFg = inverted ? (darkMode ? '#0A0A0B' : '#F5F5F4') : (darkMode ? '#FAFAF9' : '#18181B');
+  const logoBg = inverted ? (darkMode ? '#FAFAF9' : '#18181B') : (darkMode ? '#0A0A0B' : '#F5F5F4');
+  return { pageBg, pageFg, muted, cardBg, bdr, logoFg, logoBg };
+}
+
+// === RENDER ===
+function render() {
+  const col = getColors();
+  document.body.style.background = col.pageBg;
+  document.body.style.color = col.pageFg;
+  document.documentElement.style.setProperty('--page-bg', col.pageBg);
+  document.documentElement.style.setProperty('--page-fg', col.pageFg);
+  document.documentElement.style.setProperty('--muted', col.muted);
+  document.documentElement.style.setProperty('--card-bg', col.cardBg);
+  document.documentElement.style.setProperty('--bdr', col.bdr);
+  document.documentElement.style.setProperty('--logo-fg', col.logoFg);
+  document.documentElement.style.setProperty('--logo-bg', col.logoBg);
+  document.documentElement.style.setProperty('--display-bg', col.logoBg);
+
+  const btnInv = document.getElementById('btnInv');
+  btnInv.textContent = inverted ? '● inv' : '○ inv';
+  btnInv.className = inverted ? 'btn active' : 'btn';
+  btnInv.style.borderColor = col.bdr;
+
+  const btnTheme = document.getElementById('btnTheme');
+  btnTheme.textContent = darkMode ? '◐ light' : '◑ dark';
+  btnTheme.style.borderColor = col.bdr;
+  btnTheme.style.color = col.pageFg;
+
+  renderGrid('gridBW', bwVars, 'bw', col);
+  renderGrid('gridCW', cwVars, 'cw', col);
+  renderDetail(col);
+}
+
+function renderGrid(containerId, vars, type, col) {
+  const container = document.getElementById(containerId);
+  container.innerHTML = '';
+  vars.forEach(v => {
+    const isSel = selectedId === v.id && selectedType === type;
+    const card = document.createElement('div');
+    card.className = 'card' + (isSel ? ' selected' : '');
+    card.style.background = col.cardBg;
+    card.style.borderColor = isSel ? '#D97706' : col.bdr;
+    card.onclick = () => { if (selectedId === v.id && selectedType === type) { selectedId = null; selectedType = null; } else { selectedId = v.id; selectedType = type; } render(); };
+    card.innerHTML = `
+      <div class="card-preview" style="background:${col.logoBg}">${makeSVG(type, 60, col.logoFg, col.logoBg, v.p)}</div>
+      <div class="card-info" style="border-top-color:${col.bdr}">
+        ${v.fav ? '<span class="star">★</span>' : ''}
+        <span class="name">${v.name}</span>
+      </div>`;
+    container.appendChild(card);
+  });
+}
+
+function renderDetail(col) {
+  const panel = document.getElementById('detail');
+  if (!selectedId || !selectedType) { panel.className = 'detail'; return; }
+
+  const vars = selectedType === 'bw' ? bwVars : cwVars;
+  const sel = vars.find(v => v.id === selectedId);
+  if (!sel) { panel.className = 'detail'; return; }
+
+  panel.className = 'detail visible';
+  panel.style.background = col.cardBg;
+  panel.style.borderColor = col.bdr;
+
+  const typeName = selectedType === 'bw' ? 'Bottom Wide' : 'Channel Wide';
+
+  // Scale strip
+  const scales = [16,20,24,32,48,64,96,128].map(s =>
+    `<div class="scale-item">${makeSVG(selectedType, s, col.logoFg, col.logoBg, sel.p)}<div class="sz">${s}</div></div>`
+  ).join('');
+
+  // Background swatches
+  const bgTests = [
+    {bg:'#0A0A0B',fg:'#FAFAF9'},{bg:'#18181B',fg:'#FAFAF9'},
+    {bg:'#FFFFFF',fg:'#18181B'},{bg:'#F5F5F4',fg:'#18181B'},
+    {bg:'#D97706',fg:'#FFF'},{bg:'#E11D48',fg:'#FFF'},
+    {bg:'#7C3AED',fg:'#FFF'},{bg:'#059669',fg:'#FFF'},
+  ].map(c =>
+    `<div class="bg-swatch" style="background:${c.bg};border-color:${col.bdr}">${makeSVG(selectedType, 36, c.fg, c.bg, sel.p)}</div>`
+  ).join('');
+
+  // App icons
+  const appIcons = [80,56,40,28].map(s => {
+    const r = Math.round(s * 0.22);
+    const inner = Math.round(s * 0.65);
+    return `<div class="app-icon" style="width:${s}px;height:${s}px;border-radius:${r}px;background:${col.logoBg};border-color:${col.bdr}">${makeSVG(selectedType, inner, col.logoFg, col.logoBg, sel.p)}</div>`;
+  }).join('');
+
+  // Side by side
+  const bw3 = bwVars.find(v => v.id === 'bw3');
+  const cw3 = cwVars.find(v => v.id === 'cw3');
+
+  panel.innerHTML = `
+    <div class="detail-hero" style="background:${col.logoBg}">${makeSVG(selectedType, 240, col.logoFg, col.logoBg, sel.p)}</div>
+    <div class="detail-body">
+      <h2>${typeName} — ${sel.name}</h2>
+
+      <p class="label">Favicon → Hero</p>
+      <div class="scale-strip" style="background:${col.logoBg}">${scales}</div>
+
+      <p class="label">Backgrounds</p>
+      <div class="bg-strip">${bgTests}</div>
+
+      <p class="label">Lockups</p>
+      <div class="lockups">
+        <div class="lockup" style="background:#0A0A0B">
+          ${makeSVG(selectedType, 40, '#FAFAF9', '#0A0A0B', sel.p)}
+          <span class="lockup-text" style="font-size:32px;color:#FAFAF9">manicure</span>
+        </div>
+        <div class="lockup" style="background:#FAFAF9">
+          ${makeSVG(selectedType, 32, '#18181B', '#FAFAF9', sel.p)}
+          <span class="lockup-text" style="font-size:26px;color:#18181B">manicure</span>
+        </div>
+        <div class="lockup lockup-cli" style="background:#0A0A0B">
+          ${makeSVG(selectedType, 18, '#FAFAF9', '#0A0A0B', sel.p)}
+          <span class="main" style="color:#FAFAF9">manicure</span>
+          <span class="ver">v0.1.0</span>
+        </div>
+        <div class="lockup lockup-stacked" style="background:#0A0A0B">
+          ${makeSVG(selectedType, 64, '#FAFAF9', '#0A0A0B', sel.p)}
+          <span style="font-size:16px;font-weight:700;letter-spacing:0.18em;text-transform:uppercase;color:#FAFAF9">manicure</span>
+          <span style="font-size:9px;color:#52525B;letter-spacing:0.06em">every token counts</span>
+        </div>
+      </div>
+
+      <p class="label" style="margin-top:28px">Both finalists side by side</p>
+      <div class="side-by-side" style="background:${col.logoBg}">
+        <div style="text-align:center">
+          ${makeBW(100, col.logoFg, col.logoBg, bw3.p)}
+          <div class="label-sm">Bottom Wide</div>
+        </div>
+        <div class="divider" style="background:${col.bdr}"></div>
+        <div style="text-align:center">
+          ${makeCW(100, col.logoFg, col.logoBg, cw3.p)}
+          <div class="label-sm">Channel Wide</div>
+        </div>
+      </div>
+
+      <p class="label" style="margin-top:28px">App icon</p>
+      <div class="app-icons">${appIcons}</div>
+    </div>`;
+}
+
+// === CONTROLS ===
+function toggleTheme() { darkMode = !darkMode; render(); }
+function toggleInvert() { inverted = !inverted; render(); }
+
+// === INIT ===
+render();
+</script>
+</body>
+</html>

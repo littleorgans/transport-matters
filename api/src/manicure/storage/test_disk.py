@@ -5,14 +5,14 @@ Uses ``tmp_path`` to avoid touching the real filesystem.
 
 from __future__ import annotations
 
-import asyncio
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any  # Any: opaque rule dicts match StorageBackend API
-
-import pytest
+from typing import TYPE_CHECKING
+from unittest.mock import patch
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from pathlib import Path
+
+import pytest
 
 from manicure.ir import (
     InternalRequest,
@@ -129,63 +129,6 @@ class TestWriteAndReadExchange:
             await storage.read_exchange("nonexistent-id")
 
 
-class TestRules:
-    async def test_load_empty(self, storage: DiskStorageBackend) -> None:
-        rules = await storage.load_rules()
-        assert rules == []
-
-    async def test_modify_rules_appends(self, storage: DiskStorageBackend) -> None:
-        def _seed(data: list[dict[str, Any]]) -> list[dict[str, Any]]:
-            return [*data, {"id": "r1", "name": "strip-thinking", "enabled": True}]
-
-        await storage.modify_rules(_seed)
-        loaded = await storage.load_rules()
-        assert len(loaded) == 1
-        assert loaded[0]["name"] == "strip-thinking"
-
-    async def test_modify_rules_replaces(self, storage: DiskStorageBackend) -> None:
-        await storage.modify_rules(lambda _: [{"id": "r1", "name": "first"}])
-        await storage.modify_rules(lambda _: [{"id": "r2", "name": "second"}])
-        loaded = await storage.load_rules()
-        assert len(loaded) == 1
-        assert loaded[0]["name"] == "second"
-
-    async def test_modify_rules_aborts_on_raise(
-        self, storage: DiskStorageBackend
-    ) -> None:
-        """If fn raises, the write is skipped and state is preserved."""
-        await storage.modify_rules(lambda _: [{"id": "r1", "name": "seed"}])
-
-        def _boom(_data: list[dict[str, Any]]) -> list[dict[str, Any]]:
-            msg = "intentional"
-            raise RuntimeError(msg)
-
-        with pytest.raises(RuntimeError):
-            await storage.modify_rules(_boom)
-
-        loaded = await storage.load_rules()
-        assert len(loaded) == 1
-        assert loaded[0]["name"] == "seed"
-
-    async def test_concurrent_modify_no_race(self, storage: DiskStorageBackend) -> None:
-        """Concurrent modify_rules appends must not overwrite each other."""
-
-        def make_append(
-            n: int,
-        ) -> Callable[[list[dict[str, Any]]], list[dict[str, Any]]]:
-            def _fn(rules: list[dict[str, Any]]) -> list[dict[str, Any]]:
-                return [*rules, {"id": f"rule-{n}"}]
-
-            return _fn
-
-        await asyncio.gather(*[storage.modify_rules(make_append(i)) for i in range(8)])
-
-        loaded = await storage.load_rules()
-        assert len(loaded) == 8
-        ids = {r["id"] for r in loaded}
-        assert ids == {f"rule-{i}" for i in range(8)}
-
-
 class TestReadIndexEntry:
     async def test_returns_none_when_empty(self, storage: DiskStorageBackend) -> None:
         result = await storage.read_index_entry("nonexistent")
@@ -229,3 +172,50 @@ class TestReadIndexEntry:
         found = await storage.read_index_entry("cached-id")
         assert found is not None
         assert found.id == "cached-id"
+
+
+class TestAtomicWrite:
+    async def test_no_tmp_dir_after_successful_write(
+        self, storage: DiskStorageBackend
+    ) -> None:
+        """Successful write should leave no .tmp directories."""
+        ir = _make_ir()
+        raw = b'{"model":"test","max_tokens":1024}'
+        artifacts = ExchangeArtifacts(request_raw=raw, request_ir=ir)
+
+        await storage.write_exchange("atomic-001", artifacts)
+
+        tmp_dirs = [d for d in storage.root.iterdir() if d.name.endswith(".tmp")]
+        assert tmp_dirs == []
+
+    async def test_crash_recovery_cleans_tmp_on_init(self, tmp_path: Path) -> None:
+        """Leftover .tmp dirs from interrupted writes are cleaned up on init."""
+        leftover = tmp_path / "20260101T000000Z-deadbeef.tmp"
+        leftover.mkdir()
+        (leftover / "request.raw").write_bytes(b"partial")
+
+        DiskStorageBackend(root=str(tmp_path))
+
+        assert not leftover.exists()
+        # Normal dirs are not cleaned
+        normal = tmp_path / "20260101T000000Z-abcd1234"
+        normal.mkdir()
+        DiskStorageBackend(root=str(tmp_path))
+        assert normal.exists()
+
+    async def test_failed_write_cleans_up_tmp(
+        self, storage: DiskStorageBackend
+    ) -> None:
+        """If write_exchange fails mid-write, the .tmp dir is removed."""
+        ir = _make_ir()
+        raw = b'{"model":"test","max_tokens":1024}'
+        artifacts = ExchangeArtifacts(request_raw=raw, request_ir=ir)
+
+        with (
+            patch("aiofiles.open", side_effect=OSError("disk full")),
+            pytest.raises(OSError, match="disk full"),
+        ):
+            await storage.write_exchange("fail-001", artifacts)
+
+        tmp_dirs = [d for d in storage.root.iterdir() if d.name.endswith(".tmp")]
+        assert tmp_dirs == []

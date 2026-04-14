@@ -73,7 +73,7 @@ class TestFrozenEnforcement:
             provider="anthropic",
             system=[],
             tools=[],
-            messages=[],
+            messages=[Message(role="user", content=[TextBlock(text="hi")])],
             sampling=SamplingParams(max_tokens=1024),
             metadata=RequestMetadata(),
         )
@@ -88,7 +88,7 @@ class TestInternalRequest:
             provider="anthropic",
             system=[],
             tools=[],
-            messages=[],
+            messages=[Message(role="user", content=[TextBlock(text="hi")])],
             sampling=SamplingParams(max_tokens=1024),
             metadata=RequestMetadata(),
         )
@@ -134,6 +134,33 @@ class TestInternalResponse:
         assert resp.id == "msg_01"
         assert resp.usage.input_tokens == 100
         assert resp.provider_extras == {}
+
+
+class TestMessagesValidation:
+    def test_empty_messages_raises_validation_error(self) -> None:
+        """InternalRequest.messages requires min_length=1."""
+        with pytest.raises(ValidationError, match="messages"):
+            InternalRequest(
+                model="anthropic/claude-opus-4-6",
+                provider="anthropic",
+                system=[],
+                tools=[],
+                messages=[],
+                sampling=SamplingParams(max_tokens=1024),
+                metadata=RequestMetadata(),
+            )
+
+    def test_single_message_is_valid(self) -> None:
+        ir = InternalRequest(
+            model="anthropic/claude-opus-4-6",
+            provider="anthropic",
+            system=[],
+            tools=[],
+            messages=[Message(role="user", content=[TextBlock(text="hi")])],
+            sampling=SamplingParams(max_tokens=1024),
+            metadata=RequestMetadata(),
+        )
+        assert len(ir.messages) == 1
 
 
 class TestModelSerialization:

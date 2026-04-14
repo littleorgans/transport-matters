@@ -1,12 +1,15 @@
 """SSE stream endpoint for live exchange updates."""
 
 import asyncio
+import logging
 from collections.abc import AsyncGenerator
 
 from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 
 from manicure import broadcast
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -23,6 +26,13 @@ async def stream_exchanges() -> StreamingResponse:
                     yield f"data: {data}\n\n"
                 except TimeoutError:
                     yield ": keepalive\n\n"
+                except asyncio.CancelledError:
+                    logger.debug("SSE client disconnected (cancelled)")
+                    return
+        except GeneratorExit:
+            pass
+        except Exception:
+            logger.exception("Unexpected error in SSE generator")
         finally:
             broadcast.unsubscribe(q)
 

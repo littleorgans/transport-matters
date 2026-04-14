@@ -1,7 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
 
 export default defineConfig({
-  testDir: "./tests/e2e",
+  testDir: "./tests",
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
@@ -11,10 +11,22 @@ export default defineConfig({
     baseURL: "http://localhost:5173",
     trace: "on-first-retry",
   },
+  // ── Visual regression tolerance ──
+  // Allow up to 1% of clipped pixels to differ to absorb font anti-aliasing
+  // jitter without masking genuine layout regressions.
+  expect: {
+    toHaveScreenshot: {
+      maxDiffPixelRatio: 0.01,
+    },
+  },
   projects: [
-    { name: "chromium", use: { ...devices["Desktop Chrome"] } },
-    { name: "firefox", use: { ...devices["Desktop Firefox"] } },
-    { name: "webkit", use: { ...devices["Desktop Safari"] } },
+    // ── Behavioral e2e — three browsers ──
+    { name: "chromium", testDir: "./tests/e2e", use: { ...devices["Desktop Chrome"] } },
+    { name: "firefox", testDir: "./tests/e2e", use: { ...devices["Desktop Firefox"] } },
+    { name: "webkit", testDir: "./tests/e2e", use: { ...devices["Desktop Safari"] } },
+
+    // ── Visual regression — chromium only to keep snapshots reproducible ──
+    { name: "visual", testDir: "./tests/visual", use: { ...devices["Desktop Chrome"] } },
   ],
   webServer: {
     command: "pnpm dev",

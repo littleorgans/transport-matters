@@ -1,13 +1,14 @@
 import type {
   BreakpointStatusDetail,
-  CreateRuleBody,
   ExchangeDetail,
   IndexEntry,
   InternalRequest,
-  PatchRuleBody,
+  Override,
+  OverrideAudit,
   PausedFlow,
-  Rule,
 } from "./types";
+
+export const MAX_ENTRIES = 500;
 
 export async function fetchExchanges(limit = 50, offset = 0): Promise<IndexEntry[]> {
   const res = await fetch(`/api/exchanges?limit=${limit}&offset=${offset}`);
@@ -25,45 +26,59 @@ export async function fetchExchange(id: string): Promise<ExchangeDetail> {
   return (await res.json()) as ExchangeDetail;
 }
 
-export async function fetchRules(): Promise<Rule[]> {
-  const res = await fetch("/api/rules");
-  if (!res.ok) {
-    throw new Error(`Failed to fetch rules: ${res.status}`);
-  }
-  return (await res.json()) as Rule[];
+// ── Override endpoints ────────────────────────────────────────────
+
+export interface OverrideListResponse {
+  overrides: Override[];
+  enabled: boolean;
 }
 
-export async function createRule(body: CreateRuleBody): Promise<Rule> {
-  const res = await fetch("/api/rules", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) {
-    throw new Error(`Failed to create rule: ${res.status}`);
-  }
-  return (await res.json()) as Rule;
+export interface OverrideMutateResponse {
+  overrides: Override[];
+  enabled: boolean;
+  audit: OverrideAudit | null;
+  curated_ir: InternalRequest | null;
 }
 
-export async function patchRule(id: string, body: PatchRuleBody): Promise<Rule> {
-  const res = await fetch(`/api/rules/${encodeURIComponent(id)}`, {
+export interface ToggleResponse {
+  enabled: boolean;
+  audit: OverrideAudit | null;
+  curated_ir: InternalRequest | null;
+}
+
+export async function fetchOverrides(): Promise<OverrideListResponse> {
+  const res = await fetch("/api/overrides");
+  if (!res.ok) {
+    throw new Error(`Failed to fetch overrides: ${res.status}`);
+  }
+  return (await res.json()) as OverrideListResponse;
+}
+
+export async function patchOverrides(overrides: Override[]): Promise<OverrideMutateResponse> {
+  const res = await fetch("/api/overrides", {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
+    body: JSON.stringify({ overrides }),
   });
   if (!res.ok) {
-    throw new Error(`Failed to patch rule ${id}: ${res.status}`);
+    throw new Error(`Failed to patch overrides: ${res.status}`);
   }
-  return (await res.json()) as Rule;
+  return (await res.json()) as OverrideMutateResponse;
 }
 
-export async function deleteRule(id: string): Promise<void> {
-  const res = await fetch(`/api/rules/${encodeURIComponent(id)}`, {
-    method: "DELETE",
-  });
+export async function clearOverrides(): Promise<void> {
+  const res = await fetch("/api/overrides", { method: "DELETE" });
   if (!res.ok) {
-    throw new Error(`Failed to delete rule ${id}: ${res.status}`);
+    throw new Error(`Failed to clear overrides: ${res.status}`);
   }
+}
+
+export async function toggleOverrides(): Promise<ToggleResponse> {
+  const res = await fetch("/api/overrides/toggle", { method: "POST" });
+  if (!res.ok) {
+    throw new Error(`Failed to toggle overrides: ${res.status}`);
+  }
+  return (await res.json()) as ToggleResponse;
 }
 
 // ── Breakpoint endpoints ──────────────────────────────────────────
@@ -117,6 +132,18 @@ export async function dropFlow(flowId: string): Promise<void> {
   if (!res.ok) {
     throw new Error(`Failed to drop flow ${flowId}: ${res.status}`);
   }
+}
+
+export async function reauditFlow(
+  flowId: string,
+): Promise<{ audit: OverrideAudit; curated_ir: InternalRequest }> {
+  const res = await fetch(`/api/breakpoint/re-audit/${encodeURIComponent(flowId)}`, {
+    method: "POST",
+  });
+  if (!res.ok) {
+    throw new Error(`Failed to re-audit flow ${flowId}: ${res.status}`);
+  }
+  return (await res.json()) as { audit: OverrideAudit; curated_ir: InternalRequest };
 }
 
 export async function fetchPausedFlowDetail(flowId: string): Promise<PausedFlow> {

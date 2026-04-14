@@ -1,15 +1,17 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
-import { dropFlow, releaseFlow, releaseFlowUnmodified } from "../../api";
+import { useCallback, useEffect, useState } from "react";
+import { dropFlow, reauditFlow, releaseFlow, releaseFlowUnmodified } from "../../api";
+import { useOverrides } from "../../hooks/useOverrides";
+import { useUIStore } from "../../stores/uiStore";
 import type {
   InternalRequest,
-  Message,
+  Override,
+  OverrideAudit,
   PausedFlow,
   SamplingParams,
-  SystemPart,
-  ToolDef,
 } from "../../types";
-import { AuditPanel } from "./AuditPanel";
+
+import { JsonView } from "../detail/JsonView";
 import { EditorActions } from "./EditorActions";
 import { MessagesSection } from "./MessagesSection";
 import { PausedHeader } from "./PausedHeader";
@@ -24,101 +26,189 @@ interface BreakpointEditorProps {
 
 export function BreakpointEditor({ pausedFlow, onResolved }: BreakpointEditorProps) {
   const queryClient = useQueryClient();
+  const setForwardingFlowId = useUIStore((s) => s.setForwardingFlowId);
+  const forwardingFlowId = useUIStore((s) => s.forwardingFlowId);
   const [editedIr, setEditedIr] = useState<InternalRequest>(() => structuredClone(pausedFlow.ir));
+  const [audit, setAudit] = useState<OverrideAudit | null>(pausedFlow.audit);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<"form" | "raw">("form");
+  const { overrides, enabled, upsert, clear, toggle } = useOverrides();
 
-  const setTools = (tools: ToolDef[]) => setEditedIr((ir) => ({ ...ir, tools }));
-  const setSystem = (system: SystemPart[]) => setEditedIr((ir) => ({ ...ir, system }));
-  const setMessages = (messages: Message[]) => setEditedIr((ir) => ({ ...ir, messages }));
   const setSampling = (sampling: SamplingParams) => setEditedIr((ir) => ({ ...ir, sampling }));
+  const setProviderExtras = (provider_extras: Record<string, unknown>) =>
+    setEditedIr((ir) => ({ ...ir, provider_extras }));
+
+  // Reset forwarding state if the SSE exchange event never arrives
+  useEffect(() => {
+    if (!forwardingFlowId) return;
+    const timer = setTimeout(() => {
+      setForwardingFlowId(null);
+      setLoading(false);
+      setError("Forward timed out. The response never arrived. You can retry.");
+    }, 45_000);
+    return () => clearTimeout(timer);
+  }, [forwardingFlowId, setForwardingFlowId]);
+
+  const withError = useCallback(async (label: string, fn: () => Promise<void>) => {
+    setError(null);
+    try {
+      await fn();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : `${label} failed`);
+    }
+  }, []);
+
+  const withLoading = async (label: string, fn: () => Promise<void>) => {
+    setError(null);
+    setLoading(true);
+    try {
+      await fn();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : `${label} failed`);
+      setLoading(false);
+    }
+  };
+
+  const handleUpsert = useCallback(
+    (batch: Override[]) =>
+      withError("Override update", async () => {
+        const resp = await upsert(batch);
+        if (resp.audit) setAudit(resp.audit);
+        if (resp.curated_ir) setEditedIr(resp.curated_ir);
+      }),
+    [upsert, withError],
+  );
+
+  const handleToggle = useCallback(
+    () =>
+      withError("Toggle", async () => {
+        const resp = await toggle();
+        if (resp.audit) setAudit(resp.audit);
+        if (resp.curated_ir) setEditedIr(resp.curated_ir);
+      }),
+    [toggle, withError],
+  );
+
+  const handleClear = useCallback(
+    () =>
+      withError("Clear", async () => {
+        await clear();
+        const result = await reauditFlow(pausedFlow.flow_id);
+        setAudit(result.audit);
+        setEditedIr(result.curated_ir);
+      }),
+    [clear, pausedFlow.flow_id, withError],
+  );
 
   const invalidateExchange = () => {
-    // Mark the exchange detail stale so the next open refetches updated data.
-    // The list ("exchanges") is kept fresh by the SSE pump; no invalidation needed there.
     void queryClient.invalidateQueries({ queryKey: ["exchange", pausedFlow.flow_id] });
   };
 
-  const handleForward = async () => {
-    setError(null);
-    setLoading(true);
-    try {
+  const handleForward = () =>
+    withLoading("Forward", async () => {
       await releaseFlow(pausedFlow.flow_id, editedIr);
       invalidateExchange();
-      onResolved();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Forward failed");
-    } finally {
-      setLoading(false);
-    }
-  };
+      setForwardingFlowId(pausedFlow.flow_id);
+    });
 
-  const handleForwardUnmodified = async () => {
-    setError(null);
-    setLoading(true);
-    try {
+  const handleForwardUnmodified = () =>
+    withLoading("Pass through", async () => {
       await releaseFlowUnmodified(pausedFlow.flow_id);
       invalidateExchange();
-      onResolved();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Pass through failed");
-    } finally {
-      setLoading(false);
-    }
-  };
+      setForwardingFlowId(pausedFlow.flow_id);
+    });
 
-  const handleDrop = async () => {
-    setError(null);
-    setLoading(true);
-    try {
+  const handleDrop = () =>
+    withLoading("Drop", async () => {
       await dropFlow(pausedFlow.flow_id);
       invalidateExchange();
       onResolved();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Drop failed");
-    } finally {
-      setLoading(false);
-    }
-  };
+    });
 
   return (
     <div className="flex h-full flex-col">
-      <PausedHeader flowId={pausedFlow.flow_id} pausedAtMs={pausedFlow.paused_at_ms} />
+      <PausedHeader
+        flowId={pausedFlow.flow_id}
+        pausedAtMs={pausedFlow.paused_at_ms}
+        provider={pausedFlow.ir.provider}
+        model={editedIr.model}
+      />
       {error && (
-        <p className="mx-5 mt-3 border border-rose/25 bg-rose/5 px-4 py-2.5 text-[11px] text-rose">
+        <p className="mx-5 mt-3 border border-rose/25 bg-rose/5 px-4 py-2.5 text-[13px] text-rose">
           {error}
         </p>
       )}
 
-      <div className="flex flex-1 overflow-hidden">
-        {/* Central column: fixed masthead on top, scrollable editor below */}
-        <div className="flex flex-[2] flex-col overflow-hidden">
-          <EditorActions
-            originalIr={pausedFlow.ir}
-            pipelineAudit={pausedFlow.audit}
-            editedIr={editedIr}
-            provider={pausedFlow.ir.provider}
-            model={editedIr.model}
-            onForward={handleForward}
-            onForwardUnmodified={handleForwardUnmodified}
-            onDrop={handleDrop}
-            loading={loading}
-          />
+      <EditorActions
+        originalIr={pausedFlow.ir}
+        audit={audit}
+        editedIr={editedIr}
+        overrides={overrides}
+        overridesEnabled={enabled}
+        onToggleOverrides={handleToggle}
+        onClearOverrides={handleClear}
+        onForward={handleForward}
+        onForwardUnmodified={handleForwardUnmodified}
+        onDrop={handleDrop}
+        loading={loading}
+      />
 
-          <div className="flex-1 overflow-y-auto px-8 py-7 space-y-8">
-            <SamplingSection sampling={editedIr.sampling} onChange={setSampling} />
-            <MessagesSection messages={pausedFlow.ir.messages} onChange={setMessages} />
-            <SystemSection parts={pausedFlow.ir.system} onChange={setSystem} />
-            <ToolsSection tools={pausedFlow.ir.tools} onChange={setTools} />
-            <div className="h-8" />
-          </div>
-        </div>
-
-        {/* Sidebar */}
-        <div className="flex-[1] border-l border-edge overflow-y-auto bg-surface/40">
-          <AuditPanel audit={pausedFlow.audit} />
-        </div>
+      {/* View mode tab bar — pressed-key sibling of the detail view's
+          INSPECT|REQUEST|RESPONSE bar. Lives directly above the
+          content it switches so the choice is visually bound to what
+          renders below. Pulled out of the action strip to keep that
+          row focused purely on decide-what-to-do-next. */}
+      <div className="flex border-y border-edge">
+        {(["form", "raw"] as const).map((mode) => (
+          <button
+            key={mode}
+            type="button"
+            onClick={() => setViewMode(mode)}
+            className={`relative cursor-pointer px-8 py-3 text-[12px] font-medium uppercase tracking-[0.14em] transition-all duration-150 ${
+              viewMode === mode ? "tab-pressed text-txt" : "tab-rest text-txt-3 hover:text-txt-2"
+            }`}
+          >
+            {mode}
+          </button>
+        ))}
+        <div className="flex-1 tab-rest" />
       </div>
+
+      {viewMode === "raw" ? (
+        /* Raw — reuse the virtualized JsonView so the edited IR renders
+           with the same colorized, copy-able treatment as REQUEST and
+           RESPONSE in the detail view. JsonView handles its own scroll,
+           padding, and line-count strip. */
+        <div className="flex-1 overflow-y-auto">
+          <JsonView payload={editedIr} />
+        </div>
+      ) : (
+        <div className="flex-1 overflow-y-auto px-8 py-7 space-y-8">
+          <SamplingSection
+            sampling={editedIr.sampling}
+            onChange={setSampling}
+            providerExtras={editedIr.provider_extras}
+            onProviderExtrasChange={setProviderExtras}
+          />
+          <MessagesSection
+            messages={pausedFlow.original_messages ?? pausedFlow.ir.messages}
+            overrides={overrides}
+            onOverride={handleUpsert}
+          />
+          <SystemSection
+            parts={pausedFlow.original_system ?? pausedFlow.ir.system}
+            overrides={overrides}
+            onOverride={handleUpsert}
+          />
+          <ToolsSection
+            tools={pausedFlow.original_tools}
+            overrides={overrides}
+            onOverride={handleUpsert}
+          />
+          <div className="h-8" />
+        </div>
+      )}
     </div>
   );
 }

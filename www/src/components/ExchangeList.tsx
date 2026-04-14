@@ -1,3 +1,4 @@
+import { displayModel } from "../lib/formatting";
 import type { IndexEntry } from "../types";
 
 interface ExchangeListProps {
@@ -15,10 +16,6 @@ function formatRelativeTime(ts: string): string {
   const hours = Math.floor(minutes / 60);
   if (hours < 24) return `${hours}h ago`;
   return new Date(ts).toLocaleDateString();
-}
-
-function displayModel(model: string): string {
-  return model.replace(/^anthropic\//, "");
 }
 
 function formatKB(chars: number): string {
@@ -56,19 +53,19 @@ export function ExchangeList({ exchanges, selectedId, onSelect }: ExchangeListPr
             }`}
           >
             <div className="flex items-center justify-between gap-3">
-              <span className="truncate text-[12px] font-medium text-txt">
-                {displayModel(entry.model)}
+              <span className="truncate text-[14px] font-medium text-txt">
+                {displayModel(entry.provider, entry.model)}
               </span>
               <span
-                className={`shrink-0 text-[9px] metric-num uppercase tracking-wider ${
-                  isSelected ? "text-sky/80" : "text-txt-3"
+                className={`shrink-0 text-[11px] metric-num uppercase tracking-wider ${
+                  isSelected ? "text-accent/80" : "text-txt-3"
                 }`}
               >
                 {formatRelativeTime(entry.ts)}
               </span>
             </div>
             <div
-              className={`mt-2 flex items-center gap-2.5 text-[10px] ${
+              className={`mt-2 flex items-center gap-2.5 text-[12px] ${
                 isSelected ? "text-txt-2" : "text-txt-3"
               }`}
             >

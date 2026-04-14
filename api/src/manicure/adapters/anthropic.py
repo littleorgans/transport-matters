@@ -333,7 +333,8 @@ class AnthropicAdapter(ProviderAdapter):
                 blocks: list[ContentBlock] = [TextBlock(text=raw_content)]
             else:
                 blocks = [cls._parse_content_block(b) for b in raw_content]
-            messages.append(Message(role=item["role"], content=blocks))
+            if blocks:
+                messages.append(Message(role=item["role"], content=blocks))
         return messages
 
     @staticmethod

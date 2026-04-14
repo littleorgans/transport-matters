@@ -1,39 +1,85 @@
 @import "tailwindcss";
 
 @theme {
-  /* ── Canvas layers (charcoal blacks, slight blue undertone) ──
+  /* ── Canvas layers (pure neutral charcoals) ──
      Each step is deliberate: canvas is the deepest void, surface
-     the default card plane, raised the hover/active state. ── */
-  --color-well: #040408;
-  --color-canvas: #08080c;
-  --color-surface: #0e0e14;
-  --color-raised: #16161e;
-  --color-hover: #1e1e2a;
+     the default card plane, raised the hover/active state. Values
+     are luminance-matched to the prior blue-tinted palette so the
+     step structure is preserved; only the hue bias is removed. ── */
+  --color-well: #040404;
+  --color-canvas: #080808;
+  --color-surface: #0e0e0e;
+  --color-raised: #171717;
+  --color-hover: #1f1f1f;
 
   /* ── Borders ──
      edge is the default hairline; edge-strong marks primary
      containers; edge-subtle lives inside nested blocks. ── */
-  --color-edge: #23232f;
-  --color-edge-strong: #2c2c3a;
-  --color-edge-subtle: #16161e;
+  --color-edge: #242424;
+  --color-edge-strong: #2d2d2d;
+  --color-edge-subtle: #171717;
 
   /* ── Text ──
      txt:   primary content (body values)
      txt-2: secondary text (helper copy, inline metadata)
      txt-3: labels — uppercase section titles, metric captions
      label: explicit alias for txt-3 at call sites ── */
-  --color-txt: #dcdce4;
-  --color-txt-2: #9292a8;
-  --color-txt-3: #6e6e82;
-  --color-label: #7a7a92;
+  --color-txt: #dcdcdc;
+  --color-txt-2: #949494;
+  --color-txt-3: #707070;
+  --color-label: #7c7c7c;
 
-  /* ── Muted pastel accents ── */
+  /* ── Muted pastel accents ──
+     A fixed palette of categorical colors used for role badges,
+     token bars, tool group distinction, and syntax highlighting.
+     These stay put across theme changes. ── */
   --color-sage: #7ec9a0;
   --color-rose: #d4879c;
   --color-lavender: #a88bda;
   --color-sky: #7ab3d4;
   --color-amber: #d4b07e;
   --color-teal: #6ebcb0;
+
+  /* ── RGB triplets ──
+     Space-separated R G B values for each pastel, used anywhere
+     we need a translucent variant via rgb(var(...) / alpha). Must
+     stay in sync with the hex values above. ── */
+  --sage-rgb: 126 201 160;
+  --rose-rgb: 212 135 156;
+  --lavender-rgb: 168 139 218;
+  --sky-rgb: 122 179 212;
+  --amber-rgb: 212 176 126;
+  --teal-rgb: 110 188 176;
+
+  /* ── Chiaroscuro ──
+     Raw black and white at variable alpha — the basis of every
+     inset highlight (light from above) and gravity shadow (below)
+     in the UI. These are physical, not tonal, so they do not
+     change with the theme. ── */
+  --shadow-rgb: 0 0 0;
+  --highlight-rgb: 255 255 255;
+
+  /* ── Semantic accent ──
+     The single color used to mark active, selected, focused, and
+     live state. Swap these two values to reflavor the whole app.
+     --accent-rgb is the same color in R G B form for rgb()/rgba()
+     calls inside plain CSS (box-shadows, gradients, selection).
+
+     Current: bone — warm ivory. Against the pure-neutral canvas
+     it reads as illumination rather than color: the top strip of
+     the pressed tab and the left rail of the selected row become
+     light-from-above cues, and the FORWARD button stands out as
+     the brightest thing in its row — the primary action.
+
+     Alternatives to try:
+       platinum    #c8ccd8  —  200 204 216   (cool neutral)
+       ivory       #f0ede4  —  240 237 228   (brighter warm)
+       ghost       #e4e4e4  —  228 228 228   (pure off-white)
+       pewter      #5a5a68  —  90 90 104     (dark charcoal)
+       graphite    #4a4a58  —  74 74 88      (dark charcoal, dimmer)
+       sky         #7ab3d4  —  122 179 212   (original blue) ── */
+  --color-accent: #e8e4dc;
+  --accent-rgb: 232 228 220;
 
   /* ── Typography ── */
   --font-sans: "JetBrains Mono", monospace;
@@ -55,7 +101,7 @@
   --radius: 0;
 
   /* ── Layout constants ── */
-  --max-frame: 1600px;
+  --max-frame: 1200px;
 }
 
 /* ── Global resets ── */
@@ -126,6 +172,96 @@ body {
   animation: pulse-dot 1.5s ease-in-out infinite;
 }
 
+/* ── Tick spin (entry page icon) ──
+   13 spokes, one notch = 27.69deg. Each tick: quick ease-out
+   snap (~150ms) then hold (~850ms). Like a clock second hand. ── */
+@keyframes spin-tick {
+  0% {
+    transform: rotate(0deg);
+  }
+  1.15% {
+    transform: rotate(27.69deg);
+  }
+  7.69% {
+    transform: rotate(27.69deg);
+  }
+  8.85% {
+    transform: rotate(55.38deg);
+  }
+  15.38% {
+    transform: rotate(55.38deg);
+  }
+  16.54% {
+    transform: rotate(83.08deg);
+  }
+  23.08% {
+    transform: rotate(83.08deg);
+  }
+  24.23% {
+    transform: rotate(110.77deg);
+  }
+  30.77% {
+    transform: rotate(110.77deg);
+  }
+  31.92% {
+    transform: rotate(138.46deg);
+  }
+  38.46% {
+    transform: rotate(138.46deg);
+  }
+  39.62% {
+    transform: rotate(166.15deg);
+  }
+  46.15% {
+    transform: rotate(166.15deg);
+  }
+  47.31% {
+    transform: rotate(193.85deg);
+  }
+  53.85% {
+    transform: rotate(193.85deg);
+  }
+  55.00% {
+    transform: rotate(221.54deg);
+  }
+  61.54% {
+    transform: rotate(221.54deg);
+  }
+  62.69% {
+    transform: rotate(249.23deg);
+  }
+  69.23% {
+    transform: rotate(249.23deg);
+  }
+  70.38% {
+    transform: rotate(276.92deg);
+  }
+  76.92% {
+    transform: rotate(276.92deg);
+  }
+  78.08% {
+    transform: rotate(304.62deg);
+  }
+  84.62% {
+    transform: rotate(304.62deg);
+  }
+  85.77% {
+    transform: rotate(332.31deg);
+  }
+  92.31% {
+    transform: rotate(332.31deg);
+  }
+  93.46% {
+    transform: rotate(360deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+.spin-gentle {
+  animation: spin-tick 26s ease-out infinite;
+}
+
 /* ── Fade in ── */
 @keyframes fade-in {
   from {
@@ -143,13 +279,13 @@ body {
 
 /* ── Selection ── */
 ::selection {
-  background: rgba(122, 179, 212, 0.25);
+  background: rgb(var(--accent-rgb) / 0.25);
   color: var(--color-txt);
 }
 
 /* ── Focus ring ── */
 :focus-visible {
-  outline: 1px solid var(--color-sky);
+  outline: 1px solid var(--color-accent);
   outline-offset: 1px;
 }
 
@@ -236,10 +372,10 @@ body {
   background: var(--color-surface);
   border: 1px solid var(--color-edge);
   box-shadow:
-    inset 0 1px 0 0 rgba(255, 255, 255, 0.025),
-    inset 0 -1px 0 0 rgba(0, 0, 0, 0.25),
-    0 1px 0 0 rgba(0, 0, 0, 0.4),
-    0 2px 10px -4px rgba(0, 0, 0, 0.6);
+    inset 0 1px 0 0 rgb(var(--highlight-rgb) / 0.025),
+    inset 0 -1px 0 0 rgb(var(--shadow-rgb) / 0.25),
+    0 1px 0 0 rgb(var(--shadow-rgb) / 0.4),
+    0 2px 10px -4px rgb(var(--shadow-rgb) / 0.6);
 }
 
 /* ── Card, flush (no outer shadow) ──
@@ -248,20 +384,37 @@ body {
   background: var(--color-surface);
   border: 1px solid var(--color-edge);
   box-shadow:
-    inset 0 1px 0 0 rgba(255, 255, 255, 0.02),
-    inset 0 -1px 0 0 rgba(0, 0, 0, 0.2);
+    inset 0 1px 0 0 rgb(var(--highlight-rgb) / 0.02),
+    inset 0 -1px 0 0 rgb(var(--shadow-rgb) / 0.2);
 }
 
 /* ── Label ──
    Uppercase micro-label typography. One source of truth for
    every section title, metric caption, and axis label. ── */
 .label {
-  font-size: 9px;
+  font-size: 11px;
   line-height: 1;
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--color-label);
   font-weight: 500;
+}
+
+/* ── Field validation ──
+   Inline error hint shown only after the user has interacted
+   with an input whose value violates min/max constraints.
+   :user-invalid fires after user interaction, not on load. ── */
+input:user-invalid {
+  border-color: var(--color-rose);
+}
+.field-error {
+  display: none;
+  font-size: 11px;
+  color: var(--color-rose);
+  margin-top: 2px;
+}
+input:user-invalid + .field-error {
+  display: block;
 }
 
 /* ── Chip ──
@@ -276,15 +429,15 @@ body {
   padding: 4px 7px 3px;
   background: var(--color-raised);
   border: 1px solid var(--color-edge-subtle);
-  font-size: 9px;
+  font-size: 11px;
   line-height: 1;
   letter-spacing: 0.14em;
   text-transform: uppercase;
   font-weight: 500;
   color: var(--color-label);
   box-shadow:
-    inset 0 1px 0 0 rgba(255, 255, 255, 0.02),
-    inset 0 -1px 0 0 rgba(0, 0, 0, 0.25);
+    inset 0 1px 0 0 rgb(var(--highlight-rgb) / 0.02),
+    inset 0 -1px 0 0 rgb(var(--shadow-rgb) / 0.25);
 }
 
 /* ── Section rule ──
@@ -331,8 +484,8 @@ body {
   background: linear-gradient(
     to right,
     transparent,
-    rgba(255, 255, 255, 0.04) 20%,
-    rgba(255, 255, 255, 0.04) 80%,
+    rgb(var(--highlight-rgb) / 0.04) 20%,
+    rgb(var(--highlight-rgb) / 0.04) 80%,
     transparent
   );
   pointer-events: none;
@@ -357,8 +510,8 @@ body {
 /* ── Tab: pressed-key active state ──
    A physical recess cut into the tab bar. The active tab becomes
    a well: the surrounding surface is raised, this tile drops into
-   the canvas. A thin sky strip runs across the top lip catching
-   light from an imaginary bezel; below it a sky bloom bleeds
+   the canvas. A thin accent strip runs across the top lip catching
+   light from an imaginary bezel; below it an accent bloom bleeds
    downward into the cavity; a raking shadow darkens the upper
    cavity so the eye reads depth; side walls trap shadow at the
    left and right edges. The label color is unchanged from the
@@ -366,12 +519,12 @@ body {
 .tab-pressed {
   background: var(--color-well);
   box-shadow:
-    inset 0 2px 0 0 var(--color-sky),
-    inset 0 8px 14px -6px rgba(122, 179, 212, 0.22),
-    inset 0 12px 20px -10px rgba(0, 0, 0, 0.8),
-    inset 2px 0 4px -2px rgba(0, 0, 0, 0.55),
-    inset -2px 0 4px -2px rgba(0, 0, 0, 0.55),
-    inset 0 -1px 0 0 rgba(255, 255, 255, 0.02);
+    inset 0 2px 0 0 var(--color-accent),
+    inset 0 8px 14px -6px rgb(var(--accent-rgb) / 0.22),
+    inset 0 12px 20px -10px rgb(var(--shadow-rgb) / 0.8),
+    inset 2px 0 4px -2px rgb(var(--shadow-rgb) / 0.55),
+    inset -2px 0 4px -2px rgb(var(--shadow-rgb) / 0.55),
+    inset 0 -1px 0 0 rgb(var(--highlight-rgb) / 0.02);
 }
 .tab-pressed::after {
   content: "";
@@ -384,8 +537,8 @@ body {
   background: linear-gradient(
     to right,
     transparent,
-    rgba(122, 179, 212, 0.45) 30%,
-    rgba(122, 179, 212, 0.45) 70%,
+    rgb(var(--accent-rgb) / 0.45) 30%,
+    rgb(var(--accent-rgb) / 0.45) 70%,
     transparent
   );
 }
@@ -397,27 +550,65 @@ body {
 .tab-rest {
   background: var(--color-surface);
   box-shadow:
-    inset 0 1px 0 0 rgba(255, 255, 255, 0.025),
-    inset 0 -1px 0 0 rgba(0, 0, 0, 0.3);
+    inset 0 1px 0 0 rgb(var(--highlight-rgb) / 0.025),
+    inset 0 -1px 0 0 rgb(var(--shadow-rgb) / 0.3);
 }
 .tab-rest:hover {
   background: var(--color-raised);
 }
 
 /* ── Row: selected state ──
-   A list row that has been locked in for inspection. Sky rail on
-   the left (3px hard edge + soft bloom bleeding rightward), 1px
-   top highlight, 1px bottom gravity, and a pair of sky hairlines
+   A list row that has been locked in for inspection. Accent rail
+   on the left (3px hard edge + soft bloom bleeding rightward), 1px
+   top highlight, 1px bottom gravity, and a pair of accent hairlines
    along the top and bottom edges so the row is framed and lit
    from the left. The conceptual opposite of .tab-pressed: tabs
    press in, list rows latch forward. ── */
 .row-selected {
   background: var(--color-raised);
   box-shadow:
-    inset 3px 0 0 0 var(--color-sky),
-    inset 12px 0 24px -10px rgba(122, 179, 212, 0.28),
-    inset 0 1px 0 0 rgba(255, 255, 255, 0.04),
-    inset 0 -1px 0 0 rgba(0, 0, 0, 0.5),
-    0 1px 0 0 rgba(122, 179, 212, 0.22),
-    0 -1px 0 0 rgba(122, 179, 212, 0.22);
+    inset 3px 0 0 0 var(--color-accent),
+    inset 12px 0 24px -10px rgb(var(--accent-rgb) / 0.28),
+    inset 0 1px 0 0 rgb(var(--highlight-rgb) / 0.04),
+    inset 0 -1px 0 0 rgb(var(--shadow-rgb) / 0.5),
+    0 1px 0 0 rgb(var(--accent-rgb) / 0.22),
+    0 -1px 0 0 rgb(var(--accent-rgb) / 0.22);
+}
+
+/* ── Block recess ──
+   The 1px inset gravity applied to expanded-block preformatted
+   regions (ContentBlocks, InspectTab system parts). Reads as
+   "the content sinks into the card". ── */
+.block-recess {
+  box-shadow: inset 0 1px 0 0 rgb(var(--shadow-rgb) / 0.4);
+}
+
+/* ── Bar track ──
+   Deeper recess used by the token bar and similar inset meters.
+   Top gravity pulls the eye down; a whisper-thin lip along the
+   bottom suggests the raised edge of the cavity. ── */
+.bar-track {
+  box-shadow:
+    inset 0 1px 2px 0 rgb(var(--shadow-rgb) / 0.6),
+    inset 0 -1px 0 0 rgb(var(--highlight-rgb) / 0.03);
+}
+
+/* ── Key caps ──
+   The two Toggle states. Checked is a convex key pressed flush
+   (light above, gravity below); unchecked is a dark cavity with
+   a single gravity rim at the top. ── */
+.key-on {
+  box-shadow:
+    inset 0 1px 0 0 rgb(var(--highlight-rgb) / 0.15),
+    inset 0 -1px 0 0 rgb(var(--shadow-rgb) / 0.2);
+}
+.key-off {
+  box-shadow: inset 0 1px 0 0 rgb(var(--shadow-rgb) / 0.4);
+}
+
+/* ── Armed glow ──
+   Sage inner glow applied to the armed state of the primary
+   Arm control. Uses the pastel's RGB triplet for alpha. ── */
+.armed-glow {
+  box-shadow: inset 0 0 16px -4px rgb(var(--sage-rgb) / 0.25);
 }

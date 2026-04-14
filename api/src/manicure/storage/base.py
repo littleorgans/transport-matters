@@ -8,15 +8,13 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from datetime import datetime
-from typing import TYPE_CHECKING, Any  # Any: opaque pipeline stats and provider blobs
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from manicure.ir import InternalRequest, InternalResponse
-from manicure.rules import RuleAuditEntry as RuleAuditEntry  # explicit re-export
-
-if TYPE_CHECKING:
-    from collections.abc import Callable
+from manicure.overrides import (
+    OverrideAuditEntry as OverrideAuditEntry,
+)  # explicit re-export
 
 # ── Stats models ────────────────────────────────────────────────────
 
@@ -36,7 +34,7 @@ class ReqStats(BaseModel):
 class PipelineStats(BaseModel):
     model_config = ConfigDict(frozen=True)
 
-    rules_applied: list[RuleAuditEntry] = Field(default_factory=list)
+    overrides_applied: list[OverrideAuditEntry] = Field(default_factory=list)
     chars_before: int = 0
     chars_after: int = 0
     tokens_approx: int = 0
@@ -102,31 +100,6 @@ class StorageBackend(ABC):
 
     @abstractmethod
     async def read_exchange(self, exchange_id: str) -> ExchangeArtifacts: ...
-
-    @abstractmethod
-    async def load_rules(
-        self,
-    ) -> list[dict[str, Any]]: ...  # Any: rule definitions are opaque
-
-    @abstractmethod
-    async def modify_rules(
-        self,
-        fn: Callable[[list[dict[str, Any]]], list[dict[str, Any]]],
-    ) -> None:
-        """Atomically read, transform, and write rules under a single lock.
-
-        ``fn`` receives the current list (empty if rules.json does not exist),
-        must return the replacement list, and may raise to abort the write.
-        Implementations must hold the write lock for the entire read→fn→write
-        sequence so concurrent callers cannot interleave. This is the only
-        write path for rules; no unlocked ``save_rules`` exists.
-
-        ``fn`` must be a regular (synchronous) callable. Async callables are
-        not supported: the implementation calls ``result = fn(data)``
-        synchronously inside the lock; an async ``fn`` would return a coroutine
-        that gets serialised to disk instead of the transformed rule list.
-        """
-        ...
 
     @abstractmethod
     async def read_index_entry(self, exchange_id: str) -> IndexEntry | None: ...

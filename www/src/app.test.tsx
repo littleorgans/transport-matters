@@ -20,17 +20,17 @@ beforeEach(() => {
     },
   );
   // Reset store between tests
-  useUIStore.setState({ pausedFlow: null, selectedId: null, activeTab: "log" });
+  useUIStore.setState({ pausedFlow: null, selectedId: null });
 });
 
 describe("App", () => {
   it("renders the app title", () => {
     renderWithProviders(<App />);
-    expect(screen.getByText("Manicure")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Manicure" })).toBeInTheDocument();
   });
 
-  it("shows empty state prompt", () => {
+  it("shows entry page when no exchanges", () => {
     renderWithProviders(<App />);
-    expect(screen.getByText("Select an exchange to inspect")).toBeInTheDocument();
+    expect(screen.getByText("Waiting for exchanges")).toBeInTheDocument();
   });
 });

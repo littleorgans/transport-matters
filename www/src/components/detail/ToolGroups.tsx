@@ -20,12 +20,12 @@ function shortName(name: string): string {
   return parts[parts.length - 1] ?? name;
 }
 
-export function groupTools(tools: Array<{ name: string }>): [string, string[]][] {
-  const map: Record<string, string[]> = {};
+export function groupTools<T extends { name: string }>(tools: T[]): [string, T[]][] {
+  const map: Record<string, T[]> = {};
   for (const t of tools) {
     const group = pluginLabel(t.name);
     if (!map[group]) map[group] = [];
-    map[group].push(t.name);
+    map[group].push(t);
   }
   return Object.entries(map).sort(([a], [b]) => {
     if (a === "built-in") return -1;
@@ -51,8 +51,8 @@ function groupColour(label: string): string {
   return colour;
 }
 
-export function ToolGroup({ label, names }: { label: string; names: string[] }) {
-  const [open, setOpen] = useState(false);
+export function ToolGroup({ label, tools }: { label: string; tools: Array<{ name: string }> }) {
+  const [open, setOpen] = useState(true);
   const colour = groupColour(label);
   const isBuiltIn = label === "built-in";
 
@@ -76,19 +76,19 @@ export function ToolGroup({ label, names }: { label: string; names: string[] }) 
         </div>
         <div className="flex items-center gap-4">
           <span className="flex items-baseline gap-1.5">
-            <span className={`metric-num text-[13px] font-medium ${colour}`}>{names.length}</span>
+            <span className={`metric-num text-[15px] font-medium ${colour}`}>{tools.length}</span>
             <span className="label">tools</span>
           </span>
           <span className="relative inline-block h-3 w-3">
             <span
-              className={`absolute inset-0 flex items-center justify-center text-[13px] leading-none text-txt-3 transition-opacity duration-150 group-hover:text-txt-2 ${
+              className={`absolute inset-0 flex items-center justify-center text-[15px] leading-none text-txt-3 transition-opacity duration-150 group-hover:text-txt-2 ${
                 open ? "opacity-0" : "opacity-100"
               }`}
             >
               {"+"}
             </span>
             <span
-              className={`absolute inset-0 flex items-center justify-center text-[13px] leading-none text-txt-3 transition-opacity duration-150 group-hover:text-txt-2 ${
+              className={`absolute inset-0 flex items-center justify-center text-[15px] leading-none text-txt-3 transition-opacity duration-150 group-hover:text-txt-2 ${
                 open ? "opacity-100" : "opacity-0"
               }`}
             >
@@ -103,13 +103,13 @@ export function ToolGroup({ label, names }: { label: string; names: string[] }) 
           <div className="hairline-x" />
           <div className="px-4 py-3">
             <div className="flex flex-wrap gap-1.5">
-              {names.map((name) => (
+              {tools.map((t) => (
                 <span
-                  key={name}
-                  title={name}
-                  className={`border border-edge bg-canvas px-2 py-1 font-mono text-[10px] ${colour}`}
+                  key={t.name}
+                  title={t.name}
+                  className={`border border-edge bg-canvas px-2 py-1 font-mono text-[12px] ${colour}`}
                 >
-                  {shortName(name)}
+                  {shortName(t.name)}
                 </span>
               ))}
             </div>

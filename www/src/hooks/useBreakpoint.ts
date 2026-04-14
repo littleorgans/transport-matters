@@ -33,7 +33,7 @@ export function useBreakpoint(): {
     if (!first) return;
     fetchPausedFlowDetail(first.flow_id)
       .then(setPausedFlow)
-      .catch(() => {});
+      .catch((err) => console.error("Failed to hydrate paused flow:", err));
   }, [pausedFlows, pausedFlow, setPausedFlow]);
 
   const armMutation = useMutation({

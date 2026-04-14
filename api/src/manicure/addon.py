@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+import uuid
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any  # Any: mitmproxy loader type is untyped
 
@@ -23,9 +24,12 @@ from manicure.adapters import get_adapter
 from manicure.config import get_settings
 from manicure.ir import InternalRequest, InternalResponse, TextBlock, ToolUseBlock
 from manicure.main import create_app
-from manicure.pipeline import PipelineAudit, count_chars_parts
-from manicure.pipeline import apply as pipeline_apply
-from manicure.rules import Rule
+from manicure.overrides import (
+    OverrideAudit,
+    apply_overrides,
+    count_chars_parts,
+    get_store,
+)
 from manicure.storage import IndexEntry, PipelineStats, ReqStats, ResStats, init_storage
 from manicure.storage.base import ExchangeArtifacts, StorageBackend
 
@@ -43,7 +47,7 @@ def _build_req_stats(ir: InternalRequest) -> ReqStats:
         system_chars=system_chars,
         tools_count=len(ir.tools),
         tools_chars=tools_chars,
-        messages_count=len(ir.messages),
+        messages_count=sum(len(m.content) for m in ir.messages),
         messages_chars=messages_chars,
         total_chars=system_chars + tools_chars + messages_chars,
     )
@@ -87,7 +91,11 @@ def _parse_sse_stats(raw: bytes) -> ResStats:
     text_chars = 0
     tool_calls = 0
 
-    text = raw.decode("utf-8", errors="replace")
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        logger.warning("SSE payload contains invalid UTF-8 bytes, using replacement")
+        text = raw.decode("utf-8", errors="replace")
     for line in text.splitlines():
         if not line.startswith("data: "):
             continue
@@ -155,78 +163,87 @@ async def _parse_request_ir(
 
 
 async def _run_pipeline(
-    storage: StorageBackend,
     ir: InternalRequest,
     flow_id: str,
-) -> tuple[InternalRequest, PipelineAudit | None]:
-    """Load rules, apply pipeline, bump applied_count transactionally.
-
-    The applied_count bump goes through ``storage.modify_rules`` so it cannot
-    resurrect rules deleted concurrently via the API. The bump iterates over
-    the fresh state inside the lock; any rule missing from that fresh state
-    stays missing. A failed bump does not invalidate the pipeline output.
-
-    Never raises.
-    """
-    try:
-        rules_data = await storage.load_rules()
-        rules = [Rule.model_validate(r) for r in rules_data]
-        curated_ir, audit = pipeline_apply(rules, ir)
-    except Exception:
-        logger.exception("Pipeline failed for flow %s, forwarding unmodified", flow_id)
+) -> tuple[InternalRequest, OverrideAudit | None]:
+    """Apply overrides from the store to the IR. Never raises."""
+    store = get_store()
+    if not store.enabled:
         return ir, None
 
-    if audit.rules_applied:
-        applied_ids = {e.id for e in audit.rules_applied}
-
-        def _bump(data: list[dict[str, Any]]) -> list[dict[str, Any]]:
-            out: list[dict[str, Any]] = []
-            for raw in data:
-                rule = Rule.model_validate(raw)
-                if rule.id in applied_ids:
-                    rule = Rule.model_validate(
-                        {
-                            **rule.model_dump(by_alias=True),
-                            "applied_count": rule.applied_count + 1,
-                        }
-                    )
-                out.append(rule.model_dump(mode="json", by_alias=True))
-            return out
-
-        try:
-            await storage.modify_rules(_bump)
-        except Exception:
-            logger.exception(
-                "Failed to bump applied_count for flow %s; pipeline output preserved",
-                flow_id,
-            )
+    try:
+        curated_ir, audit = apply_overrides(store.get_all(), ir)
+    except Exception:
+        logger.exception(
+            "Override pipeline failed for flow %s, forwarding unmodified", flow_id
+        )
+        return ir, None
 
     return curated_ir, audit
+
+
+def _resolve_paused_flow(pf: bp.PausedFlow) -> tuple[InternalRequest, bool]:
+    """Decide the IR to forward and whether the user meaningfully edited it.
+
+    A release via the Forward button populates ``pf.mutated_ir``, but that
+    alone does not imply the user changed anything: the editor may have been
+    opened and submitted unchanged. Declare manual mutation only when the
+    submitted IR structurally diverges from the pipeline's ``curated_ir``.
+    """
+    if pf.mutated_ir is None:
+        return pf.curated_ir, False
+    return pf.mutated_ir, pf.mutated_ir != pf.curated_ir
 
 
 async def _handle_breakpoint(
     flow: http.HTTPFlow,
     adapter: Any,  # Any: adapter protocol has no shared base
+    original_ir: InternalRequest,
     curated_ir: InternalRequest,
-    audit: PipelineAudit | None,
+    audit: OverrideAudit | None,
 ) -> None:
-    """Pause at breakpoint, await user action, rewrite request in place."""
+    """Pause at breakpoint, await user action, rewrite request in place.
+
+    Concurrent requests queue on ``bp.pause_serializer()`` so only one flow
+    is presented to the user at a time. Other flows block here in FIFO order
+    until the active flow is released.
+    """
     from mitmproxy.http import Response as MitmResponse
 
-    paused_at_ms = int(time.time() * 1000)
-    event = bp.pause(flow, curated_ir, audit)
-    broadcast.emit(
-        {
-            "type": "paused",
-            "flow_id": flow.id,
-            "ir": curated_ir.model_dump(mode="json"),
-            "audit": audit.model_dump(mode="json") if audit else None,
-            "paused_at_ms": paused_at_ms,
-        }
-    )
-    await event.wait()
+    logger.info("BREAKPOINT %s waiting for serializer", flow.id)
+    async with bp.pause_serializer():
+        logger.info("BREAKPOINT %s acquired serializer, pausing", flow.id)
+        paused_at_ms = int(time.time() * 1000)
+        event = await bp.pause(flow, original_ir, curated_ir, audit)
+        broadcast.emit(
+            {
+                "type": "paused",
+                "flow_id": flow.id,
+                "ir": curated_ir.model_dump(mode="json"),
+                "original_tools": [
+                    t.model_dump(mode="json") for t in original_ir.tools
+                ],
+                "original_system": [
+                    sp.model_dump(mode="json") for sp in original_ir.system
+                ],
+                "original_messages": [
+                    m.model_dump(mode="json") for m in original_ir.messages
+                ],
+                "audit": audit.model_dump(mode="json") if audit else None,
+                "paused_at_ms": paused_at_ms,
+            }
+        )
+        settings = get_settings()
+        try:
+            await asyncio.wait_for(event.wait(), timeout=settings.breakpoint_timeout_s)
+        except TimeoutError:
+            logger.warning(
+                "Breakpoint timeout (%.0fs) for flow %s, auto-releasing",
+                settings.breakpoint_timeout_s,
+                flow.id,
+            )
 
-    pf = bp.get_paused().pop(flow.id, None)
+        pf = await bp.pop_paused(flow.id)
     if pf is None:
         return
 
@@ -238,9 +255,9 @@ async def _handle_breakpoint(
         )
         return
 
-    final_ir = pf.mutated_ir if pf.mutated_ir is not None else curated_ir
+    final_ir, mutated_manually = _resolve_paused_flow(pf)
     flow.request.set_text(adapter.outbound_request(final_ir).decode())
-    flow.metadata["manicure_mutated_manually"] = pf.mutated_ir is not None
+    flow.metadata["manicure_mutated_manually"] = mutated_manually
     # Persist the IR that was actually sent to the provider so response()
     # writes it to request.curated.ir.json.
     flow.metadata["manicure_curated_ir"] = final_ir
@@ -267,15 +284,15 @@ def _parse_response_ir(
         return None, None
 
 
-def _build_pipeline_stats(audit: PipelineAudit | None) -> PipelineStats | None:
-    """Convert a PipelineAudit to the storable PipelineStats."""
+def _build_pipeline_stats(audit: OverrideAudit | None) -> PipelineStats | None:
+    """Convert an OverrideAudit to the storable PipelineStats."""
     if audit is None:
         return None
     return PipelineStats(
-        rules_applied=list(audit.rules_applied),
+        overrides_applied=list(audit.entries),
         chars_before=audit.chars_before,
         chars_after=audit.chars_after,
-        tokens_approx=audit.tokens_approx,
+        tokens_approx=abs(audit.chars_delta) // 4,
     )
 
 
@@ -303,23 +320,23 @@ def _emit_exchange(
     ts: datetime,
     mutated_manually: bool = False,
     pipeline_stats: PipelineStats | None = None,
+    flow_id: str | None = None,
 ) -> None:
     """Broadcast the exchange event to SSE subscribers."""
-    broadcast.emit(
-        {
-            "type": "exchange",
-            "id": exchange_id,
-            "ts": ts.isoformat(),
-            "provider": ir.provider,
-            "model": ir.model,
-            "req": req_stats.model_dump(mode="json"),
-            "res": res_stats.model_dump(mode="json") if res_stats else None,
-            "mutated_manually": mutated_manually,
-            "pipeline": pipeline_stats.model_dump(mode="json")
-            if pipeline_stats
-            else None,
-        }
-    )
+    payload: dict[str, object] = {
+        "type": "exchange",
+        "id": exchange_id,
+        "ts": ts.isoformat(),
+        "provider": ir.provider,
+        "model": ir.model,
+        "req": req_stats.model_dump(mode="json"),
+        "res": res_stats.model_dump(mode="json") if res_stats else None,
+        "mutated_manually": mutated_manually,
+        "pipeline": pipeline_stats.model_dump(mode="json") if pipeline_stats else None,
+    }
+    if flow_id is not None:
+        payload["flow_id"] = flow_id
+    broadcast.emit(payload)
 
 
 # ── Addon ───────────────────────────────────────────────────────────
@@ -348,8 +365,10 @@ class ManicureAddon:
     async def request(self, flow: http.HTTPFlow) -> None:
         if not flow.request.path.startswith("/v1/messages"):
             return
-        adapter = get_adapter(flow)
-        if adapter is None:
+        try:
+            adapter = get_adapter(flow)
+        except Exception:
+            logger.debug("No adapter matches flow %s, passing through", flow.id)
             return
 
         result = await _parse_request_ir(flow, adapter)
@@ -357,10 +376,16 @@ class ManicureAddon:
             return
         raw, ir = result
 
-        from manicure.storage import get_storage
+        logger.info(
+            "REQ %s model=%s system=%d tools=%d msgs=%d",
+            flow.id,
+            ir.model,
+            len(ir.system),
+            len(ir.tools),
+            len(ir.messages),
+        )
 
-        storage = get_storage()
-        curated_ir, audit = await _run_pipeline(storage, ir, flow.id)
+        curated_ir, audit = await _run_pipeline(ir, flow.id)
 
         flow.metadata["manicure_adapter"] = adapter
         flow.metadata["manicure_ir"] = ir
@@ -368,13 +393,25 @@ class ManicureAddon:
         flow.metadata["manicure_curated_ir"] = curated_ir
         flow.metadata["manicure_audit"] = audit
 
-        if bp.is_armed():
-            await _handle_breakpoint(flow, adapter, curated_ir, audit)
+        settings = get_settings()
+        skip = any(s in ir.model for s in settings.breakpoint_skip_models)
+        if skip:
+            logger.info(
+                "Breakpoint skip: %s matches breakpoint_skip_models filter",
+                flow.id,
+            )
+        if not skip and bp.is_armed():
+            logger.info("BREAKPOINT %s armed, pausing", flow.id)
+            await _handle_breakpoint(flow, adapter, ir, curated_ir, audit)
         else:
+            logger.debug(
+                "Skipping breakpoint for %s (another flow paused or not armed)",
+                flow.id,
+            )
             flow.request.set_text(adapter.outbound_request(curated_ir).decode())
 
-    def done(self) -> None:
-        bp.clear_all()
+    async def done(self) -> None:
+        await bp.clear_all()
 
     async def response(self, flow: http.HTTPFlow) -> None:
         adapter = flow.metadata.get("manicure_adapter")
@@ -385,11 +422,11 @@ class ManicureAddon:
 
         from manicure.storage import get_storage
 
-        storage = get_storage()
+        storage = await get_storage()
         curated_ir = flow.metadata.get("manicure_curated_ir", ir)
         audit = flow.metadata.get("manicure_audit")
 
-        exchange_id = flow.id
+        exchange_id = str(uuid.uuid4())
         ts = datetime.now(UTC)
 
         res_text = flow.response.get_text() if flow.response else None
@@ -420,7 +457,7 @@ class ManicureAddon:
         artifacts = ExchangeArtifacts(
             request_raw=raw_req,
             request_ir=ir,
-            request_curated_ir=curated_ir if curated_ir is not ir else None,
+            request_curated_ir=curated_ir if curated_ir != ir else None,
             response_raw=raw_res or None,
             response_ir=res_ir,
         )
@@ -429,7 +466,14 @@ class ManicureAddon:
             return
 
         _emit_exchange(
-            ir, req_stats, res_stats, exchange_id, ts, mutated_manually, pipeline_stats
+            ir,
+            req_stats,
+            res_stats,
+            exchange_id,
+            ts,
+            mutated_manually,
+            pipeline_stats,
+            flow_id=flow.id,
         )
 
 

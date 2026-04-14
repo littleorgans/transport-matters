@@ -39,13 +39,10 @@ export function Toggle({ checked, onChange, label, size = "md", disabled }: Togg
       className={`${dims} shrink-0 border transition-colors ${
         disabled ? "cursor-not-allowed opacity-40" : "cursor-pointer"
       } ${
-        checked ? "bg-sage/80 border-sage/60" : "bg-canvas border-edge-strong hover:border-txt-3"
+        checked
+          ? "bg-sage/80 border-sage/60 key-on"
+          : "bg-canvas border-edge-strong hover:border-txt-3 key-off"
       }`}
-      style={{
-        boxShadow: checked
-          ? "inset 0 1px 0 0 rgba(255,255,255,0.15), inset 0 -1px 0 0 rgba(0,0,0,0.2)"
-          : "inset 0 1px 0 0 rgba(0,0,0,0.4)",
-      }}
     />
   );
 }

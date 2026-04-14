@@ -1,9 +1,48 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { MAX_ENTRIES } from "../api";
 import { useUIStore } from "../stores/uiStore";
 import type { IndexEntry, PausedFlow } from "../types";
 
-const MAX_ENTRIES = 500;
+function isValidPausedEvent(data: Record<string, unknown>): data is {
+  type: "paused";
+  flow_id: string;
+  ir: PausedFlow["ir"];
+  original_tools?: PausedFlow["original_tools"];
+  original_system?: PausedFlow["original_system"];
+  original_messages?: PausedFlow["original_messages"];
+  audit?: PausedFlow["audit"];
+  paused_at_ms: number;
+} {
+  return (
+    typeof data.flow_id === "string" &&
+    typeof data.paused_at_ms === "number" &&
+    data.ir != null &&
+    typeof data.ir === "object"
+  );
+}
+
+function isValidExchangeEvent(data: Record<string, unknown>): data is {
+  type: "exchange";
+  id: string;
+  ts: string;
+  provider: string;
+  model: string;
+  req: IndexEntry["req"];
+  pipeline?: IndexEntry["pipeline"];
+  res?: IndexEntry["res"];
+  mutated_manually?: boolean;
+  flow_id?: string;
+} {
+  return (
+    typeof data.id === "string" &&
+    typeof data.ts === "string" &&
+    typeof data.provider === "string" &&
+    typeof data.model === "string" &&
+    data.req != null &&
+    typeof data.req === "object"
+  );
+}
 
 /**
  * Pure SSE pump: manages the EventSource connection and pushes incoming
@@ -15,6 +54,16 @@ export function useExchangeStream(): { connected: boolean } {
   const queryClient = useQueryClient();
   const setPausedFlow = useUIStore((s) => s.setPausedFlow);
   const clearPausedFlow = useUIStore((s) => s.clearPausedFlow);
+  const setSelectedId = useUIStore((s) => s.setSelectedId);
+
+  // Backfill exchanges on SSE reconnect to cover any gap during disconnect
+  const hasConnected = useRef(false);
+  useEffect(() => {
+    if (connected && hasConnected.current) {
+      queryClient.invalidateQueries({ queryKey: ["exchanges"] });
+    }
+    if (connected) hasConnected.current = true;
+  }, [connected, queryClient]);
 
   useEffect(() => {
     const source = new EventSource("/api/stream");
@@ -26,44 +75,56 @@ export function useExchangeStream(): { connected: boolean } {
         const data = JSON.parse(event.data) as Record<string, unknown>;
 
         if (data.type === "paused") {
+          if (!isValidPausedEvent(data)) return;
+          setSelectedId(null);
           setPausedFlow({
-            flow_id: data.flow_id as string,
-            ir: data.ir as PausedFlow["ir"],
-            audit: (data.audit as PausedFlow["audit"]) ?? null,
-            paused_at_ms: data.paused_at_ms as number,
+            flow_id: data.flow_id,
+            ir: data.ir,
+            original_tools: data.original_tools ?? data.ir.tools,
+            original_system: data.original_system ?? data.ir.system,
+            original_messages: data.original_messages ?? data.ir.messages,
+            audit: data.audit ?? null,
+            paused_at_ms: data.paused_at_ms,
           });
           return;
         }
 
         if (data.type === "exchange") {
+          if (!isValidExchangeEvent(data)) return;
           const entry: IndexEntry = {
-            id: data.id as string,
-            ts: data.ts as string,
-            provider: data.provider as string,
-            model: data.model as string,
+            id: data.id,
+            ts: data.ts,
+            provider: data.provider,
+            model: data.model,
             path: "",
-            req: data.req as IndexEntry["req"],
-            pipeline: (data.pipeline as IndexEntry["pipeline"]) ?? null,
-            res: (data.res as IndexEntry["res"]) ?? null,
-            mutated_manually: (data.mutated_manually as boolean) ?? false,
+            req: data.req,
+            pipeline: data.pipeline ?? null,
+            res: data.res ?? null,
+            mutated_manually: data.mutated_manually ?? false,
           };
           queryClient.setQueryData<IndexEntry[]>(["exchanges"], (prev = []) =>
             [entry, ...prev.filter((e) => e.id !== entry.id)].slice(0, MAX_ENTRIES),
           );
-          // Secondary clear: if SSE delivers the matching exchange, also clear the
-          // overlay. Primary clear is onResolved in BreakpointEditor after mutation.
-          const current = useUIStore.getState().pausedFlow;
-          if (current?.flow_id === (data.id as string)) {
-            clearPausedFlow();
+          setSelectedId(entry.id);
+
+          // Only clear the breakpoint editor if the completed exchange matches
+          // the flow we're forwarding AND no new flow has paused in the meantime.
+          const { forwardingFlowId, pausedFlow } = useUIStore.getState();
+          if (forwardingFlowId && data.flow_id === forwardingFlowId) {
+            if (!pausedFlow || pausedFlow.flow_id === forwardingFlowId) {
+              clearPausedFlow();
+            } else {
+              useUIStore.getState().setForwardingFlowId(null);
+            }
           }
         }
-      } catch {
-        // Ignore malformed events
+      } catch (e) {
+        if (!(e instanceof SyntaxError)) console.error("SSE handler error:", e);
       }
     };
 
     return () => source.close();
-  }, [queryClient, setPausedFlow, clearPausedFlow]);
+  }, [queryClient, setPausedFlow, clearPausedFlow, setSelectedId]);
 
   return { connected };
 }

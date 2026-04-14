@@ -6,20 +6,26 @@
  * visual language stays consistent across request and response.
  */
 
-import { useState } from "react";
+import { useCollapsibleSet } from "../../hooks/useCollapsibleSet";
 import type { ContentBlock, Message } from "../../types";
+import { Chevron, MasterBar, SECTION_TONE } from "./atoms";
 
 // Block type markers are intentionally uniform: a single .chip
 // colour across every kind so scanning reads as a quiet index,
 // not a traffic light. Semantic colour lives on the row accent
 // and in the expanded detail, not on the marker.
 
-function blockSummary(block: ContentBlock): string {
+/** Total content blocks across all messages. Single source of truth for message counts. */
+export function countContentBlocks(messages: Message[]): number {
+  return messages.reduce((sum, m) => sum + m.content.length, 0);
+}
+
+export function blockSummary(block: ContentBlock, maxPreview = 220): string {
   switch (block.type) {
     case "text": {
       const trimmed = block.text.trim();
       if (trimmed.length === 0) return "(empty)";
-      return trimmed.slice(0, 220) + (trimmed.length > 220 ? "\u2026" : "");
+      return trimmed.slice(0, maxPreview) + (trimmed.length > maxPreview ? "\u2026" : "");
     }
     case "tool_use":
       return `${block.name}  \u00b7  ${block.id.slice(0, 8)}`;
@@ -49,28 +55,35 @@ export function blockKey(block: ContentBlock, idx: number): string {
 // Click to expand. Summary on the closed state, pre-formatted
 // detail on the open state.
 
-export function ContentBlockRow({ block }: { block: ContentBlock }) {
-  const [expanded, setExpanded] = useState(false);
+export function ContentBlockRow({
+  block,
+  expanded,
+  onToggleExpanded,
+}: {
+  block: ContentBlock;
+  expanded: boolean;
+  onToggleExpanded: () => void;
+}) {
   const isError = block.type === "tool_result" && block.is_error;
 
   return (
     <div className="px-4 py-2.5">
       <button
         type="button"
-        onClick={() => setExpanded((v) => !v)}
+        onClick={onToggleExpanded}
         className="flex w-full cursor-pointer items-start gap-3 text-left"
       >
         <span className="chip shrink-0">{block.type}</span>
         {isError && <span className="chip shrink-0 text-rose">error</span>}
-        <span className="text-[11px] text-txt-2 truncate leading-5 mt-0.5">
+        <span className="text-[13px] text-txt-2 truncate leading-5 mt-0.5 flex-1 min-w-0">
           {blockSummary(block)}
+        </span>
+        <span className="mt-1 shrink-0">
+          <Chevron expanded={expanded} />
         </span>
       </button>
       {expanded && (
-        <pre
-          className="mt-3 max-h-72 overflow-auto bg-canvas p-4 text-[10px] leading-relaxed text-txt-2 whitespace-pre-wrap border border-edge-subtle"
-          style={{ boxShadow: "inset 0 1px 0 0 rgba(0,0,0,0.4)" }}
-        >
+        <pre className="mt-3 bg-canvas p-4 text-[12px] leading-relaxed text-txt-2 whitespace-pre-wrap border border-edge-subtle block-recess">
           {block.type === "text" || block.type === "thinking"
             ? block.text
             : JSON.stringify(block, null, 2)}
@@ -85,27 +98,37 @@ export function ContentBlockRow({ block }: { block: ContentBlock }) {
 // text and the header's faint background wash. Block rows stay
 // uniform so scanning reads as a quiet index.
 
-const ROLE_TONE: Record<string, { text: string; bg: string }> = {
+export const ROLE_TONE: Record<string, { text: string; bg: string }> = {
   user: { text: "text-sky", bg: "bg-sky/5" },
   assistant: { text: "text-sage", bg: "bg-sage/5" },
 };
 
 export function RequestMessage({ message }: { message: Message }) {
-  const tone = ROLE_TONE[message.role] ?? { text: "text-txt-2", bg: "bg-raised" };
+  const tone = SECTION_TONE[message.role] ?? ROLE_TONE[message.role];
+  const { allExpanded, toggleAll, toggleOne, isExpanded } = useCollapsibleSet(
+    message.content.length,
+    true,
+  );
 
   return (
     <div className="card-flush">
-      <div className={`flex items-center gap-3 px-4 py-2.5 ${tone.bg}`}>
-        <span className={`chip ${tone.text}`}>{message.role}</span>
-        <span className="ml-auto text-[11px] text-txt-3 metric-num">
-          {message.content.length} block{message.content.length !== 1 ? "s" : ""}
-        </span>
-      </div>
+      <MasterBar
+        label={message.role}
+        tone={tone}
+        count={message.content.length}
+        countUnit="block"
+        allExpanded={allExpanded}
+        onToggleAll={toggleAll}
+      />
       <div className="hairline-x" />
       <div>
         {message.content.map((block, idx) => (
           <div key={blockKey(block, idx)}>
-            <ContentBlockRow block={block} />
+            <ContentBlockRow
+              block={block}
+              expanded={isExpanded(idx)}
+              onToggleExpanded={() => toggleOne(idx)}
+            />
             {idx < message.content.length - 1 && <div className="hairline-x mx-4" />}
           </div>
         ))}

@@ -134,7 +134,7 @@ class InternalRequest(BaseModel):
     provider: str
     system: list[SystemPart]
     tools: list[ToolDef]
-    messages: list[Message]
+    messages: list[Message] = Field(min_length=1)
     sampling: SamplingParams
     metadata: RequestMetadata
     stream: bool = False

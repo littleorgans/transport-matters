@@ -1,5 +1,4 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import React from "react";
 import { describe, expect, it, vi } from "vitest";
 import type { Message } from "../../types";
 import { MessagesSection } from "./MessagesSection";
@@ -15,23 +14,44 @@ const messages: Message[] = [
 ];
 
 describe("MessagesSection", () => {
-  it("onChange called exactly once per toggle under StrictMode — no side-effect-in-updater double-fire", () => {
-    const onChange = vi.fn();
+  it("block toggle calls onOverride with message_block_toggle", () => {
+    const onOverride = vi.fn();
+
+    render(<MessagesSection messages={messages} overrides={[]} onOverride={onOverride} />);
+
+    const toggles = screen.getAllByRole("switch");
+    // All toggles are block toggles now that the "strip thinking" UI is gone
+    const blockToggle = toggles[0];
+    if (blockToggle) {
+      fireEvent.click(blockToggle);
+    }
+
+    expect(onOverride).toHaveBeenCalledWith([
+      { kind: "message_block_toggle", target: "msg:0:blk:0", value: false },
+    ]);
+  });
+
+  it("toggled-off block re-toggle sends null to remove override", () => {
+    const onOverride = vi.fn();
 
     render(
-      <React.StrictMode>
-        <MessagesSection messages={messages} onChange={onChange} />
-      </React.StrictMode>,
+      <MessagesSection
+        messages={messages}
+        overrides={[{ kind: "message_block_toggle", target: "msg:0:blk:0", value: false }]}
+        onOverride={onOverride}
+      />,
     );
 
     const toggles = screen.getAllByRole("switch");
-    const firstToggle = toggles[0];
-    if (firstToggle) {
-      fireEvent.click(firstToggle);
+    // Block 0 should be unchecked due to override
+    const blockToggle = toggles[0];
+    if (blockToggle) {
+      expect(blockToggle.getAttribute("aria-checked")).toBe("false");
+      fireEvent.click(blockToggle);
     }
 
-    // With the bug: StrictMode double-invokes the updater → onChange fires twice.
-    // After the fix: onChange fires exactly once.
-    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(onOverride).toHaveBeenCalledWith([
+      { kind: "message_block_toggle", target: "msg:0:blk:0", value: null },
+    ]);
   });
 });

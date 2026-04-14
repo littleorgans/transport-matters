@@ -10,6 +10,9 @@ wheels/
 # Virtual environments
 .venv/
 
+# Node (stray caches from invoking tools outside www/)
+node_modules/
+
 # IDE
 .vscode/
 .idea/

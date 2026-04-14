@@ -1,16 +1,74 @@
-/**
- * Shared atoms for the detail view.
- *
- * Each primitive has one job and one look. Combined, they give
- * every panel inside the Inspect tab a consistent identity.
- */
-
 import type { ReactNode } from "react";
 
-// ── SectionRule ────────────────────────────────────────────────────
-// An uppercase label flanked by a pair of gradient hairlines that
-// fade toward the container edges. Used as a top-level divider
-// between sections inside a tab body.
+// Chevron — one character that rotates 90° on expand. Using a triangle
+// glyph keeps the visual minimal and archival, no SVG needed. The
+// rotation runs through `transition-transform` so it reads as a
+// continuous motion rather than two static states.
+export function Chevron({ expanded }: { expanded: boolean }) {
+  return (
+    <span
+      aria-hidden
+      className={`inline-block text-[10px] leading-none text-txt-3 transition-transform duration-150 ${
+        expanded ? "rotate-90" : ""
+      }`}
+    >
+      &#9656;
+    </span>
+  );
+}
+
+// Master bar — single click-to-toggle-all strip used at the head of a
+// `card-flush` container. Every section follows this same shape: a chip
+// (label + tone), a unit count, an optional `extras` slot for section-
+// specific indicators (e.g. "modified" or "overrides"), and a chevron
+// mirroring the aggregate expanded state. The keyboard path matches the
+// click path so Enter/Space folds the whole section too.
+interface MasterBarProps {
+  label: string;
+  tone?: { text: string; bg: string };
+  count: number;
+  countUnit: string;
+  extras?: ReactNode;
+  allExpanded: boolean;
+  onToggleAll: () => void;
+}
+
+export function MasterBar({
+  label,
+  tone,
+  count,
+  countUnit,
+  extras,
+  allExpanded,
+  onToggleAll,
+}: MasterBarProps) {
+  const resolved = tone ?? { text: "text-txt-2", bg: "bg-raised" };
+  return (
+    <button
+      type="button"
+      onClick={onToggleAll}
+      className={`flex w-full cursor-pointer items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-raised focus:outline-none focus-visible:bg-raised ${resolved.bg}`}
+    >
+      <span className={`chip ${resolved.text}`}>{label}</span>
+      <span className="text-[13px] text-txt-3 metric-num">
+        {count} {countUnit}
+        {count !== 1 ? "s" : ""}
+      </span>
+      {extras}
+      <span className="flex-1" />
+      <Chevron expanded={allExpanded} />
+    </button>
+  );
+}
+
+// Tints for master bars, keyed by section. Kept next to `MasterBar`
+// so consumers only need one import.
+export const SECTION_TONE: Record<string, { text: string; bg: string }> = {
+  system: { text: "text-lavender", bg: "bg-lavender/5" },
+  user: { text: "text-sky", bg: "bg-sky/5" },
+  assistant: { text: "text-sage", bg: "bg-sage/5" },
+  response: { text: "text-sage", bg: "bg-sage/5" },
+};
 
 export function SectionRule({ children }: { children: ReactNode }) {
   return (
@@ -20,101 +78,16 @@ export function SectionRule({ children }: { children: ReactNode }) {
   );
 }
 
-// ── MetricCell ─────────────────────────────────────────────────────
-// Label above, numeric value below. The label uses the global
-// .label class (uppercase, tracked, readable grey). The value uses
-// .metric-num for tabular figures and slashed zero.
-
-export function MetricCell({
-  label,
-  value,
-  accent,
-  size = "md",
-}: {
-  label: string;
-  value: string | number;
-  accent?: string;
-  size?: "sm" | "md" | "lg";
-}) {
-  const valueSize = size === "lg" ? "text-[16px]" : size === "sm" ? "text-[12px]" : "text-[14px]";
+export function OriginalPreview({ text }: { text: string }) {
   return (
-    <div className="flex flex-col gap-2">
-      <span className="label">{label}</span>
-      <span className={`metric-num font-medium ${valueSize} ${accent ?? "text-txt"}`}>{value}</span>
+    <div className="space-y-1">
+      <span className="label text-txt-3">Original</span>
+      <pre className="max-h-32 overflow-auto bg-canvas p-3 text-[12px] text-txt-3 whitespace-pre-wrap border border-edge-subtle">
+        {text}
+      </pre>
     </div>
   );
 }
 
-// ── Panel ──────────────────────────────────────────────────────────
-// The default elevated surface. Header slot is optional; when
-// present it sits above a hairline rule and carries the panel's
-// title plus any right-aligned metadata.
-
-export function Panel({
-  title,
-  meta,
-  children,
-  tone,
-}: {
-  title?: string;
-  meta?: ReactNode;
-  children: ReactNode;
-  tone?: "request" | "response" | "neutral";
-}) {
-  // Tone adds a subtle coloured tick to the left of the title.
-  const tickColour =
-    tone === "request" ? "bg-sky/50" : tone === "response" ? "bg-sage/50" : "bg-txt-3/40";
-
-  return (
-    <div className="card top-highlight">
-      {title && (
-        <>
-          <div className="flex items-center justify-between gap-3 px-5 py-3">
-            <div className="flex items-center gap-2.5">
-              <span className={`inline-block h-3 w-px ${tickColour}`} />
-              <span className="label">{title}</span>
-            </div>
-            {meta && <div className="flex items-center gap-2 text-[10px] text-txt-2">{meta}</div>}
-          </div>
-          <div className="hairline-x" />
-        </>
-      )}
-      <div>{children}</div>
-    </div>
-  );
-}
-
-// ── MetricGrid ─────────────────────────────────────────────────────
-// A tight grid of MetricCells with hairline dividers between them.
-// The dividers are drawn by bg-edge showing through a 1px gap so
-// no borders are needed on the cells themselves.
-
-export function MetricGrid({ cols, children }: { cols: 2 | 3 | 4; children: ReactNode }) {
-  const gridCols = cols === 2 ? "grid-cols-2" : cols === 3 ? "grid-cols-3" : "grid-cols-4";
-  return <div className={`grid ${gridCols} gap-px bg-edge-subtle`}>{children}</div>;
-}
-
-export function MetricGridCell({ children }: { children: ReactNode }) {
-  return <div className="bg-surface px-5 py-4">{children}</div>;
-}
-
-// ── KeyValueRow ────────────────────────────────────────────────────
-// Horizontal key/value display with the key left and the value
-// right. Used in pipeline rule lists and similar compact data.
-
-export function KeyValueRow({
-  label,
-  value,
-  valueClass,
-}: {
-  label: string;
-  value: ReactNode;
-  valueClass?: string;
-}) {
-  return (
-    <div className="flex items-center justify-between gap-3 py-1.5 text-[11px]">
-      <span className="text-txt-2">{label}</span>
-      <span className={valueClass ?? "text-txt-3 metric-num"}>{value}</span>
-    </div>
-  );
-}
+export const inputClass =
+  "w-full min-h-24 resize-none field-sizing-content bg-canvas px-3 py-2 text-[13px] text-txt border border-edge focus:border-accent/50 focus:outline-none transition-colors font-mono";

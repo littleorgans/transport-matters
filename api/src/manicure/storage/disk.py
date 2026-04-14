@@ -11,7 +11,6 @@ import json
 import logging
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any  # Any: opaque rule definitions
 
 import aiofiles
 
@@ -21,9 +20,6 @@ from manicure.storage.base import (
     IndexEntry,
     StorageBackend,
 )
-
-if TYPE_CHECKING:
-    from collections.abc import Callable
 
 logger = logging.getLogger(__name__)
 
@@ -37,8 +33,8 @@ class DiskStorageBackend(StorageBackend):
         self._root = Path(root) if root else _DEFAULT_ROOT
         self._root.mkdir(parents=True, exist_ok=True)
         self._index_lock = asyncio.Lock()
-        self._rules_lock = asyncio.Lock()
         self._index_cache: dict[str, IndexEntry] | None = None
+        self._cleanup_partial_writes()
 
     @property
     def root(self) -> Path:
@@ -102,31 +98,40 @@ class DiskStorageBackend(StorageBackend):
     async def write_exchange(
         self, exchange_id: str, artifacts: ExchangeArtifacts
     ) -> None:
-        exchange_dir = self._exchange_dir(exchange_id, artifacts)
-        exchange_dir.mkdir(parents=True, exist_ok=True)
+        final_dir = self._exchange_dir(exchange_id, artifacts)
+        tmp_dir = final_dir.parent / f"{final_dir.name}.tmp"
+        tmp_dir.mkdir(parents=True, exist_ok=True)
 
-        async with aiofiles.open(exchange_dir / "request.raw", mode="wb") as f:
-            await f.write(artifacts.request_raw)
+        try:
+            async with aiofiles.open(tmp_dir / "request.raw", mode="wb") as f:
+                await f.write(artifacts.request_raw)
 
-        ir_json = artifacts.request_ir.model_dump_json(indent=2)
-        async with aiofiles.open(exchange_dir / "request.ir.json", mode="w") as f:
-            await f.write(ir_json)
+            ir_json = artifacts.request_ir.model_dump_json(indent=2)
+            async with aiofiles.open(tmp_dir / "request.ir.json", mode="w") as f:
+                await f.write(ir_json)
 
-        if artifacts.request_curated_ir is not None:
-            curated_json = artifacts.request_curated_ir.model_dump_json(indent=2)
-            async with aiofiles.open(
-                exchange_dir / "request.curated.ir.json", mode="w"
-            ) as f:
-                await f.write(curated_json)
+            if artifacts.request_curated_ir is not None:
+                curated_json = artifacts.request_curated_ir.model_dump_json(indent=2)
+                async with aiofiles.open(
+                    tmp_dir / "request.curated.ir.json", mode="w"
+                ) as f:
+                    await f.write(curated_json)
 
-        if artifacts.response_raw is not None:
-            async with aiofiles.open(exchange_dir / "response.raw", mode="wb") as f:
-                await f.write(artifacts.response_raw)
+            if artifacts.response_raw is not None:
+                async with aiofiles.open(tmp_dir / "response.raw", mode="wb") as f:
+                    await f.write(artifacts.response_raw)
 
-        if artifacts.response_ir is not None:
-            resp_json = artifacts.response_ir.model_dump_json(indent=2)
-            async with aiofiles.open(exchange_dir / "response.ir.json", mode="w") as f:
-                await f.write(resp_json)
+            if artifacts.response_ir is not None:
+                resp_json = artifacts.response_ir.model_dump_json(indent=2)
+                async with aiofiles.open(tmp_dir / "response.ir.json", mode="w") as f:
+                    await f.write(resp_json)
+
+            tmp_dir.rename(final_dir)
+        except BaseException:
+            import shutil
+
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+            raise
 
     async def read_exchange(self, exchange_id: str) -> ExchangeArtifacts:
         exchange_dir = self._find_exchange_dir(exchange_id)
@@ -166,38 +171,6 @@ class DiskStorageBackend(StorageBackend):
             response_ir=response_ir,
         )
 
-    # ── rules ───────────────────────────────────────────────────────
-
-    async def load_rules(self) -> list[dict[str, Any]]:  # Any: opaque rule defs
-        rules_path = self._root / "rules.json"
-        if not rules_path.exists():
-            return []
-        async with self._rules_lock, aiofiles.open(rules_path) as f:
-            content = await f.read()
-        result: list[dict[str, Any]] = json.loads(content)  # Any: opaque rule defs
-        return result
-
-    async def modify_rules(
-        self,
-        fn: Callable[[list[dict[str, Any]]], list[dict[str, Any]]],
-    ) -> None:
-        """Hold _rules_lock across the full read→fn→write transaction.
-
-        Concurrent callers queue behind the lock; no two RMW cycles interleave.
-        If ``fn`` raises, the write is skipped and the exception propagates.
-        """
-        rules_path = self._root / "rules.json"
-        async with self._rules_lock:
-            if rules_path.exists():
-                async with aiofiles.open(rules_path) as f:
-                    content = await f.read()
-                data: list[dict[str, Any]] = json.loads(content)
-            else:
-                data = []
-            result = fn(data)  # may raise — write is then skipped
-            async with aiofiles.open(rules_path, mode="w") as f:
-                await f.write(json.dumps(result, indent=2))
-
     # ── private helpers ─────────────────────────────────────────────
 
     def _exchange_dir(self, exchange_id: str, artifacts: ExchangeArtifacts) -> Path:
@@ -214,3 +187,14 @@ class DiskStorageBackend(StorageBackend):
                 return d
         msg = f"Exchange directory not found for {exchange_id}"
         raise FileNotFoundError(msg)
+
+    def _cleanup_partial_writes(self) -> None:
+        """Remove leftover ``.tmp`` directories from interrupted writes."""
+        import shutil
+
+        if not self._root.exists():
+            return
+        for d in self._root.iterdir():
+            if d.is_dir() and d.name.endswith(".tmp"):
+                logger.warning("Cleaning up partial write: %s", d)
+                shutil.rmtree(d, ignore_errors=True)

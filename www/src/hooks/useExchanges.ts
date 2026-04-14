@@ -1,8 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
-import { fetchExchanges } from "../api";
+import { fetchExchanges, MAX_ENTRIES } from "../api";
 import type { IndexEntry } from "../types";
-
-const MAX_ENTRIES = 500;
 
 export function useExchanges(): { exchanges: IndexEntry[] } {
   const { data: exchanges = [] } = useQuery({

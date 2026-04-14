@@ -1,125 +1,136 @@
-import { CreateRuleForm } from "./components/CreateRuleForm";
+import { ArmToggle } from "./components/ArmToggle";
 import { ExchangeDetail } from "./components/ExchangeDetail";
 import { ExchangeList } from "./components/ExchangeList";
 import { BreakpointEditor } from "./components/editor/BreakpointEditor";
-import { RulesList } from "./components/RulesList";
+import { ManicureIcon } from "./components/ManicureIcon";
 import { useBreakpoint } from "./hooks/useBreakpoint";
 import { useExchangeStream } from "./hooks/useExchangeStream";
 import { useExchanges } from "./hooks/useExchanges";
-import { useRules } from "./hooks/useRules";
 import { useUIStore } from "./stores/uiStore";
+
+function ConnectionDot({ connected }: { connected: boolean }) {
+  return (
+    <span
+      className={`flex items-center gap-1.5 text-[11px] uppercase tracking-[0.18em] ${
+        connected ? "text-sage" : "text-rose"
+      }`}
+    >
+      <span className={`h-1 w-1 rounded-full ${connected ? "bg-sage pulse-dot" : "bg-rose"}`} />
+      {connected ? "Live" : "Off"}
+    </span>
+  );
+}
+
+interface AppBarProps {
+  connected: boolean;
+  mode: "off" | "armed_once";
+  onToggleArm: () => void;
+  breakpointError: boolean;
+  exchangeCount: number;
+}
+
+function AppBar({ connected, mode, onToggleArm, breakpointError, exchangeCount }: AppBarProps) {
+  return (
+    <>
+      <div className="top-highlight flex items-center justify-between gap-4 bg-surface px-6 py-3">
+        {/* Brand lockup */}
+        <div className="flex items-center gap-3 min-w-0">
+          <ManicureIcon className="h-[22px] w-[22px] text-txt shrink-0" />
+          <h1 className="text-[14px] font-semibold tracking-[0.22em] text-txt uppercase whitespace-nowrap">
+            Manicure
+          </h1>
+          <span className="text-edge-strong hidden sm:inline">&middot;</span>
+          <span className="text-[11px] text-txt-3 tracking-[0.14em] tabular-nums hidden sm:inline">
+            v0.0.1
+          </span>
+        </div>
+
+        {/* Controls cluster */}
+        <div className="flex items-center gap-5 shrink-0">
+          <div className="hidden md:flex items-center gap-2 text-[11px]">
+            <span className="label">Exchanges</span>
+            <span className="text-[13px] text-txt-2 metric-num">{exchangeCount}</span>
+          </div>
+          <span className="hidden md:block h-4 w-px bg-edge" aria-hidden />
+          <ConnectionDot connected={connected} />
+          <span className="h-4 w-px bg-edge" aria-hidden />
+          <ArmToggle mode={mode} onToggle={onToggleArm} error={breakpointError} />
+        </div>
+      </div>
+      <div className="hairline-x" />
+    </>
+  );
+}
 
 export function App() {
   const { exchanges } = useExchanges();
   const { connected } = useExchangeStream();
-  const { rules, createRule, toggleRule, deleteRule, error: rulesError } = useRules();
   const { mode, arm, disarm, error: breakpointError } = useBreakpoint();
-  const { selectedId, setSelectedId, activeTab, setActiveTab, pausedFlow, clearPausedFlow } =
-    useUIStore();
+  const selectedId = useUIStore((s) => s.selectedId);
+  const setSelectedId = useUIStore((s) => s.setSelectedId);
+  const pausedFlow = useUIStore((s) => s.pausedFlow);
+  const clearPausedFlow = useUIStore((s) => s.clearPausedFlow);
+
+  const toggleArm = () => (mode === "off" ? arm() : disarm());
+  const showEntryPage = exchanges.length === 0 && pausedFlow == null;
+
+  if (showEntryPage) {
+    return (
+      <div className="h-screen bg-canvas text-txt relative overflow-hidden">
+        <div className="absolute inset-0 flex items-center justify-center text-edge-subtle opacity-30 pointer-events-none">
+          <ManicureIcon className="spin-gentle h-[90vh] w-[90vh]" />
+        </div>
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-6">
+          <div className="flex flex-col items-center gap-3">
+            <ManicureIcon className="h-[64px] w-[64px] text-txt shrink-0" />
+            <h1 className="text-[14px] font-semibold tracking-[0.18em] text-txt uppercase">
+              Manicure
+            </h1>
+            <span className="label">Waiting for exchanges</span>
+          </div>
+          <ConnectionDot connected={connected} />
+          <div className="flex items-center gap-4">
+            <ArmToggle mode={mode} onToggle={toggleArm} error={!!breakpointError} />
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="h-screen bg-canvas text-txt">
-      <div className="frame flex h-full border-x border-edge">
-        {/* Left panel */}
-        <aside className="flex w-[340px] min-w-[300px] flex-col border-r border-edge">
-          {/* Header */}
-          <div className="top-highlight flex items-center justify-between px-5 py-4">
-            <div className="flex items-center gap-3">
-              <h1 className="text-[12px] font-semibold tracking-[0.18em] text-txt uppercase">
-                Manicure
-              </h1>
-              <span className="text-[9px] text-txt-3 tracking-wider tabular-nums">v0.0.1</span>
-            </div>
-            <div className="flex items-center gap-3">
-              {breakpointError ? (
-                <span className="text-[10px] text-rose uppercase tracking-wider">
-                  Breakpoint unavailable
-                </span>
-              ) : mode === "off" ? (
-                <button
-                  type="button"
-                  onClick={arm}
-                  className="btn border border-sage/25 bg-sage/5 px-2.5 py-1 text-[10px] font-medium uppercase tracking-wider text-sage hover:bg-sage/10 cursor-pointer"
-                >
-                  Arm
-                </button>
-              ) : (
-                <div className="flex items-center gap-2">
-                  <span className="flex items-center gap-1.5 border border-amber/25 bg-amber/5 px-2.5 py-1 text-[10px] font-medium uppercase tracking-wider text-amber">
-                    <span className="h-1 w-1 rounded-full bg-amber pulse-dot" />
-                    Armed
-                  </span>
-                  <button
-                    type="button"
-                    onClick={disarm}
-                    className="btn text-[10px] uppercase tracking-wider text-txt-3 hover:text-txt cursor-pointer"
-                  >
-                    Disarm
-                  </button>
-                </div>
-              )}
-              <span
-                className={`flex items-center gap-1.5 text-[10px] uppercase tracking-wider ${
-                  connected ? "text-sage" : "text-rose"
-                }`}
-              >
-                <span
-                  className={`h-1 w-1 rounded-full ${connected ? "bg-sage pulse-dot" : "bg-rose"}`}
-                />
-                {connected ? "Live" : "Off"}
-              </span>
-            </div>
-          </div>
+      <div className="frame flex h-full flex-col border-x border-edge">
+        <AppBar
+          connected={connected}
+          mode={mode}
+          onToggleArm={toggleArm}
+          breakpointError={!!breakpointError}
+          exchangeCount={exchanges.length}
+        />
 
-          <div className="hairline-x mx-5" />
-
-          {/* Tab bar */}
-          <div className="flex border-b border-edge">
-            {(["log", "rules"] as const).map((tab) => (
-              <button
-                key={tab}
-                type="button"
-                onClick={() => setActiveTab(tab)}
-                className={`relative flex-1 py-3 text-[10px] font-medium uppercase tracking-[0.16em] cursor-pointer transition-all duration-150 ${
-                  activeTab === tab
-                    ? "tab-pressed text-txt"
-                    : "tab-rest text-txt-3 hover:text-txt-2"
-                }`}
-              >
-                {tab}
-              </button>
-            ))}
-          </div>
-
-          {activeTab === "log" ? (
+        <div className="flex flex-1 overflow-hidden">
+          {/* Left panel */}
+          <aside className="flex w-[340px] min-w-[300px] flex-col border-r border-edge">
             <ExchangeList exchanges={exchanges} selectedId={selectedId} onSelect={setSelectedId} />
-          ) : (
-            <div className="flex flex-col overflow-y-auto">
-              {rulesError && (
-                <p className="mx-5 mt-4 border border-rose/25 bg-rose/5 px-3 py-2 text-[10px] text-rose">
-                  {rulesError.message}
-                </p>
-              )}
-              <RulesList rules={rules} onToggle={toggleRule} onDelete={deleteRule} />
-              <CreateRuleForm onCreated={createRule} />
-            </div>
-          )}
-        </aside>
+          </aside>
 
-        {/* Right panel */}
-        <main className="flex-1 overflow-hidden">
-          {pausedFlow != null ? (
-            <BreakpointEditor pausedFlow={pausedFlow} onResolved={clearPausedFlow} />
-          ) : activeTab === "log" && selectedId ? (
-            <ExchangeDetail id={selectedId} />
-          ) : (
-            <div className="flex h-full items-center justify-center">
-              <span className="label">
-                {activeTab === "log" ? "Select an exchange to inspect" : "Switch to log view"}
-              </span>
-            </div>
-          )}
-        </main>
+          {/* Right panel */}
+          <main className="flex-1 overflow-hidden">
+            {pausedFlow != null ? (
+              <BreakpointEditor
+                key={pausedFlow.flow_id}
+                pausedFlow={pausedFlow}
+                onResolved={clearPausedFlow}
+              />
+            ) : selectedId ? (
+              <ExchangeDetail id={selectedId} />
+            ) : (
+              <div className="flex h-full items-center justify-center">
+                <span className="label">Select an exchange to inspect</span>
+              </div>
+            )}
+          </main>
+        </div>
       </div>
     </div>
   );

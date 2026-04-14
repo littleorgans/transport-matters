@@ -24,7 +24,7 @@ export interface IndexEntry {
   model: string;
   path: string;
   req: ReqStats;
-  pipeline: PipelineAudit | null;
+  pipeline: PipelineStats | null;
   res: ResStats | null;
   mutated_manually: boolean;
 }
@@ -42,45 +42,41 @@ export interface ExchangeDetail {
   response_ir: Record<string, unknown> | null;
 }
 
-export type ActionType =
-  | "strip_tools"
+// ── Overrides ─────────────────────────────────────────────────────
+
+export type OverrideKind =
+  | "tool_toggle"
+  | "tool_description"
+  | "system_part_toggle"
+  | "system_part_text"
+  | "message_block_toggle"
+  | "message_text"
   | "strip_thinking"
-  | "strip_system_part"
-  | "truncate_system_part"
-  | "truncate_tool_result"
-  | "rewrite_tool_description";
+  | "truncate_tool_result";
 
-export interface RuleScope {
-  global: boolean;
-  session_id: string | null;
-  device_id: string | null;
-  account_id: string | null;
-  model: string | null;
+export interface Override {
+  kind: OverrideKind;
+  target: string;
+  value: string | boolean | number | null;
 }
 
-export interface Rule {
-  id: string;
-  name: string;
-  enabled: boolean;
-  scope: RuleScope;
-  action: ActionType;
-  params: Record<string, unknown>;
-  created_at: string;
-  applied_count: number;
+export interface OverrideAuditEntry {
+  kind: string;
+  target: string;
+  applied: boolean;
+  chars_delta: number;
 }
 
-export interface CreateRuleBody {
-  name: string;
-  scope: RuleScope;
-  action: ActionType;
-  params: Record<string, unknown>;
-  enabled?: boolean;
-}
-
-export interface PatchRuleBody {
-  name?: string;
-  enabled?: boolean;
-  params?: Record<string, unknown>;
+export interface OverrideAudit {
+  entries: OverrideAuditEntry[];
+  chars_before: number;
+  chars_after: number;
+  system_chars_before: number;
+  system_chars_after: number;
+  tools_chars_before: number;
+  tools_chars_after: number;
+  messages_chars_before: number;
+  messages_chars_after: number;
 }
 
 // ── IR content blocks ─────────────────────────────────────────────
@@ -183,18 +179,13 @@ export interface InternalResponse {
   provider_extras: Record<string, unknown>;
 }
 
-// ── Pipeline audit ────────────────────────────────────────────────
+// ── Pipeline stats (stored with exchanges) ───────────────────────
 
-export interface RuleAuditEntry {
-  id: string;
-  name: string;
-  action: string;
-  removed: Record<string, number>;
-}
-export interface PipelineAudit {
-  rules_applied: RuleAuditEntry[];
+export interface PipelineStats {
+  overrides_applied: OverrideAuditEntry[];
   chars_before: number;
   chars_after: number;
+  tokens_approx: number;
 }
 
 // ── Breakpoint ────────────────────────────────────────────────────
@@ -202,7 +193,10 @@ export interface PipelineAudit {
 export interface PausedFlow {
   flow_id: string;
   ir: InternalRequest;
-  audit: PipelineAudit | null;
+  original_tools: ToolDef[];
+  original_system: SystemPart[];
+  original_messages: Message[];
+  audit: OverrideAudit | null;
   paused_at_ms: number;
 }
 

@@ -29,6 +29,7 @@ vi.mock("../api", () => ({
     request_curated_ir: null,
     response_ir: null,
   }),
+  fetchOverrides: vi.fn().mockResolvedValue({ overrides: [], enabled: true }),
 }));
 
 function makeClient() {

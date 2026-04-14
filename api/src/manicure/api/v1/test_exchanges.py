@@ -81,7 +81,7 @@ class TestListExchanges:
     async def test_list_after_write(self, client: AsyncClient) -> None:
         from manicure.storage import get_storage
 
-        storage = get_storage()
+        storage = await get_storage()
         entry = _make_index_entry()
         await storage.append_index(entry)
 
@@ -92,6 +92,29 @@ class TestListExchanges:
         assert data[0]["id"] == "ex-001"
 
 
+class TestListExchangesStorageFailure:
+    async def test_storage_exception_returns_500(self) -> None:
+        """When storage.read_index() raises, the endpoint returns 500 with a structured error."""
+        from unittest.mock import AsyncMock
+
+        from manicure.storage import get_storage
+
+        broken_backend = AsyncMock()
+        broken_backend.read_index.side_effect = RuntimeError("disk on fire")
+
+        app = create_app()
+        app.dependency_overrides[get_storage] = lambda: broken_backend
+
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as ac:
+            response = await ac.get("/api/exchanges")
+
+        assert response.status_code == 500
+        data = response.json()
+        assert "detail" in data
+        assert "Failed to read exchange index" in data["detail"]
+
+
 class TestGetExchange:
     async def test_get_not_found(self, client: AsyncClient) -> None:
         response = await client.get("/api/exchanges/nonexistent")
@@ -100,7 +123,7 @@ class TestGetExchange:
     async def test_get_existing(self, client: AsyncClient) -> None:
         from manicure.storage import get_storage
 
-        storage = get_storage()
+        storage = await get_storage()
         entry = _make_index_entry()
         ir = _make_ir()
         raw = b'{"model":"claude-sonnet-4-20250514","max_tokens":1024}'
@@ -126,7 +149,7 @@ class TestGetExchange:
         """
         from manicure.storage import get_storage
 
-        storage = get_storage()
+        storage = await get_storage()
         entry = _make_index_entry()
         ir = _make_ir()
         # Simulate a user edit: curated carries a different message body.
