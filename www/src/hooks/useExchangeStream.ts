@@ -13,12 +13,24 @@ function isValidPausedEvent(data: Record<string, unknown>): data is {
   original_messages?: PausedFlow["original_messages"];
   audit?: PausedFlow["audit"];
   paused_at_ms: number;
+  tokens_before?: number | null;
 } {
   return (
     typeof data.flow_id === "string" &&
     typeof data.paused_at_ms === "number" &&
     data.ir != null &&
     typeof data.ir === "object"
+  );
+}
+
+function isValidPausedTokensEvent(data: Record<string, unknown>): data is {
+  type: "paused_tokens";
+  flow_id: string;
+  tokens_before: number | null;
+} {
+  return (
+    typeof data.flow_id === "string" &&
+    (typeof data.tokens_before === "number" || data.tokens_before === null)
   );
 }
 
@@ -85,7 +97,20 @@ export function useExchangeStream(): { connected: boolean } {
             original_messages: data.original_messages ?? data.ir.messages,
             audit: data.audit ?? null,
             paused_at_ms: data.paused_at_ms,
+            tokens_before: data.tokens_before ?? null,
           });
+          return;
+        }
+
+        if (data.type === "paused_tokens") {
+          if (!isValidPausedTokensEvent(data)) return;
+          // Background count_tokens result landed. Update the paused flow
+          // in-place; ignore the event when the user has already released
+          // it or a different flow has taken its slot.
+          const current = useUIStore.getState().pausedFlow;
+          if (current && current.flow_id === data.flow_id) {
+            setPausedFlow({ ...current, tokens_before: data.tokens_before });
+          }
           return;
         }
 

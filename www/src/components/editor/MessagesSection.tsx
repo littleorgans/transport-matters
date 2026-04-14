@@ -45,9 +45,9 @@ function MessageCard({
 
   // Seeded from the auto-expand pref in the initializer only, so
   // mid-session flips don't retroactively collapse or expand mounted
-  // cards. Individual BlockRow chevrons still toggle their row.
+  // cards. Individual BlockRow clicks still toggle their row.
   const autoExpandBlocks = useUIStore((s) => s.autoExpandBlocks);
-  const { allExpanded, toggleAll, toggleOne, isExpanded } = useCollapsibleSet(
+  const { toggleAll, toggleOne, isExpanded } = useCollapsibleSet(
     message.content.length,
     !autoExpandBlocks,
   );
@@ -67,7 +67,6 @@ function MessageCard({
             </>
           ) : undefined
         }
-        allExpanded={allExpanded}
         onToggleAll={toggleAll}
       />
       <div className="hairline-x" />

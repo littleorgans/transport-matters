@@ -64,6 +64,7 @@ function makePausedFlow(flowId: string): PausedFlow {
     original_messages: [],
     audit: null,
     paused_at_ms: Date.now(),
+    tokens_before: null,
   };
 }
 
@@ -191,5 +192,70 @@ describe("useExchangeStream — SSE validation", () => {
     });
 
     expect(useUIStore.getState().selectedId).toBeNull();
+  });
+});
+
+describe("useExchangeStream — paused_tokens follow-up", () => {
+  it("attaches tokens_before to the matching paused flow", () => {
+    renderHook(() => useExchangeStream(), { wrapper: makeWrapper() });
+
+    useUIStore.setState({
+      pausedFlow: makePausedFlow("flow-T"),
+    });
+
+    fireSSE({ type: "paused_tokens", flow_id: "flow-T", tokens_before: 4321 });
+
+    expect(useUIStore.getState().pausedFlow?.tokens_before).toBe(4321);
+  });
+
+  it("ignores paused_tokens for a flow that no longer matches the pause state", () => {
+    renderHook(() => useExchangeStream(), { wrapper: makeWrapper() });
+
+    useUIStore.setState({
+      pausedFlow: makePausedFlow("flow-CURRENT"),
+    });
+
+    fireSSE({ type: "paused_tokens", flow_id: "flow-STALE", tokens_before: 999 });
+
+    // Current pause unchanged — no leak from the stale flow's count
+    expect(useUIStore.getState().pausedFlow?.flow_id).toBe("flow-CURRENT");
+    expect(useUIStore.getState().pausedFlow?.tokens_before).toBeNull();
+  });
+
+  it("ignores paused_tokens when no flow is paused at all", () => {
+    renderHook(() => useExchangeStream(), { wrapper: makeWrapper() });
+
+    useUIStore.setState({ pausedFlow: null });
+
+    fireSSE({ type: "paused_tokens", flow_id: "flow-GONE", tokens_before: 1 });
+
+    expect(useUIStore.getState().pausedFlow).toBeNull();
+  });
+
+  it("paused event preserves tokens_before when provided", () => {
+    renderHook(() => useExchangeStream(), { wrapper: makeWrapper() });
+
+    fireSSE({
+      type: "paused",
+      flow_id: "flow-NEW",
+      paused_at_ms: 1000,
+      ir: { tools: [], system: [], messages: [] },
+      tokens_before: 7,
+    });
+
+    expect(useUIStore.getState().pausedFlow?.tokens_before).toBe(7);
+  });
+
+  it("paused event without tokens_before defaults to null", () => {
+    renderHook(() => useExchangeStream(), { wrapper: makeWrapper() });
+
+    fireSSE({
+      type: "paused",
+      flow_id: "flow-INITIAL",
+      paused_at_ms: 1000,
+      ir: { tools: [], system: [], messages: [] },
+    });
+
+    expect(useUIStore.getState().pausedFlow?.tokens_before).toBeNull();
   });
 });

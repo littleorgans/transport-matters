@@ -1,47 +1,21 @@
 import type { ReactNode } from "react";
 
-// Chevron — one character that rotates 90° on expand. Using a triangle
-// glyph keeps the visual minimal and archival, no SVG needed. The
-// rotation runs through `transition-transform` so it reads as a
-// continuous motion rather than two static states.
-export function Chevron({ expanded }: { expanded: boolean }) {
-  return (
-    <span
-      aria-hidden
-      className={`inline-block text-[10px] leading-none text-txt-3 transition-transform duration-150 ${
-        expanded ? "rotate-90" : ""
-      }`}
-    >
-      &#9656;
-    </span>
-  );
-}
-
 // Master bar — single click-to-toggle-all strip used at the head of a
 // `card-flush` container. Every section follows this same shape: a chip
-// (label + tone), a unit count, an optional `extras` slot for section-
-// specific indicators (e.g. "modified" or "overrides"), and a chevron
-// mirroring the aggregate expanded state. The keyboard path matches the
-// click path so Enter/Space folds the whole section too.
+// (label + tone), a unit count, and an optional `extras` slot for
+// section-specific indicators (e.g. "modified" or "overrides"). The
+// keyboard path matches the click path so Enter/Space folds the whole
+// section too.
 interface MasterBarProps {
   label: string;
   tone?: { text: string; bg: string };
   count: number;
   countUnit: string;
   extras?: ReactNode;
-  allExpanded: boolean;
   onToggleAll: () => void;
 }
 
-export function MasterBar({
-  label,
-  tone,
-  count,
-  countUnit,
-  extras,
-  allExpanded,
-  onToggleAll,
-}: MasterBarProps) {
+export function MasterBar({ label, tone, count, countUnit, extras, onToggleAll }: MasterBarProps) {
   const resolved = tone ?? { text: "text-txt-2", bg: "bg-raised" };
   return (
     <button
@@ -55,8 +29,6 @@ export function MasterBar({
         {count !== 1 ? "s" : ""}
       </span>
       {extras}
-      <span className="flex-1" />
-      <Chevron expanded={allExpanded} />
     </button>
   );
 }

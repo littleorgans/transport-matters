@@ -6,6 +6,12 @@ interface PausedHeaderProps {
   pausedAtMs: number;
   provider: string;
   model: string;
+  /**
+   * count_tokens result for the IR about to be forwarded.
+   * Null while the background count is in flight or when it failed;
+   * rendered as an em dash so the reader knows we don't have a real answer.
+   */
+  tokensBefore: number | null;
 }
 
 function formatElapsed(ms: number): string {
@@ -15,7 +21,13 @@ function formatElapsed(ms: number): string {
   return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
 }
 
-export function PausedHeader({ flowId, pausedAtMs, provider, model }: PausedHeaderProps) {
+export function PausedHeader({
+  flowId,
+  pausedAtMs,
+  provider,
+  model,
+  tokensBefore,
+}: PausedHeaderProps) {
   const [elapsed, setElapsed] = useState(Date.now() - pausedAtMs);
 
   useEffect(() => {
@@ -43,6 +55,16 @@ export function PausedHeader({ flowId, pausedAtMs, provider, model }: PausedHead
             <span className="label">Elapsed</span>
             <span className="text-[17px] text-amber metric-num leading-none tabular-nums">
               {formatElapsed(elapsed)}
+            </span>
+          </div>
+
+          {/* Tokens — authoritative count_tokens readout for the IR about
+              to be forwarded. Stays an em dash until the background count
+              lands, so the reader is never shown a fake number. */}
+          <div className="flex flex-col justify-center gap-1 px-6 py-2 border-r border-edge">
+            <span className="label">Tokens</span>
+            <span className="text-[17px] text-txt metric-num leading-none tabular-nums">
+              {tokensBefore !== null ? tokensBefore.toLocaleString() : "—"}
             </span>
           </div>
 

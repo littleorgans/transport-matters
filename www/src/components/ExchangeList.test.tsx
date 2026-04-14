@@ -23,6 +23,7 @@ function makeEntry(overrides: Partial<IndexEntry> = {}): IndexEntry {
       stop_reason: "end_turn",
       input_tokens: 100,
       output_tokens: 50,
+      cache_creation_input_tokens: 0,
       cache_read_input_tokens: 0,
       text_chars: 200,
       tool_calls: 0,

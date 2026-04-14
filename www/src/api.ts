@@ -26,6 +26,41 @@ export async function fetchExchange(id: string): Promise<ExchangeDetail> {
   return (await res.json()) as ExchangeDetail;
 }
 
+export type PipelineTokensReason =
+  | "counter_unavailable"
+  | "no_auth"
+  | "artifact_missing"
+  | "counter_failed";
+
+export interface PipelineTokensResponse {
+  tokens_before: number | null;
+  tokens_after: number | null;
+  /**
+   * Null on success (both sides real) or cached hit. One of four
+   * known codes on a degraded path — see the docstring on the
+   * Python-side `PipelineTokensResponse` model at
+   * `api/src/manicure/api/v1/exchanges.py` for what each means.
+   * We don't render this today; the chars fallback is good enough.
+   */
+  reason: PipelineTokensReason | null;
+}
+
+/**
+ * Lazy pipeline-token recount. Only meaningful for rows where the index
+ * carries null tokens (pre-counter captures or first-stamp failures).
+ * Server short-circuits to the cached values when the row is already
+ * stamped, so calling this on a fresh row is cheap. On failure or when
+ * the server has no auth to replay, both fields are null and the caller
+ * should keep displaying chars.
+ */
+export async function fetchPipelineTokens(id: string): Promise<PipelineTokensResponse> {
+  const res = await fetch(`/api/exchanges/${encodeURIComponent(id)}/pipeline_tokens`);
+  if (!res.ok) {
+    throw new Error(`Failed to fetch pipeline tokens for ${id}: ${res.status}`);
+  }
+  return (await res.json()) as PipelineTokensResponse;
+}
+
 // ── Override endpoints ────────────────────────────────────────────
 
 export interface OverrideListResponse {
@@ -134,16 +169,20 @@ export async function dropFlow(flowId: string): Promise<void> {
   }
 }
 
-export async function reauditFlow(
-  flowId: string,
-): Promise<{ audit: OverrideAudit; curated_ir: InternalRequest }> {
+export interface ReauditResponse {
+  audit: OverrideAudit;
+  curated_ir: InternalRequest;
+  tokens_before: number | null;
+}
+
+export async function reauditFlow(flowId: string): Promise<ReauditResponse> {
   const res = await fetch(`/api/breakpoint/re-audit/${encodeURIComponent(flowId)}`, {
     method: "POST",
   });
   if (!res.ok) {
     throw new Error(`Failed to re-audit flow ${flowId}: ${res.status}`);
   }
-  return (await res.json()) as { audit: OverrideAudit; curated_ir: InternalRequest };
+  return (await res.json()) as ReauditResponse;
 }
 
 export async function fetchPausedFlowDetail(flowId: string): Promise<PausedFlow> {

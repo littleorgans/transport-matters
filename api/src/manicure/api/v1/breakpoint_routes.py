@@ -5,10 +5,14 @@ Named ``breakpoint_routes`` to avoid shadowing ``manicure.breakpoint``.
 
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter
 from pydantic import BaseModel
 
 from manicure import breakpoint as bp
+from manicure.adapters.anthropic import AnthropicAdapter
+from manicure.counting import get_counter
 from manicure.exceptions import NotFoundError
 from manicure.ir import (  # noqa: TC001 — FastAPI needs runtime access
     InternalRequest,
@@ -23,7 +27,31 @@ from manicure.overrides import (
     identity_audit,
 )
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter()
+
+
+async def _recount_tokens(pf: bp.PausedFlow) -> int | None:
+    """Fire /v1/messages/count_tokens for a paused flow's current curated IR.
+
+    Returns None when the process-wide counter is not registered (addon
+    has not initialized yet, or is already torn down), when the flow has
+    no stored auth headers (legacy paused flows from before this field
+    was added), or when the network call fails. Callers treat None as
+    "keep the UI em dash" rather than a hard error.
+    """
+    counter = get_counter()
+    if counter is None or not pf.auth_headers:
+        return None
+    try:
+        return await counter.count(
+            AnthropicAdapter().outbound_request(pf.curated_ir),
+            pf.auth_headers,
+        )
+    except Exception:
+        logger.exception("re-audit count_tokens failed")
+        return None
 
 
 class PausedFlowInfo(BaseModel):
@@ -41,6 +69,9 @@ class PausedFlowDetail(BaseModel):
     original_messages: list[Message]
     audit: OverrideAudit | None
     paused_at_ms: int
+    # Authoritative count_tokens result for the curated IR, or null when
+    # the count has not landed yet (fire-and-forget on pause) or failed.
+    tokens_before: int | None = None
 
 
 class BreakpointStatusDetail(BaseModel):
@@ -81,6 +112,7 @@ async def get_paused_flow(flow_id: str) -> PausedFlowDetail:
         original_messages=list(pf.original_ir.messages),
         audit=pf.audit,
         paused_at_ms=pf.paused_at_ms,
+        tokens_before=pf.tokens_before,
     )
 
 
@@ -115,6 +147,9 @@ async def release_flow_unmodified(flow_id: str) -> dict[str, str]:
 class ReAuditResponse(BaseModel):
     audit: OverrideAudit
     curated_ir: InternalRequest
+    # New curated-IR token count; null when the counter is unavailable
+    # or the call failed. Frontend re-renders the "before" chip as —.
+    tokens_before: int | None = None
 
 
 @router.post("/re-audit/{flow_id}")
@@ -123,7 +158,8 @@ async def re_audit_flow(flow_id: str) -> ReAuditResponse:
 
     Reads the override store, applies all overrides to the original
     (pre-pipeline) IR, and updates the paused flow's curated_ir and
-    audit in place.
+    audit in place. Then re-fires count_tokens so the editor's "before"
+    chip reflects the new structure.
     """
     paused = await bp.get_paused()
     pf = paused.get(flow_id)
@@ -138,14 +174,19 @@ async def re_audit_flow(flow_id: str) -> ReAuditResponse:
         audit = identity_audit(pf.original_ir)
         pf.curated_ir = pf.original_ir
         pf.audit = audit
-        return ReAuditResponse(audit=audit, curated_ir=pf.original_ir)
+    else:
+        curated_ir, audit = apply_overrides(store.get_all(), pf.original_ir)
+        pf.curated_ir = curated_ir
+        pf.audit = audit
 
-    curated_ir, audit = apply_overrides(store.get_all(), pf.original_ir)
+    tokens_before = await _recount_tokens(pf)
+    pf.tokens_before = tokens_before
 
-    pf.curated_ir = curated_ir
-    pf.audit = audit
-
-    return ReAuditResponse(audit=audit, curated_ir=curated_ir)
+    return ReAuditResponse(
+        audit=pf.audit,
+        curated_ir=pf.curated_ir,
+        tokens_before=tokens_before,
+    )
 
 
 @router.post("/drop/{flow_id}")

@@ -240,13 +240,17 @@ function OverridesFooter({
   );
 }
 
-interface TokenLedgerProps {
+interface CharsLedgerProps {
   before: CharBreakdown;
   after: CharBreakdown;
   overridesFooter?: OverridesFooterProps;
 }
 
-function TokenLedger({ before, after, overridesFooter }: TokenLedgerProps) {
+// Named for the unit it actually measures — characters, not tokens.
+// The real token readout lives in PausedHeader as a count_tokens-backed
+// chip; this ledger is the local diff story (what overrides took out of
+// the IR) and characters are the honest unit for a structural edit.
+function CharsLedger({ before, after, overridesFooter }: CharsLedgerProps) {
   const [expanded, setExpanded] = useState(false);
   const delta = after.total - before.total;
   const hasDelta = delta !== 0;
@@ -530,12 +534,14 @@ export function EditorActions({
 
       <div className="hairline-x" />
 
-      {/* Strip 2 — token ledger. Headline savings hero on the left,
+      {/* Strip 2 — chars ledger. Headline savings hero on the left,
           two-row before/after segmented bar on the right, per-category
-          diff readout below. When expanded and overrides are present,
+          diff readout below. Unit is characters (what overrides
+          physically remove from the IR); the tokens story lives in the
+          PausedHeader chip. When expanded and overrides are present,
           an OVERRIDES footer strip appears beneath the ledger as the
           caption/provenance for the savings shown above it. */}
-      <TokenLedger
+      <CharsLedger
         before={before}
         after={after}
         overridesFooter={{

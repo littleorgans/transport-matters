@@ -11,7 +11,7 @@ vi.mock("../../api", () => ({
   releaseFlow: vi.fn().mockResolvedValue(undefined),
   releaseFlowUnmodified: vi.fn().mockResolvedValue(undefined),
   dropFlow: vi.fn().mockResolvedValue(undefined),
-  reauditFlow: vi.fn().mockResolvedValue({ audit: null, curated_ir: {} }),
+  reauditFlow: vi.fn().mockResolvedValue({ audit: null, curated_ir: {}, tokens_before: null }),
   fetchOverrides: vi.fn().mockResolvedValue({ overrides: [], enabled: true }),
   patchOverrides: vi
     .fn()
@@ -40,6 +40,7 @@ const mockPausedFlow: PausedFlow = {
   original_messages: mockIr.messages,
   audit: null,
   paused_at_ms: Date.now() - 5000,
+  tokens_before: null,
 };
 
 function makeWrapper() {

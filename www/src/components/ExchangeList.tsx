@@ -1,4 +1,4 @@
-import { displayModel } from "../lib/formatting";
+import { contextTokens, displayModel } from "../lib/formatting";
 import type { IndexEntry } from "../types";
 
 interface ExchangeListProps {
@@ -18,10 +18,6 @@ function formatRelativeTime(ts: string): string {
   return new Date(ts).toLocaleDateString();
 }
 
-function formatKB(chars: number): string {
-  return `${(chars / 1024).toFixed(1)}K`;
-}
-
 const STOP_TONE: Record<string, string> = {
   end_turn: "text-sage",
   tool_use: "text-sky",
@@ -31,7 +27,7 @@ const STOP_TONE: Record<string, string> = {
 export function ExchangeList({ exchanges, selectedId, onSelect }: ExchangeListProps) {
   if (exchanges.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center gap-3 p-12">
+      <div className="flex flex-1 flex-col items-center justify-center gap-3 p-12">
         <span className="h-1 w-1 rounded-full bg-txt-3 pulse-dot" />
         <span className="label">Waiting for traffic</span>
       </div>
@@ -39,10 +35,14 @@ export function ExchangeList({ exchanges, selectedId, onSelect }: ExchangeListPr
   }
 
   return (
-    <div className="overflow-y-auto">
+    // flex-1 claims the remaining aside height inside its flex-column
+    // parent, and min-h-0 overrides flex's default min-height:auto so
+    // overflow-y-auto actually engages once rows exceed the viewport.
+    <div className="flex-1 min-h-0 overflow-y-auto">
       {exchanges.map((entry) => {
         const isSelected = entry.id === selectedId;
         const tone = entry.res?.stop_reason ? STOP_TONE[entry.res.stop_reason] : undefined;
+        const context = contextTokens(entry.res);
         return (
           <button
             type="button"
@@ -70,14 +70,10 @@ export function ExchangeList({ exchanges, selectedId, onSelect }: ExchangeListPr
               }`}
             >
               <span className="metric-num">{entry.req.tools_count} tools</span>
-              <span className="text-edge-strong">&middot;</span>
-              <span className="metric-num">{formatKB(entry.req.total_chars)}</span>
-              {entry.res?.output_tokens != null && (
+              {context > 0 && (
                 <>
                   <span className="text-edge-strong">&middot;</span>
-                  <span className="metric-num text-sky">
-                    {entry.res.output_tokens.toLocaleString()} out
-                  </span>
+                  <span className="metric-num text-sky">{context.toLocaleString()} tokens</span>
                 </>
               )}
               {entry.res?.stop_reason && (

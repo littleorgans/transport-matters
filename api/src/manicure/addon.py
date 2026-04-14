@@ -13,6 +13,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any  # Any: mitmproxy loader type is untyped
 
+import httpx
 import uvicorn
 
 from manicure import breakpoint as bp
@@ -22,6 +23,14 @@ if TYPE_CHECKING:
     from mitmproxy import http
 from manicure.adapters import get_adapter
 from manicure.config import get_settings
+from manicure.counting import (
+    TokenCounter,
+    TokenCountingClient,
+    _relevant_auth_headers,
+    count_before_after,
+    set_counter,
+    set_recent_auth,
+)
 from manicure.ir import InternalRequest, InternalResponse, TextBlock, ToolUseBlock
 from manicure.main import create_app
 from manicure.overrides import (
@@ -53,90 +62,27 @@ def _build_req_stats(ir: InternalRequest) -> ReqStats:
     )
 
 
-def _build_res_stats(
-    res_ir: InternalResponse | None,
-    raw_res: bytes,
-    content_type: str,
-) -> ResStats:
-    """Build response stats from an InternalResponse or raw SSE bytes."""
-    if "application/json" in content_type and res_ir is not None:
-        text_chars = 0
-        tool_calls = 0
-        for block in res_ir.content:
-            if isinstance(block, TextBlock):
-                text_chars += len(block.text)
-            elif isinstance(block, ToolUseBlock):
-                tool_calls += 1
+def _build_res_stats(res_ir: InternalResponse) -> ResStats:
+    """Derive the index row's response stats from a parsed IR.
 
-        return ResStats(
-            stop_reason=res_ir.stop_reason,
-            input_tokens=res_ir.usage.input_tokens,
-            output_tokens=res_ir.usage.output_tokens,
-            cache_read_input_tokens=res_ir.usage.cache_read_input_tokens,
-            text_chars=text_chars,
-            tool_calls=tool_calls,
-        )
-
-    return _parse_sse_stats(raw_res)
-
-
-def _parse_sse_stats(raw: bytes) -> ResStats:
-    """Extract stats from SSE event stream (best-effort)."""
-    import json
-
-    stop_reason: str | None = None
-    input_tokens = 0
-    output_tokens = 0
-    cache_read_input_tokens = 0
+    The adapter is authoritative for both JSON and SSE; the addon used to
+    re-parse SSE here and drop fields in the process. Keeping one source
+    of truth eliminates drift between the two code paths.
+    """
     text_chars = 0
     tool_calls = 0
-
-    try:
-        text = raw.decode("utf-8")
-    except UnicodeDecodeError:
-        logger.warning("SSE payload contains invalid UTF-8 bytes, using replacement")
-        text = raw.decode("utf-8", errors="replace")
-    for line in text.splitlines():
-        if not line.startswith("data: "):
-            continue
-        payload = line[6:]
-        if payload == "[DONE]":
-            continue
-        try:
-            event: dict[str, Any] = json.loads(payload)  # Any: SSE JSON payload
-        except (json.JSONDecodeError, ValueError):
-            continue
-
-        event_type = event.get("type", "")
-
-        if event_type == "message_start":
-            msg = event.get("message", {})
-            usage = msg.get("usage", {})
-            input_tokens += usage.get("input_tokens", 0)
-            cache_read_input_tokens += usage.get("cache_read_input_tokens", 0)
-
-        elif event_type == "message_delta":
-            delta = event.get("delta", {})
-            if delta.get("stop_reason"):
-                stop_reason = delta["stop_reason"]
-            usage = event.get("usage", {})
-            output_tokens += usage.get("output_tokens", 0)
-
-        elif event_type == "content_block_start":
-            cb = event.get("content_block", {})
-            if cb.get("type") == "tool_use":
-                tool_calls += 1
-
-        elif event_type == "content_block_delta":
-            delta = event.get("delta", {})
-            if delta.get("type") == "text_delta":
-                text_chars += len(delta.get("text", ""))
+    for block in res_ir.content:
+        if isinstance(block, TextBlock):
+            text_chars += len(block.text)
+        elif isinstance(block, ToolUseBlock):
+            tool_calls += 1
 
     return ResStats(
-        stop_reason=stop_reason,
-        input_tokens=input_tokens,
-        output_tokens=output_tokens,
-        cache_read_input_tokens=cache_read_input_tokens,
+        stop_reason=res_ir.stop_reason,
+        input_tokens=res_ir.usage.input_tokens,
+        output_tokens=res_ir.usage.output_tokens,
+        cache_creation_input_tokens=res_ir.usage.cache_creation_input_tokens,
+        cache_read_input_tokens=res_ir.usage.cache_read_input_tokens,
         text_chars=text_chars,
         tool_calls=tool_calls,
     )
@@ -195,12 +141,45 @@ def _resolve_paused_flow(pf: bp.PausedFlow) -> tuple[InternalRequest, bool]:
     return pf.mutated_ir, pf.mutated_ir != pf.curated_ir
 
 
+async def _fire_pause_count(
+    flow_id: str,
+    counter: TokenCountingClient,
+    payload: bytes,
+    auth: dict[str, str],
+) -> None:
+    """Count tokens for a paused flow and announce the result on the bus.
+
+    Runs fire-and-forget so the initial ``paused`` event reaches the UI
+    immediately; a follow-up ``paused_tokens`` event carries the real
+    count once the Anthropic round-trip completes. On failure (network,
+    rate limit, malformed response, or race with a user release) no
+    event is emitted and the UI keeps its em dash.
+    """
+    try:
+        tokens = await counter.count(payload, auth)
+    except Exception:
+        logger.exception("count_tokens failed at breakpoint %s", flow_id)
+        return
+    if tokens is None:
+        return
+    if not await bp.set_tokens_before(flow_id, tokens):
+        return
+    broadcast.emit(
+        {
+            "type": "paused_tokens",
+            "flow_id": flow_id,
+            "tokens_before": tokens,
+        }
+    )
+
+
 async def _handle_breakpoint(
     flow: http.HTTPFlow,
     adapter: Any,  # Any: adapter protocol has no shared base
     original_ir: InternalRequest,
     curated_ir: InternalRequest,
     audit: OverrideAudit | None,
+    counter: TokenCountingClient | None,
 ) -> None:
     """Pause at breakpoint, await user action, rewrite request in place.
 
@@ -213,8 +192,9 @@ async def _handle_breakpoint(
     logger.info("BREAKPOINT %s waiting for serializer", flow.id)
     async with bp.pause_serializer():
         logger.info("BREAKPOINT %s acquired serializer, pausing", flow.id)
+        auth = _relevant_auth_headers(flow.request.headers)
         paused_at_ms = int(time.time() * 1000)
-        event = await bp.pause(flow, original_ir, curated_ir, audit)
+        event = await bp.pause(flow, original_ir, curated_ir, audit, auth_headers=auth)
         broadcast.emit(
             {
                 "type": "paused",
@@ -231,8 +211,20 @@ async def _handle_breakpoint(
                 ],
                 "audit": audit.model_dump(mode="json") if audit else None,
                 "paused_at_ms": paused_at_ms,
+                # Filled in by _fire_pause_count via a follow-up paused_tokens
+                # event; starting null keeps the initial UI render fast.
+                "tokens_before": None,
             }
         )
+        if counter is not None:
+            asyncio.create_task(
+                _fire_pause_count(
+                    flow.id,
+                    counter,
+                    adapter.outbound_request(curated_ir),
+                    auth,
+                )
+            )
         settings = get_settings()
         try:
             await asyncio.wait_for(event.wait(), timeout=settings.breakpoint_timeout_s)
@@ -277,7 +269,7 @@ def _parse_response_ir(
         return None, None
     try:
         res_ir = adapter.inbound_response(raw_res, content_type)
-        res_stats = _build_res_stats(res_ir, raw_res, content_type)
+        res_stats = _build_res_stats(res_ir)
         return res_ir, res_stats
     except Exception:
         logger.exception("Failed to parse response for flow %s", exchange_id)
@@ -285,14 +277,52 @@ def _parse_response_ir(
 
 
 def _build_pipeline_stats(audit: OverrideAudit | None) -> PipelineStats | None:
-    """Convert an OverrideAudit to the storable PipelineStats."""
+    """Convert an OverrideAudit to the storable PipelineStats.
+
+    Token counts start unset; a subsequent async stamp via count_tokens
+    fills them in. Rows whose count call fails stay None and the UI
+    renders an em dash rather than a fake chars/4 number.
+    """
     if audit is None:
         return None
     return PipelineStats(
         overrides_applied=list(audit.entries),
         chars_before=audit.chars_before,
         chars_after=audit.chars_after,
-        tokens_approx=abs(audit.chars_delta) // 4,
+    )
+
+
+async def _stamp_pipeline_tokens(
+    stats: PipelineStats,
+    original_ir: InternalRequest,
+    curated_ir: InternalRequest,
+    adapter: Any,  # Any: adapter protocol has no shared base
+    counter: TokenCountingClient,
+    auth_headers: dict[str, str],
+) -> PipelineStats:
+    """Attach before/after token counts from /v1/messages/count_tokens.
+
+    Delegates the byte-equality collapse and concurrent-count logic to
+    ``count_before_after`` — the lazy-recount endpoint uses the same
+    helper so the two paths can't drift.
+
+    A None return on either side is treated as a partial failure: the
+    stats object is returned unchanged so both token fields stay at
+    None. Persisting a partial stamp like (42, None) would let the
+    lazy-recount endpoint's "already stamped" short-circuit freeze the
+    null side forever; leaving the row at (None, None) keeps it
+    eligible for a future retry.
+    """
+    tokens_before, tokens_after = await count_before_after(
+        counter,
+        auth_headers,
+        adapter.outbound_request(original_ir),
+        adapter.outbound_request(curated_ir),
+    )
+    if tokens_before is None or tokens_after is None:
+        return stats
+    return stats.model_copy(
+        update={"tokens_before": tokens_before, "tokens_after": tokens_after}
     )
 
 
@@ -343,6 +373,13 @@ def _emit_exchange(
 
 
 class ManicureAddon:
+    def __init__(self) -> None:
+        # Initialized in load() and closed in done(). Typed Optional so
+        # response() can no-op gracefully if load() has not run yet (e.g.
+        # tests that exercise phase helpers directly).
+        self._http_client: httpx.AsyncClient | None = None
+        self._token_counter: TokenCounter | None = None
+
     def load(self, loader: Any) -> None:  # Any: mitmproxy loader
         settings = get_settings()
         storage = init_storage(root=settings.storage_dir)
@@ -350,6 +387,19 @@ class ManicureAddon:
 
         if isinstance(storage, DiskStorageBackend):
             logger.info("Storage root: %s", storage.root)
+
+        # trust_env=False so HTTPS_PROXY env vars do not loop the counter's
+        # request back through Manicure's own proxy. We always want to hit
+        # api.anthropic.com directly.
+        self._http_client = httpx.AsyncClient(
+            base_url="https://api.anthropic.com",
+            timeout=httpx.Timeout(connect=3.0, read=10.0, write=5.0, pool=3.0),
+            trust_env=False,
+        )
+        self._token_counter = TokenCounter(self._http_client)
+        # Publish the counter so FastAPI routes (re-audit) can recount
+        # without reaching back through the live mitmproxy flow.
+        set_counter(self._token_counter)
 
         app = create_app()
         config = uvicorn.Config(
@@ -370,6 +420,12 @@ class ManicureAddon:
         except Exception:
             logger.debug("No adapter matches flow %s, passing through", flow.id)
             return
+
+        # Snapshot auth so lazy recount routes (e.g. historical pipeline
+        # tokens) can replay credentials against count_tokens without a
+        # live flow in hand. Refreshed on every inbound request, so a
+        # rotated key propagates immediately.
+        set_recent_auth(_relevant_auth_headers(flow.request.headers))
 
         result = await _parse_request_ir(flow, adapter)
         if result is None:
@@ -402,7 +458,9 @@ class ManicureAddon:
             )
         if not skip and bp.is_armed():
             logger.info("BREAKPOINT %s armed, pausing", flow.id)
-            await _handle_breakpoint(flow, adapter, ir, curated_ir, audit)
+            await _handle_breakpoint(
+                flow, adapter, ir, curated_ir, audit, self._token_counter
+            )
         else:
             logger.debug(
                 "Skipping breakpoint for %s (another flow paused or not armed)",
@@ -412,6 +470,12 @@ class ManicureAddon:
 
     async def done(self) -> None:
         await bp.clear_all()
+        if self._http_client is not None:
+            await self._http_client.aclose()
+            self._http_client = None
+            self._token_counter = None
+            set_counter(None)
+            set_recent_auth(None)
 
     async def response(self, flow: http.HTTPFlow) -> None:
         adapter = flow.metadata.get("manicure_adapter")
@@ -440,6 +504,22 @@ class ManicureAddon:
         )
         req_stats = _build_req_stats(curated_ir)
         pipeline_stats = _build_pipeline_stats(audit)
+        if pipeline_stats is not None and self._token_counter is not None:
+            try:
+                auth = _relevant_auth_headers(flow.request.headers)
+                pipeline_stats = await _stamp_pipeline_tokens(
+                    pipeline_stats,
+                    ir,
+                    curated_ir,
+                    adapter,
+                    self._token_counter,
+                    auth,
+                )
+            except Exception:
+                logger.exception(
+                    "count_tokens stamp failed for %s, leaving tokens unset",
+                    exchange_id,
+                )
         mutated_manually = flow.metadata.get("manicure_mutated_manually", False)
 
         ts_slug = ts.strftime("%Y%m%dT%H%M%S")

@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Literal
 
 if TYPE_CHECKING:
@@ -31,6 +31,15 @@ class PausedFlow:
     audit: OverrideAudit | None = None
     mutated_ir: InternalRequest | None = None
     dropped: bool = False
+    # Anthropic auth headers captured at pause time so the FastAPI route
+    # layer (which does not have access to the mitmproxy flow directly)
+    # can call /v1/messages/count_tokens on the user's behalf when the
+    # pipeline is re-audited.
+    auth_headers: dict[str, str] = field(default_factory=dict)
+    # Authoritative "before" token count — the number of tokens the curated
+    # IR would cost if forwarded unchanged. None when the counter failed
+    # or is not configured; the UI renders an em dash in that case.
+    tokens_before: int | None = None
 
 
 _mode: Literal["off", "armed_once"] = "off"
@@ -75,8 +84,14 @@ async def pause(
     original_ir: InternalRequest,
     curated_ir: InternalRequest,
     audit: OverrideAudit | None = None,
+    auth_headers: dict[str, str] | None = None,
 ) -> asyncio.Event:
-    """Register flow, re-arm for next request, return event to await on."""
+    """Register flow, re-arm for next request, return event to await on.
+
+    ``auth_headers`` captures the Anthropic identity on this flow so the
+    FastAPI re-audit route can recount tokens without needing access to
+    the live mitmproxy flow.
+    """
     async with _lock:
         event: asyncio.Event = asyncio.Event()
         _paused[flow.id] = PausedFlow(
@@ -86,8 +101,23 @@ async def pause(
             curated_ir=curated_ir,
             audit=audit,
             paused_at_ms=int(time.time() * 1000),
+            auth_headers=dict(auth_headers) if auth_headers else {},
         )
         return event
+
+
+async def set_tokens_before(flow_id: str, tokens: int | None) -> bool:
+    """Attach a count_tokens result to an already-paused flow.
+
+    Returns False when the flow has been released in the meantime; the
+    caller should treat that as a benign race (the UI already moved on).
+    """
+    async with _lock:
+        pf = _paused.get(flow_id)
+        if pf is None:
+            return False
+        pf.tokens_before = tokens
+        return True
 
 
 async def release(flow_id: str, mutated_ir: InternalRequest | None = None) -> bool:

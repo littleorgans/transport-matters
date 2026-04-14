@@ -530,15 +530,15 @@ input:user-invalid + .field-error {
   content: "";
   position: absolute;
   left: 50%;
-  bottom: 6px;
-  width: 14px;
-  height: 1px;
+  bottom: 5px;
+  width: 28px;
+  height: 1.5px;
   transform: translateX(-50%);
   background: linear-gradient(
     to right,
     transparent,
-    rgb(var(--accent-rgb) / 0.45) 30%,
-    rgb(var(--accent-rgb) / 0.45) 70%,
+    rgb(var(--accent-rgb) / 0.6) 25%,
+    rgb(var(--accent-rgb) / 0.6) 75%,
     transparent
   );
 }

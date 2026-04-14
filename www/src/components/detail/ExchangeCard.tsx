@@ -1,4 +1,7 @@
+import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
+import { fetchPipelineTokens } from "../../api";
+import { contextTokens } from "../../lib/formatting";
 import type { ExchangeDetail, Message, OverrideAuditEntry } from "../../types";
 import { CompressionBar } from "./CompressionBar";
 import { countContentBlocks } from "./ContentBlocks";
@@ -8,23 +11,54 @@ export function ExchangeCard({ detail }: { detail: ExchangeDetail }) {
   const { entry } = detail;
   const res = entry.res;
   const pipeline = entry.pipeline;
-  const totalBefore =
-    pipeline?.chars_before ?? (detail.request_ir ? JSON.stringify(detail.request_ir).length : 0);
-  const totalAfter =
-    pipeline?.chars_after ??
-    (detail.request_curated_ir ? JSON.stringify(detail.request_curated_ir).length : 0);
+
+  type CardTab = "exchange" | "pipeline";
+  const [cardTab, setCardTab] = useState<CardTab>("exchange");
+
+  // Lazy-fetch the pipeline's authoritative token counts for historical
+  // rows that arrive here with both fields null. The endpoint
+  // short-circuits to the persisted values when already stamped, so
+  // repeated opens do not re-hit Anthropic. We only enable the query
+  // on the Pipeline tab to avoid recounting rows the user never looks
+  // at.
+  const needsTokenRecount =
+    pipeline !== null && pipeline.tokens_before === null && pipeline.tokens_after === null;
+  const pipelineTokensQuery = useQuery({
+    queryKey: ["pipeline-tokens", entry.id],
+    queryFn: () => fetchPipelineTokens(entry.id),
+    enabled: cardTab === "pipeline" && needsTokenRecount,
+    staleTime: Number.POSITIVE_INFINITY,
+  });
+
+  // Merge stored tokens with the lazy-fetched ones. Stored values always
+  // win — if both are null, the query's response (which itself may be
+  // null) is the fallback.
+  const tokensBefore = pipeline?.tokens_before ?? pipelineTokensQuery.data?.tokens_before ?? null;
+  const tokensAfter = pipeline?.tokens_after ?? pipelineTokensQuery.data?.tokens_after ?? null;
+  const showPipelineTokens = pipeline !== null && tokensBefore !== null && tokensAfter !== null;
+
+  // Chars are always available from the pipeline record (or derivable
+  // from IR length); tokens replace them whenever the count is known.
+  // This preserves the current chars-only rendering for rows where the
+  // counter has never answered — no worse than pre-existing behavior.
+  const totalBefore = showPipelineTokens
+    ? tokensBefore
+    : (pipeline?.chars_before ??
+      (detail.request_ir ? JSON.stringify(detail.request_ir).length : 0));
+  const totalAfter = showPipelineTokens
+    ? tokensAfter
+    : (pipeline?.chars_after ??
+      (detail.request_curated_ir ? JSON.stringify(detail.request_curated_ir).length : 0));
   const saved = totalBefore - totalAfter;
   const savedPct = totalBefore > 0 ? Math.round((saved / totalBefore) * 100) : 0;
+  const pipelineFormat: "tokens" | "chars" = showPipelineTokens ? "tokens" : "chars";
   const effectiveMessages = ((detail.request_curated_ir ?? detail.request_ir).messages ??
     []) as Message[];
   const hasPipelineSavings =
     saved > 0 || (pipeline?.overrides_applied.length ?? 0) > 0 || entry.mutated_manually;
 
-  type CardTab = "exchange" | "pipeline";
-  const [cardTab, setCardTab] = useState<CardTab>("exchange");
-
-  const tokenTotal = res ? res.input_tokens + res.output_tokens + res.cache_read_input_tokens : 0;
-  const showTokens = !!res && tokenTotal > 0;
+  const contextTotal = contextTokens(res);
+  const showTokens = !!res && contextTotal > 0;
 
   return (
     <div className="card top-highlight">
@@ -91,11 +125,7 @@ export function ExchangeCard({ detail }: { detail: ExchangeDetail }) {
             <>
               <div className="hairline-x" />
               <div className="px-6 py-5">
-                <TokenBar
-                  input={res.input_tokens}
-                  output={res.output_tokens}
-                  cache={res.cache_read_input_tokens}
-                />
+                <TokenBar usage={res} />
               </div>
             </>
           )}
@@ -106,6 +136,14 @@ export function ExchangeCard({ detail }: { detail: ExchangeDetail }) {
             <MetaStat value={entry.req.system_parts} label="system messages" />
             <MetaStat value={entry.req.tools_count} label="tools" />
             <MetaStat value={countContentBlocks(effectiveMessages)} label="messages" />
+            {res && res.output_tokens > 0 && (
+              <span className="flex items-baseline gap-1.5">
+                <span className="metric-num text-[13px] text-sky">
+                  +{res.output_tokens.toLocaleString()}
+                </span>
+                <span className="label">tokens generated</span>
+              </span>
+            )}
           </div>
         </>
       ) : (
@@ -123,21 +161,21 @@ export function ExchangeCard({ detail }: { detail: ExchangeDetail }) {
                       value={totalBefore}
                       tick="bg-txt-3/60"
                       text="text-txt"
-                      format="chars"
+                      format={pipelineFormat}
                     />
                     <TokenStat
                       label="after"
                       value={totalAfter}
                       tick="bg-lavender/60"
                       text="text-lavender"
-                      format="chars"
+                      format={pipelineFormat}
                     />
                     <TokenStat
                       label="saved"
                       value={saved}
                       tick="bg-sage/60"
                       text="text-sage"
-                      format="chars"
+                      format={pipelineFormat}
                     />
                   </div>
                 </div>

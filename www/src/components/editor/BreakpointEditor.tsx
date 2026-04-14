@@ -12,6 +12,7 @@ import type {
 } from "../../types";
 
 import { JsonView } from "../detail/JsonView";
+import { DismissablePanel } from "./DismissablePanel";
 import { EditorActions } from "./EditorActions";
 import { MessagesSection } from "./MessagesSection";
 import { PausedHeader } from "./PausedHeader";
@@ -27,6 +28,7 @@ interface BreakpointEditorProps {
 export function BreakpointEditor({ pausedFlow, onResolved }: BreakpointEditorProps) {
   const queryClient = useQueryClient();
   const setForwardingFlowId = useUIStore((s) => s.setForwardingFlowId);
+  const setPausedFlow = useUIStore((s) => s.setPausedFlow);
   const forwardingFlowId = useUIStore((s) => s.forwardingFlowId);
   const [editedIr, setEditedIr] = useState<InternalRequest>(() => structuredClone(pausedFlow.ir));
   const [audit, setAudit] = useState<OverrideAudit | null>(pausedFlow.audit);
@@ -97,8 +99,12 @@ export function BreakpointEditor({ pausedFlow, onResolved }: BreakpointEditorPro
         const result = await reauditFlow(pausedFlow.flow_id);
         setAudit(result.audit);
         setEditedIr(result.curated_ir);
+        // Re-audit recounts tokens on the server; propagate so the
+        // header's Tokens readout tracks the new curated IR instead
+        // of stale pre-clear counts.
+        setPausedFlow({ ...pausedFlow, tokens_before: result.tokens_before });
       }),
-    [clear, pausedFlow.flow_id, withError],
+    [clear, pausedFlow, setPausedFlow, withError],
   );
 
   const invalidateExchange = () => {
@@ -133,6 +139,7 @@ export function BreakpointEditor({ pausedFlow, onResolved }: BreakpointEditorPro
         pausedAtMs={pausedFlow.paused_at_ms}
         provider={pausedFlow.ir.provider}
         model={editedIr.model}
+        tokensBefore={pausedFlow.tokens_before}
       />
       {error && (
         <p className="mx-5 mt-3 border border-rose/25 bg-rose/5 px-4 py-2.5 text-[13px] text-rose">
@@ -174,6 +181,26 @@ export function BreakpointEditor({ pausedFlow, onResolved }: BreakpointEditorPro
         ))}
         <div className="flex-1 tab-rest" />
       </div>
+
+      {/* One-time notices. Both sit above the action strip so the reader
+          absorbs the framing (what this pane does, why the numbers look
+          the way they do) before pressing Forward. Dismissal persists in
+          localStorage under a stable key, so returning users see neither
+          panel again. */}
+      <DismissablePanel id="editor.tampering" tone="warn" title="Editing a live API request">
+        The provider treats your edits as the authoritative payload and logs the modified version.
+        Aggressive changes to system prompts or built-in tools can return no response from the API.
+      </DismissablePanel>
+      <DismissablePanel
+        id="editor.chars-vs-tokens"
+        tone="info"
+        title="Line items are character counts"
+      >
+        Per-override, per-category, and per-block counts are characters because they're precise,
+        consistent, and cost no extra API calls. Real token counts appear only where the provider
+        reports them: the header readout, the response breakdown, and pipeline totals on completed
+        exchanges.
+      </DismissablePanel>
 
       {viewMode === "raw" ? (
         /* Raw — reuse the virtualized JsonView so the edited IR renders

@@ -1,7 +1,7 @@
 import { useEditableOverride } from "../../hooks/useEditableOverride";
 import { ColorizedPre } from "../../lib/colorizeLine";
 import type { ContentBlock, Override } from "../../types";
-import { Chevron, inputClass, OriginalPreview } from "../detail/atoms";
+import { inputClass, OriginalPreview } from "../detail/atoms";
 import { Toggle } from "../Toggle";
 
 function blockSize(block: ContentBlock): number {
@@ -78,7 +78,6 @@ export function BlockRow({
             {isModified && <span className="h-1 w-1 rounded-full bg-amber" />}
           </div>
         </div>
-        <Chevron expanded={expanded} />
       </div>
       {expanded && (
         <>

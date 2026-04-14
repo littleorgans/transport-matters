@@ -2,7 +2,7 @@ import { useCollapsibleSet } from "../../hooks/useCollapsibleSet";
 import { useEditableOverride } from "../../hooks/useEditableOverride";
 import { useUIStore } from "../../stores/uiStore";
 import type { Override, SystemPart } from "../../types";
-import { Chevron, inputClass, MasterBar, OriginalPreview, SECTION_TONE } from "../detail/atoms";
+import { inputClass, MasterBar, OriginalPreview, SECTION_TONE } from "../detail/atoms";
 import { Toggle } from "../Toggle";
 
 interface SystemSectionProps {
@@ -87,7 +87,6 @@ function SystemPartRow({
           </button>
         )}
         <div className="flex-1" />
-        <Chevron expanded={expanded} />
       </div>
       {expanded && (
         <div className="mt-2 space-y-2 px-4 pb-3">
@@ -119,10 +118,14 @@ export function SystemSection({ parts, overrides, onOverride }: SystemSectionPro
   // Seeded from the auto-expand pref in the initializer only, so
   // mid-session flips don't retroactively collapse mounted rows.
   const autoExpandBlocks = useUIStore((s) => s.autoExpandBlocks);
-  const { allExpanded, toggleAll, toggleOne, isExpanded } = useCollapsibleSet(
-    parts.length,
-    !autoExpandBlocks,
-  );
+  const { toggleAll, toggleOne, isExpanded } = useCollapsibleSet(parts.length, !autoExpandBlocks);
+
+  // Nothing to show and nothing to edit when the request carries no
+  // system parts. Mirrors the early return in ToolsSection and the
+  // conditional render the detail view uses in InspectTab, so empty
+  // system payloads don't leave a "0 parts" master bar hanging. Placed
+  // after hooks to respect React's rules-of-hooks ordering.
+  if (parts.length === 0) return null;
 
   return (
     <section className="space-y-4">
@@ -142,7 +145,6 @@ export function SystemSection({ parts, overrides, onOverride }: SystemSectionPro
               </>
             ) : undefined
           }
-          allExpanded={allExpanded}
           onToggleAll={toggleAll}
         />
         <div className="hairline-x" />

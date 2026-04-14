@@ -6,7 +6,7 @@ import type {
   Message,
   SystemPart,
 } from "../../types";
-import { Chevron, MasterBar, SECTION_TONE, SectionRule } from "./atoms";
+import { MasterBar, SECTION_TONE, SectionRule } from "./atoms";
 import { blockKey, ContentBlockRow, countContentBlocks, RequestMessage } from "./ContentBlocks";
 import { ExchangeCard } from "./ExchangeCard";
 import { groupTools, ToolGroup } from "./ToolGroups";
@@ -39,9 +39,6 @@ function SystemPartRow({
         <span className="label text-txt-3 metric-num shrink-0 mt-1">
           {part.text.length.toLocaleString()}
         </span>
-        <span className="mt-1 shrink-0">
-          <Chevron expanded={expanded} />
-        </span>
       </button>
       {expanded && (
         <pre className="mt-3 bg-canvas p-4 text-[12px] leading-relaxed text-txt-2 whitespace-pre-wrap border border-edge-subtle block-recess">
@@ -53,7 +50,7 @@ function SystemPartRow({
 }
 
 function SystemCard({ parts }: { parts: SystemPart[] }) {
-  const { allExpanded, toggleAll, toggleOne, isExpanded } = useCollapsibleSet(parts.length, true);
+  const { toggleAll, toggleOne, isExpanded } = useCollapsibleSet(parts.length, true);
 
   return (
     <div className="card-flush">
@@ -62,7 +59,6 @@ function SystemCard({ parts }: { parts: SystemPart[] }) {
         tone={SECTION_TONE.system}
         count={parts.length}
         countUnit="part"
-        allExpanded={allExpanded}
         onToggleAll={toggleAll}
       />
       <div className="hairline-x" />
@@ -87,7 +83,7 @@ function SystemCard({ parts }: { parts: SystemPart[] }) {
 }
 
 function ResponseCard({ content }: { content: ContentBlock[] }) {
-  const { allExpanded, toggleAll, toggleOne, isExpanded } = useCollapsibleSet(content.length, true);
+  const { toggleAll, toggleOne, isExpanded } = useCollapsibleSet(content.length, true);
 
   return (
     <div className="card-flush">
@@ -96,7 +92,6 @@ function ResponseCard({ content }: { content: ContentBlock[] }) {
         tone={SECTION_TONE.response}
         count={content.length}
         countUnit="block"
-        allExpanded={allExpanded}
         onToggleAll={toggleAll}
       />
       <div className="hairline-x" />

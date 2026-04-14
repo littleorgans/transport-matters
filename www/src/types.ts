@@ -12,6 +12,7 @@ export interface ResStats {
   stop_reason: string | null;
   input_tokens: number;
   output_tokens: number;
+  cache_creation_input_tokens: number;
   cache_read_input_tokens: number;
   text_chars: number;
   tool_calls: number;
@@ -185,7 +186,11 @@ export interface PipelineStats {
   overrides_applied: OverrideAuditEntry[];
   chars_before: number;
   chars_after: number;
-  tokens_approx: number;
+  // Authoritative counts from /v1/messages/count_tokens. null means the
+  // endpoint failed or the row predates counter integration; the UI should
+  // render an em dash rather than fall back to a chars/4 estimate.
+  tokens_before: number | null;
+  tokens_after: number | null;
 }
 
 // ── Breakpoint ────────────────────────────────────────────────────
@@ -198,6 +203,12 @@ export interface PausedFlow {
   original_messages: Message[];
   audit: OverrideAudit | null;
   paused_at_ms: number;
+  /**
+   * count_tokens result for the IR currently staged to be forwarded.
+   * Null until the count lands (fire-and-forget on pause) or when the
+   * call fails — the UI renders an em dash in that case.
+   */
+  tokens_before: number | null;
 }
 
 export interface BreakpointStatusDetail {

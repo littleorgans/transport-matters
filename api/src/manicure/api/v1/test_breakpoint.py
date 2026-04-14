@@ -145,6 +145,26 @@ class TestGetPausedFlow:
         assert data["paused_at_ms"] == 1_700_000_000_000
         assert data["audit"] is None
         assert data["ir"]["model"] == "claude-3"
+        assert data["tokens_before"] is None
+
+    async def test_returns_tokens_before_when_stamped(
+        self, client: AsyncClient
+    ) -> None:
+        """After the background count lands, GET surfaces the stored value."""
+        event = asyncio.Event()
+        bp._paused["flow-tok"] = bp.PausedFlow(
+            flow=None,  # type: ignore[arg-type]
+            event=event,
+            original_ir=_MINIMAL_IR,
+            curated_ir=_MINIMAL_IR,
+            audit=None,
+            paused_at_ms=1_700_000_000_000,
+            tokens_before=512,
+        )
+
+        response = await client.get("/api/breakpoint/paused/flow-tok")
+        assert response.status_code == 200
+        assert response.json()["tokens_before"] == 512
 
 
 # IR with a system part that overrides can target
@@ -279,3 +299,105 @@ class TestReAudit:
         assert data["audit"]["entries"] == []
         # PausedFlow updated to original_ir
         assert pf.curated_ir is _IR_WITH_SYSTEM
+
+    async def test_re_audit_response_shape_includes_tokens_before(
+        self, client: AsyncClient
+    ) -> None:
+        """tokens_before is part of the contract; null when no counter registered.
+
+        Route tests run without the addon loaded, so ``counting.get_counter()``
+        returns None — the field must still be present (as null) so the
+        frontend type contract stays stable regardless of addon state.
+        """
+        event = asyncio.Event()
+        bp._paused["flow-shape"] = bp.PausedFlow(
+            flow=None,  # type: ignore[arg-type]
+            event=event,
+            original_ir=_MINIMAL_IR,
+            curated_ir=_MINIMAL_IR,
+            audit=None,
+            paused_at_ms=1_700_000_000_000,
+        )
+
+        response = await client.post("/api/breakpoint/re-audit/flow-shape")
+        assert response.status_code == 200
+        data = response.json()
+        assert "tokens_before" in data
+        assert data["tokens_before"] is None
+
+    async def test_re_audit_fires_counter_when_registered(
+        self, client: AsyncClient
+    ) -> None:
+        """When the counter is available, re-audit recounts and persists the result."""
+        from manicure import counting
+
+        class _Stub:
+            def __init__(self) -> None:
+                self.calls = 0
+
+            async def count(
+                self, payload: bytes, auth_headers: dict[str, str]
+            ) -> int | None:
+                self.calls += 1
+                return 777
+
+        stub = _Stub()
+        counting.set_counter(stub)  # type: ignore[arg-type]
+        try:
+            event = asyncio.Event()
+            pf = bp.PausedFlow(
+                flow=None,  # type: ignore[arg-type]
+                event=event,
+                original_ir=_MINIMAL_IR,
+                curated_ir=_MINIMAL_IR,
+                audit=None,
+                paused_at_ms=1_700_000_000_000,
+                auth_headers={"x-api-key": "sk-test"},
+            )
+            bp._paused["flow-recount"] = pf
+
+            response = await client.post("/api/breakpoint/re-audit/flow-recount")
+            assert response.status_code == 200
+            data = response.json()
+            assert data["tokens_before"] == 777
+            assert pf.tokens_before == 777
+            assert stub.calls == 1
+        finally:
+            counting.set_counter(None)
+
+    async def test_re_audit_skips_counter_when_auth_missing(
+        self, client: AsyncClient
+    ) -> None:
+        """Legacy paused flows (no auth_headers stored) must not call the counter."""
+        from manicure import counting
+
+        class _Stub:
+            def __init__(self) -> None:
+                self.calls = 0
+
+            async def count(
+                self, payload: bytes, auth_headers: dict[str, str]
+            ) -> int | None:
+                self.calls += 1
+                return 1
+
+        stub = _Stub()
+        counting.set_counter(stub)  # type: ignore[arg-type]
+        try:
+            event = asyncio.Event()
+            bp._paused["flow-legacy"] = bp.PausedFlow(
+                flow=None,  # type: ignore[arg-type]
+                event=event,
+                original_ir=_MINIMAL_IR,
+                curated_ir=_MINIMAL_IR,
+                audit=None,
+                paused_at_ms=1_700_000_000_000,
+                # auth_headers left as the default empty dict
+            )
+
+            response = await client.post("/api/breakpoint/re-audit/flow-legacy")
+            assert response.status_code == 200
+            assert response.json()["tokens_before"] is None
+            assert stub.calls == 0
+        finally:
+            counting.set_counter(None)

@@ -10,6 +10,7 @@ const mockPausedFlow: PausedFlow = {
   original_messages: [],
   audit: null,
   paused_at_ms: 1000,
+  tokens_before: null,
 };
 
 beforeEach(() => {

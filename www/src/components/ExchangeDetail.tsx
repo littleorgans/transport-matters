@@ -3,6 +3,7 @@ import { useDeferredValue, useEffect, useState } from "react";
 import { fetchExchange } from "../api";
 import { displayModel } from "../lib/formatting";
 import { useUIStore } from "../stores/uiStore";
+import type { ExchangeDetail as ExchangeDetailPayload } from "../types";
 import { InspectTab } from "./detail/InspectTab";
 import { JsonView } from "./detail/JsonView";
 
@@ -11,6 +12,44 @@ interface ExchangeDetailProps {
 }
 
 type DetailTab = "inspect" | "request" | "response";
+
+/**
+ * Per-tab readout. Turns the INSPECT|REQUEST|RESPONSE bar from a label row
+ * into the second deck of the instrument panel the header above establishes:
+ * each cell carries a label and a contextual metric rather than just a name.
+ *
+ * Unit choices follow the tokens-vs-chars rule — show real tokens when the
+ * payload has them, raw chars otherwise, no heuristic conversion. Returns
+ * null when there's nothing meaningful to render so the readout line stays
+ * absent instead of fake-empty.
+ */
+function tabReadout(t: DetailTab, detail: ExchangeDetailPayload): string | null {
+  const { entry, response_ir } = detail;
+
+  if (t === "inspect") {
+    const n = entry.req?.messages_count ?? 0;
+    if (!n) return null;
+    return `${n.toLocaleString()} ${n === 1 ? "message" : "messages"}`;
+  }
+
+  if (t === "request") {
+    if (entry.res) {
+      const ctx =
+        (entry.res.input_tokens ?? 0) +
+        (entry.res.cache_creation_input_tokens ?? 0) +
+        (entry.res.cache_read_input_tokens ?? 0);
+      if (ctx > 0) return `${ctx.toLocaleString()} tokens`;
+    }
+    const chars = entry.req?.total_chars ?? 0;
+    return chars > 0 ? `${chars.toLocaleString()} chars` : null;
+  }
+
+  // response — em dash when there's no payload, so the dimmed tab reads
+  // as "no channel here" instead of ambiguously empty.
+  if (!response_ir || !entry.res) return "\u2014";
+  const out = entry.res.output_tokens ?? 0;
+  return out > 0 ? `${out.toLocaleString()} tokens` : "\u2014";
+}
 
 export function ExchangeDetail({ id }: ExchangeDetailProps) {
   const [tab, setTab] = useState<DetailTab>("inspect");
@@ -118,28 +157,53 @@ export function ExchangeDetail({ id }: ExchangeDetailProps) {
       </div>
       <div className="hairline-x" />
 
-      {/* Tab bar — pressed-key active state.
-          The EDITED marker rides the right side of this bar: it's metadata
-          about the exchange, not a priority alert, so it belongs alongside
-          navigation rather than commanding its own header cell. */}
+      {/* Tab bar — pressed-key switch bank reading as the second deck of
+          the instrument panel the header above established. Each cell now
+          carries a label-over-readout pair mirroring the header's cell
+          rhythm (CAPTURED / Apr 14 · 10:08:55, INSPECT / 5 messages). The
+          readout doubles as a glance-signal: REQUEST's token count tells
+          you how heavy the captured call was, RESPONSE's em-dash tells you
+          the channel is empty without needing the click.
+          The EDITED marker rides the right filler: it's metadata, not an
+          alert, so it belongs alongside navigation. */}
       <div className="flex border-y border-edge">
         {(["inspect", "request", "response"] as const).map((t) => {
           const disabled = t === "response" && detail.response_ir == null;
+          const active = tab === t;
+          const readout = tabReadout(t, detail);
           return (
             <button
               key={t}
               type="button"
               onClick={() => !disabled && setTab(t)}
               disabled={disabled}
-              className={`relative cursor-pointer px-8 py-3 text-[12px] font-medium uppercase tracking-[0.14em] transition-all duration-150 ${
-                tab === t
-                  ? "tab-pressed text-txt"
-                  : disabled
-                    ? "tab-rest text-txt-3/40 cursor-not-allowed"
-                    : "tab-rest text-txt-3 hover:text-txt-2"
+              className={`group relative cursor-pointer px-6 py-2 text-left transition-all duration-150 ${
+                active ? "tab-pressed" : disabled ? "tab-rest cursor-not-allowed" : "tab-rest"
               }`}
             >
-              {t}
+              <div className="flex flex-col gap-1.5">
+                <span
+                  className={`text-[12px] font-medium uppercase tracking-[0.14em] leading-none transition-colors duration-150 ${
+                    active
+                      ? "text-txt"
+                      : disabled
+                        ? "text-txt-3/40"
+                        : "text-txt-3 group-hover:text-txt-2"
+                  }`}
+                >
+                  {t}
+                </span>
+                {/* Non-breaking space when readout is null so the row
+                    keeps its double-line height and the tabs don't twitch
+                    between 1- and 2-line layouts as data arrives. */}
+                <span
+                  className={`text-[11px] metric-num leading-none transition-colors duration-150 ${
+                    active ? "text-txt-2" : disabled ? "text-txt-3/30" : "text-txt-3"
+                  }`}
+                >
+                  {readout ?? "\u00A0"}
+                </span>
+              </div>
             </button>
           );
         })}

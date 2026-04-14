@@ -8,7 +8,7 @@
 
 import { useCollapsibleSet } from "../../hooks/useCollapsibleSet";
 import type { ContentBlock, Message } from "../../types";
-import { Chevron, MasterBar, SECTION_TONE } from "./atoms";
+import { MasterBar, SECTION_TONE } from "./atoms";
 
 // Block type markers are intentionally uniform: a single .chip
 // colour across every kind so scanning reads as a quiet index,
@@ -78,9 +78,6 @@ export function ContentBlockRow({
         <span className="text-[13px] text-txt-2 truncate leading-5 mt-0.5 flex-1 min-w-0">
           {blockSummary(block)}
         </span>
-        <span className="mt-1 shrink-0">
-          <Chevron expanded={expanded} />
-        </span>
       </button>
       {expanded && (
         <pre className="mt-3 bg-canvas p-4 text-[12px] leading-relaxed text-txt-2 whitespace-pre-wrap border border-edge-subtle block-recess">
@@ -105,10 +102,7 @@ export const ROLE_TONE: Record<string, { text: string; bg: string }> = {
 
 export function RequestMessage({ message }: { message: Message }) {
   const tone = SECTION_TONE[message.role] ?? ROLE_TONE[message.role];
-  const { allExpanded, toggleAll, toggleOne, isExpanded } = useCollapsibleSet(
-    message.content.length,
-    true,
-  );
+  const { toggleAll, toggleOne, isExpanded } = useCollapsibleSet(message.content.length, true);
 
   return (
     <div className="card-flush">
@@ -117,7 +111,6 @@ export function RequestMessage({ message }: { message: Message }) {
         tone={tone}
         count={message.content.length}
         countUnit="block"
-        allExpanded={allExpanded}
         onToggleAll={toggleAll}
       />
       <div className="hairline-x" />

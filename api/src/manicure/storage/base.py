@@ -37,7 +37,12 @@ class PipelineStats(BaseModel):
     overrides_applied: list[OverrideAuditEntry] = Field(default_factory=list)
     chars_before: int = 0
     chars_after: int = 0
-    tokens_approx: int = 0
+    # Authoritative token counts from /v1/messages/count_tokens. Start as
+    # None and get stamped asynchronously after the pipeline runs; rows that
+    # predate the counter — or for which the endpoint failed — stay None
+    # and the UI renders an em dash. Never a chars/4 estimate.
+    tokens_before: int | None = None
+    tokens_after: int | None = None
 
 
 class ResStats(BaseModel):
@@ -46,6 +51,7 @@ class ResStats(BaseModel):
     stop_reason: str | None = None
     input_tokens: int = 0
     output_tokens: int = 0
+    cache_creation_input_tokens: int = 0
     cache_read_input_tokens: int = 0
     text_chars: int = 0
     tool_calls: int = 0
@@ -103,3 +109,19 @@ class StorageBackend(ABC):
 
     @abstractmethod
     async def read_index_entry(self, exchange_id: str) -> IndexEntry | None: ...
+
+    @abstractmethod
+    async def update_pipeline_tokens(
+        self,
+        exchange_id: str,
+        tokens_before: int | None,
+        tokens_after: int | None,
+    ) -> IndexEntry | None:
+        """Stamp pipeline token counts onto an existing index entry.
+
+        Returns the updated entry on success, or None if the exchange
+        does not exist or has no pipeline record. Implementations must
+        rewrite the index atomically so a crash mid-write leaves the
+        original state intact.
+        """
+        ...
