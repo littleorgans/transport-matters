@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { ExchangeDetail, Message } from "../../types";
+import type { ExchangeDetail, Message, OverrideAuditEntry } from "../../types";
 import { CompressionBar } from "./CompressionBar";
 import { countContentBlocks } from "./ContentBlocks";
 import { TokenBar, TokenStat } from "./TokenBar";
@@ -149,20 +149,23 @@ export function ExchangeCard({ detail }: { detail: ExchangeDetail }) {
           <div className="hairline-x" />
           <div className="flex items-center gap-6 px-5 py-2.5">
             {pipeline && pipeline.overrides_applied.length > 0 ? (
-              pipeline.overrides_applied.map((o) => (
+              groupOverridesByKind(pipeline.overrides_applied).map((g) => (
                 <span
-                  key={`${o.kind}-${o.target}`}
-                  className={`flex items-baseline gap-1.5 ${o.applied ? "" : "opacity-40"}`}
+                  key={g.kind}
+                  className={`flex items-baseline gap-1.5 ${g.appliedCount > 0 ? "" : "opacity-40"}`}
                 >
-                  <span className="chip text-txt-3">{o.kind}</span>
-                  <span className="text-[11px] text-txt-2 metric-num">
-                    {o.chars_delta !== 0 && (
-                      <span className={o.chars_delta < 0 ? "text-sage" : "text-amber"}>
-                        {o.chars_delta < 0 ? "\u2212" : "+"}
-                        {Math.abs(o.chars_delta).toLocaleString()}
-                      </span>
-                    )}
-                  </span>
+                  <span className="chip text-txt-3">{g.kind}</span>
+                  {g.count > 1 && (
+                    <span className="text-[11px] text-txt-3 metric-num">&times;{g.count}</span>
+                  )}
+                  {g.delta !== 0 && (
+                    <span
+                      className={`text-[11px] metric-num ${g.delta < 0 ? "text-sage" : "text-amber"}`}
+                    >
+                      {g.delta < 0 ? "\u2212" : "+"}
+                      {Math.abs(g.delta).toLocaleString()}
+                    </span>
+                  )}
                 </span>
               ))
             ) : (
@@ -185,4 +188,28 @@ function MetaStat({ value, label }: { value: number; label: string }) {
       <span className="label">{display}</span>
     </span>
   );
+}
+
+interface OverrideGroup {
+  kind: string;
+  count: number;
+  appliedCount: number;
+  delta: number;
+}
+
+// Collapse per-target audit entries into one row per kind. A single paused
+// flow can emit dozens of `tool_toggle` / `message_block_toggle` entries;
+// rendering each as its own chip buries the summary under identical labels.
+function groupOverridesByKind(entries: OverrideAuditEntry[]): OverrideGroup[] {
+  const byKind = new Map<string, OverrideGroup>();
+  for (const e of entries) {
+    const g = byKind.get(e.kind) ?? { kind: e.kind, count: 0, appliedCount: 0, delta: 0 };
+    g.count += 1;
+    if (e.applied) {
+      g.appliedCount += 1;
+      g.delta += e.chars_delta;
+    }
+    byKind.set(e.kind, g);
+  }
+  return Array.from(byKind.values());
 }
