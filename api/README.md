@@ -22,10 +22,14 @@ curl -fsSL https://github.com/srobinson/manicure/releases/latest/download/instal
 ## Quick start
 
 ```bash
-# Start the workbench (proxy + web UI)
-manicure start
+# One command: starts the proxy + Claude Code together
+manicure start                # in the current directory
+manicure start ~/my-project   # in a specific working directory
 
-# In another terminal, point your coding agent at it
+# Proxy-only (bring your own client)
+manicure start --no-claude
+
+# then in another terminal
 ANTHROPIC_BASE_URL=http://localhost:8787 claude
 ```
 
