@@ -10,7 +10,11 @@ Resolution order for the ``storage`` value:
    contains a path separator or expands via ``~``) or a slug. Paths
    canonicalise via :func:`workspace_id`; slugs go through a manifest
    scan under ``~/.manicure/workspaces/{slug}/``.
-2. Otherwise fall back to ``Path.cwd()``.
+2. Otherwise prefer ``MANICURE_CWD`` from the environment — so
+   ``manicure paths`` invoked from a Claude session launched by
+   ``manicure start`` targets the launching workspace even if the
+   user has ``cd``'d into a subdirectory. Fall back to ``Path.cwd()``
+   when the env var is absent (bare CLI invocation).
 3. Once a target CWD or slug is known, prefer a live manifest's
    ``storage_dir`` (the user may have overridden it with
    ``start --storage-dir``); failing that, return
@@ -81,7 +85,12 @@ def _resolve_storage(selector: str | None) -> Path:
     See the module docstring for the full resolution order.
     """
     if selector is None:
-        return _storage_for_cwd(Path.cwd())
+        # MANICURE_CWD wins over Path.cwd() so a paths lookup from a
+        # Claude session spawned by ``manicure start`` resolves to the
+        # launching workspace even if the user has since ``cd``'d into
+        # a subdirectory. Empty string is treated as unset.
+        env_cwd = os.environ.get("MANICURE_CWD") or None
+        return _storage_for_cwd(Path(env_cwd) if env_cwd else Path.cwd())
 
     # A path-shaped selector goes through CWD resolution; a bare token
     # is a slug. ``os.sep`` handles both POSIX and Windows uniformly,

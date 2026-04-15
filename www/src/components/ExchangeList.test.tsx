@@ -62,4 +62,27 @@ describe("ExchangeList", () => {
 
     expect(screen.getByText("Waiting for traffic")).toBeInTheDocument();
   });
+
+  it("scrolls the list when mounted with a selection", async () => {
+    // Smoke test: the effect requests a scroll via Element#scrollTo
+    // (which jsdom doesn't implement natively). We assert only that
+    // the API is invoked — the computed offset depends on layout and
+    // is exercised in real browsers, not jsdom.
+    const entries = Array.from({ length: 50 }, (_, i) =>
+      makeEntry({ id: `row-${i}`, model: `anthropic/model-${i}` }),
+    );
+    const scrollToImpl = vi.fn();
+    Object.defineProperty(HTMLElement.prototype, "scrollTo", {
+      value: scrollToImpl,
+      writable: true,
+      configurable: true,
+    });
+
+    render(<ExchangeList exchanges={entries} selectedId="row-42" onSelect={() => {}} />);
+
+    // Scroll is queued via requestAnimationFrame.
+    await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+
+    expect(scrollToImpl).toHaveBeenCalled();
+  });
 });

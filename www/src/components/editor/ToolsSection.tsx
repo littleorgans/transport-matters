@@ -2,9 +2,9 @@ import { useEffect, useMemo, useState } from "react";
 import { useEditableOverride } from "../../hooks/useEditableOverride";
 import { hasOverride, overrideValue } from "../../lib/overrides";
 import type { Override, ToolDef } from "../../types";
-import { inputClass, OriginalPreview } from "../detail/atoms";
 import { groupTools } from "../detail/ToolGroups";
 import { Toggle } from "../Toggle";
+import { TextOverrideEditor } from "./TextOverrideEditor";
 
 interface ToolsSectionProps {
   tools: ToolDef[];
@@ -101,27 +101,17 @@ function ToolRow({
       {checked && expanded && (
         <div className="px-4 pb-3 space-y-2">
           <div className="space-y-1">
-            <div className="flex items-center justify-between">
-              <span className="label">Description</span>
-              {isModified && (
-                <button
-                  type="button"
-                  className="label text-txt-3 hover:text-amber cursor-pointer transition-colors"
-                  onClick={handleReset}
-                >
-                  reset
-                </button>
-              )}
-            </div>
-            <textarea
-              ref={textRef}
-              className={inputClass}
+            <span className="label">Description</span>
+            <TextOverrideEditor
+              original={tool.description}
               value={localText}
-              onChange={(e) => setLocalText(e.target.value)}
+              onChange={setLocalText}
               onBlur={commitText}
+              textareaRef={textRef}
+              isModified={isModified}
+              onReset={handleReset}
             />
           </div>
-          {isModified && <OriginalPreview text={tool.description} />}
           <details className="group">
             <summary className="label text-txt-3 cursor-pointer hover:text-txt-2 transition-colors">
               Schema
@@ -147,7 +137,10 @@ function ToolGroupSection({
   onOverride: (batch: Override[]) => void;
   allExpanded: boolean;
 }) {
-  const [collapsed, setCollapsed] = useState(false);
+  // Groups default collapsed so opening OVERLAY doesn't dump every
+  // tool row in view — expand is opt-in (per-group `+` or the
+  // section-wide Expand All toggle).
+  const [collapsed, setCollapsed] = useState(true);
   const checkedCount = group.tools.filter(
     (t) => overrideValue<boolean>(overrides, "tool_toggle", `tool:${t.name}`) !== false,
   ).length;
@@ -171,8 +164,15 @@ function ToolGroupSection({
     if (batch.length) onOverride(batch);
   };
 
+  // Mirror the per-tool disabled treatment (opacity-40 on ToolRow) so a
+  // fully-disabled group reads the same at the group level.
+  const allDisabled = checkedCount === 0;
+
   return (
-    <div className="card-flush">
+    <div
+      data-testid={`tool-group-${group.prefix}`}
+      className={`card-flush transition-opacity ${allDisabled ? "opacity-40" : ""}`}
+    >
       <div className="flex items-center gap-3 px-4 py-3">
         <button
           type="button"

@@ -17,6 +17,7 @@ from manicure.exceptions import NotFoundError
 from manicure.ir import (  # noqa: TC001 — FastAPI needs runtime access
     InternalRequest,
     Message,
+    SamplingParams,
     SystemPart,
     ToolDef,
 )
@@ -67,6 +68,14 @@ class PausedFlowDetail(BaseModel):
     original_tools: list[ToolDef]
     original_system: list[SystemPart]
     original_messages: list[Message]
+    # Pristine sampling/provider_extras from the client's request, pre-override.
+    # The editor reads these as the "revert to" reference when the user resets
+    # a sampling_set or provider_extras_set override, since curated_ir already
+    # reflects any active overrides layered on top.
+    # dict[str, object] — provider_extras is structurally opaque (provider-specific
+    # JSON passthrough), so we preserve the shape without tightening it here.
+    original_sampling: SamplingParams
+    original_provider_extras: dict[str, object]
     audit: OverrideAudit | None
     paused_at_ms: int
     # Authoritative count_tokens result for the curated IR, or null when
@@ -110,6 +119,8 @@ async def get_paused_flow(flow_id: str) -> PausedFlowDetail:
         original_tools=list(pf.original_ir.tools),
         original_system=list(pf.original_ir.system),
         original_messages=list(pf.original_ir.messages),
+        original_sampling=pf.original_ir.sampling,
+        original_provider_extras=dict(pf.original_ir.provider_extras),
         audit=pf.audit,
         paused_at_ms=pf.paused_at_ms,
         tokens_before=pf.tokens_before,

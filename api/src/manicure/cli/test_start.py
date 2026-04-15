@@ -748,6 +748,29 @@ def test_start_explicit_storage_dir_overrides_workspace_root(
     assert kwargs["claude_env"]["MANICURE_STORAGE_DIR"] == str(override)
 
 
+def test_start_flows_working_dir_into_manicure_cwd_env(
+    tmp_storage: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    spy_run_children: MagicMock,
+) -> None:
+    """``MANICURE_CWD`` rides on the child env so the API-side meta
+    endpoint returns the user's launch directory instead of whatever
+    cwd the mitmdump process inherits.
+    """
+    monkeypatch.setattr("manicure.cli.shutil.which", _which_all())
+    monkeypatch.setattr("manicure.cli._port_in_use", lambda _: False)
+    monkeypatch.delenv("MANICURE_CWD", raising=False)
+
+    workdir = tmp_path / "project"
+    workdir.mkdir()
+    result = runner.invoke(main, ["start", str(workdir), "--no-system-prompt"])
+    assert result.exit_code == 0, result.output
+    kwargs = spy_run_children.call_args.kwargs
+    assert kwargs["claude_env"]["MANICURE_CWD"] == str(workdir)
+    assert kwargs["mitmdump_env"]["MANICURE_CWD"] == str(workdir)
+
+
 def test_start_writes_workspace_storage_into_manifest(
     tmp_storage: Path,
     tmp_path: Path,

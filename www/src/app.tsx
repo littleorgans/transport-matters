@@ -3,9 +3,14 @@ import { ExchangeDetail } from "./components/ExchangeDetail";
 import { ExchangeList } from "./components/ExchangeList";
 import { BreakpointEditor } from "./components/editor/BreakpointEditor";
 import { ManicureIcon } from "./components/ManicureIcon";
+import { RouteRail } from "./components/RouteRail";
+import { OverlaysView } from "./components/routes/OverlaysView";
+import { RecallView } from "./components/routes/RecallView";
+import { TraceView } from "./components/routes/TraceView";
 import { useBreakpoint } from "./hooks/useBreakpoint";
 import { useExchangeStream } from "./hooks/useExchangeStream";
 import { useExchanges } from "./hooks/useExchanges";
+import { useRouteHotkeys } from "./hooks/useRouteHotkeys";
 import { useUIStore } from "./stores/uiStore";
 
 function ConnectionDot({ connected }: { connected: boolean }) {
@@ -66,10 +71,13 @@ export function App() {
   const { exchanges } = useExchanges();
   const { connected } = useExchangeStream();
   const { mode, arm, disarm, error: breakpointError } = useBreakpoint();
+  const activeRoute = useUIStore((s) => s.activeRoute);
   const selectedId = useUIStore((s) => s.selectedId);
   const setSelectedId = useUIStore((s) => s.setSelectedId);
   const pausedFlow = useUIStore((s) => s.pausedFlow);
   const clearPausedFlow = useUIStore((s) => s.clearPausedFlow);
+
+  useRouteHotkeys();
 
   const toggleArm = () => (mode === "off" ? arm() : disarm());
   const showEntryPage = exchanges.length === 0 && pausedFlow == null;
@@ -108,29 +116,49 @@ export function App() {
           exchangeCount={exchanges.length}
         />
 
-        <div className="flex flex-1 overflow-hidden">
-          {/* Left panel */}
-          <aside className="flex w-[340px] min-w-[300px] flex-col border-r border-edge">
-            <ExchangeList exchanges={exchanges} selectedId={selectedId} onSelect={setSelectedId} />
-          </aside>
+        <RouteRail />
 
-          {/* Right panel */}
-          <main className="flex-1 overflow-hidden">
-            {pausedFlow != null ? (
-              <BreakpointEditor
-                key={pausedFlow.flow_id}
-                pausedFlow={pausedFlow}
-                onResolved={clearPausedFlow}
+        {activeRoute === "intercept" ? (
+          <div className="flex flex-1 overflow-hidden">
+            {/* Left panel */}
+            <aside className="flex w-[340px] min-w-[300px] flex-col border-r border-edge">
+              <ExchangeList
+                exchanges={exchanges}
+                selectedId={selectedId}
+                onSelect={setSelectedId}
               />
-            ) : selectedId ? (
-              <ExchangeDetail id={selectedId} />
-            ) : (
-              <div className="flex h-full items-center justify-center">
-                <span className="label">Select an exchange to inspect</span>
-              </div>
-            )}
+            </aside>
+
+            {/* Right panel */}
+            <main className="flex-1 overflow-hidden">
+              {pausedFlow != null ? (
+                <BreakpointEditor
+                  key={pausedFlow.flow_id}
+                  pausedFlow={pausedFlow}
+                  onResolved={clearPausedFlow}
+                />
+              ) : selectedId ? (
+                <ExchangeDetail id={selectedId} />
+              ) : (
+                <div className="flex h-full items-center justify-center">
+                  <span className="label">Select an exchange to inspect</span>
+                </div>
+              )}
+            </main>
+          </div>
+        ) : activeRoute === "overlays" ? (
+          <main className="flex-1 overflow-hidden">
+            <OverlaysView />
           </main>
-        </div>
+        ) : activeRoute === "trace" ? (
+          <main className="flex-1 overflow-hidden">
+            <TraceView />
+          </main>
+        ) : (
+          <main className="flex-1 overflow-hidden">
+            <RecallView />
+          </main>
+        )}
       </div>
     </div>
   );

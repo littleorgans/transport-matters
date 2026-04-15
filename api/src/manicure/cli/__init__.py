@@ -459,6 +459,11 @@ def start(
             env["MANICURE_STORAGE_DIR"] = str(resolved_storage)
             env["MANICURE_WEB_PORT"] = str(web_port)
             env["MANICURE_PROXY_PORT"] = str(proxy_port)
+            # Pin the addon's view of "the user's project cwd" to the
+            # directory ``manicure start`` was invoked from (or
+            # ``--directory``), not whatever the mitmdump process
+            # happens to inherit. Meta endpoint reads this.
+            env["MANICURE_CWD"] = str(working_dir)
             argv = [
                 mitmdump,
                 "--mode",

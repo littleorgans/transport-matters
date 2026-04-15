@@ -9,9 +9,10 @@ This module imports only from ``manicure.ir``.
 
 from __future__ import annotations
 
+import copy
 import json
 from collections import OrderedDict
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict
 
@@ -20,8 +21,8 @@ from manicure.ir import (
     InternalRequest,
     Message,
     TextBlock,
-    ThinkingBlock,
     ToolResultBlock,
+    ToolUseBlock,
 )
 
 # ── Override types ────────────────────────────────────────────────
@@ -33,13 +34,16 @@ OverrideKind = Literal[
     "system_part_text",
     "message_block_toggle",
     "message_text",
-    "strip_thinking",
     "truncate_tool_result",
+    "sampling_set",
+    "provider_extras_set",
 ]
 
 # Fixed priority order: toggles before rewrites, global before targeted.
+# Sampling/provider_extras sit last. They don't touch char counts, so ordering
+# vs earlier kinds is irrelevant for correctness; placing them at the tail
+# keeps the audit ledger readable (content edits first, knob edits last).
 _PRIORITY: dict[str, int] = {
-    "strip_thinking": 0,
     "tool_toggle": 1,
     "tool_description": 2,
     "system_part_toggle": 3,
@@ -47,6 +51,8 @@ _PRIORITY: dict[str, int] = {
     "truncate_tool_result": 5,
     "message_block_toggle": 6,
     "message_text": 7,
+    "sampling_set": 8,
+    "provider_extras_set": 9,
 }
 
 
@@ -58,8 +64,11 @@ class Override(BaseModel):
     kind: OverrideKind
     target: str
     value: str | bool | int | None
-    # bool   -> toggles (tool_toggle, system_part_toggle, message_block_toggle, strip_thinking)
-    # str    -> rewrites (tool_description, system_part_text, message_text)
+    # bool   -> toggles (tool_toggle, system_part_toggle, message_block_toggle)
+    # str    -> rewrites (tool_description, system_part_text, message_text),
+    #           and JSON-encoded payloads for sampling_set / provider_extras_set
+    #           (JSON encoding lets a single scalar `value` field carry floats,
+    #           lists, and objects without widening the Override schema)
     # int    -> truncation limits (truncate_tool_result)
     # None   -> remove this override from the store
 
@@ -159,38 +168,6 @@ def _count_chars(ir: InternalRequest) -> int:
 # ── Transform helpers ─────────────────────────────────────────────
 #
 # Each returns (new_ir, chars_delta, applied). All are pure.
-
-
-def _apply_strip_thinking(
-    ir: InternalRequest,
-) -> tuple[InternalRequest, int, dict[int, set[int]]]:
-    """Remove all ThinkingBlock entries from every message.
-
-    Returns (new_ir, chars_delta, removed_block_indices_per_message).
-    The third element maps message index to the set of original block
-    indices that were ThinkingBlocks, enabling downstream overrides
-    (``message_text``) to adjust their target indices.
-    """
-    chars_removed = 0
-    removed_indices: dict[int, set[int]] = {}
-    new_messages: list[Message] = []
-    for msg_idx, msg in enumerate(ir.messages):
-        new_content: list[ContentBlock] = []
-        msg_removed: set[int] = set()
-        for blk_idx, block in enumerate(msg.content):
-            if isinstance(block, ThinkingBlock):
-                chars_removed += len(block.text)
-                msg_removed.add(blk_idx)
-            else:
-                new_content.append(block)
-        if msg_removed:
-            removed_indices[msg_idx] = msg_removed
-        new_messages.append(msg.model_copy(update={"content": new_content}))
-    return (
-        ir.model_copy(update={"messages": new_messages}),
-        -chars_removed,
-        removed_indices,
-    )
 
 
 def _apply_tool_toggle(
@@ -341,6 +318,148 @@ def _apply_message_block_toggle(
     return ir.model_copy(update={"messages": new_messages}), -chars_removed, True
 
 
+_SAMPLING_FIELDS = frozenset(
+    {"max_tokens", "temperature", "top_p", "top_k", "stop_sequences"}
+)
+
+
+def _sampling_value_valid(field: str, value: object) -> bool:
+    """Shape-check a parsed sampling value against the field's expected type.
+
+    Values arrive JSON-decoded. bool is a subclass of int in Python, so the
+    isinstance checks reject True/False for numeric fields explicitly — the
+    provider would not treat ``max_tokens=True`` kindly.
+    """
+    if field == "max_tokens":
+        return isinstance(value, int) and not isinstance(value, bool) and value >= 1
+    if field in {"temperature", "top_p"}:
+        if value is None:
+            return True
+        if isinstance(value, bool):
+            return False
+        return isinstance(value, (int, float))
+    if field == "top_k":
+        if value is None:
+            return True
+        return isinstance(value, int) and not isinstance(value, bool)
+    if field == "stop_sequences":
+        return isinstance(value, list) and all(isinstance(s, str) for s in value)
+    return False
+
+
+def _apply_sampling_set(
+    ir: InternalRequest, field: str, value: object
+) -> tuple[InternalRequest, int, bool]:
+    """Set a field on ir.sampling to a parsed value. chars_delta is always 0.
+
+    Sampling knobs are scalar metadata, not content — they don't contribute
+    to system/tools/messages char totals, so char accounting stays untouched.
+    """
+    if field not in _SAMPLING_FIELDS:
+        return ir, 0, False
+    if not _sampling_value_valid(field, value):
+        return ir, 0, False
+    new_sampling = ir.sampling.model_copy(update={field: value})
+    return ir.model_copy(update={"sampling": new_sampling}), 0, True
+
+
+def _is_forbidden_segment(segment: str) -> bool:
+    """Reject path segments that could enable attribute-style escapes.
+
+    ``constructor`` and Python dunder patterns (``__x__``) are refused so a
+    dotted path like ``provider_extras:thinking.__proto__`` cannot land in
+    a downstream JSON consumer as prototype-pollution, and cannot navigate
+    into Python internal attribute-style slots if the dict ever meets an
+    attribute lookup.
+    """
+    if segment == "constructor":
+        return True
+    return segment.startswith("__") and segment.endswith("__") and len(segment) >= 4
+
+
+def _set_nested_path(node: dict[str, Any], path: list[str], value: Any) -> bool:
+    """Traverse ``path`` creating empty-dict intermediates as needed, set leaf.
+
+    Refuses to overwrite a non-dict intermediate: if the IR currently has
+    e.g. ``thinking = "plain-string"`` and the override wants to set
+    ``thinking.display = "summarized"``, the path is malformed for this
+    shape and the override should be marked unapplied.
+    """
+    for seg in path[:-1]:
+        if seg not in node:
+            node[seg] = {}
+        elif not isinstance(node[seg], dict):
+            return False
+        node = node[seg]
+    node[path[-1]] = value
+    return True
+
+
+def _delete_nested_path(root: dict[str, Any], path: list[str]) -> bool:
+    """Delete the leaf and recursively prune empty-dict parents.
+
+    Idempotent on missing leaves (clearing a key that isn't there is
+    success — the desired state already holds). Rejects only when an
+    intermediate exists but isn't a dict, mirroring ``_set_nested_path``.
+
+    The recursive prune means ``provider_extras`` never retains empty-dict
+    leftovers at any depth after a clear: if ``output_config.effort`` is
+    the only key under ``output_config``, clearing it also removes
+    ``output_config`` from ``provider_extras``.
+    """
+    chain: list[tuple[dict[str, Any], str]] = []
+    node = root
+    for seg in path[:-1]:
+        if seg not in node:
+            return True  # nothing to delete; idempotent success
+        if not isinstance(node[seg], dict):
+            return False  # malformed path for current IR shape
+        chain.append((node, seg))
+        node = node[seg]
+    node.pop(path[-1], None)
+    for parent, parent_key in reversed(chain):
+        if not parent[parent_key]:
+            del parent[parent_key]
+    return True
+
+
+def _apply_provider_extras_set(
+    ir: InternalRequest, key: str, value: object
+) -> tuple[InternalRequest, int, bool]:
+    """Set a (possibly dotted) path in ir.provider_extras to a parsed value.
+
+    A JSON ``null`` deletes the leaf and recursively prunes any empty-dict
+    parents up to (but not including) the ``provider_extras`` root — matches
+    the adapter convention that absent keys mean "not set" (e.g.,
+    ``thinking`` removed == thinking off), and keeps the dict free of empty
+    scaffolding at any depth.
+
+    Dotted-path syntax walks nested dicts so ``thinking.display`` targets
+    ``provider_extras["thinking"]["display"]``. Segments matching Python
+    dunder patterns or equal to ``constructor`` are rejected. Empty
+    segments (e.g. trailing or consecutive dots) are rejected.
+    """
+    if not key:
+        return ir, 0, False
+    path = key.split(".")
+    if any(not seg or _is_forbidden_segment(seg) for seg in path):
+        return ir, 0, False
+
+    # Deep-copy so nested dict mutation doesn't leak into the frozen
+    # original IR via shared references — shallow copy was safe for the
+    # flat-key version but no longer covers us once paths can nest.
+    new_extras = copy.deepcopy(dict(ir.provider_extras))
+
+    if value is None:
+        if not _delete_nested_path(new_extras, path):
+            return ir, 0, False
+    else:
+        if not _set_nested_path(new_extras, path, value):
+            return ir, 0, False
+
+    return ir.model_copy(update={"provider_extras": new_extras}), 0, True
+
+
 def _apply_message_text(
     ir: InternalRequest, msg_idx: int, blk_idx: int, new_text: str
 ) -> tuple[InternalRequest, int, bool]:
@@ -366,6 +485,72 @@ def _apply_message_text(
     return ir.model_copy(update={"messages": new_messages}), delta, True
 
 
+# ── Post-pipeline sanitization ───────────────────────────────────
+
+
+def _sanitize_curated_messages(ir: InternalRequest) -> InternalRequest:
+    """Drop empty text blocks, orphaned tool pairs, and empty messages.
+
+    The Anthropic API rejects three states the override pipeline can
+    naturally produce:
+
+    1. User messages with ``content: []`` (must have non-empty content)
+    2. Text blocks with ``text == ""`` (treated as malformed)
+    3. ``tool_use`` without a matching ``tool_result``, or vice versa
+       (each tool_result must have a corresponding tool_use)
+
+    The frontend keeps tool_use/tool_result toggles in tandem so a user
+    cannot reach state 3 by hand, but the rule belongs here too as
+    defense in depth: an upstream payload could already be unbalanced,
+    or a future code path could re-introduce orphans.
+
+    Block-level cleanup applies to:
+
+    - ``TextBlock`` with empty text
+    - ``ToolUseBlock`` whose id has no matching ``tool_result``
+    - ``ToolResultBlock`` whose ``tool_use_id`` has no matching ``tool_use``
+
+    Other block types (``tool_use`` with ``{}`` input, ``tool_result``
+    with ``[]`` content) have legitimate empty representations and are
+    preserved. Messages whose content goes empty after block cleanup
+    are dropped.
+    """
+    # First pass: collect tool_use ids and tool_result tool_use_ids so
+    # we can compute the orphan sets in one shot.
+    use_ids: set[str] = set()
+    result_ids: set[str] = set()
+    for msg in ir.messages:
+        for block in msg.content:
+            if isinstance(block, ToolUseBlock):
+                use_ids.add(block.id)
+            elif isinstance(block, ToolResultBlock):
+                result_ids.add(block.tool_use_id)
+    paired = use_ids & result_ids
+    orphan_use_ids = use_ids - paired
+    orphan_result_ids = result_ids - paired
+
+    # Second pass: drop empty text blocks and orphan tool blocks, then
+    # drop messages whose content goes empty as a result.
+    cleaned: list[Message] = []
+    for msg in ir.messages:
+        kept_blocks: list[ContentBlock] = []
+        for block in msg.content:
+            if isinstance(block, TextBlock) and block.text == "":
+                continue
+            if isinstance(block, ToolUseBlock) and block.id in orphan_use_ids:
+                continue
+            if (
+                isinstance(block, ToolResultBlock)
+                and block.tool_use_id in orphan_result_ids
+            ):
+                continue
+            kept_blocks.append(block)
+        if not kept_blocks:
+            continue
+        cleaned.append(msg.model_copy(update={"content": kept_blocks}))
+    return ir.model_copy(update={"messages": cleaned})
+
+
 # ── Index adjustment helpers ──────────────────────────────────────
 
 
@@ -377,9 +562,11 @@ def _adjust_system_index(original_index: int, removed_indices: set[int]) -> int:
 def _adjust_blk_index(
     msg_idx: int, original_blk_idx: int, removed_blk_indices: dict[int, set[int]]
 ) -> int | None:
-    """Map an original block index to its current position after strip_thinking.
+    """Map an original block index to its current position after earlier removals.
 
-    Returns None if the block itself was removed.
+    Only ``message_block_toggle`` mutates the block layout during the
+    apply pipeline, so the shift map is built up as each toggle runs.
+    Returns ``None`` if the target block itself was already removed.
     """
     removed = removed_blk_indices.get(msg_idx, set())
     if original_blk_idx in removed:
@@ -440,6 +627,16 @@ def _parse_tool_result_id(target: str) -> str | None:
     return _parse_prefixed(target, "toolresult:")
 
 
+def _parse_sampling_field(target: str) -> str | None:
+    """Extract field name from ``sampling:{field}``."""
+    return _parse_prefixed(target, "sampling:")
+
+
+def _parse_provider_extras_key(target: str) -> str | None:
+    """Extract key from ``provider_extras:{key}``."""
+    return _parse_prefixed(target, "provider_extras:")
+
+
 def _parse_message_target(target: str) -> tuple[int, int] | None:
     """Extract (msg_idx, blk_idx) from ``msg:{idx}:blk:{idx}``."""
     parts = target.split(":")
@@ -462,8 +659,8 @@ def apply_overrides(
 
     Index-based overrides (``system_part_*``, ``message_text``) always refer
     to positions in the *original* IR. When earlier overrides remove items
-    (``system_part_toggle``, ``strip_thinking``), later overrides have their
-    target indices adjusted so they still hit the intended item.
+    (``system_part_toggle``, ``message_block_toggle``), later overrides have
+    their target indices adjusted so they still hit the intended item.
     """
     sys_before, tools_before, msgs_before = count_chars_parts(ir)
     chars_before = sys_before + tools_before + msgs_before
@@ -484,14 +681,7 @@ def apply_overrides(
         applied = False
         chars_delta = 0
 
-        if kind == "strip_thinking":
-            if isinstance(value, bool) and value:
-                current_ir, chars_delta, removed_blk_indices = _apply_strip_thinking(
-                    current_ir
-                )
-            applied = True
-
-        elif kind == "tool_toggle":
+        if kind == "tool_toggle":
             tool_name = _parse_tool_name(target)
             if tool_name is not None and isinstance(value, bool):
                 if value:
@@ -582,6 +772,36 @@ def apply_overrides(
                         current_ir, msg_idx, adjusted_blk, value
                     )
 
+        elif kind == "sampling_set":
+            # sampling_set and provider_extras_set both transport their
+            # payloads as JSON-encoded strings so floats, lists, and dicts
+            # ride on the same narrow Override.value union used by the
+            # content-editing kinds. Malformed JSON fails the apply
+            # gracefully: the audit entry marks it unapplied and the IR
+            # stays unchanged.
+            field = _parse_sampling_field(target)
+            if field is not None and isinstance(value, str):
+                try:
+                    parsed_value = json.loads(value)
+                except json.JSONDecodeError:
+                    applied = False
+                else:
+                    current_ir, chars_delta, applied = _apply_sampling_set(
+                        current_ir, field, parsed_value
+                    )
+
+        elif kind == "provider_extras_set":
+            key = _parse_provider_extras_key(target)
+            if key is not None and isinstance(value, str):
+                try:
+                    parsed_value = json.loads(value)
+                except json.JSONDecodeError:
+                    applied = False
+                else:
+                    current_ir, chars_delta, applied = _apply_provider_extras_set(
+                        current_ir, key, parsed_value
+                    )
+
         entries.append(
             OverrideAuditEntry(
                 kind=kind,
@@ -590,6 +810,13 @@ def apply_overrides(
                 chars_delta=chars_delta,
             )
         )
+
+    # Final cleanup pass: remove empty text blocks and empty messages
+    # before the chars_after accounting, so the audit's totals match
+    # what actually ships upstream. Audit entries are not amended;
+    # sanitization is a derived consequence of the user's overrides,
+    # not a user-visible action of its own.
+    current_ir = _sanitize_curated_messages(current_ir)
 
     sys_after, tools_after, msgs_after = count_chars_parts(current_ir)
     chars_after = sys_after + tools_after + msgs_after

@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { useCollapsibleSet } from "../../hooks/useCollapsibleSet";
 import { overrideValue } from "../../lib/overrides";
 import { useUIStore } from "../../stores/uiStore";
@@ -14,6 +15,72 @@ interface MessagesSectionProps {
 
 function blockTarget(msgIdx: number, blkIdx: number): string {
   return `msg:${msgIdx}:blk:${blkIdx}`;
+}
+
+/**
+ * Walk every message and emit a target -> pairTarget map for tool_use
+ * and tool_result block pairs (matched on `id` / `tool_use_id`). Any
+ * `message_block_toggle` aimed at one half of a pair must move the
+ * other half in tandem; otherwise the curated payload ends up with an
+ * orphan, which the Anthropic API rejects with `unexpected tool_use_id
+ * found in tool_result blocks`. The map is bidirectional so a single
+ * lookup serves either toggle direction.
+ */
+function buildPairMap(messages: Message[]): Map<string, string> {
+  const useLoc = new Map<string, string>();
+  const resultLoc = new Map<string, string>();
+  messages.forEach((msg, m) => {
+    msg.content.forEach((block, b) => {
+      if (block.type === "tool_use") {
+        useLoc.set(block.id, blockTarget(m, b));
+      } else if (block.type === "tool_result") {
+        resultLoc.set(block.tool_use_id, blockTarget(m, b));
+      }
+    });
+  });
+  const pairs = new Map<string, string>();
+  for (const [id, useTarget] of useLoc) {
+    const resultTarget = resultLoc.get(id);
+    if (resultTarget !== undefined) {
+      pairs.set(useTarget, resultTarget);
+      pairs.set(resultTarget, useTarget);
+    }
+  }
+  return pairs;
+}
+
+/**
+ * Wrap an `onOverride` so a `message_block_toggle` aimed at a paired
+ * tool block also fires the matching twin override. Silent by design:
+ * users shouldn't need to think about pair invariants. The twin uses
+ * the same `value` as the trigger (`false` to toggle off, `null` to
+ * remove the toggle override and re-enable), and a `seen` set guards
+ * against duplicates when the caller already includes both halves.
+ */
+function withPairTandem(
+  onOverride: (batch: Override[]) => void,
+  pairs: Map<string, string>,
+): (batch: Override[]) => void {
+  return (batch: Override[]) => {
+    const seen = new Set<string>();
+    for (const ov of batch) {
+      if (ov.kind === "message_block_toggle") seen.add(ov.target);
+    }
+    const expanded: Override[] = [...batch];
+    for (const ov of batch) {
+      if (ov.kind !== "message_block_toggle") continue;
+      const pairTarget = pairs.get(ov.target);
+      if (pairTarget !== undefined && !seen.has(pairTarget)) {
+        expanded.push({
+          kind: "message_block_toggle",
+          target: pairTarget,
+          value: ov.value,
+        });
+        seen.add(pairTarget);
+      }
+    }
+    onOverride(expanded);
+  };
 }
 
 function MessageCard({
@@ -95,6 +162,12 @@ export function MessagesSection({ messages, overrides, onOverride }: MessagesSec
     (o) => o.kind === "message_text" || o.kind === "message_block_toggle",
   ).length;
 
+  const pairMap = useMemo(() => buildPairMap(messages), [messages]);
+  const onOverrideTandem = useMemo(
+    () => withPairTandem(onOverride, pairMap),
+    [onOverride, pairMap],
+  );
+
   const keyedMessages = messages.map((msg, idx) => ({
     msg,
     idx,
@@ -118,7 +191,7 @@ export function MessagesSection({ messages, overrides, onOverride }: MessagesSec
             message={entry.msg}
             msgIdx={entry.idx}
             overrides={overrides}
-            onOverride={onOverride}
+            onOverride={onOverrideTandem}
           />
         ))}
       </div>

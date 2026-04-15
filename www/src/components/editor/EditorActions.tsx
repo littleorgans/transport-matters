@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { InternalRequest, Override, OverrideAudit } from "../../types";
+import type { InternalRequest, OverrideAudit } from "../../types";
 import { HoverCard } from "../HoverCard";
 import { Toggle } from "../Toggle";
 
@@ -7,7 +7,7 @@ interface EditorActionsProps {
   originalIr: InternalRequest;
   audit: OverrideAudit | null;
   editedIr: InternalRequest;
-  overrides: Override[];
+  overridesCount: number;
   overridesEnabled: boolean;
   onToggleOverrides: () => void;
   onClearOverrides: () => void;
@@ -460,7 +460,7 @@ export function EditorActions({
   originalIr,
   audit,
   editedIr,
-  overrides,
+  overridesCount,
   overridesEnabled,
   onToggleOverrides,
   onClearOverrides,
@@ -491,7 +491,7 @@ export function EditorActions({
     : fallbackAfter;
 
   const appliedCount = audit?.entries.filter((e) => e.applied).length ?? 0;
-  const storedCount = overrides.length;
+  const storedCount = overridesCount;
 
   // Consistent button geometry: same padding, min-width, typography.
   // Tone differentiates role (rose=destructive, neutral=pass-through,
@@ -501,10 +501,12 @@ export function EditorActions({
 
   return (
     <div className="top-highlight bg-surface">
-      {/* Strip 1 — action cluster, right-anchored. Previously shared the
-          row with an OVERRIDES cell; that context has moved into the
-          expanded ledger below as a caption strip, since overrides are
-          the cause of the savings story and read better next to it. */}
+      {/* Strip 1 — request-lifecycle cluster. Drop / Pass Through /
+          Forward are the three terminal verdicts on a paused flow and
+          live right-anchored so the eye lands on them at rest. SAVE AS
+          OVERLAY is no longer in this strip — it now lives inside the
+          OVERLAY tab where it reads as the commit action for the
+          durable session shape that tab shows. */}
       <div className="flex items-center justify-end gap-2 px-6 py-2">
         <button
           type="button"

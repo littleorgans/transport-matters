@@ -7,6 +7,7 @@
  */
 
 import { useCollapsibleSet } from "../../hooks/useCollapsibleSet";
+import { ColorizedPre } from "../../lib/colorizeLine";
 import type { ContentBlock, Message } from "../../types";
 import { MasterBar, SECTION_TONE } from "./atoms";
 
@@ -79,13 +80,17 @@ export function ContentBlockRow({
           {blockSummary(block)}
         </span>
       </button>
-      {expanded && (
-        <pre className="mt-3 bg-canvas p-4 text-[12px] leading-relaxed text-txt-2 whitespace-pre-wrap border border-edge-subtle block-recess">
-          {block.type === "text" || block.type === "thinking"
-            ? block.text
-            : JSON.stringify(block, null, 2)}
-        </pre>
-      )}
+      {expanded &&
+        (block.type === "text" || block.type === "thinking" ? (
+          <pre className="mt-3 bg-canvas p-4 text-[12px] leading-relaxed text-txt-2 whitespace-pre-wrap border border-edge-subtle block-recess">
+            {block.text}
+          </pre>
+        ) : (
+          <ColorizedPre
+            text={JSON.stringify(block, null, 2)}
+            className="mt-3 bg-canvas p-4 text-[12px] leading-relaxed text-txt-2 whitespace-pre-wrap border border-edge-subtle block-recess"
+          />
+        ))}
     </div>
   );
 }

@@ -52,8 +52,9 @@ export type OverrideKind =
   | "system_part_text"
   | "message_block_toggle"
   | "message_text"
-  | "strip_thinking"
-  | "truncate_tool_result";
+  | "truncate_tool_result"
+  | "sampling_set"
+  | "provider_extras_set";
 
 export interface Override {
   kind: OverrideKind;
@@ -201,6 +202,14 @@ export interface PausedFlow {
   original_tools: ToolDef[];
   original_system: SystemPart[];
   original_messages: Message[];
+  /**
+   * Pristine sampling/provider_extras as the client sent them, pre-override.
+   * The editor uses these as the "revert to" reference when a user clears
+   * a sampling_set or provider_extras_set override — ir.sampling already
+   * reflects any active overrides layered on top.
+   */
+  original_sampling: SamplingParams;
+  original_provider_extras: Record<string, unknown>;
   audit: OverrideAudit | null;
   paused_at_ms: number;
   /**

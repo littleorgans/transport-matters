@@ -28,6 +28,14 @@ class Settings(BaseSettings):
     proxy_port: int = 8787
     web_port: int = 8788
     storage_dir: Path = Path.home() / ".manicure"
+    # Working directory captured by ``manicure start`` at launch. Flowed
+    # through the child env (MANICURE_CWD) so ``/api/v1/meta`` returns
+    # the invocation CWD rather than the addon process's live CWD —
+    # otherwise running the CLI from a subdirectory (e.g. ``api/``)
+    # leaks that subdirectory into project-scoped overlays. ``None``
+    # when the API is run outside ``manicure start`` (dev, tests); in
+    # that case the endpoint falls back to :meth:`Path.cwd`.
+    cwd: Path | None = None
     breakpoint_timeout_s: float = 300.0
     breakpoint_skip_models: list[str] = []
 

@@ -31,6 +31,7 @@ beforeEach(() => {
     selectedId: null,
     pausedFlow: null,
     forwardingFlowId: null,
+    forwardingLastActivityAt: null,
   });
 });
 
@@ -62,6 +63,14 @@ function makePausedFlow(flowId: string): PausedFlow {
     original_tools: [],
     original_system: [],
     original_messages: [],
+    original_sampling: {
+      max_tokens: 1024,
+      temperature: null,
+      top_p: null,
+      top_k: null,
+      stop_sequences: [],
+    },
+    original_provider_extras: {},
     audit: null,
     paused_at_ms: Date.now(),
     tokens_before: null,
@@ -192,6 +201,51 @@ describe("useExchangeStream — SSE validation", () => {
     });
 
     expect(useUIStore.getState().selectedId).toBeNull();
+  });
+});
+
+describe("useExchangeStream — forwarding activity", () => {
+  it("bumps lastActivityAt when any event's flow_id matches forwardingFlowId", () => {
+    renderHook(() => useExchangeStream(), { wrapper: makeWrapper() });
+
+    useUIStore.setState({
+      pausedFlow: makePausedFlow("flow-LIVE"),
+      forwardingFlowId: "flow-LIVE",
+      forwardingLastActivityAt: null,
+    });
+
+    // paused_tokens carries a flow_id but does not clear forwarding state,
+    // so it's a clean liveness signal to assert against.
+    fireSSE({ type: "paused_tokens", flow_id: "flow-LIVE", tokens_before: 500 });
+
+    expect(useUIStore.getState().forwardingLastActivityAt).not.toBeNull();
+  });
+
+  it("does not bump lastActivityAt when the event's flow_id does not match", () => {
+    renderHook(() => useExchangeStream(), { wrapper: makeWrapper() });
+
+    useUIStore.setState({
+      pausedFlow: makePausedFlow("flow-A"),
+      forwardingFlowId: "flow-A",
+      forwardingLastActivityAt: null,
+    });
+
+    fireSSE({ type: "paused_tokens", flow_id: "flow-OTHER", tokens_before: 1 });
+
+    expect(useUIStore.getState().forwardingLastActivityAt).toBeNull();
+  });
+
+  it("does not bump lastActivityAt when nothing is being forwarded", () => {
+    renderHook(() => useExchangeStream(), { wrapper: makeWrapper() });
+
+    useUIStore.setState({
+      forwardingFlowId: null,
+      forwardingLastActivityAt: null,
+    });
+
+    fireSSE({ type: "paused_tokens", flow_id: "flow-ANY", tokens_before: 1 });
+
+    expect(useUIStore.getState().forwardingLastActivityAt).toBeNull();
   });
 });
 

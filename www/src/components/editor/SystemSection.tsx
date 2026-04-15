@@ -2,8 +2,8 @@ import { useCollapsibleSet } from "../../hooks/useCollapsibleSet";
 import { useEditableOverride } from "../../hooks/useEditableOverride";
 import { useUIStore } from "../../stores/uiStore";
 import type { Override, SystemPart } from "../../types";
-import { inputClass, MasterBar, OriginalPreview, SECTION_TONE } from "../detail/atoms";
-import { Toggle } from "../Toggle";
+import { CompositeEditableRow, MasterBar, SECTION_TONE, SizeDelta } from "../detail/atoms";
+import { TextOverrideEditor } from "./TextOverrideEditor";
 
 interface SystemSectionProps {
   parts: SystemPart[];
@@ -46,61 +46,45 @@ function SystemPartRow({
     initialExpanded: true,
   });
 
-  const sizeLabel = `${part.text.length.toLocaleString()} chars`;
+  // First-line preview, mirroring the BlockRow treatment for user
+  // messages. Trim so a leading newline doesn't render as a blank
+  // stub; collapse to ``(empty)`` when the part is whitespace-only.
+  const previewSource = part.text.trim();
+  const preview =
+    previewSource.length === 0
+      ? "(empty)"
+      : previewSource.slice(0, 220) + (previewSource.length > 220 ? "\u2026" : "");
 
   return (
-    <div className={`transition-opacity ${checked ? "" : "opacity-40"}`}>
-      {/* Row header — click-to-expand strip. Toggle and Reset are
-          stopPropagation islands so they never fold the row. */}
-      {/* biome-ignore lint/a11y/useSemanticElements: composite row wraps a Toggle button and a Reset button; button-in-button is invalid HTML */}
-      <div
-        role="button"
-        tabIndex={0}
-        onClick={onToggleExpanded}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault();
-            onToggleExpanded();
-          }
-        }}
-        className="flex cursor-pointer items-center gap-3 px-4 py-2.5 transition-colors hover:bg-raised focus:outline-none focus-visible:bg-raised"
-      >
-        {/* biome-ignore lint/a11y/useKeyWithClickEvents: stopPropagation wrapper, the inner Toggle handles its own keyboard events */}
-        {/* biome-ignore lint/a11y/noStaticElementInteractions: click-swallow wrapper isolates the Toggle from the row's expand handler */}
-        <div onClick={(e) => e.stopPropagation()}>
-          <Toggle checked={checked} onChange={handleToggle} label={`Toggle part ${index}`} />
-        </div>
-        <span className="chip metric-num">{`[${index}]`}</span>
-        <span className="label text-txt-3 metric-num">{sizeLabel}</span>
-        {part.cache_hint && <span className="chip text-amber">cached</span>}
-        {isModified && <span className="h-1 w-1 rounded-full bg-amber" />}
-        {isModified && (
-          <button
-            type="button"
-            className="label shrink-0 cursor-pointer text-txt-3 transition-colors hover:text-amber"
-            onClick={(e) => {
-              e.stopPropagation();
-              handleReset();
-            }}
-          >
-            reset
-          </button>
-        )}
-        <div className="flex-1" />
-      </div>
+    <CompositeEditableRow
+      checked={checked}
+      onToggle={handleToggle}
+      toggleLabel={`Toggle part ${index}`}
+      leadingChips={
+        <>
+          <span className="chip shrink-0 metric-num">{`[${index}]`}</span>
+          {part.cache_hint && <span className="chip shrink-0 text-amber">cached</span>}
+        </>
+      }
+      isModified={isModified}
+      preview={preview}
+      size={<SizeDelta original={part.text.length} current={localText.length} />}
+      onToggleExpanded={onToggleExpanded}
+    >
       {expanded && (
-        <div className="mt-2 space-y-2 px-4 pb-3">
-          <textarea
-            ref={textRef}
-            className={inputClass}
+        <div className="mt-2 px-4 pb-3">
+          <TextOverrideEditor
+            original={part.text}
             value={localText}
-            onChange={(e) => setLocalText(e.target.value)}
+            onChange={setLocalText}
             onBlur={commitText}
+            textareaRef={textRef}
+            isModified={isModified}
+            onReset={handleReset}
           />
-          {isModified && <OriginalPreview text={part.text} />}
         </div>
       )}
-    </div>
+    </CompositeEditableRow>
   );
 }
 

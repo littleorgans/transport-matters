@@ -209,6 +209,8 @@ async def _handle_breakpoint(
                 "original_messages": [
                     m.model_dump(mode="json") for m in original_ir.messages
                 ],
+                "original_sampling": original_ir.sampling.model_dump(mode="json"),
+                "original_provider_extras": dict(original_ir.provider_extras),
                 "audit": audit.model_dump(mode="json") if audit else None,
                 "paused_at_ms": paused_at_ms,
                 # Filled in by _fire_pause_count via a follow-up paused_tokens

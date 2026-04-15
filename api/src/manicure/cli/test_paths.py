@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import TYPE_CHECKING
 
+import pytest
 from typer.testing import CliRunner
 
 from manicure import __version__
@@ -13,10 +13,16 @@ from manicure.cli import WorkspaceLock, main, manifest_write, workspace_root
 
 from ._helpers import _plain, _sample_manifest
 
-if TYPE_CHECKING:
-    import pytest
-
 runner = CliRunner()
+
+
+@pytest.fixture(autouse=True)
+def _clear_manicure_cwd_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Tests that rely on the Path.cwd() fallback must not inherit a
+    # MANICURE_CWD from the shell running pytest (e.g. a Claude session
+    # launched by ``manicure start``). Clear unconditionally; tests that
+    # want the env-set branch can set it themselves.
+    monkeypatch.delenv("MANICURE_CWD", raising=False)
 
 
 def test_paths_text_output_lists_expected_keys(tmp_storage: Path) -> None:
@@ -115,6 +121,33 @@ def test_paths_stale_manifest_ignored(
     assert result.exit_code == 0
     payload = json.loads(result.stdout)
     assert Path(payload["storage"]) == ws_root
+
+
+def test_paths_respects_manicure_cwd_env_over_process_cwd(
+    tmp_storage: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``MANICURE_CWD`` overrides :meth:`Path.cwd` for the default selector.
+
+    Simulates running ``manicure paths`` from inside a Claude session
+    launched by ``manicure start <project>`` after the user ``cd``'d
+    into a subdirectory — resolution should still target the launching
+    workspace, not the subdirectory.
+    """
+    launch_dir = tmp_path / "project"
+    launch_dir.mkdir()
+    subdir = launch_dir / "api"
+    subdir.mkdir()
+    monkeypatch.chdir(subdir)
+    monkeypatch.setenv("MANICURE_CWD", str(launch_dir))
+
+    result = runner.invoke(main, ["paths", "--json"])
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.stdout)
+    assert Path(payload["storage"]) == workspace_root(launch_dir)
+    # Double-check: the subdir would have produced a different storage.
+    assert Path(payload["storage"]) != workspace_root(subdir)
 
 
 def test_paths_workspace_flag_accepts_directory(

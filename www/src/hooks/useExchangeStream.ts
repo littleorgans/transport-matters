@@ -11,6 +11,8 @@ function isValidPausedEvent(data: Record<string, unknown>): data is {
   original_tools?: PausedFlow["original_tools"];
   original_system?: PausedFlow["original_system"];
   original_messages?: PausedFlow["original_messages"];
+  original_sampling?: PausedFlow["original_sampling"];
+  original_provider_extras?: PausedFlow["original_provider_extras"];
   audit?: PausedFlow["audit"];
   paused_at_ms: number;
   tokens_before?: number | null;
@@ -86,6 +88,15 @@ export function useExchangeStream(): { connected: boolean } {
       try {
         const data = JSON.parse(event.data) as Record<string, unknown>;
 
+        // Any event whose flow_id matches the in-flight forward counts
+        // as liveness. Stamping the activity timestamp triggers the
+        // BreakpointEditor silence-window effect to restart its timer
+        // — so a quiet upstream is what banners, not elapsed wall time.
+        const flowId = typeof data.flow_id === "string" ? data.flow_id : null;
+        if (flowId && flowId === useUIStore.getState().forwardingFlowId) {
+          useUIStore.getState().bumpForwardingActivity();
+        }
+
         if (data.type === "paused") {
           if (!isValidPausedEvent(data)) return;
           setSelectedId(null);
@@ -95,6 +106,8 @@ export function useExchangeStream(): { connected: boolean } {
             original_tools: data.original_tools ?? data.ir.tools,
             original_system: data.original_system ?? data.ir.system,
             original_messages: data.original_messages ?? data.ir.messages,
+            original_sampling: data.original_sampling ?? data.ir.sampling,
+            original_provider_extras: data.original_provider_extras ?? data.ir.provider_extras,
             audit: data.audit ?? null,
             paused_at_ms: data.paused_at_ms,
             tokens_before: data.tokens_before ?? null,

@@ -192,3 +192,27 @@ export async function fetchPausedFlowDetail(flowId: string): Promise<PausedFlow>
   }
   return (await res.json()) as PausedFlow;
 }
+
+// ── Meta endpoint ─────────────────────────────────────────────────
+
+export interface Meta {
+  cwd: string;
+  workspaceId: string;
+}
+
+/**
+ * Resolve the backend's cwd and workspace id. The cwd is fixed for the
+ * lifetime of the process (set by `manicure start`), so the frontend
+ * caches this with an infinite staleTime and prefetches at app mount.
+ *
+ * `workspaceId` is an opaque stable string the apply-at-intercept
+ * pipeline will use to scope overlays; the UI does not read it today.
+ */
+export async function fetchMeta(): Promise<Meta> {
+  const res = await fetch("/api/meta");
+  if (!res.ok) {
+    throw new Error(`Failed to fetch meta: ${res.status}`);
+  }
+  const raw = (await res.json()) as { cwd: string; workspace_id: string };
+  return { cwd: raw.cwd, workspaceId: raw.workspace_id };
+}

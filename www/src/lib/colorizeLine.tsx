@@ -52,8 +52,13 @@ export function colorizeLine(line: string, lineIdx: number): ReactNode[] {
   return parts;
 }
 
-/** Try to pretty-print as colorized JSON; fall back to plain text. */
-export function ColorizedPre({ text }: { text: string }) {
+/** Try to pretty-print as colorized JSON; fall back to plain text.
+ *
+ * When `className` is provided it replaces the default wrapper styling for
+ * BOTH the colorized and plain-fallback branches, so callers own the pre's
+ * spacing, border, and base text color. Omitted callers keep the original
+ * breakpoint-form layout (indented under a Toggle + chip). */
+export function ColorizedPre({ text, className }: { text: string; className?: string }) {
   const parsed = useMemo(() => {
     try {
       const obj = JSON.parse(text);
@@ -65,8 +70,11 @@ export function ColorizedPre({ text }: { text: string }) {
 
   if (parsed) {
     const lines = parsed.split("\n");
+    const preClass =
+      className ??
+      "mt-2 ml-[26px] bg-canvas p-3 mx-4 mb-1 text-[12px] whitespace-pre-wrap border border-edge-subtle font-mono";
     return (
-      <pre className="mt-2 ml-[26px] bg-canvas p-3 mx-4 mb-1 text-[12px] whitespace-pre-wrap border border-edge-subtle font-mono">
+      <pre className={preClass}>
         {lines.map((line, idx) => (
           // biome-ignore lint/suspicious/noArrayIndexKey: stable line order
           <div key={idx}>{colorizeLine(line, idx)}</div>
@@ -75,9 +83,8 @@ export function ColorizedPre({ text }: { text: string }) {
     );
   }
 
-  return (
-    <pre className="mt-2 ml-[26px] bg-canvas p-3 mx-4 mb-1 text-[12px] text-txt-2 whitespace-pre-wrap border border-edge-subtle">
-      {text}
-    </pre>
-  );
+  const preClass =
+    className ??
+    "mt-2 ml-[26px] bg-canvas p-3 mx-4 mb-1 text-[12px] text-txt-2 whitespace-pre-wrap border border-edge-subtle";
+  return <pre className={preClass}>{text}</pre>;
 }
