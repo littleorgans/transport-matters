@@ -45,26 +45,39 @@ if (typeof globalThis.ResizeObserver === "undefined") {
 
 /**
  * Node 22+ ships a built-in `localStorage` that lacks Web Storage API methods
- * (getItem, setItem, removeItem). Zustand's persist middleware captures
- * `localStorage` at module evaluation time, before jsdom can replace it. Provide
- * a spec-compliant in-memory Storage so persist works in tests.
+ * (getItem, setItem, removeItem). On Node 25, merely touching the getter can
+ * also emit a `--localstorage-file` warning. Zustand's persist middleware
+ * captures `localStorage` at module evaluation time, before jsdom can replace
+ * it. Inspect the descriptor without dereferencing the getter, then install a
+ * spec-compliant in-memory Storage so persist works in tests.
  */
-if (typeof globalThis.localStorage?.setItem !== "function") {
+const localStorageDescriptor = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
+const shouldInstallMemoryStorage =
+  !localStorageDescriptor ||
+  typeof localStorageDescriptor.get === "function" ||
+  typeof localStorageDescriptor.value?.setItem !== "function";
+
+if (shouldInstallMemoryStorage) {
   const store = new Map<string, string>();
-  globalThis.localStorage = {
-    getItem: (key: string) => store.get(key) ?? null,
-    setItem: (key: string, value: string) => {
-      store.set(key, value);
+  Object.defineProperty(globalThis, "localStorage", {
+    configurable: true,
+    enumerable: true,
+    writable: true,
+    value: {
+      getItem: (key: string) => store.get(key) ?? null,
+      setItem: (key: string, value: string) => {
+        store.set(key, value);
+      },
+      removeItem: (key: string) => {
+        store.delete(key);
+      },
+      clear: () => {
+        store.clear();
+      },
+      get length() {
+        return store.size;
+      },
+      key: (index: number) => [...store.keys()][index] ?? null,
     },
-    removeItem: (key: string) => {
-      store.delete(key);
-    },
-    clear: () => {
-      store.clear();
-    },
-    get length() {
-      return store.size;
-    },
-    key: (index: number) => [...store.keys()][index] ?? null,
-  };
+  });
 }

@@ -370,6 +370,7 @@ def _emit_exchange(
     res_stats: ResStats | None,
     exchange_id: str,
     ts: datetime,
+    run_id: str | None,
     mutated_manually: bool = False,
     pipeline_stats: PipelineStats | None = None,
     flow_id: str | None = None,
@@ -378,6 +379,7 @@ def _emit_exchange(
     payload: dict[str, object] = {
         "type": "exchange",
         "id": exchange_id,
+        "run_id": run_id,
         "ts": ts.isoformat(),
         "provider": ir.provider,
         "model": ir.model,
@@ -547,6 +549,9 @@ class ManicureAddon:
         ts_slug = ts.strftime("%Y%m%dT%H%M%S")
         entry = IndexEntry(
             id=exchange_id,
+            # Direct uvicorn dev runs do not synthesize a MANICURE_RUN_ID,
+            # so None here is intentional outside `manicure start`.
+            run_id=get_settings().run_id,
             ts=ts,
             provider=ir.provider,
             model=ir.model,
@@ -573,6 +578,7 @@ class ManicureAddon:
             res_stats,
             exchange_id,
             ts,
+            get_settings().run_id,
             mutated_manually,
             pipeline_stats,
             flow_id=flow.id,

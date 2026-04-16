@@ -10,6 +10,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from manicure.adapters.anthropic import AnthropicAdapter
+from manicure.config import get_settings
 from manicure.counting import count_before_after, get_counter, get_recent_auth
 from manicure.exceptions import NotFoundError
 from manicure.ir import InternalRequest, InternalResponse
@@ -51,10 +52,12 @@ class ExchangeDetailResponse(BaseModel):
 async def list_exchanges(
     limit: int = Query(default=50, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
+    include_history: bool = Query(default=False),
     storage: StorageBackend = Depends(get_storage),
 ) -> list[IndexEntry]:
     try:
-        return await storage.read_index(limit=limit, offset=offset)
+        run_id = None if include_history else get_settings().run_id
+        return await storage.read_index(limit=limit, offset=offset, run_id=run_id)
     except Exception:
         logger.exception("Failed to read exchange index")
         return JSONResponse(  # type: ignore[return-value]

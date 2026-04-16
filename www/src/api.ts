@@ -198,6 +198,7 @@ export async function fetchPausedFlowDetail(flowId: string): Promise<PausedFlow>
 export interface Meta {
   cwd: string;
   workspaceId: string;
+  runId?: string | null;
 }
 
 /**
@@ -213,6 +214,10 @@ export async function fetchMeta(): Promise<Meta> {
   if (!res.ok) {
     throw new Error(`Failed to fetch meta: ${res.status}`);
   }
-  const raw = (await res.json()) as { cwd: string; workspace_id: string };
-  return { cwd: raw.cwd, workspaceId: raw.workspace_id };
+  const raw = (await res.json()) as {
+    cwd: string;
+    workspace_id: string;
+    run_id: string | null;
+  };
+  return { cwd: raw.cwd, workspaceId: raw.workspace_id, runId: raw.run_id };
 }

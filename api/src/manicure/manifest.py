@@ -42,6 +42,7 @@ class Manifest:
     proxy_port: int
     web_port: int
     storage_dir: str
+    run_id: str
     started_at: str
     manicure_version: str
     slug: str

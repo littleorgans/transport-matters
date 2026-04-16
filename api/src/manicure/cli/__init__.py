@@ -26,6 +26,7 @@ import contextlib
 import os
 import shutil
 import sysconfig
+import uuid
 from datetime import UTC, datetime
 from importlib.resources import as_file, files
 from pathlib import Path
@@ -432,6 +433,7 @@ def start(
     resolved_storage = (
         storage_dir if storage_dir is not None else workspace_storage(working_dir)
     )
+    run_id = str(uuid.uuid4())
 
     # Snapshot the user's raw passthrough so we can re-inject the
     # system-prompt URLs from scratch on each retry attempt — porting
@@ -470,6 +472,7 @@ def start(
             env["MANICURE_STORAGE_DIR"] = str(resolved_storage)
             env["MANICURE_WEB_PORT"] = str(web_port)
             env["MANICURE_PROXY_PORT"] = str(proxy_port)
+            env["MANICURE_RUN_ID"] = run_id
             # Pin the addon's view of "the user's project cwd" to the
             # directory ``manicure start`` was invoked from (or
             # ``--directory``), not whatever the mitmdump process
@@ -519,6 +522,7 @@ def start(
                             proxy_port=p_port,
                             web_port=w_port,
                             storage_dir=str(resolved_storage),
+                            run_id=run_id,
                             started_at=datetime.now(UTC).isoformat(),
                             manicure_version=__version__,
                             slug=wid.slug,

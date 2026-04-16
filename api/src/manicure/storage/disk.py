@@ -158,10 +158,14 @@ class DiskStorageBackend(StorageBackend):
             if self._index_cache is not None:
                 self._index_cache[entry.id] = entry
 
-    async def read_index(self, limit: int, offset: int) -> list[IndexEntry]:
+    async def read_index(
+        self, limit: int, offset: int, run_id: str | None = None
+    ) -> list[IndexEntry]:
         async with self._index_lock:
             cache = await self._ensure_index_cache()
         entries = list(cache.values())
+        if run_id is not None:
+            entries = [entry for entry in entries if entry.run_id == run_id]
         return entries[offset : offset + limit]
 
     async def read_index_entry(self, exchange_id: str) -> IndexEntry | None:

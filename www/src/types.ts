@@ -20,6 +20,7 @@ export interface ResStats {
 
 export interface IndexEntry {
   id: string;
+  run_id?: string | null;
   ts: string;
   provider: string;
   model: string;

@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+from manicure import config
 from manicure.ir import (
     InternalRequest,
     Message,
@@ -32,6 +33,13 @@ def _setup_storage(tmp_path: Path) -> Generator[None]:
     init_storage(root=tmp_path)
     yield
     reset_storage()
+
+
+@pytest.fixture(autouse=True)
+def _clear_settings_cache() -> Generator[None]:
+    config.get_settings.cache_clear()
+    yield
+    config.get_settings.cache_clear()
 
 
 @pytest.fixture(autouse=True)
@@ -61,9 +69,12 @@ async def client() -> AsyncGenerator[AsyncClient]:
         yield ac
 
 
-def _make_index_entry(entry_id: str = "ex-001") -> IndexEntry:
+def _make_index_entry(
+    entry_id: str = "ex-001", *, run_id: str | None = None
+) -> IndexEntry:
     return IndexEntry(
         id=entry_id,
+        run_id=run_id,
         ts=datetime(2025, 6, 1, 12, 0, 0, tzinfo=UTC),
         provider="anthropic",
         model="anthropic/claude-sonnet-4-20250514",
@@ -98,11 +109,15 @@ class TestListExchanges:
         assert response.status_code == 200
         assert response.json() == []
 
-    async def test_list_after_write(self, client: AsyncClient) -> None:
+    async def test_list_after_write_for_current_run(
+        self, client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         from manicure.storage import get_storage
 
+        monkeypatch.setenv("MANICURE_RUN_ID", "run-current")
+        config.get_settings.cache_clear()
         storage = await get_storage()
-        entry = _make_index_entry()
+        entry = _make_index_entry(run_id="run-current")
         await storage.append_index(entry)
 
         response = await client.get("/api/exchanges")
@@ -110,6 +125,38 @@ class TestListExchanges:
         data = response.json()
         assert len(data) == 1
         assert data[0]["id"] == "ex-001"
+
+    async def test_list_hides_other_runs_by_default(
+        self, client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from manicure.storage import get_storage
+
+        monkeypatch.setenv("MANICURE_RUN_ID", "run-current")
+        config.get_settings.cache_clear()
+        storage = await get_storage()
+        await storage.append_index(_make_index_entry("ex-old", run_id="run-old"))
+        await storage.append_index(_make_index_entry("ex-new", run_id="run-current"))
+
+        response = await client.get("/api/exchanges")
+        assert response.status_code == 200
+        data = response.json()
+        assert [row["id"] for row in data] == ["ex-new"]
+
+    async def test_list_include_history_returns_all_runs(
+        self, client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from manicure.storage import get_storage
+
+        monkeypatch.setenv("MANICURE_RUN_ID", "run-current")
+        config.get_settings.cache_clear()
+        storage = await get_storage()
+        await storage.append_index(_make_index_entry("ex-old", run_id="run-old"))
+        await storage.append_index(_make_index_entry("ex-new", run_id="run-current"))
+
+        response = await client.get("/api/exchanges?include_history=true")
+        assert response.status_code == 200
+        data = response.json()
+        assert [row["id"] for row in data] == ["ex-old", "ex-new"]
 
 
 class TestListExchangesStorageFailure:

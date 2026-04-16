@@ -410,6 +410,7 @@ class TestEmitExchange:
             None,
             "exchange-1",
             datetime(2026, 1, 1, tzinfo=UTC),
+            None,
             mutated_manually=True,
             pipeline_stats=pipeline_stats,
         )
@@ -434,6 +435,7 @@ class TestEmitExchange:
             None,
             "exchange-3",
             datetime(2026, 1, 1, tzinfo=UTC),
+            None,
             flow_id="mitmproxy-flow-abc123",
         )
 
@@ -454,6 +456,7 @@ class TestEmitExchange:
             None,
             "exchange-4",
             datetime(2026, 1, 1, tzinfo=UTC),
+            None,
         )
 
         data = json.loads(q.get_nowait())
@@ -468,7 +471,7 @@ class TestEmitExchange:
         q = broadcast.subscribe()
 
         _emit_exchange(
-            ir, req_stats, None, "exchange-2", datetime(2026, 1, 1, tzinfo=UTC)
+            ir, req_stats, None, "exchange-2", datetime(2026, 1, 1, tzinfo=UTC), None
         )
 
         assert not q.empty()

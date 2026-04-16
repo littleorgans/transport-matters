@@ -36,9 +36,10 @@ class TestMeta:
         response = await client.get("/api/meta")
         assert response.status_code == 200
         data = response.json()
-        assert set(data.keys()) == {"cwd", "workspace_id"}
+        assert set(data.keys()) == {"cwd", "workspace_id", "run_id"}
         assert isinstance(data["cwd"], str)
         assert isinstance(data["workspace_id"], str)
+        assert data["run_id"] is None
 
     async def test_cwd_falls_back_to_process_cwd_when_env_unset(
         self, client: AsyncClient, monkeypatch: pytest.MonkeyPatch
@@ -72,3 +73,12 @@ class TestMeta:
         data = response.json()
         wid = workspace_id(Path.cwd())
         assert data["workspace_id"] == f"{wid.slug}/{wid.hash}"
+
+    async def test_run_id_respects_env(
+        self, client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("MANICURE_RUN_ID", "run-123")
+        config.get_settings.cache_clear()
+        response = await client.get("/api/meta")
+        data = response.json()
+        assert data["run_id"] == "run-123"

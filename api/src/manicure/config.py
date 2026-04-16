@@ -28,6 +28,11 @@ class Settings(BaseSettings):
     proxy_port: int = 8787
     web_port: int = 8788
     storage_dir: Path = Path.home() / ".manicure"
+    # Per-launch session boundary created by ``manicure start``. This is
+    # Manicure's own run identity, distinct from any provider metadata
+    # session id inside captured requests. ``None`` for direct-uvicorn dev
+    # runs and tests unless explicitly injected.
+    run_id: str | None = None
     # Working directory captured by ``manicure start`` at launch. Flowed
     # through the child env (MANICURE_CWD) so ``/api/v1/meta`` returns
     # the invocation CWD rather than the addon process's live CWD —

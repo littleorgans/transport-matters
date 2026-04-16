@@ -659,6 +659,8 @@ def test_start_writes_manifest_visible_to_children(
     assert raw["cwd"] == str(workdir)
     assert raw["proxy_port"] == 9123
     assert raw["web_port"] == 9124
+    assert isinstance(raw["run_id"], str)
+    assert raw["run_id"]
     assert raw["pid"] > 0
     assert raw["slug"] == workspace_id(workdir).slug
     assert raw["hash"] == workspace_id(workdir).hash
@@ -799,6 +801,28 @@ def test_start_flows_working_dir_into_manicure_cwd_env(
     assert kwargs["mitmdump_env"]["MANICURE_CWD"] == str(workdir)
 
 
+def test_start_flows_run_id_into_child_envs(
+    tmp_storage: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    spy_run_children: MagicMock,
+) -> None:
+    monkeypatch.setattr("manicure.cli.shutil.which", _which_all())
+    monkeypatch.setattr("manicure.cli._port_in_use", lambda _: False)
+    monkeypatch.delenv("MANICURE_RUN_ID", raising=False)
+
+    workdir = tmp_path / "project"
+    workdir.mkdir()
+    result = runner.invoke(main, ["start", str(workdir), "--no-system-prompt"])
+    assert result.exit_code == 0, result.output
+    kwargs = spy_run_children.call_args.kwargs
+    claude_run_id = kwargs["claude_env"]["MANICURE_RUN_ID"]
+    mitm_run_id = kwargs["mitmdump_env"]["MANICURE_RUN_ID"]
+    assert isinstance(claude_run_id, str)
+    assert claude_run_id
+    assert mitm_run_id == claude_run_id
+
+
 def test_start_writes_workspace_storage_into_manifest(
     tmp_storage: Path,
     tmp_path: Path,
@@ -823,6 +847,8 @@ def test_start_writes_workspace_storage_into_manifest(
     result = runner.invoke(main, ["start", str(workdir), "--no-system-prompt"])
     assert result.exit_code == 0, result.output
     assert captured["raw"]["storage_dir"] == str(workspace_storage(workdir))
+    assert isinstance(captured["raw"]["run_id"], str)
+    assert captured["raw"]["run_id"]
 
 
 def test_start_different_cwds_get_disjoint_storage(

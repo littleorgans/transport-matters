@@ -26,6 +26,7 @@ router = APIRouter()
 class MetaResponse(BaseModel):
     cwd: str
     workspace_id: str
+    run_id: str | None
 
 
 @router.get("")
@@ -42,4 +43,8 @@ async def get_meta() -> MetaResponse:
     settings = get_settings()
     cwd = (settings.cwd or Path.cwd()).resolve()
     wid = _workspace_id(cwd)
-    return MetaResponse(cwd=str(cwd), workspace_id=f"{wid.slug}/{wid.hash}")
+    return MetaResponse(
+        cwd=str(cwd),
+        workspace_id=f"{wid.slug}/{wid.hash}",
+        run_id=settings.run_id,
+    )

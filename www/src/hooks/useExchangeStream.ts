@@ -39,6 +39,7 @@ function isValidPausedTokensEvent(data: Record<string, unknown>): data is {
 function isValidExchangeEvent(data: Record<string, unknown>): data is {
   type: "exchange";
   id: string;
+  run_id?: string | null;
   ts: string;
   provider: string;
   model: string;
@@ -131,6 +132,7 @@ export function useExchangeStream(): { connected: boolean } {
           if (!isValidExchangeEvent(data)) return;
           const entry: IndexEntry = {
             id: data.id,
+            run_id: data.run_id ?? null,
             ts: data.ts,
             provider: data.provider,
             model: data.model,

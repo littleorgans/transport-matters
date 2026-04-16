@@ -64,6 +64,7 @@ class IndexEntry(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     id: str
+    run_id: str | None = None
     ts: datetime
     provider: str
     model: str
@@ -102,7 +103,9 @@ class StorageBackend(ABC):
     ) -> None: ...
 
     @abstractmethod
-    async def read_index(self, limit: int, offset: int) -> list[IndexEntry]: ...
+    async def read_index(
+        self, limit: int, offset: int, run_id: str | None = None
+    ) -> list[IndexEntry]: ...
 
     @abstractmethod
     async def read_exchange(self, exchange_id: str) -> ExchangeArtifacts: ...
