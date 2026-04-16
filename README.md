@@ -63,6 +63,24 @@ uv run --project /absolute/path/to/manicure/api manicure start
 From the repo root, `just start` is a thin wrapper around that source
 run path.
 
+For live frontend and proxy development, use the split source workflow:
+
+```bash
+# terminal 1: from the repo root
+just dev /absolute/path/to/the/project/you-want-claude-to-run-in
+
+# or from the target project itself
+just --justfile /absolute/path/to/manicure/justfile dev
+
+# terminal 2: from the target project
+ANTHROPIC_BASE_URL=http://localhost:8787 API_TIMEOUT_MS=6000000 claude --dangerously-skip-permissions
+```
+
+`just dev` starts the Vite dev server for `www/` and the mitmproxy
+addon from `api/`. The recipe exports `MANICURE_CWD` to the proxy so
+the API reports the real target project cwd instead of the checkout's
+`api/` directory.
+
 ---
 
 ## Architecture

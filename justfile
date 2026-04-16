@@ -1,6 +1,8 @@
 # Manicure — root justfile
 # Proxies to api/ and www/
 
+dev_target_dir := invocation_directory()
+
 default:
     @just --list
 
@@ -25,8 +27,8 @@ check:
     cd api && just check
 
 [no-exit-message]
-dev:
-    overmind start
+dev directory=dev_target_dir:
+    MANICURE_CWD="$(cd '{{directory}}' && pwd)" overmind start
 
 build:
     cd www && just build
