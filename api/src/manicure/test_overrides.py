@@ -592,6 +592,146 @@ class TestAuditAggregate:
         assert audit.chars_before == audit.chars_after
 
 
+# ── curated_value audit field ────────────────────────────────────
+
+
+class TestAuditCuratedValue:
+    """The audit carries the curated text for the four text-bearing kinds.
+
+    The Inspect tab uses ``curated_value`` to synthesise read-only
+    overrides against the ORIGINAL IR without having to replay the
+    pop-cascade the server does when block toggles shift later targets.
+    Toggle and scalar kinds leave the field as ``None``.
+    """
+
+    def test_system_part_text_populates(self) -> None:
+        ir = _make_ir(system=[SystemPart(text="part-0")])
+        overrides = [
+            Override(kind="system_part_text", target="system:0", value="rewritten")
+        ]
+        _, audit = apply_overrides(overrides, ir)
+        assert audit.entries[0].applied is True
+        assert audit.entries[0].curated_value == "rewritten"
+
+    def test_tool_description_populates(self) -> None:
+        ir = _make_ir(tools=[_TOOL_BASH])
+        overrides = [
+            Override(
+                kind="tool_description",
+                target="tool:mcp_bash",
+                value="Run commands safely",
+            )
+        ]
+        _, audit = apply_overrides(overrides, ir)
+        assert audit.entries[0].applied is True
+        assert audit.entries[0].curated_value == "Run commands safely"
+
+    def test_message_text_populates(self) -> None:
+        messages = [Message(role="user", content=[TextBlock(text="hi")])]
+        ir = _make_ir(messages=messages)
+        overrides = [Override(kind="message_text", target="msg:0:blk:0", value="hello")]
+        _, audit = apply_overrides(overrides, ir)
+        assert audit.entries[0].applied is True
+        assert audit.entries[0].curated_value == "hello"
+
+    def test_truncate_tool_result_populates_with_truncated_text(self) -> None:
+        messages = [
+            Message(
+                role="assistant",
+                content=[ToolUseBlock(id="tu-1", name="bash", input={})],
+            ),
+            Message(
+                role="user",
+                content=[
+                    ToolResultBlock(
+                        tool_use_id="tu-1", content=[TextBlock(text="a" * 500)]
+                    )
+                ],
+            ),
+        ]
+        ir = _make_ir(messages=messages)
+        overrides = [
+            Override(kind="truncate_tool_result", target="toolresult:tu-1", value=100)
+        ]
+        _, audit = apply_overrides(overrides, ir)
+        assert audit.entries[0].applied is True
+        # curated_value is the text as it landed in the IR: first 100
+        # chars plus the truncation marker.
+        assert audit.entries[0].curated_value == "a" * 100 + " [truncated]"
+
+    def test_truncate_tool_result_short_text_untouched(self) -> None:
+        # Short text path: applied=True, curated_value is the untouched
+        # original (the "after" state of the tool_result block).
+        messages = [
+            Message(
+                role="assistant",
+                content=[ToolUseBlock(id="tu-1", name="bash", input={})],
+            ),
+            Message(
+                role="user",
+                content=[
+                    ToolResultBlock(
+                        tool_use_id="tu-1", content=[TextBlock(text="tiny")]
+                    )
+                ],
+            ),
+        ]
+        ir = _make_ir(messages=messages)
+        overrides = [
+            Override(kind="truncate_tool_result", target="toolresult:tu-1", value=100)
+        ]
+        _, audit = apply_overrides(overrides, ir)
+        assert audit.entries[0].applied is True
+        assert audit.entries[0].curated_value == "tiny"
+
+    def test_toggle_kinds_leave_curated_value_none(self) -> None:
+        # message_block_toggle, system_part_toggle, tool_toggle all leave
+        # curated_value=None. Same for sampling_set / provider_extras_set.
+        messages = [
+            Message(role="user", content=[TextBlock(text="a"), TextBlock(text="b")])
+        ]
+        ir = _make_ir(
+            system=[SystemPart(text="sys")],
+            tools=[_TOOL_BASH],
+            messages=messages,
+        ).model_copy(update={"provider_extras": {}})
+        overrides = [
+            Override(kind="tool_toggle", target="tool:mcp_bash", value=False),
+            Override(kind="system_part_toggle", target="system:0", value=False),
+            Override(kind="message_block_toggle", target="msg:0:blk:1", value=False),
+            Override(kind="sampling_set", target="sampling:max_tokens", value="42"),
+            Override(
+                kind="provider_extras_set",
+                target="provider_extras:thinking",
+                value='"on"',
+            ),
+        ]
+        _, audit = apply_overrides(overrides, ir)
+        for entry in audit.entries:
+            assert entry.applied is True, f"{entry.kind} {entry.target}"
+            assert entry.curated_value is None, f"{entry.kind} {entry.target}"
+
+    def test_unapplied_text_override_leaves_curated_value_none(self) -> None:
+        # An out-of-range message_text target fails to apply; no curated
+        # value should be recorded even though value carries a string.
+        ir = _make_ir(messages=[Message(role="user", content=[TextBlock(text="hi")])])
+        overrides = [Override(kind="message_text", target="msg:0:blk:99", value="nope")]
+        _, audit = apply_overrides(overrides, ir)
+        assert audit.entries[0].applied is False
+        assert audit.entries[0].curated_value is None
+
+    def test_unapplied_truncate_leaves_curated_value_none(self) -> None:
+        ir = _make_ir()  # no tool_result blocks
+        overrides = [
+            Override(
+                kind="truncate_tool_result", target="toolresult:missing", value=100
+            )
+        ]
+        _, audit = apply_overrides(overrides, ir)
+        assert audit.entries[0].applied is False
+        assert audit.entries[0].curated_value is None
+
+
 # ── Curated-message sanitization ─────────────────────────────────
 
 

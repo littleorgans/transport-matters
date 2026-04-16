@@ -1,5 +1,5 @@
 import { diffLines } from "diff";
-import { type Ref, useEffect, useMemo, useRef, useState } from "react";
+import { type Ref, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { inputClass } from "../detail/atoms";
 
 // Single-panel editor for text overrides across the Breakpoint editor
@@ -32,9 +32,11 @@ interface TextOverrideEditorProps {
   /** Commit hook — fires on blur so the override store reconciles against ``original``. */
   onBlur: () => void;
   /** Ref threaded through to the textarea so the auto-size effect in ``useEditableOverride`` can measure. */
-  textareaRef: Ref<HTMLTextAreaElement>;
+  textareaRef?: Ref<HTMLTextAreaElement>;
   isModified: boolean;
   onReset: () => void;
+  /** Read-only mode: textarea is un-editable, no RESET. Tab bar only renders when ``isModified``. */
+  readOnly?: boolean;
 }
 
 export function TextOverrideEditor({
@@ -45,6 +47,7 @@ export function TextOverrideEditor({
   textareaRef,
   isModified,
   onReset,
+  readOnly,
 }: TextOverrideEditorProps) {
   const [view, setView] = useState<"edit" | "diff">("edit");
 
@@ -68,6 +71,104 @@ export function TextOverrideEditor({
     if (!isModified || view !== "diff") return null;
     return diffLines(original, value);
   }, [original, value, isModified, view]);
+
+  // Read-only callers don't thread a ref (the editing hook that owns
+  // one isn't in play). Fall back to a local ref so the textarea can
+  // still auto-size. Non-readOnly paths keep passing the hook's ref so
+  // useEditableOverride's layout effect stays authoritative there.
+  const localRef = useRef<HTMLTextAreaElement>(null);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: re-measure when the value changes
+  useLayoutEffect(() => {
+    if (!readOnly) return;
+    const el = localRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, [value, view, readOnly]);
+
+  // Read-only mode. When the part/tool is unmodified, skip the tab bar
+  // entirely — we'd just be showing EDIT twice in a row with identical
+  // content. When modified, show EDIT|DIFF but not RESET.
+  if (readOnly) {
+    const readOnlyTextarea = (
+      <textarea
+        ref={localRef}
+        className={inputClass}
+        value={value}
+        readOnly
+        // Preserve visible whitespace/newlines but don't auto-wrap; the
+        // container width and field-sizing do the rest.
+        onChange={() => {}}
+      />
+    );
+
+    if (!isModified) {
+      return readOnlyTextarea;
+    }
+
+    return (
+      <div>
+        <div role="tablist" className="flex items-stretch border-y border-edge">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={view === "edit"}
+            onClick={(e) => {
+              e.stopPropagation();
+              setView("edit");
+            }}
+            className={`cursor-pointer px-4 py-2 text-[11px] font-medium uppercase tracking-[0.14em] transition-all duration-150 ${
+              view === "edit" ? "tab-pressed text-txt" : "tab-rest text-txt-3 hover:text-txt-2"
+            }`}
+          >
+            Edit
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={view === "diff"}
+            onClick={(e) => {
+              e.stopPropagation();
+              setView("diff");
+            }}
+            className={`cursor-pointer px-4 py-2 text-[11px] font-medium uppercase tracking-[0.14em] transition-all duration-150 ${
+              view === "diff" ? "tab-pressed text-txt" : "tab-rest text-txt-3 hover:text-txt-2"
+            }`}
+          >
+            Diff
+          </button>
+        </div>
+        {view === "edit" ? (
+          readOnlyTextarea
+        ) : (
+          <pre className="bg-canvas p-3 text-[12px] whitespace-pre-wrap border border-edge font-mono">
+            {parts?.map((part, i) => {
+              const key = `${i}-${part.value.slice(0, 16)}`;
+              if (part.added) {
+                return (
+                  <ins key={key} className="bg-sage/15 text-sage no-underline">
+                    {part.value}
+                  </ins>
+                );
+              }
+              if (part.removed) {
+                return (
+                  <del key={key} className="bg-rose/15 text-rose decoration-rose/70">
+                    {part.value}
+                  </del>
+                );
+              }
+              return (
+                <span key={key} className="text-txt-3">
+                  {part.value}
+                </span>
+              );
+            })}
+          </pre>
+        )}
+      </div>
+    );
+  }
 
   if (!isModified) {
     return (

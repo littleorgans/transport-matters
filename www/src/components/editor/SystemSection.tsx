@@ -7,8 +7,14 @@ import { TextOverrideEditor } from "./TextOverrideEditor";
 
 interface SystemSectionProps {
   parts: SystemPart[];
-  overrides: Override[];
-  onOverride: (batch: Override[]) => void;
+  overrides?: Override[];
+  onOverride?: (batch: Override[]) => void;
+  /**
+   * Read-only mode: synthesized overrides drive the display but the
+   * toggle/textarea are inert. Used by the Inspect tab so the detail
+   * view can reuse the same SystemPartRow shape the editor renders.
+   */
+  readOnly?: boolean;
 }
 
 function SystemPartRow({
@@ -18,6 +24,7 @@ function SystemPartRow({
   onOverride,
   expanded,
   onToggleExpanded,
+  readOnly,
 }: {
   part: SystemPart;
   index: number;
@@ -25,6 +32,7 @@ function SystemPartRow({
   onOverride: (batch: Override[]) => void;
   expanded: boolean;
   onToggleExpanded: () => void;
+  readOnly?: boolean;
 }) {
   const target = `system:${index}`;
   const {
@@ -70,6 +78,7 @@ function SystemPartRow({
       preview={preview}
       size={<SizeDelta original={part.text.length} current={localText.length} />}
       onToggleExpanded={onToggleExpanded}
+      readOnly={readOnly}
     >
       {expanded && (
         <div className="mt-2 px-4 pb-3">
@@ -81,6 +90,7 @@ function SystemPartRow({
             textareaRef={textRef}
             isModified={isModified}
             onReset={handleReset}
+            readOnly={readOnly}
           />
         </div>
       )}
@@ -88,7 +98,14 @@ function SystemPartRow({
   );
 }
 
-export function SystemSection({ parts, overrides, onOverride }: SystemSectionProps) {
+const NOOP_OVERRIDE = () => {};
+
+export function SystemSection({
+  parts,
+  overrides = [],
+  onOverride = NOOP_OVERRIDE,
+  readOnly,
+}: SystemSectionProps) {
   const overrideCount = overrides.filter(
     (o) => o.kind === "system_part_toggle" || o.kind === "system_part_text",
   ).length;
@@ -111,6 +128,8 @@ export function SystemSection({ parts, overrides, onOverride }: SystemSectionPro
   // after hooks to respect React's rules-of-hooks ordering.
   if (parts.length === 0) return null;
 
+  const overrideLabel = readOnly ? "modified" : "override";
+
   return (
     <section className="space-y-4">
       <div className="card-flush">
@@ -124,7 +143,8 @@ export function SystemSection({ parts, overrides, onOverride }: SystemSectionPro
               <>
                 <span className="h-1 w-1 rounded-full bg-amber" />
                 <span className="label text-amber">
-                  {overrideCount} override{overrideCount !== 1 ? "s" : ""}
+                  {overrideCount} {overrideLabel}
+                  {overrideCount !== 1 ? "s" : ""}
                 </span>
               </>
             ) : undefined
@@ -142,6 +162,7 @@ export function SystemSection({ parts, overrides, onOverride }: SystemSectionPro
                 onOverride={onOverride}
                 expanded={isExpanded(entry.idx)}
                 onToggleExpanded={() => toggleOne(entry.idx)}
+                readOnly={readOnly}
               />
               {i < keyedParts.length - 1 && <div className="hairline-x mx-4" />}
             </div>

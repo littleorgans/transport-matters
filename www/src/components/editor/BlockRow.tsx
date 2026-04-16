@@ -21,6 +21,7 @@ export function BlockRow({
   onOverride,
   expanded,
   onToggleExpanded,
+  readOnly,
 }: {
   block: ContentBlock;
   msgIdx: number;
@@ -29,6 +30,12 @@ export function BlockRow({
   onOverride: (batch: Override[]) => void;
   expanded: boolean;
   onToggleExpanded: () => void;
+  /**
+   * Read-only mode: the Toggle and textarea are inert (synthesised
+   * overrides drive display). Non-text block bodies keep rendering
+   * through ColorizedPre — there's no edit to diff against.
+   */
+  readOnly?: boolean;
 }) {
   const target = blockTarget(msgIdx, blkIdx);
   const isText = block.type === "text";
@@ -80,6 +87,7 @@ export function BlockRow({
       preview={blockSummary(block)}
       size={<SizeDelta original={baseBlockSize} current={currentBlockSize} />}
       onToggleExpanded={onToggleExpanded}
+      readOnly={readOnly}
     >
       {expanded && (
         <>
@@ -93,6 +101,7 @@ export function BlockRow({
                 textareaRef={textRef}
                 isModified={isModified}
                 onReset={handleReset}
+                readOnly={readOnly}
               />
             </div>
           )}

@@ -125,6 +125,14 @@ class OverrideAuditEntry(BaseModel):
     target: str
     applied: bool  # False if target was missing
     chars_delta: int  # positive = added, negative = removed
+    # Populated only for text-bearing kinds that produced a curated string:
+    # ``system_part_text``, ``tool_description``, ``message_text``,
+    # ``truncate_tool_result``. Toggle and scalar kinds leave this None.
+    # The Inspect tab uses it to synthesise read-only overrides against the
+    # original IR without having to replay the pop-cascade the server does
+    # when block toggles shift later targets — the audit is authoritative
+    # about what landed where.
+    curated_value: str | None = None
 
 
 class OverrideAudit(BaseModel):
@@ -248,10 +256,17 @@ def _apply_system_part_text(
 
 def _apply_truncate_tool_result(
     ir: InternalRequest, tool_use_id: str, max_chars: int
-) -> tuple[InternalRequest, int, bool]:
-    """Truncate a specific tool result by tool_use_id."""
+) -> tuple[InternalRequest, int, bool, str | None]:
+    """Truncate a specific tool result by tool_use_id.
+
+    The 4th return element is the final tool_result text after truncation,
+    used for the audit's ``curated_value``. None when the target was
+    missing; equal to the original when the text was already under the
+    limit (untouched, but still the curated state).
+    """
     found = False
     chars_delta = 0
+    curated_text: str | None = None
     new_messages: list[Message] = []
 
     for msg in ir.messages:
@@ -283,18 +298,25 @@ def _apply_truncate_tool_result(
             if len(original_text) > max_chars:
                 truncated = original_text[:max_chars] + " [truncated]"
                 chars_delta += len(truncated) - len(original_text)
+                curated_text = truncated
                 new_block = block.model_copy(
                     update={"content": [TextBlock(type="text", text=truncated)]}
                 )
                 new_content.append(new_block)
             else:
+                curated_text = original_text
                 new_content.append(block)
 
         new_messages.append(msg.model_copy(update={"content": new_content}))
 
     if not found:
-        return ir, 0, False
-    return ir.model_copy(update={"messages": new_messages}), chars_delta, True
+        return ir, 0, False, None
+    return (
+        ir.model_copy(update={"messages": new_messages}),
+        chars_delta,
+        True,
+        curated_text,
+    )
 
 
 def _apply_message_block_toggle(
@@ -680,6 +702,11 @@ def apply_overrides(
 
         applied = False
         chars_delta = 0
+        # curated_value rides alongside the audit entry for text-bearing
+        # kinds so downstream consumers (the Inspect tab) don't have to
+        # replay the pop-cascade to recover what landed where. Stays None
+        # for toggles and scalar kinds.
+        curated_value: str | None = None
 
         if kind == "tool_toggle":
             tool_name = _parse_tool_name(target)
@@ -697,6 +724,8 @@ def apply_overrides(
                 current_ir, chars_delta, applied = _apply_tool_description(
                     current_ir, tool_name, value
                 )
+                if applied:
+                    curated_value = value
 
         elif kind == "system_part_toggle":
             original_index = _parse_system_index(target)
@@ -727,13 +756,18 @@ def apply_overrides(
                     current_ir, chars_delta, applied = _apply_system_part_text(
                         current_ir, adjusted, value
                     )
+                    if applied:
+                        curated_value = value
 
         elif kind == "truncate_tool_result":
             tool_use_id = _parse_tool_result_id(target)
             if tool_use_id is not None and isinstance(value, int) and value > 0:
-                current_ir, chars_delta, applied = _apply_truncate_tool_result(
-                    current_ir, tool_use_id, value
-                )
+                (
+                    current_ir,
+                    chars_delta,
+                    applied,
+                    curated_value,
+                ) = _apply_truncate_tool_result(current_ir, tool_use_id, value)
 
         elif kind == "message_block_toggle":
             parsed = _parse_message_target(target)
@@ -771,6 +805,8 @@ def apply_overrides(
                     current_ir, chars_delta, applied = _apply_message_text(
                         current_ir, msg_idx, adjusted_blk, value
                     )
+                    if applied:
+                        curated_value = value
 
         elif kind == "sampling_set":
             # sampling_set and provider_extras_set both transport their
@@ -808,6 +844,7 @@ def apply_overrides(
                 target=target,
                 applied=applied,
                 chars_delta=chars_delta,
+                curated_value=curated_value,
             )
         )
 

@@ -128,17 +128,33 @@ async def _run_pipeline(
     return curated_ir, audit
 
 
-def _resolve_paused_flow(pf: bp.PausedFlow) -> tuple[InternalRequest, bool]:
-    """Decide the IR to forward and whether the user meaningfully edited it.
+def _resolve_paused_flow(
+    pf: bp.PausedFlow,
+) -> tuple[InternalRequest, bool, OverrideAudit | None]:
+    """Decide the IR to forward, mutation flag, and audit to persist.
 
     A release via the Forward button populates ``pf.mutated_ir``, but that
     alone does not imply the user changed anything: the editor may have been
     opened and submitted unchanged. Declare manual mutation only when the
     submitted IR structurally diverges from the pipeline's ``curated_ir``.
+
+    The audit returned tracks the paused flow's ``pf.audit`` (updated in place
+    by ``_update_paused_preview`` when the user edits overrides mid-pause),
+    not the pre-pause snapshot captured by ``_run_pipeline``. That pre-pause
+    audit is stale as soon as the user touches the overrides panel: its
+    ``overrides_applied`` lists what landed when the request arrived, not
+    what ended up in ``curated_ir``. Persisting the stale audit makes the
+    Inspect tab see ``overrides_applied: []`` against a diverging curated
+    IR, which falls back to structural diff and re-exposes the pop-cascade
+    bug (every block after a deletion falsely flagged as edited). Return
+    None when the user manually edited the textareas, because ``pf.audit``
+    describes ``pf.curated_ir`` but the final IR is ``pf.mutated_ir``.
     """
     if pf.mutated_ir is None:
-        return pf.curated_ir, False
-    return pf.mutated_ir, pf.mutated_ir != pf.curated_ir
+        return pf.curated_ir, False, pf.audit
+    mutated = pf.mutated_ir != pf.curated_ir
+    audit = None if mutated else pf.audit
+    return pf.mutated_ir, mutated, audit
 
 
 async def _fire_pause_count(
@@ -249,12 +265,16 @@ async def _handle_breakpoint(
         )
         return
 
-    final_ir, mutated_manually = _resolve_paused_flow(pf)
+    final_ir, mutated_manually, final_audit = _resolve_paused_flow(pf)
     flow.request.set_text(adapter.outbound_request(final_ir).decode())
     flow.metadata["manicure_mutated_manually"] = mutated_manually
     # Persist the IR that was actually sent to the provider so response()
-    # writes it to request.curated.ir.json.
+    # writes it to request.curated.ir.json, and overwrite the pre-pause
+    # audit snapshot with the paused flow's live audit so any override
+    # edits the user made during the pause are reflected in the stored
+    # ``overrides_applied`` list (see ``_resolve_paused_flow`` for why).
     flow.metadata["manicure_curated_ir"] = final_ir
+    flow.metadata["manicure_audit"] = final_audit
 
 
 # ── Response phases ─────────────────────────────────────────────────

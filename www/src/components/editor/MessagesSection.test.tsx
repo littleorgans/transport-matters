@@ -156,3 +156,24 @@ describe("MessagesSection: tool_use / tool_result tandem toggle", () => {
     ]);
   });
 });
+
+describe("MessagesSection: readOnly mode", () => {
+  // The Inspect tab renders MessagesSection with synthesised overrides
+  // to mirror the curated payload. The interactive controls must sit
+  // out so the reader can't accidentally flip a historical record, and
+  // the modified dot must still surface so edits are visible at a glance.
+  it("hides Toggle switches and surfaces the modified dot for edited blocks", () => {
+    const overrides: Override[] = [{ kind: "message_text", target: "msg:0:blk:0", value: "HELLO" }];
+    const { container } = render(
+      <MessagesSection messages={messages} overrides={overrides} readOnly />,
+    );
+
+    // No interactive switches when readOnly — the Toggle should be absent
+    // from both MessageCard (only BlockRow mounts it) and BlockRow itself.
+    expect(screen.queryAllByRole("switch")).toHaveLength(0);
+
+    // Modified dot is surfaced: CompositeEditableRow's amber 1x1 pill.
+    const modifiedDots = container.querySelectorAll(".bg-amber");
+    expect(modifiedDots.length).toBeGreaterThan(0);
+  });
+});

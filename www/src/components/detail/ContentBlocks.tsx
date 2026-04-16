@@ -1,15 +1,16 @@
 /**
  * Content block rendering.
  *
- * Both request messages and response content arrive as arrays of
- * ContentBlock. We render them with a single component so the
- * visual language stays consistent across request and response.
+ * Response content still goes through the bespoke ``ContentBlockRow``
+ * here — responses aren't editable, and the ResponseCard layout stays
+ * intentionally quieter than the editor row. Request messages migrated
+ * to the editor's ``MessagesSection`` in readOnly mode so the Inspect
+ * tab can surface curated text edits as EDIT|DIFF tabs and disabled
+ * blocks as greyed-out rows.
  */
 
-import { useCollapsibleSet } from "../../hooks/useCollapsibleSet";
 import { ColorizedPre } from "../../lib/colorizeLine";
 import type { ContentBlock, Message } from "../../types";
-import { MasterBar, SECTION_TONE } from "./atoms";
 
 // Block type markers are intentionally uniform: a single .chip
 // colour across every kind so scanning reads as a quiet index,
@@ -95,42 +96,12 @@ export function ContentBlockRow({
   );
 }
 
-// ── Request message ────────────────────────────────────────────────
-// Wraps a role chip + block list. The role colour tints the chip
-// text and the header's faint background wash. Block rows stay
-// uniform so scanning reads as a quiet index.
+// ── Role tone ──────────────────────────────────────────────────────
+// Tint palette shared with the editor's MessageCard so user and
+// assistant rows read the same in the Breakpoint editor and in the
+// readOnly Inspect tab.
 
 export const ROLE_TONE: Record<string, { text: string; bg: string }> = {
   user: { text: "text-sky", bg: "bg-sky/5" },
   assistant: { text: "text-sage", bg: "bg-sage/5" },
 };
-
-export function RequestMessage({ message }: { message: Message }) {
-  const tone = SECTION_TONE[message.role] ?? ROLE_TONE[message.role];
-  const { toggleAll, toggleOne, isExpanded } = useCollapsibleSet(message.content.length, true);
-
-  return (
-    <div className="card-flush">
-      <MasterBar
-        label={message.role}
-        tone={tone}
-        count={message.content.length}
-        countUnit="block"
-        onToggleAll={toggleAll}
-      />
-      <div className="hairline-x" />
-      <div>
-        {message.content.map((block, idx) => (
-          <div key={blockKey(block, idx)}>
-            <ContentBlockRow
-              block={block}
-              expanded={isExpanded(idx)}
-              onToggleExpanded={() => toggleOne(idx)}
-            />
-            {idx < message.content.length - 1 && <div className="hairline-x mx-4" />}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}

@@ -75,6 +75,7 @@ interface CompositeEditableRowProps {
   size: ReactNode;
   onToggleExpanded: () => void;
   children?: ReactNode;
+  readOnly?: boolean;
 }
 
 export function CompositeEditableRow({
@@ -87,7 +88,40 @@ export function CompositeEditableRow({
   size,
   onToggleExpanded,
   children,
+  readOnly,
 }: CompositeEditableRowProps) {
+  // Read-only mode: no toggle control (user can't flip state), but keep
+  // the opacity dimming driven by ``checked`` so a synthesised
+  // ``*_toggle: false`` override reads as "this block was disabled" the
+  // same way the editor renders it live. Without the dim, the Inspect
+  // tab's "N MODIFIED" count disagrees with the block rows it's
+  // supposedly counting.
+  if (readOnly) {
+    return (
+      <div className={`transition-opacity ${checked ? "" : "opacity-40"}`}>
+        <button
+          type="button"
+          onClick={onToggleExpanded}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              onToggleExpanded();
+            }
+          }}
+          className="flex w-full cursor-pointer items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-raised focus:outline-none focus-visible:bg-raised"
+        >
+          {leadingChips}
+          {isModified && <span className="h-1 w-1 shrink-0 rounded-full bg-amber" />}
+          <span className="flex-1 min-w-0 truncate text-[13px] leading-5 text-txt-2">
+            {preview}
+          </span>
+          {size}
+        </button>
+        {children}
+      </div>
+    );
+  }
+
   return (
     <div className={`transition-opacity ${checked ? "" : "opacity-40"}`}>
       {/* biome-ignore lint/a11y/useSemanticElements: composite row wraps a Toggle button; button-in-button is invalid HTML */}

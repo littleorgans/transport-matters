@@ -67,6 +67,15 @@ export interface OverrideAuditEntry {
   target: string;
   applied: boolean;
   chars_delta: number;
+  /**
+   * Populated for text-bearing kinds (``system_part_text``,
+   * ``tool_description``, ``message_text``, ``truncate_tool_result``) when
+   * ``applied`` is true. Toggle and scalar kinds leave this null. The
+   * Inspect tab uses it to synthesise read-only overrides against the
+   * ORIGINAL IR without replaying the server's pop-cascade when block
+   * toggles shift later targets.
+   */
+  curated_value: string | null;
 }
 
 export interface OverrideAudit {

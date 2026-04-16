@@ -569,17 +569,24 @@ class TestFirePauseCount:
 
 
 class TestResolvePausedFlow:
-    """Determines (final_ir, mutated_manually) from a released paused flow.
+    """Determines (final_ir, mutated_manually, audit) from a released paused flow.
 
     Clicking Forward through the editor populates ``pf.mutated_ir`` even when
     the user did not actually change anything. The helper must treat that
     no-op submission the same as a Pass Through release.
+
+    The returned audit is the paused flow's live ``pf.audit`` (possibly
+    refreshed by ``_update_paused_preview`` mid-pause) whenever the user
+    forwarded the pipeline's curated IR; it must be None whenever the user
+    manually edited the textareas, because ``pf.audit`` describes
+    ``pf.curated_ir`` — not the ``pf.mutated_ir`` that actually shipped.
     """
 
     def _paused(
         self,
         curated_ir: InternalRequest,
         mutated_ir: InternalRequest | None,
+        audit: OverrideAudit | None = None,
     ) -> PausedFlow:
         import asyncio
 
@@ -592,14 +599,16 @@ class TestResolvePausedFlow:
             curated_ir=curated_ir,
             paused_at_ms=0,
             mutated_ir=mutated_ir,
+            audit=audit,
         )
 
     def test_pass_through_reports_no_mutation(self) -> None:
         """mutated_ir=None (Pass Through button) forwards curated_ir, flag False."""
         curated = _make_ir(message_text="hello")
-        final_ir, mutated = _resolve_paused_flow(self._paused(curated, None))
+        final_ir, mutated, audit = _resolve_paused_flow(self._paused(curated, None))
         assert final_ir is curated
         assert mutated is False
+        assert audit is None
 
     def test_forward_unchanged_reports_no_mutation(self) -> None:
         """Forward-clicked with IR equal to curated must not mark as mutated.
@@ -610,15 +619,85 @@ class TestResolvePausedFlow:
         curated = _make_ir(message_text="hello")
         unchanged = _make_ir(message_text="hello")
         assert curated == unchanged  # Pydantic v2 structural equality
-        final_ir, mutated = _resolve_paused_flow(self._paused(curated, unchanged))
+        final_ir, mutated, audit = _resolve_paused_flow(
+            self._paused(curated, unchanged)
+        )
         assert final_ir is unchanged
         assert mutated is False
+        assert audit is None
 
     def test_forward_with_edits_reports_mutation(self) -> None:
         """A genuine edit produces mutated=True."""
         curated = _make_ir(message_text="hello")
         edited = _make_ir(message_text="hello world")
         assert curated != edited
-        final_ir, mutated = _resolve_paused_flow(self._paused(curated, edited))
+        final_ir, mutated, audit = _resolve_paused_flow(self._paused(curated, edited))
         assert final_ir is edited
         assert mutated is True
+        assert audit is None
+
+    def test_pass_through_returns_live_pf_audit(self) -> None:
+        """Regression: audit-refresh bug.
+
+        The addon used to snapshot ``manicure_audit`` from ``_run_pipeline``
+        at request ingress and never refresh it, even after the user edited
+        overrides during the pause. ``_update_paused_preview`` re-runs
+        ``apply_overrides`` and mutates ``pf.audit`` in place, so the
+        authoritative state lives on the paused flow. On a Pass Through
+        release we must forward that live audit so the Inspect tab sees the
+        post-pause ``overrides_applied`` list and doesn't fall back to the
+        structural-diff path (which re-exposes the pop-cascade bug).
+        """
+        curated = _make_ir(message_text="hello")
+        live_audit = OverrideAudit(
+            entries=[
+                OverrideAuditEntry(
+                    kind="message_text",
+                    target="msg:0:blk:0",
+                    applied=True,
+                    chars_delta=-5,
+                    curated_value="hi",
+                )
+            ],
+            chars_before=5,
+            chars_after=2,
+        )
+        _final_ir, mutated, audit = _resolve_paused_flow(
+            self._paused(curated, None, audit=live_audit)
+        )
+        assert mutated is False
+        assert audit is live_audit
+
+    def test_forward_unchanged_returns_live_pf_audit(self) -> None:
+        """Forward-clicked with IR equal to curated still exposes the live audit.
+
+        The editor pre-fill plus no-op submission lands here. The audit still
+        describes the IR that shipped (== curated_ir), so it must ride along.
+        """
+        curated = _make_ir(message_text="hello")
+        unchanged = _make_ir(message_text="hello")
+        live_audit = OverrideAudit(entries=[], chars_before=0, chars_after=0)
+        _final_ir, mutated, audit = _resolve_paused_flow(
+            self._paused(curated, unchanged, audit=live_audit)
+        )
+        assert mutated is False
+        assert audit is live_audit
+
+    def test_forward_with_edits_drops_audit(self) -> None:
+        """Manual textarea edits desynchronize pf.audit from the shipped IR.
+
+        ``pf.audit`` is computed against ``pf.curated_ir``. When the user
+        hand-edits in the textareas, the shipped IR is ``pf.mutated_ir`` —
+        a different payload. Keeping the mismatched audit would make the
+        Inspect tab render a diff that doesn't match reality. None lets
+        the UI fall through to the structural-diff path, which works
+        correctly for manual edits (they don't pop blocks, so no cascade).
+        """
+        curated = _make_ir(message_text="hello")
+        edited = _make_ir(message_text="hello world")
+        live_audit = OverrideAudit(entries=[], chars_before=0, chars_after=0)
+        _final_ir, mutated, audit = _resolve_paused_flow(
+            self._paused(curated, edited, audit=live_audit)
+        )
+        assert mutated is True
+        assert audit is None

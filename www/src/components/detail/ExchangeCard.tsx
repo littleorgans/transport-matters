@@ -185,7 +185,7 @@ export function ExchangeCard({ detail }: { detail: ExchangeDetail }) {
 
           {/* Overrides applied */}
           <div className="hairline-x" />
-          <div className="flex items-center gap-6 px-5 py-2.5">
+          <div className="flex flex-col gap-1.5 px-5 py-2.5">
             {pipeline && pipeline.overrides_applied.length > 0 ? (
               groupOverridesByKind(pipeline.overrides_applied).map((g) => (
                 <span

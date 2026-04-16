@@ -9,8 +9,16 @@ import { BlockRow } from "./BlockRow";
 
 interface MessagesSectionProps {
   messages: Message[];
-  overrides: Override[];
-  onOverride: (batch: Override[]) => void;
+  overrides?: Override[];
+  onOverride?: (batch: Override[]) => void;
+  /**
+   * Read-only mode: synthesised overrides drive the display but the
+   * per-block Toggle and text editor are inert. The pair-tandem
+   * wrapper is also skipped — curated overrides already reflect the
+   * post-pipeline state, so there's no half-toggle to synthesise a
+   * twin for. Used by the Inspect tab.
+   */
+  readOnly?: boolean;
 }
 
 function blockTarget(msgIdx: number, blkIdx: number): string {
@@ -88,11 +96,13 @@ function MessageCard({
   msgIdx,
   overrides,
   onOverride,
+  readOnly,
 }: {
   message: Message;
   msgIdx: number;
   overrides: Override[];
   onOverride: (batch: Override[]) => void;
+  readOnly?: boolean;
 }) {
   const tone = SECTION_TONE[message.role] ?? ROLE_TONE[message.role];
 
@@ -148,6 +158,7 @@ function MessageCard({
               onOverride={onOverride}
               expanded={isExpanded(entry.idx)}
               onToggleExpanded={() => toggleOne(entry.idx)}
+              readOnly={readOnly}
             />
             {i < keyedBlocks.length - 1 && <div className="hairline-x mx-4" />}
           </div>
@@ -157,15 +168,28 @@ function MessageCard({
   );
 }
 
-export function MessagesSection({ messages, overrides, onOverride }: MessagesSectionProps) {
+const NOOP_OVERRIDE = () => {};
+
+export function MessagesSection({
+  messages,
+  overrides = [],
+  onOverride = NOOP_OVERRIDE,
+  readOnly,
+}: MessagesSectionProps) {
   const messageOverrideCount = overrides.filter(
     (o) => o.kind === "message_text" || o.kind === "message_block_toggle",
   ).length;
 
+  // Pair-tandem wrapping is an edit-mode invariant: keep tool_use /
+  // tool_result halves moving together so the user can't stumble into
+  // an orphan. In readOnly the overrides are synthesised from an
+  // already-curated payload, so any half-pairing is a historical fact
+  // we must render as-is — wrapping here would double-toggle curated
+  // overrides into a visibly wrong state.
   const pairMap = useMemo(() => buildPairMap(messages), [messages]);
-  const onOverrideTandem = useMemo(
-    () => withPairTandem(onOverride, pairMap),
-    [onOverride, pairMap],
+  const effectiveOnOverride = useMemo(
+    () => (readOnly ? onOverride : withPairTandem(onOverride, pairMap)),
+    [readOnly, onOverride, pairMap],
   );
 
   const keyedMessages = messages.map((msg, idx) => ({
@@ -174,13 +198,16 @@ export function MessagesSection({ messages, overrides, onOverride }: MessagesSec
     key: `${msg.role}-${idx}`,
   }));
 
+  const overrideLabel = readOnly ? "modified" : "override";
+
   return (
     <section className="space-y-4">
       <div className="section-rule">
         <span className="label">Messages &middot; {messages.length}</span>
         {messageOverrideCount > 0 && (
           <span className="chip text-amber ml-2">
-            {messageOverrideCount} override{messageOverrideCount !== 1 ? "s" : ""}
+            {messageOverrideCount} {overrideLabel}
+            {messageOverrideCount !== 1 ? "s" : ""}
           </span>
         )}
       </div>
@@ -191,7 +218,8 @@ export function MessagesSection({ messages, overrides, onOverride }: MessagesSec
             message={entry.msg}
             msgIdx={entry.idx}
             overrides={overrides}
-            onOverride={onOverrideTandem}
+            onOverride={effectiveOnOverride}
+            readOnly={readOnly}
           />
         ))}
       </div>

@@ -109,4 +109,48 @@ describe("ToolsSection", () => {
 
     expect(screen.getByTestId("tool-group-server")).not.toHaveClass("opacity-40");
   });
+
+  // readOnly hides the whole action cluster — Expand All / All / None /
+  // Drop MCP at the section level, and all/none at the group level —
+  // plus the per-tool toggle switches. The group header, tool names,
+  // and the "modified" chip stay so the detail view retains signal.
+  it("hides bulk controls and toggles in readOnly mode", () => {
+    const tools = [
+      makeTool({ name: "bash", description: "Run bash" }),
+      makeTool({ name: "mcp__server__read", description: "Read" }),
+    ];
+
+    render(<ToolsSection tools={tools} readOnly />);
+
+    // Section-level bulk controls are gone.
+    expect(screen.queryByRole("button", { name: /expand all/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^all$/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^none$/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /drop mcp/i })).toBeNull();
+
+    // Expand the built-in group so we can assert the row-level treatment.
+    const expanders = screen.getAllByRole("button", { name: "+" });
+    fireEvent.click(expanders[0] as HTMLElement);
+
+    // Per-tool toggle switches are hidden; the group's opacity-40
+    // wrapper carries the disabled signal in readOnly.
+    expect(screen.queryByRole("switch")).toBeNull();
+  });
+
+  it("relabels the override chip as 'modified' in readOnly mode", () => {
+    const tools = [makeTool({ name: "bash", description: "Run bash" })];
+    render(
+      <ToolsSection
+        tools={tools}
+        overrides={[{ kind: "tool_toggle", target: "tool:bash", value: false }]}
+        readOnly
+      />,
+    );
+    // Section-level chip and group-level chip both render the same
+    // label under these inputs; assert on at least one so we catch the
+    // rename without coupling to header layout.
+    expect(screen.getAllByText(/1 modified/).length).toBeGreaterThan(0);
+    // And the writable-mode "override" copy is gone.
+    expect(screen.queryByText(/override/i)).toBeNull();
+  });
 });

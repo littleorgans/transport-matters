@@ -2,85 +2,28 @@ import { useCollapsibleSet } from "../../hooks/useCollapsibleSet";
 import type {
   ContentBlock,
   ExchangeDetail,
+  InternalRequest,
   InternalResponse,
   Message,
+  Override,
+  OverrideAuditEntry,
   SystemPart,
+  ToolDef,
 } from "../../types";
-import { MasterBar, SECTION_TONE, SectionRule } from "./atoms";
-import { blockKey, ContentBlockRow, countContentBlocks, RequestMessage } from "./ContentBlocks";
+import { MessagesSection } from "../editor/MessagesSection";
+import { SystemSection } from "../editor/SystemSection";
+import { ToolsSection } from "../editor/ToolsSection";
+import { MasterBar, SECTION_TONE } from "./atoms";
+import { blockKey, ContentBlockRow } from "./ContentBlocks";
 import { ExchangeCard } from "./ExchangeCard";
-import { groupTools, ToolGroup } from "./ToolGroups";
-
-function SystemPartRow({
-  part,
-  index,
-  expanded,
-  onToggleExpanded,
-}: {
-  part: SystemPart;
-  index: number;
-  expanded: boolean;
-  onToggleExpanded: () => void;
-}) {
-  const preview = part.text.slice(0, 220) + (part.text.length > 220 ? "\u2026" : "");
-
-  return (
-    <div className="px-4 py-2.5">
-      <button
-        type="button"
-        onClick={onToggleExpanded}
-        className="flex w-full cursor-pointer items-start gap-3 text-left"
-      >
-        <span className="chip shrink-0 metric-num">{`[${index}]`}</span>
-        {part.cache_hint && <span className="chip shrink-0 text-amber">cached</span>}
-        <span className="text-[13px] text-txt-2 truncate leading-5 mt-0.5 flex-1 min-w-0">
-          {preview}
-        </span>
-        <span className="label text-txt-3 metric-num shrink-0 mt-1">
-          {part.text.length.toLocaleString()}
-        </span>
-      </button>
-      {expanded && (
-        <pre className="mt-3 bg-canvas p-4 text-[12px] leading-relaxed text-txt-2 whitespace-pre-wrap border border-edge-subtle block-recess">
-          {part.text}
-        </pre>
-      )}
-    </div>
-  );
-}
-
-function SystemCard({ parts }: { parts: SystemPart[] }) {
-  const { toggleAll, toggleOne, isExpanded } = useCollapsibleSet(parts.length, true);
-
-  return (
-    <div className="card-flush">
-      <MasterBar
-        label="system"
-        tone={SECTION_TONE.system}
-        count={parts.length}
-        countUnit="part"
-        onToggleAll={toggleAll}
-      />
-      <div className="hairline-x" />
-      <div>
-        {parts.map((part, idx) => {
-          const key = `system-${part.text.slice(0, 40).replace(/\W/g, "")}`;
-          return (
-            <div key={key}>
-              <SystemPartRow
-                part={part}
-                index={idx}
-                expanded={isExpanded(idx)}
-                onToggleExpanded={() => toggleOne(idx)}
-              />
-              {idx < parts.length - 1 && <div className="hairline-x mx-4" />}
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
+import {
+  detectMessageMutations,
+  detectMessageMutationsStructural,
+  detectSystemPartMutations,
+  detectSystemPartMutationsStructural,
+  detectToolMutations,
+  detectToolMutationsStructural,
+} from "./mutations";
 
 function ResponseCard({ content }: { content: ContentBlock[] }) {
   const { toggleAll, toggleOne, isExpanded } = useCollapsibleSet(content.length, true);
@@ -115,15 +58,95 @@ interface InspectTabProps {
   detail: ExchangeDetail;
 }
 
+/**
+ * Synthesize the override list that makes SystemSection / ToolsSection
+ * render the curated IR as edits on top of the original. Keeps the
+ * detail view on the same data contract as the breakpoint editor so
+ * the two surfaces stay visually coherent without a bespoke renderer.
+ *
+ * Prefers the server-side audit (``pipeline.overrides_applied``): it
+ * records originals-indexed targets and their curated text, so there's
+ * no need to replay the pop-cascade the server does when block toggles
+ * shift later targets. Falls back to structural diff when the audit is
+ * empty but the curated IR still diverges — that case is reserved for
+ * manual edits made in the breakpoint textareas, which are index-safe.
+ */
+function buildSyntheticOverrides(
+  original: InternalRequest | undefined,
+  curated: InternalRequest | undefined,
+  audit: OverrideAuditEntry[],
+): Override[] {
+  const batch: Override[] = [];
+
+  const useAudit = audit.length > 0;
+  const structuralDiverges = curated !== undefined && curated !== original;
+
+  const systemMutations = useAudit
+    ? detectSystemPartMutations(audit)
+    : structuralDiverges
+      ? detectSystemPartMutationsStructural(original, curated)
+      : [];
+  for (const m of systemMutations) {
+    if (m.kind === "deleted") {
+      batch.push({ kind: "system_part_toggle", target: `system:${m.index}`, value: false });
+    } else if (m.curatedText !== undefined) {
+      batch.push({ kind: "system_part_text", target: `system:${m.index}`, value: m.curatedText });
+    }
+  }
+
+  const toolMutations = useAudit
+    ? detectToolMutations(audit)
+    : structuralDiverges
+      ? detectToolMutationsStructural(original, curated)
+      : [];
+  for (const m of toolMutations) {
+    if (m.kind === "disabled") {
+      batch.push({ kind: "tool_toggle", target: `tool:${m.name}`, value: false });
+    } else if (m.curatedDescription !== undefined) {
+      batch.push({
+        kind: "tool_description",
+        target: `tool:${m.name}`,
+        value: m.curatedDescription,
+      });
+    }
+  }
+
+  const messageMutations = useAudit
+    ? detectMessageMutations(audit)
+    : structuralDiverges
+      ? detectMessageMutationsStructural(original, curated)
+      : [];
+  for (const m of messageMutations) {
+    const target = `msg:${m.msgIdx}:blk:${m.blkIdx}`;
+    if (m.kind === "disabled") {
+      batch.push({ kind: "message_block_toggle", target, value: false });
+    } else if (m.curatedText !== undefined) {
+      batch.push({ kind: "message_text", target, value: m.curatedText });
+    }
+  }
+
+  return batch;
+}
+
 export function InspectTab({ detail }: InspectTabProps) {
   const { response_ir } = detail;
-  const effectiveRequest = detail.request_curated_ir ?? detail.request_ir;
-  const systemParts = (effectiveRequest.system ?? []) as SystemPart[];
-  const tools = (effectiveRequest.tools ?? []) as Array<{ name: string }>;
-  const toolGroups = groupTools(tools);
-  const requestMessages = (effectiveRequest.messages ?? []) as Message[];
+  const originalRequest = detail.request_ir as unknown as InternalRequest | undefined;
+  const curatedRequest = detail.request_curated_ir as unknown as InternalRequest | undefined;
+
+  // Render the ORIGINAL parts/tools so disabled entries still appear;
+  // the synthesized overrides drive the greyed-out / edited treatment
+  // on top. Falls back to the curated IR when there is no original
+  // (e.g. a passthrough row that never paused, where request_ir is the
+  // only payload we have).
+  const baseRequest = originalRequest ?? curatedRequest;
+  const systemParts = (baseRequest?.system ?? []) as SystemPart[];
+  const tools = (baseRequest?.tools ?? []) as ToolDef[];
+  const requestMessages = (baseRequest?.messages ?? []) as Message[];
   const responseData = response_ir as InternalResponse | null;
   const responseContent = responseData?.content ?? [];
+
+  const audit = detail.entry.pipeline?.overrides_applied ?? [];
+  const syntheticOverrides = buildSyntheticOverrides(originalRequest, curatedRequest, audit);
 
   return (
     <div className="px-8 py-7 space-y-10">
@@ -131,22 +154,15 @@ export function InspectTab({ detail }: InspectTabProps) {
 
       {/* System parts */}
       {systemParts.length > 0 && (
-        <section>
-          <SystemCard parts={systemParts} />
-        </section>
+        <SystemSection parts={systemParts} overrides={syntheticOverrides} readOnly />
       )}
 
-      {/* Request messages */}
+      {/* Request messages — share the editor's MessagesSection in
+          readOnly mode so text edits show the EDIT|DIFF tabs and
+          disabled blocks grey out against the original baseline.
+          Synthesised overrides carry the curated payload's delta. */}
       {requestMessages.length > 0 && (
-        <section>
-          <SectionRule>Messages &middot; {countContentBlocks(requestMessages)}</SectionRule>
-          <div className="space-y-3">
-            {requestMessages.map((msg, idx) => {
-              const key = `${msg.role}-${idx}-${msg.content.length}`;
-              return <RequestMessage key={key} message={msg} />;
-            })}
-          </div>
-        </section>
+        <MessagesSection messages={requestMessages} overrides={syntheticOverrides} readOnly />
       )}
 
       {/* Response content */}
@@ -157,16 +173,7 @@ export function InspectTab({ detail }: InspectTabProps) {
       )}
 
       {/* Tools */}
-      {tools.length > 0 && (
-        <section>
-          <SectionRule>Tools &middot; {tools.length}</SectionRule>
-          <div className="space-y-2">
-            {toolGroups.map(([label, items]) => (
-              <ToolGroup key={label} label={label} tools={items} />
-            ))}
-          </div>
-        </section>
-      )}
+      {tools.length > 0 && <ToolsSection tools={tools} overrides={syntheticOverrides} readOnly />}
 
       <div className="h-8" />
     </div>

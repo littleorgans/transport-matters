@@ -2,20 +2,58 @@ import { useEffect, useMemo, useState } from "react";
 import { useEditableOverride } from "../../hooks/useEditableOverride";
 import { hasOverride, overrideValue } from "../../lib/overrides";
 import type { Override, ToolDef } from "../../types";
-import { groupTools } from "../detail/ToolGroups";
+import { SizeDelta } from "../detail/atoms";
 import { Toggle } from "../Toggle";
 import { TextOverrideEditor } from "./TextOverrideEditor";
 
 interface ToolsSectionProps {
   tools: ToolDef[];
-  overrides: Override[];
-  onOverride: (batch: Override[]) => void;
+  overrides?: Override[];
+  onOverride?: (batch: Override[]) => void;
+  /**
+   * Read-only mode: synthesized overrides drive the display but the
+   * bulk-control cluster, per-group all/none, and per-tool toggles are
+   * hidden. Used by the Inspect tab.
+   */
+  readOnly?: boolean;
 }
 
 interface EditorToolGroup {
   prefix: string;
   tools: ToolDef[];
   totalChars: number;
+}
+
+/**
+ * Plugin prefix for a tool name. Built-in tools (no ``__`` separator)
+ * return "built-in"; MCP tools use the plugin segment between the
+ * leading ``mcp__`` and the tool name. Exposed so the detail view can
+ * derive the same grouping as the editor.
+ */
+export function pluginLabel(name: string): string {
+  if (!name.startsWith("mcp__")) return "built-in";
+  const parts = name.split("__");
+  return (parts[1] ?? "").replace(/^plugin_/, "");
+}
+
+/**
+ * Bucket tools by plugin prefix. ``built-in`` sorts first; the rest
+ * sort alphabetically. Preserved here (not in ToolGroupSection) so
+ * callers that need only the grouping — like buildEditorGroups below
+ * or external render paths — don't drag in the section chrome.
+ */
+export function groupTools<T extends { name: string }>(tools: T[]): [string, T[]][] {
+  const map: Record<string, T[]> = {};
+  for (const t of tools) {
+    const group = pluginLabel(t.name);
+    if (!map[group]) map[group] = [];
+    map[group].push(t);
+  }
+  return Object.entries(map).sort(([a], [b]) => {
+    if (a === "built-in") return -1;
+    if (b === "built-in") return 1;
+    return a.localeCompare(b);
+  });
 }
 
 function toolCharCount(t: ToolDef): number {
@@ -43,11 +81,13 @@ function ToolRow({
   overrides,
   onOverride,
   allExpanded,
+  readOnly,
 }: {
   tool: ToolDef;
   overrides: Override[];
   onOverride: (batch: Override[]) => void;
   allExpanded: boolean;
+  readOnly?: boolean;
 }) {
   const target = `tool:${tool.name}`;
   const {
@@ -82,10 +122,29 @@ function ToolRow({
     hasOverride(overrides, "tool_toggle", target) ||
     hasOverride(overrides, "tool_description", target);
 
+  // Mirror BlockRow: show an ``orig → current`` delta when the user has
+  // edited the description. Rebuild the char count with the live text so
+  // the number tracks the textarea instead of freezing at the pre-edit
+  // value. SizeDelta collapses to the raw number when current === original.
+  const baseToolChars = toolCharCount(tool);
+  const currentToolChars = isModified
+    ? tool.name.length + localText.length + JSON.stringify(tool.input_schema).length
+    : baseToolChars;
+
   return (
     <div className={`transition-opacity ${checked ? "" : "opacity-40"}`}>
       <div className="flex items-center gap-3 px-4 py-2">
-        <Toggle checked={checked} onChange={handleToggle} label={`Toggle ${tool.name}`} size="sm" />
+        {/* Toggle is only meaningful when the consumer can flip it. In
+            readOnly the opacity-40 wrapper already communicates the
+            disabled state and the modified dot carries the edit signal. */}
+        {!readOnly && (
+          <Toggle
+            checked={checked}
+            onChange={handleToggle}
+            label={`Toggle ${tool.name}`}
+            size="sm"
+          />
+        )}
         <button
           type="button"
           onClick={() => setExpanded(!expanded)}
@@ -93,9 +152,9 @@ function ToolRow({
         >
           {displayName(tool.name)}
         </button>
-        <span className="label text-txt-3 ml-auto metric-num shrink-0">
-          {toolCharCount(tool).toLocaleString()}
-        </span>
+        <div className="ml-auto">
+          <SizeDelta original={baseToolChars} current={currentToolChars} />
+        </div>
         {modified && <span className="h-1 w-1 rounded-full bg-amber shrink-0" />}
       </div>
       {checked && expanded && (
@@ -110,6 +169,7 @@ function ToolRow({
               textareaRef={textRef}
               isModified={isModified}
               onReset={handleReset}
+              readOnly={readOnly}
             />
           </div>
           <details className="group">
@@ -131,11 +191,13 @@ function ToolGroupSection({
   overrides,
   onOverride,
   allExpanded,
+  readOnly,
 }: {
   group: EditorToolGroup;
   overrides: Override[];
   onOverride: (batch: Override[]) => void;
   allExpanded: boolean;
+  readOnly?: boolean;
 }) {
   // Groups default collapsed so opening OVERLAY doesn't dump every
   // tool row in view — expand is opt-in (per-group `+` or the
@@ -167,6 +229,7 @@ function ToolGroupSection({
   // Mirror the per-tool disabled treatment (opacity-40 on ToolRow) so a
   // fully-disabled group reads the same at the group level.
   const allDisabled = checkedCount === 0;
+  const overrideLabel = readOnly ? "modified" : "override";
 
   return (
     <div
@@ -190,25 +253,30 @@ function ToolGroupSection({
         </span>
         {overrideCount > 0 && (
           <span className="chip text-amber">
-            {overrideCount} override{overrideCount !== 1 ? "s" : ""}
+            {overrideCount} {overrideLabel}
+            {overrideCount !== 1 ? "s" : ""}
           </span>
         )}
-        <div className="ml-auto flex gap-0">
-          <button
-            type="button"
-            className="btn label text-txt-3 hover:text-txt cursor-pointer px-2 py-1 transition-colors"
-            onClick={groupAll}
-          >
-            all
-          </button>
-          <button
-            type="button"
-            className="btn label text-txt-3 hover:text-txt cursor-pointer px-2 py-1 transition-colors"
-            onClick={groupNone}
-          >
-            none
-          </button>
-        </div>
+        {/* Per-group all/none only make sense when the reader can drive
+            them. In readOnly the group is purely informational. */}
+        {!readOnly && (
+          <div className="ml-auto flex gap-0">
+            <button
+              type="button"
+              className="btn label text-txt-3 hover:text-txt cursor-pointer px-2 py-1 transition-colors"
+              onClick={groupAll}
+            >
+              all
+            </button>
+            <button
+              type="button"
+              className="btn label text-txt-3 hover:text-txt cursor-pointer px-2 py-1 transition-colors"
+              onClick={groupNone}
+            >
+              none
+            </button>
+          </div>
+        )}
       </div>
       {!collapsed && (
         <>
@@ -221,6 +289,7 @@ function ToolGroupSection({
                   overrides={overrides}
                   onOverride={onOverride}
                   allExpanded={allExpanded}
+                  readOnly={readOnly}
                 />
                 {i < group.tools.length - 1 && <div className="hairline-x mx-4" />}
               </div>
@@ -232,7 +301,14 @@ function ToolGroupSection({
   );
 }
 
-export function ToolsSection({ tools, overrides, onOverride }: ToolsSectionProps) {
+const NOOP_OVERRIDE = () => {};
+
+export function ToolsSection({
+  tools,
+  overrides = [],
+  onOverride = NOOP_OVERRIDE,
+  readOnly,
+}: ToolsSectionProps) {
   const groups = useMemo(() => buildEditorGroups(tools), [tools]);
   const [allExpanded, setAllExpanded] = useState(false);
 
@@ -241,6 +317,7 @@ export function ToolsSection({ tools, overrides, onOverride }: ToolsSectionProps
   const totalOverrides = overrides.filter(
     (o) => o.kind === "tool_toggle" || o.kind === "tool_description",
   ).length;
+  const overrideLabel = readOnly ? "modified" : "override";
 
   const checkAll = () => {
     const batch: Override[] = tools
@@ -274,43 +351,49 @@ export function ToolsSection({ tools, overrides, onOverride }: ToolsSectionProps
           <span className="label">Tools &middot; {tools.length}</span>
           {totalOverrides > 0 && (
             <span className="chip text-amber ml-2">
-              {totalOverrides} override{totalOverrides !== 1 ? "s" : ""}
+              {totalOverrides} {overrideLabel}
+              {totalOverrides !== 1 ? "s" : ""}
             </span>
           )}
         </div>
-        {/* View control — bulk expand/collapse all tool descriptions.
-            Visually separated from the data-action cluster (All / None /
-            Drop MCP) because it affects display, not tool enablement. */}
-        <button
-          type="button"
-          className="btn label text-txt-3 hover:text-txt cursor-pointer border border-edge px-3 py-1.5 shrink-0 transition-colors"
-          onClick={() => setAllExpanded((v) => !v)}
-        >
-          {allExpanded ? "Collapse All" : "Expand All"}
-        </button>
-        <div className="flex gap-0 shrink-0">
-          <button
-            type="button"
-            className="btn label text-txt-3 hover:text-txt cursor-pointer px-3 py-1.5 border border-edge transition-colors"
-            onClick={checkAll}
-          >
-            All
-          </button>
-          <button
-            type="button"
-            className="btn label text-txt-3 hover:text-txt cursor-pointer px-3 py-1.5 border border-edge border-l-0 transition-colors"
-            onClick={uncheckAll}
-          >
-            None
-          </button>
-          <button
-            type="button"
-            className="btn label text-rose/80 hover:text-rose cursor-pointer px-3 py-1.5 border border-edge border-l-0 transition-colors"
-            onClick={dropAllMcp}
-          >
-            Drop MCP
-          </button>
-        </div>
+        {/* Bulk controls drop out of the read-only view. View control —
+            bulk expand/collapse all tool descriptions — is visually
+            separated from the data-action cluster (All / None / Drop
+            MCP) because it affects display, not tool enablement. */}
+        {!readOnly && (
+          <>
+            <button
+              type="button"
+              className="btn label text-txt-3 hover:text-txt cursor-pointer border border-edge px-3 py-1.5 shrink-0 transition-colors"
+              onClick={() => setAllExpanded((v) => !v)}
+            >
+              {allExpanded ? "Collapse All" : "Expand All"}
+            </button>
+            <div className="flex gap-0 shrink-0">
+              <button
+                type="button"
+                className="btn label text-txt-3 hover:text-txt cursor-pointer px-3 py-1.5 border border-edge transition-colors"
+                onClick={checkAll}
+              >
+                All
+              </button>
+              <button
+                type="button"
+                className="btn label text-txt-3 hover:text-txt cursor-pointer px-3 py-1.5 border border-edge border-l-0 transition-colors"
+                onClick={uncheckAll}
+              >
+                None
+              </button>
+              <button
+                type="button"
+                className="btn label text-rose/80 hover:text-rose cursor-pointer px-3 py-1.5 border border-edge border-l-0 transition-colors"
+                onClick={dropAllMcp}
+              >
+                Drop MCP
+              </button>
+            </div>
+          </>
+        )}
       </div>
       <div className="space-y-2">
         {groups.map((group) => (
@@ -320,6 +403,7 @@ export function ToolsSection({ tools, overrides, onOverride }: ToolsSectionProps
             overrides={overrides}
             onOverride={onOverride}
             allExpanded={allExpanded}
+            readOnly={readOnly}
           />
         ))}
       </div>
