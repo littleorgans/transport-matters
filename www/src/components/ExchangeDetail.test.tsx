@@ -49,8 +49,13 @@ describe("ExchangeDetail", () => {
       </QueryClientProvider>,
     );
 
-    await waitFor(() => expect(screen.getByText("claude-3")).toBeInTheDocument());
-    expect(screen.getByText("anthropic")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(
+        screen.getByRole("heading", {
+          name: /anthropic\s*\/\s*claude-3/i,
+        }),
+      ).toBeInTheDocument(),
+    );
   });
 
   it("same-id re-render uses query cache — fetchExchange called once", async () => {
@@ -63,7 +68,13 @@ describe("ExchangeDetail", () => {
       </QueryClientProvider>,
     );
 
-    await waitFor(() => expect(screen.getByText("claude-3")).toBeInTheDocument());
+    await waitFor(() =>
+      expect(
+        screen.getByRole("heading", {
+          name: /anthropic\s*\/\s*claude-3/i,
+        }),
+      ).toBeInTheDocument(),
+    );
     expect(fetchExchange).toHaveBeenCalledTimes(1);
 
     // Re-render with same id — TanStack Query should serve from cache

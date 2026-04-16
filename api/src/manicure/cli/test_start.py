@@ -61,6 +61,33 @@ def test_start_print_command_does_not_spawn(
     spy_run_children.assert_not_called()
 
 
+def test_start_prefers_same_environment_mitmdump(
+    tmp_storage: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    spy_run_children: MagicMock,
+) -> None:
+    """Use the mitmdump binary from the active environment before PATH."""
+
+    def fake_which(name: str, path: str | None = None) -> str | None:
+        if name == "mitmdump" and path == "/tool/bin":
+            return "/tool/bin/mitmdump"
+        if name == "mitmdump":
+            return "/usr/local/bin/mitmdump"
+        if name == "claude":
+            return "/bin/claude"
+        return None
+
+    monkeypatch.setattr("manicure.cli.sysconfig.get_path", lambda name: "/tool/bin")
+    monkeypatch.setattr("manicure.cli.shutil.which", fake_which)
+    monkeypatch.setattr("manicure.cli._port_in_use", lambda _: False)
+
+    result = runner.invoke(main, ["start", "--no-system-prompt", "--print-command"])
+    assert result.exit_code == 0
+    assert "/tool/bin/mitmdump" in result.stdout
+    assert "/usr/local/bin/mitmdump" not in result.stdout
+    spy_run_children.assert_not_called()
+
+
 def test_start_print_command_includes_claude_invocation(
     tmp_storage: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -510,6 +537,7 @@ def test_start_calls_run_children_with_claude_env(
     assert kwargs["claude_env"]["ANTHROPIC_BASE_URL"] == "http://localhost:9900"
     assert kwargs["claude_cwd"] == workdir
     assert kwargs["proxy_port"] == 9900
+    assert f"MANICURE_CWD={workdir}" in result.output
     # mitmdump gets its normal invocation; the supervisor will add the
     # PYTHONUNBUFFERED env wrapper.
     assert kwargs["mitmdump_argv"][0] == "/bin/mitmdump"

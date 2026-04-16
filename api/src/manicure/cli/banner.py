@@ -26,5 +26,5 @@ def _print_banner(
         typer.echo("  point your client at the proxy:")
         typer.echo(f"    ANTHROPIC_BASE_URL=http://localhost:{proxy_port} claude")
     else:
-        typer.echo(f"  claude   working directory: {working_dir}")
+        typer.echo(f"  claude   MANICURE_CWD={working_dir}")
     typer.echo("")

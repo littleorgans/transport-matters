@@ -25,6 +25,7 @@ from __future__ import annotations
 import contextlib
 import os
 import shutil
+import sysconfig
 from datetime import UTC, datetime
 from importlib.resources import as_file, files
 from pathlib import Path
@@ -88,6 +89,16 @@ main = typer.Typer(
     rich_markup_mode=None,
     context_settings={"help_option_names": ["-h", "--help"]},
 )
+
+
+def _resolve_mitmdump() -> str | None:
+    """Prefer the console script from the active manicure environment."""
+    scripts_dir = sysconfig.get_path("scripts")
+    if scripts_dir:
+        resolved = shutil.which("mitmdump", path=scripts_dir)
+        if resolved is not None:
+            return resolved
+    return shutil.which("mitmdump")
 
 
 # --------------------------------------------------------------------------- #
@@ -300,7 +311,7 @@ def start(
         raise typer.Exit(2)
 
     # 2. Check that mitmdump is reachable on PATH.
-    mitmdump = shutil.which("mitmdump")
+    mitmdump = _resolve_mitmdump()
     if mitmdump is None:
         typer.secho(
             "error: `mitmdump` was not found on PATH.",

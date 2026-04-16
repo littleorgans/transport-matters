@@ -116,41 +116,27 @@ export function ExchangeDetail({ id }: ExchangeDetailProps) {
           this one leads with a preserved Captured timestamp in bone-
           neutral tones. The absence of the amber caution cell is the
           archival signal — nothing is ticking, nothing is blocking. */}
-      <div className="top-highlight bg-surface">
-        <div className="flex items-stretch">
+      <div className="top-highlight">
+        <div className="flex items-stretch justify-end">
+          {/* Provider / model — Provider rides the micro-label slot,
+              model sits as the hero value below. Mirrors PausedHeader's
+              combined cell so the archived and live views share one
+              rhythm; the only swap is the hero over on the left. */}
+          <div className="flex min-w-0 flex-col justify-center gap-1 px-6 py-2 border-r border-edge">
+            <h2 className="metric-num text-[13px] leading-none text-txt truncate label">
+              {entry.provider} / {displayModel(entry.provider, entry.model)}
+            </h2>
+          </div>
+
           {/* Captured — archival hero readout. Date leads in txt
               weight, a whisper-thin middle dot separates, time trails
               in muted txt-2. JetBrains tabular figures keep the glyphs
               on-grid so it reads as instrument typography. */}
-          <div className="flex shrink-0 flex-col justify-center gap-1 border-r border-edge px-6 py-2">
-            <span className="label">Captured</span>
+          <div className="flex shrink-0 flex-col justify-center gap-1 px-6 py-2">
             <span className="metric-num text-[13px] leading-none tabular-nums whitespace-nowrap">
               <span className="text-txt">{dateStr}</span>
               <span className="mx-2 text-txt-3">&middot;</span>
               <span className="text-txt-2">{timeStr}</span>
-            </span>
-          </div>
-
-          {/* Provider / model — stretches to fill so FLOW can anchor at
-              the right bookend. Provider rides the micro-label slot,
-              model sits as the hero value below. Mirrors PausedHeader's
-              combined cell so the archived and live views share one
-              rhythm; the only swap is the hero over on the left. */}
-          <div className="flex min-w-0 flex-1 flex-col justify-center gap-1 px-6 py-2">
-            <span className="label truncate">{entry.provider}</span>
-            <h2 className="metric-num text-[13px] leading-none text-txt truncate">
-              {displayModel(entry.provider, entry.model)}
-            </h2>
-          </div>
-
-          {/* Flow id — right-anchored end-cap mirroring PausedHeader's
-              FLOW bookend. Content right-aligned so label and id hug the
-              outer edge; first eight chars match how the paused view
-              abbreviates the same identifier. */}
-          <div className="flex shrink-0 flex-col items-end justify-center gap-1 px-6 py-2">
-            <span className="label">Flow</span>
-            <span className="metric-num text-[13px] leading-none text-txt-2 whitespace-nowrap">
-              {entry.id.slice(0, 8)}
             </span>
           </div>
         </div>

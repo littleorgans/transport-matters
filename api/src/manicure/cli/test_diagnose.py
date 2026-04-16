@@ -40,6 +40,26 @@ def test_doctor_happy_path(
     assert "ok    storage" in result.stdout
 
 
+def test_doctor_prefers_same_environment_mitmdump(
+    tmp_storage: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def fake_which(name: str, path: str | None = None) -> str | None:
+        if name == "mitmdump" and path == "/tool/bin":
+            return "/tool/bin/mitmdump"
+        if name == "mitmdump":
+            return "/usr/local/bin/mitmdump"
+        return "/bin/claude"
+
+    monkeypatch.setattr(
+        "manicure.cli.diagnose.sysconfig.get_path", lambda name: "/tool/bin"
+    )
+    monkeypatch.setattr("manicure.cli.shutil.which", fake_which)
+    monkeypatch.setattr("manicure.cli.diagnose._port_in_use", lambda _: False)
+    result = runner.invoke(main, ["doctor"])
+    assert result.exit_code == 0
+    assert "ok    mitmdump — /tool/bin/mitmdump" in result.stdout
+
+
 def test_doctor_reports_missing_mitmdump(
     tmp_storage: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

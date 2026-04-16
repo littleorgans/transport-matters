@@ -45,18 +45,19 @@ def _plain(text: str) -> str:
 
 def _which_all(path: str = "/usr/bin/mitmdump") -> Any:
     """``shutil.which`` stub that resolves any lookup to *path*."""
-    return lambda _name: path
+    resolved = path
+    return lambda _name, path=None: resolved
 
 
 def _which_none() -> Any:
     """``shutil.which`` stub that resolves every lookup to ``None``."""
-    return lambda _name: None
+    return lambda _name, path=None: None
 
 
 def _which_by_name(mapping: dict[str, str | None]) -> Any:
     """``shutil.which`` stub that resolves per-name."""
 
-    def _which(name: str) -> str | None:
+    def _which(name: str, path: str | None = None) -> str | None:
         return mapping.get(name)
 
     return _which

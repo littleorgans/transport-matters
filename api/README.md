@@ -33,6 +33,34 @@ manicure start --no-claude
 ANTHROPIC_BASE_URL=http://localhost:8787 claude
 ```
 
+## From source
+
+For day to day contributor work, install the local checkout as an
+editable uv tool:
+
+```bash
+just tool-install-editable
+```
+
+Then from any project directory:
+
+```bash
+manicure start
+```
+
+If you want to run directly from source without installing a tool, run
+the API project explicitly:
+
+```bash
+uv run --project api manicure start
+```
+
+From the repo root, `just start` is equivalent and is the preferred
+source run entry point.
+
+To validate the packaged artifact instead of the editable checkout, build
+and install the wheel separately before release.
+
 Open `http://localhost:8788` to see the live log, the rules UI, and the breakpoint editor.
 
 ## What it does

@@ -259,7 +259,7 @@ body {
   }
 }
 .spin-gentle {
-  animation: spin-tick 26s ease-out infinite;
+  animation: spin-tick 48s ease-out infinite 4s;
 }
 
 /* ── Fade in ── */

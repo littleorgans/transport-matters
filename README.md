@@ -36,6 +36,33 @@ manicure start ~/my-project
 manicure start --no-claude
 ```
 
+## Source checkout
+
+For contributors, the default local workflow is an editable tool install.
+That gives you a global `manicure` command backed by this checkout, with
+`mitmdump` in the same tool environment:
+
+```bash
+just tool-install-editable
+```
+
+Then from any directory:
+
+```bash
+cd ~/some/other/project
+manicure start
+```
+
+If you do not want to install a tool, run the source checkout directly:
+
+```bash
+cd ~/some/other/project
+uv run --project /absolute/path/to/manicure/api manicure start
+```
+
+From the repo root, `just start` is a thin wrapper around that source
+run path.
+
 ---
 
 ## Architecture

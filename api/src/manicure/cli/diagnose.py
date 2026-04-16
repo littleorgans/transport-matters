@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import shutil
 import sys
+import sysconfig
 from importlib.resources import files
 from pathlib import Path
 
@@ -24,6 +25,16 @@ from manicure.config import get_settings
 from .net import _port_in_use
 
 __all__ = ["run_doctor"]
+
+
+def _resolve_mitmdump() -> str | None:
+    """Prefer the console script from the active manicure environment."""
+    scripts_dir = sysconfig.get_path("scripts")
+    if scripts_dir:
+        resolved = shutil.which("mitmdump", path=scripts_dir)
+        if resolved is not None:
+            return resolved
+    return shutil.which("mitmdump")
 
 
 def run_doctor() -> None:
@@ -60,7 +71,7 @@ def run_doctor() -> None:
         )
 
     # mitmdump on PATH
-    mitmdump = shutil.which("mitmdump")
+    mitmdump = _resolve_mitmdump()
     if mitmdump:
         _ok("mitmdump", mitmdump)
     else:
