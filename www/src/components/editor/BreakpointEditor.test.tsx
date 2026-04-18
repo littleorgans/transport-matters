@@ -39,6 +39,8 @@ const mockIr: InternalRequest = {
 
 const mockPausedFlow: PausedFlow = {
   flow_id: "flow-abc123",
+  transport: "http",
+  provisional_exchange_id: null,
   ir: mockIr,
   original_tools: mockIr.tools,
   original_system: mockIr.system,
@@ -97,6 +99,54 @@ describe("BreakpointEditor — forward path (waits for SSE)", () => {
     await waitFor(() => expect(releaseFlowUnmodified).toHaveBeenCalledWith("flow-abc123"));
     expect(onResolved).not.toHaveBeenCalled();
     expect(useUIStore.getState().forwardingFlowId).toBe("flow-abc123");
+  });
+
+  it("Codex websocket forward resolves immediately without waiting for SSE", async () => {
+    const { wrapper } = makeWrapper();
+    const onResolved = vi.fn();
+    render(
+      <BreakpointEditor
+        pausedFlow={{
+          ...mockPausedFlow,
+          transport: "websocket",
+          provisional_exchange_id: "exchange-provisional-1",
+          ir: { ...mockIr, provider: "codex" },
+        }}
+        onResolved={onResolved}
+      />,
+      { wrapper },
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Forward" }));
+
+    await waitFor(() => expect(api.releaseFlow).toHaveBeenCalled());
+    await waitFor(() => expect(onResolved).toHaveBeenCalledTimes(1));
+    expect(useUIStore.getState().selectedId).toBe("exchange-provisional-1");
+    expect(useUIStore.getState().forwardingFlowId).toBeNull();
+  });
+
+  it("Codex websocket pass through selects the provisional exchange before closing", async () => {
+    const { wrapper } = makeWrapper();
+    const onResolved = vi.fn();
+    render(
+      <BreakpointEditor
+        pausedFlow={{
+          ...mockPausedFlow,
+          transport: "websocket",
+          provisional_exchange_id: "exchange-provisional-2",
+          ir: { ...mockIr, provider: "codex" },
+        }}
+        onResolved={onResolved}
+      />,
+      { wrapper },
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Pass Through" }));
+
+    await waitFor(() => expect(api.releaseFlowUnmodified).toHaveBeenCalled());
+    await waitFor(() => expect(onResolved).toHaveBeenCalledTimes(1));
+    expect(useUIStore.getState().selectedId).toBe("exchange-provisional-2");
+    expect(useUIStore.getState().forwardingFlowId).toBeNull();
   });
 });
 
@@ -197,6 +247,30 @@ describe("BreakpointEditor — cache invalidation", () => {
     await waitFor(() => expect(useUIStore.getState().forwardingFlowId).toBe("flow-abc123"));
     expect(invalidateSpy).toHaveBeenCalledWith({
       queryKey: ["exchange", mockPausedFlow.flow_id],
+    });
+  });
+
+  it("Codex websocket forward invalidates the provisional exchange detail cache", async () => {
+    const { qc, wrapper } = makeWrapper();
+    const invalidateSpy = vi.spyOn(qc, "invalidateQueries");
+    render(
+      <BreakpointEditor
+        pausedFlow={{
+          ...mockPausedFlow,
+          transport: "websocket",
+          provisional_exchange_id: "exchange-provisional-3",
+          ir: { ...mockIr, provider: "codex" },
+        }}
+        onResolved={vi.fn()}
+      />,
+      { wrapper },
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Forward" }));
+
+    await waitFor(() => expect(api.releaseFlow).toHaveBeenCalled());
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: ["exchange", "exchange-provisional-3"],
     });
   });
 });

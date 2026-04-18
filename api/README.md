@@ -23,11 +23,11 @@ curl -fsSL https://github.com/srobinson/manicure/releases/latest/download/instal
 
 ```bash
 # One command: starts the proxy + Claude Code together
-manicure start                # in the current directory
-manicure start ~/my-project   # in a specific working directory
+manicure claude               # in the current directory
+manicure claude ~/my-project  # in a specific working directory
 
 # Proxy-only (bring your own client)
-manicure start --no-claude
+manicure claude --no-claude
 
 # then in another terminal
 ANTHROPIC_BASE_URL=http://localhost:8787 claude
@@ -45,14 +45,14 @@ just tool-install-editable
 Then from any project directory:
 
 ```bash
-manicure start
+manicure claude
 ```
 
 If you want to run directly from source without installing a tool, run
 the API project explicitly:
 
 ```bash
-uv run --project api manicure start
+uv run --project api manicure claude
 ```
 
 From the repo root, `just start` is equivalent and is the preferred

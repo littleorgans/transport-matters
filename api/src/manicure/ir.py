@@ -39,6 +39,7 @@ class ToolResultBlock(BaseModel):
     tool_use_id: str
     content: list[TextBlock | ImageBlock]
     is_error: bool = False
+    provider_data: dict[str, Any] | None = None  # Any: opaque provider blob
 
 
 class ThinkingBlock(BaseModel):

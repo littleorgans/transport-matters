@@ -38,6 +38,7 @@ beforeEach(() => {
 function makePausedFlow(flowId: string): PausedFlow {
   return {
     flow_id: flowId,
+    transport: "http",
     ir: {
       model: "claude-3",
       provider: "anthropic",
@@ -87,14 +88,17 @@ function makeWrapper() {
   const qc = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
-  return ({ children }: { children: ReactNode }) => (
-    <QueryClientProvider client={qc}>{children}</QueryClientProvider>
-  );
+  return {
+    qc,
+    wrapper: ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+    ),
+  };
 }
 
 describe("useExchangeStream — race condition guard", () => {
   it("clears pausedFlow when forwarding flow matches current pause", () => {
-    renderHook(() => useExchangeStream(), { wrapper: makeWrapper() });
+    renderHook(() => useExchangeStream(), { wrapper: makeWrapper().wrapper });
 
     useUIStore.setState({
       pausedFlow: makePausedFlow("flow-X"),
@@ -117,7 +121,7 @@ describe("useExchangeStream — race condition guard", () => {
   });
 
   it("preserves new pausedFlow when a different flow paused during forwarding", () => {
-    renderHook(() => useExchangeStream(), { wrapper: makeWrapper() });
+    renderHook(() => useExchangeStream(), { wrapper: makeWrapper().wrapper });
 
     // Flow X was forwarded, but flow Y paused in the meantime
     useUIStore.setState({
@@ -143,7 +147,7 @@ describe("useExchangeStream — race condition guard", () => {
   });
 
   it("does not clear pausedFlow when flow_id does not match forwardingFlowId", () => {
-    renderHook(() => useExchangeStream(), { wrapper: makeWrapper() });
+    renderHook(() => useExchangeStream(), { wrapper: makeWrapper().wrapper });
 
     useUIStore.setState({
       pausedFlow: makePausedFlow("flow-A"),
@@ -166,7 +170,7 @@ describe("useExchangeStream — race condition guard", () => {
   });
 
   it("does not clear pausedFlow when exchange has no flow_id", () => {
-    renderHook(() => useExchangeStream(), { wrapper: makeWrapper() });
+    renderHook(() => useExchangeStream(), { wrapper: makeWrapper().wrapper });
 
     useUIStore.setState({
       pausedFlow: makePausedFlow("flow-A"),
@@ -190,7 +194,7 @@ describe("useExchangeStream — race condition guard", () => {
 
 describe("useExchangeStream — SSE validation", () => {
   it("ignores exchange events with missing required fields", () => {
-    renderHook(() => useExchangeStream(), { wrapper: makeWrapper() });
+    renderHook(() => useExchangeStream(), { wrapper: makeWrapper().wrapper });
 
     // Missing req field
     fireSSE({
@@ -202,11 +206,57 @@ describe("useExchangeStream — SSE validation", () => {
 
     expect(useUIStore.getState().selectedId).toBeNull();
   });
+
+  it("removes deleted exchanges from the live cache and clears selection", () => {
+    const qc = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+    );
+
+    renderHook(() => useExchangeStream(), { wrapper });
+
+    fireSSE({
+      type: "exchange",
+      id: "exchange-live-1",
+      ts: "2026-01-01T00:00:00Z",
+      provider: "codex",
+      model: "gpt-5-codex",
+      req: { total_chars: 1 },
+    });
+    expect(useUIStore.getState().selectedId).toBe("exchange-live-1");
+
+    fireSSE({ type: "exchange_deleted", id: "exchange-live-1" });
+
+    expect(useUIStore.getState().selectedId).toBeNull();
+    expect(qc.getQueryData(["exchanges", false])).toEqual([]);
+  });
+
+  it("invalidates the matching exchange detail query when an exchange updates", () => {
+    const { qc, wrapper } = makeWrapper();
+    const invalidateSpy = vi.spyOn(qc, "invalidateQueries");
+
+    renderHook(() => useExchangeStream(), { wrapper });
+
+    fireSSE({
+      type: "exchange",
+      id: "exchange-live-2",
+      ts: "2026-01-01T00:00:00Z",
+      provider: "codex",
+      model: "gpt-5-codex",
+      req: { total_chars: 1 },
+    });
+
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: ["exchange", "exchange-live-2"],
+    });
+  });
 });
 
 describe("useExchangeStream — forwarding activity", () => {
   it("bumps lastActivityAt when any event's flow_id matches forwardingFlowId", () => {
-    renderHook(() => useExchangeStream(), { wrapper: makeWrapper() });
+    renderHook(() => useExchangeStream(), { wrapper: makeWrapper().wrapper });
 
     useUIStore.setState({
       pausedFlow: makePausedFlow("flow-LIVE"),
@@ -222,7 +272,7 @@ describe("useExchangeStream — forwarding activity", () => {
   });
 
   it("does not bump lastActivityAt when the event's flow_id does not match", () => {
-    renderHook(() => useExchangeStream(), { wrapper: makeWrapper() });
+    renderHook(() => useExchangeStream(), { wrapper: makeWrapper().wrapper });
 
     useUIStore.setState({
       pausedFlow: makePausedFlow("flow-A"),
@@ -236,7 +286,7 @@ describe("useExchangeStream — forwarding activity", () => {
   });
 
   it("does not bump lastActivityAt when nothing is being forwarded", () => {
-    renderHook(() => useExchangeStream(), { wrapper: makeWrapper() });
+    renderHook(() => useExchangeStream(), { wrapper: makeWrapper().wrapper });
 
     useUIStore.setState({
       forwardingFlowId: null,
@@ -251,7 +301,7 @@ describe("useExchangeStream — forwarding activity", () => {
 
 describe("useExchangeStream — paused_tokens follow-up", () => {
   it("attaches tokens_before to the matching paused flow", () => {
-    renderHook(() => useExchangeStream(), { wrapper: makeWrapper() });
+    renderHook(() => useExchangeStream(), { wrapper: makeWrapper().wrapper });
 
     useUIStore.setState({
       pausedFlow: makePausedFlow("flow-T"),
@@ -263,7 +313,7 @@ describe("useExchangeStream — paused_tokens follow-up", () => {
   });
 
   it("ignores paused_tokens for a flow that no longer matches the pause state", () => {
-    renderHook(() => useExchangeStream(), { wrapper: makeWrapper() });
+    renderHook(() => useExchangeStream(), { wrapper: makeWrapper().wrapper });
 
     useUIStore.setState({
       pausedFlow: makePausedFlow("flow-CURRENT"),
@@ -277,7 +327,7 @@ describe("useExchangeStream — paused_tokens follow-up", () => {
   });
 
   it("ignores paused_tokens when no flow is paused at all", () => {
-    renderHook(() => useExchangeStream(), { wrapper: makeWrapper() });
+    renderHook(() => useExchangeStream(), { wrapper: makeWrapper().wrapper });
 
     useUIStore.setState({ pausedFlow: null });
 
@@ -287,25 +337,45 @@ describe("useExchangeStream — paused_tokens follow-up", () => {
   });
 
   it("paused event preserves tokens_before when provided", () => {
-    renderHook(() => useExchangeStream(), { wrapper: makeWrapper() });
+    renderHook(() => useExchangeStream(), { wrapper: makeWrapper().wrapper });
 
     fireSSE({
       type: "paused",
       flow_id: "flow-NEW",
+      transport: "websocket",
       paused_at_ms: 1000,
       ir: { tools: [], system: [], messages: [] },
       tokens_before: 7,
     });
 
     expect(useUIStore.getState().pausedFlow?.tokens_before).toBe(7);
+    expect(useUIStore.getState().pausedFlow?.transport).toBe("websocket");
+  });
+
+  it("paused websocket event carries the provisional exchange id", () => {
+    renderHook(() => useExchangeStream(), { wrapper: makeWrapper().wrapper });
+
+    fireSSE({
+      type: "paused",
+      flow_id: "flow-CODEX",
+      transport: "websocket",
+      provisional_exchange_id: "exchange-provisional-9",
+      paused_at_ms: 1000,
+      ir: { tools: [], system: [], messages: [] },
+    });
+
+    expect(useUIStore.getState().pausedFlow?.provisional_exchange_id).toBe(
+      "exchange-provisional-9",
+    );
   });
 
   it("paused event without tokens_before defaults to null", () => {
-    renderHook(() => useExchangeStream(), { wrapper: makeWrapper() });
+    renderHook(() => useExchangeStream(), { wrapper: makeWrapper().wrapper });
 
     fireSSE({
       type: "paused",
       flow_id: "flow-INITIAL",
+      transport: "http",
       paused_at_ms: 1000,
       ir: { tools: [], system: [], messages: [] },
     });

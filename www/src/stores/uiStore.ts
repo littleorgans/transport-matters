@@ -17,6 +17,7 @@ export type Route = "intercept" | "overlays" | "trace" | "recall";
 interface UIState {
   activeRoute: Route;
   selectedId: string | null;
+  includeHistory: boolean;
   pausedFlow: PausedFlow | null;
   /** Flow ID awaiting a response after FORWARD. Keeps the editor open with a loading state. */
   forwardingFlowId: string | null;
@@ -32,6 +33,7 @@ interface UIState {
   autoExpandBlocks: boolean;
   setActiveRoute: (route: Route) => void;
   setSelectedId: (id: string | null) => void;
+  setIncludeHistory: (value: boolean) => void;
   setPausedFlow: (flow: PausedFlow | null) => void;
   clearPausedFlow: () => void;
   setForwardingFlowId: (id: string | null) => void;
@@ -44,12 +46,14 @@ export const useUIStore = create<UIState>()(
     (set) => ({
       activeRoute: "intercept",
       selectedId: null,
+      includeHistory: false,
       pausedFlow: null,
       forwardingFlowId: null,
       forwardingLastActivityAt: null,
       autoExpandBlocks: false,
       setActiveRoute: (route) => set({ activeRoute: route }),
       setSelectedId: (id) => set({ selectedId: id }),
+      setIncludeHistory: (value) => set({ includeHistory: value }),
       setPausedFlow: (flow) => set({ pausedFlow: flow }),
       clearPausedFlow: () =>
         set({ pausedFlow: null, forwardingFlowId: null, forwardingLastActivityAt: null }),

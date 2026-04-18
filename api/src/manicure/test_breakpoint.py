@@ -87,6 +87,7 @@ class TestPause:
         pf = paused["flow-001"]
         assert pf.curated_ir is ir
         assert pf.flow is flow
+        assert pf.transport == "http"
         assert pf.paused_at_ms > 0
 
 
@@ -98,13 +99,14 @@ class TestRelease:
         event = await bp.pause(flow, ir, ir)
 
         mutated = _make_ir()
-        ok = await bp.release("flow-001", mutated)
+        ok = await bp.release("flow-001", mutated, b'{"ok":true}')
 
         assert ok is True
         assert event.is_set()
         paused = await bp.get_paused()
         pf = paused["flow-001"]
         assert pf.mutated_ir is mutated
+        assert pf.release_payload == b'{"ok":true}'
         assert pf.dropped is False
 
     async def test_release_unknown_returns_false(self) -> None:

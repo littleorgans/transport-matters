@@ -8,13 +8,13 @@ from manicure import breakpoint as bp
 from manicure import broadcast
 from manicure.adapters.anthropic import AnthropicAdapter
 from manicure.addon import (
-    _build_pipeline_stats,
-    _build_req_stats,
-    _build_res_stats,
-    _emit_exchange,
-    _fire_pause_count,
-    _resolve_paused_flow,
-    _stamp_pipeline_tokens,
+    build_pipeline_stats,
+    build_req_stats,
+    build_res_stats,
+    emit_exchange,
+    fire_pause_count,
+    resolve_paused_flow,
+    stamp_pipeline_tokens,
 )
 from manicure.breakpoint import PausedFlow
 from manicure.ir import (
@@ -49,12 +49,12 @@ def _make_ir(
     )
 
 
-# ── _build_req_stats ────────────────────────────────────────────────
+# ── build_req_stats ────────────────────────────────────────────────
 
 
 def test_build_req_stats_empty_ir() -> None:
     ir = _make_ir()
-    stats = _build_req_stats(ir)
+    stats = build_req_stats(ir)
     assert stats.system_parts == 0
     assert stats.system_chars == 0
     assert stats.tools_count == 0
@@ -80,7 +80,7 @@ def test_build_req_stats_counts_content_blocks_not_messages() -> None:
         sampling=SamplingParams(max_tokens=1024),
         metadata=RequestMetadata(),
     )
-    stats = _build_req_stats(ir)
+    stats = build_req_stats(ir)
     assert stats.messages_count == 3  # 0 + 3 blocks, not 2 messages
 
 
@@ -95,13 +95,13 @@ def test_build_req_stats_empty_content_yields_zero() -> None:
         sampling=SamplingParams(max_tokens=1024),
         metadata=RequestMetadata(),
     )
-    stats = _build_req_stats(ir)
+    stats = build_req_stats(ir)
     assert stats.messages_count == 0
 
 
 def test_build_req_stats_with_system() -> None:
     ir = _make_ir(system_text="You are a helpful assistant.")
-    stats = _build_req_stats(ir)
+    stats = build_req_stats(ir)
     assert stats.system_parts == 1
     assert stats.system_chars == len("You are a helpful assistant.")
 
@@ -113,7 +113,7 @@ def test_build_req_stats_with_tools() -> None:
         )
     ]
     ir = _make_ir(tools=tools)
-    stats = _build_req_stats(ir)
+    stats = build_req_stats(ir)
     assert stats.tools_count == 1
     assert stats.tools_chars > 0
 
@@ -121,18 +121,18 @@ def test_build_req_stats_with_tools() -> None:
 def test_build_req_stats_total_is_sum_of_parts() -> None:
     tools = [ToolDef(name="fn", description="desc", input_schema={"type": "object"})]
     ir = _make_ir(system_text="sys", tools=tools, message_text="msg")
-    stats = _build_req_stats(ir)
+    stats = build_req_stats(ir)
     assert (
         stats.total_chars
         == stats.system_chars + stats.tools_chars + stats.messages_chars
     )
 
 
-# ── _build_pipeline_stats ───────────────────────────────────────────
+# ── build_pipeline_stats ───────────────────────────────────────────
 
 
 def test_build_pipeline_stats_none_returns_none() -> None:
-    assert _build_pipeline_stats(None) is None
+    assert build_pipeline_stats(None) is None
 
 
 def test_build_pipeline_stats_converts_audit() -> None:
@@ -148,11 +148,11 @@ def test_build_pipeline_stats_converts_audit() -> None:
         chars_before=1000,
         chars_after=800,
     )
-    stats = _build_pipeline_stats(audit)
+    stats = build_pipeline_stats(audit)
     assert stats is not None
     assert stats.chars_before == 1000
     assert stats.chars_after == 800
-    # Token counts start unset; _stamp_pipeline_tokens fills them later.
+    # Token counts start unset; stamp_pipeline_tokens fills them later.
     assert stats.tokens_before is None
     assert stats.tokens_after is None
     assert len(stats.overrides_applied) == 1
@@ -161,13 +161,13 @@ def test_build_pipeline_stats_converts_audit() -> None:
 
 def test_build_pipeline_stats_empty_overrides() -> None:
     audit = OverrideAudit(entries=[], chars_before=500, chars_after=500)
-    stats = _build_pipeline_stats(audit)
+    stats = build_pipeline_stats(audit)
     assert stats is not None
     assert stats.tokens_before is None
     assert stats.tokens_after is None
 
 
-# ── _stamp_pipeline_tokens ──────────────────────────────────────────
+# ── stamp_pipeline_tokens ──────────────────────────────────────────
 
 
 class _SeqCounter:
@@ -190,7 +190,7 @@ class _SeqCounter:
 
 
 class TestStampPipelineTokens:
-    """_stamp_pipeline_tokens attaches token counts from the counter.
+    """stamp_pipeline_tokens attaches token counts from the counter.
 
     Payload equality is the fast path — no structural change means the
     before and after wires are identical, so one lookup fills both fields.
@@ -202,7 +202,7 @@ class TestStampPipelineTokens:
         curated = _make_ir(message_text="hi")
         counter = _SeqCounter([50, 30])
 
-        stamped = await _stamp_pipeline_tokens(
+        stamped = await stamp_pipeline_tokens(
             stats, original, curated, AnthropicAdapter(), counter, {"x-api-key": "k"}
         )
 
@@ -216,7 +216,7 @@ class TestStampPipelineTokens:
         ir = _make_ir()
         counter = _SeqCounter([42])
 
-        stamped = await _stamp_pipeline_tokens(
+        stamped = await stamp_pipeline_tokens(
             stats, ir, ir, AnthropicAdapter(), counter, {}
         )
 
@@ -239,7 +239,7 @@ class TestStampPipelineTokens:
         curated = _make_ir(message_text="y")
         counter = _SeqCounter([None, None])
 
-        stamped = await _stamp_pipeline_tokens(
+        stamped = await stamp_pipeline_tokens(
             stats, original, curated, AnthropicAdapter(), counter, {}
         )
 
@@ -253,7 +253,7 @@ class TestStampPipelineTokens:
         curated = _make_ir(message_text="y")
         counter = _SeqCounter([42, None])
 
-        stamped = await _stamp_pipeline_tokens(
+        stamped = await stamp_pipeline_tokens(
             stats, original, curated, AnthropicAdapter(), counter, {}
         )
 
@@ -267,7 +267,7 @@ class TestStampPipelineTokens:
         curated = _make_ir(message_text="y")
         counter = _SeqCounter([None, 42])
 
-        stamped = await _stamp_pipeline_tokens(
+        stamped = await stamp_pipeline_tokens(
             stats, original, curated, AnthropicAdapter(), counter, {}
         )
 
@@ -280,7 +280,7 @@ class TestStampPipelineTokens:
         ir = _make_ir()
         counter = _SeqCounter([None])
 
-        stamped = await _stamp_pipeline_tokens(
+        stamped = await stamp_pipeline_tokens(
             stats, ir, ir, AnthropicAdapter(), counter, {}
         )
 
@@ -299,7 +299,7 @@ class TestStampPipelineTokens:
         ir = _make_ir()
         counter = _SeqCounter([99])
 
-        stamped = await _stamp_pipeline_tokens(
+        stamped = await stamp_pipeline_tokens(
             stats, ir, ir, AnthropicAdapter(), counter, {}
         )
 
@@ -308,7 +308,7 @@ class TestStampPipelineTokens:
         assert stamped.overrides_applied == [entry]
 
 
-# ── _build_res_stats ────────────────────────────────────────────────
+# ── build_res_stats ────────────────────────────────────────────────
 
 
 def _make_response_ir(
@@ -348,7 +348,7 @@ def test_build_res_stats_forwards_all_usage_fields() -> None:
         cache_read_input_tokens=5,
         stop_reason="end_turn",
     )
-    stats = _build_res_stats(res_ir)
+    stats = build_res_stats(res_ir)
     assert stats.input_tokens == 42
     assert stats.output_tokens == 17
     assert stats.cache_creation_input_tokens == 128
@@ -364,22 +364,22 @@ def test_build_res_stats_counts_text_and_tool_blocks() -> None:
             ToolUseBlock(id="t2", name="gn", input={}),
         ],
     )
-    stats = _build_res_stats(res_ir)
+    stats = build_res_stats(res_ir)
     assert stats.text_chars == 6
     assert stats.tool_calls == 2
 
 
 def test_build_res_stats_empty_content_is_zero() -> None:
-    stats = _build_res_stats(_make_response_ir())
+    stats = build_res_stats(_make_response_ir())
     assert stats.text_chars == 0
     assert stats.tool_calls == 0
 
 
-# ── _emit_exchange ─────────────────────────────────────────────────
+# ── emit_exchange ─────────────────────────────────────────────────
 
 
 class TestEmitExchange:
-    """_emit_exchange SSE payload includes mutated_manually and pipeline fields."""
+    """emit_exchange SSE payload includes mutated_manually and pipeline fields."""
 
     def setup_method(self) -> None:
         broadcast._subscribers.clear()
@@ -394,7 +394,7 @@ class TestEmitExchange:
         from datetime import UTC, datetime
 
         ir = _make_ir()
-        req_stats = _build_req_stats(ir)
+        req_stats = build_req_stats(ir)
         pipeline_stats = PipelineStats(
             overrides_applied=[],
             chars_before=100,
@@ -404,7 +404,7 @@ class TestEmitExchange:
         )
         q = broadcast.subscribe()
 
-        _emit_exchange(
+        emit_exchange(
             ir,
             req_stats,
             None,
@@ -426,10 +426,10 @@ class TestEmitExchange:
         from datetime import UTC, datetime
 
         ir = _make_ir()
-        req_stats = _build_req_stats(ir)
+        req_stats = build_req_stats(ir)
         q = broadcast.subscribe()
 
-        _emit_exchange(
+        emit_exchange(
             ir,
             req_stats,
             None,
@@ -447,10 +447,10 @@ class TestEmitExchange:
         from datetime import UTC, datetime
 
         ir = _make_ir()
-        req_stats = _build_req_stats(ir)
+        req_stats = build_req_stats(ir)
         q = broadcast.subscribe()
 
-        _emit_exchange(
+        emit_exchange(
             ir,
             req_stats,
             None,
@@ -467,10 +467,10 @@ class TestEmitExchange:
         from datetime import UTC, datetime
 
         ir = _make_ir()
-        req_stats = _build_req_stats(ir)
+        req_stats = build_req_stats(ir)
         q = broadcast.subscribe()
 
-        _emit_exchange(
+        emit_exchange(
             ir, req_stats, None, "exchange-2", datetime(2026, 1, 1, tzinfo=UTC), None
         )
 
@@ -480,7 +480,7 @@ class TestEmitExchange:
         assert data["pipeline"] is None
 
 
-# ── _fire_pause_count ──────────────────────────────────────────────
+# ── fire_pause_count ──────────────────────────────────────────────
 
 
 class TestFirePauseCount:
@@ -520,7 +520,7 @@ class TestFirePauseCount:
         q = broadcast.subscribe()
         counter = _SeqCounter([42])
 
-        await _fire_pause_count("flow-A", counter, b'{"model":"x"}', {"k": "v"})
+        await fire_pause_count("flow-A", counter, b'{"model":"x"}', {"k": "v"})
 
         assert pf.tokens_before == 42
         data = json.loads(q.get_nowait())
@@ -535,7 +535,7 @@ class TestFirePauseCount:
         q = broadcast.subscribe()
         counter = _SeqCounter([None])
 
-        await _fire_pause_count("flow-B", counter, b"{}", {})
+        await fire_pause_count("flow-B", counter, b"{}", {})
 
         assert pf.tokens_before is None
         assert q.empty()
@@ -546,7 +546,7 @@ class TestFirePauseCount:
         counter = _SeqCounter([99])
 
         # Flow never registered: set_tokens_before returns False.
-        await _fire_pause_count("flow-GONE", counter, b"{}", {})
+        await fire_pause_count("flow-GONE", counter, b"{}", {})
 
         assert q.empty()
 
@@ -562,13 +562,13 @@ class TestFirePauseCount:
         pf = await self._register("flow-E")
         q = broadcast.subscribe()
 
-        await _fire_pause_count("flow-E", _Boom(), b"{}", {})
+        await fire_pause_count("flow-E", _Boom(), b"{}", {})
 
         assert pf.tokens_before is None
         assert q.empty()
 
 
-# ── _resolve_paused_flow ───────────────────────────────────────────
+# ── resolve_paused_flow ───────────────────────────────────────────
 
 
 class TestResolvePausedFlow:
@@ -593,7 +593,7 @@ class TestResolvePausedFlow:
     ) -> PausedFlow:
         import asyncio
 
-        # The flow object is never read by _resolve_paused_flow, but PausedFlow
+        # The flow object is never read by resolve_paused_flow, but PausedFlow
         # requires the attribute. None is fine for this pure-logic test.
         return PausedFlow(
             flow=None,  # type: ignore[arg-type]
@@ -608,7 +608,7 @@ class TestResolvePausedFlow:
     def test_pass_through_reports_no_mutation(self) -> None:
         """mutated_ir=None (Pass Through button) forwards curated_ir, flag False."""
         curated = _make_ir(message_text="hello")
-        final_ir, mutated, audit = _resolve_paused_flow(self._paused(curated, None))
+        final_ir, mutated, audit = resolve_paused_flow(self._paused(curated, None))
         assert final_ir is curated
         assert mutated is False
         assert audit is None
@@ -622,9 +622,7 @@ class TestResolvePausedFlow:
         curated = _make_ir(message_text="hello")
         unchanged = _make_ir(message_text="hello")
         assert curated == unchanged  # Pydantic v2 structural equality
-        final_ir, mutated, audit = _resolve_paused_flow(
-            self._paused(curated, unchanged)
-        )
+        final_ir, mutated, audit = resolve_paused_flow(self._paused(curated, unchanged))
         assert final_ir is unchanged
         assert mutated is False
         assert audit is None
@@ -634,7 +632,7 @@ class TestResolvePausedFlow:
         curated = _make_ir(message_text="hello")
         edited = _make_ir(message_text="hello world")
         assert curated != edited
-        final_ir, mutated, audit = _resolve_paused_flow(self._paused(curated, edited))
+        final_ir, mutated, audit = resolve_paused_flow(self._paused(curated, edited))
         assert final_ir is edited
         assert mutated is True
         assert audit is None
@@ -665,7 +663,7 @@ class TestResolvePausedFlow:
             chars_before=5,
             chars_after=2,
         )
-        _final_ir, mutated, audit = _resolve_paused_flow(
+        _final_ir, mutated, audit = resolve_paused_flow(
             self._paused(curated, None, audit=live_audit)
         )
         assert mutated is False
@@ -680,7 +678,7 @@ class TestResolvePausedFlow:
         curated = _make_ir(message_text="hello")
         unchanged = _make_ir(message_text="hello")
         live_audit = OverrideAudit(entries=[], chars_before=0, chars_after=0)
-        _final_ir, mutated, audit = _resolve_paused_flow(
+        _final_ir, mutated, audit = resolve_paused_flow(
             self._paused(curated, unchanged, audit=live_audit)
         )
         assert mutated is False
@@ -699,7 +697,7 @@ class TestResolvePausedFlow:
         curated = _make_ir(message_text="hello")
         edited = _make_ir(message_text="hello world")
         live_audit = OverrideAudit(entries=[], chars_before=0, chars_after=0)
-        _final_ir, mutated, audit = _resolve_paused_flow(
+        _final_ir, mutated, audit = resolve_paused_flow(
             self._paused(curated, edited, audit=live_audit)
         )
         assert mutated is True

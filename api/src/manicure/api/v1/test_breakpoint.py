@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from typing import TYPE_CHECKING
+from unittest.mock import MagicMock
 
 import pytest
 from httpx import ASGITransport, AsyncClient
 
 from manicure import breakpoint as bp
+from manicure.codex.transport import CodexTransportState, CodexUpgradeMetadata
 from manicure.ir import (
     InternalRequest,
     Message,
@@ -142,6 +145,7 @@ class TestGetPausedFlow:
         assert response.status_code == 200
         data = response.json()
         assert data["flow_id"] == "flow-x"
+        assert data["transport"] == "http"
         assert data["paused_at_ms"] == 1_700_000_000_000
         assert data["audit"] is None
         assert data["ir"]["model"] == "claude-3"
@@ -165,6 +169,54 @@ class TestGetPausedFlow:
         response = await client.get("/api/breakpoint/paused/flow-tok")
         assert response.status_code == 200
         assert response.json()["tokens_before"] == 512
+
+    async def test_returns_websocket_transport(self, client: AsyncClient) -> None:
+        event = asyncio.Event()
+        bp._paused["flow-ws"] = bp.PausedFlow(
+            flow=None,  # type: ignore[arg-type]
+            event=event,
+            original_ir=_MINIMAL_IR.model_copy(update={"provider": "codex"}),
+            curated_ir=_MINIMAL_IR.model_copy(update={"provider": "codex"}),
+            transport="websocket",
+            audit=None,
+            paused_at_ms=1_700_000_000_000,
+        )
+
+        response = await client.get("/api/breakpoint/paused/flow-ws")
+        assert response.status_code == 200
+        assert response.json()["transport"] == "websocket"
+
+    async def test_returns_websocket_provisional_exchange_id(
+        self, client: AsyncClient
+    ) -> None:
+        event = asyncio.Event()
+        flow = MagicMock()
+        flow.metadata = {
+            "manicure_codex_transport": CodexTransportState(
+                upgrade=CodexUpgradeMetadata(
+                    scheme="wss",
+                    host="chatgpt.com",
+                    path="/backend-api/codex/responses",
+                    request_headers=(),
+                    response_status_code=101,
+                    response_headers=(),
+                ),
+                provisional_exchange_id="exchange-provisional-1",
+            )
+        }
+        bp._paused["flow-ws-provisional"] = bp.PausedFlow(
+            flow=flow,
+            event=event,
+            original_ir=_MINIMAL_IR.model_copy(update={"provider": "codex"}),
+            curated_ir=_MINIMAL_IR.model_copy(update={"provider": "codex"}),
+            transport="websocket",
+            audit=None,
+            paused_at_ms=1_700_000_000_000,
+        )
+
+        response = await client.get("/api/breakpoint/paused/flow-ws-provisional")
+        assert response.status_code == 200
+        assert response.json()["provisional_exchange_id"] == "exchange-provisional-1"
 
 
 # IR with a system part that overrides can target
@@ -365,6 +417,44 @@ class TestReAudit:
         finally:
             counting.set_counter(None)
 
+    async def test_re_audit_skips_counter_for_non_anthropic_provider(
+        self, client: AsyncClient
+    ) -> None:
+        from manicure import counting
+
+        class _Stub:
+            def __init__(self) -> None:
+                self.calls = 0
+
+            async def count(
+                self, payload: bytes, auth_headers: dict[str, str]
+            ) -> int | None:
+                self.calls += 1
+                return 1
+
+        stub = _Stub()
+        counting.set_counter(stub)  # type: ignore[arg-type]
+        try:
+            event = asyncio.Event()
+            codex_ir = _MINIMAL_IR.model_copy(update={"provider": "codex"})
+            bp._paused["flow-codex"] = bp.PausedFlow(
+                flow=None,  # type: ignore[arg-type]
+                event=event,
+                original_ir=codex_ir,
+                curated_ir=codex_ir,
+                transport="websocket",
+                audit=None,
+                paused_at_ms=1_700_000_000_000,
+                auth_headers={"authorization": "Bearer test"},
+            )
+
+            response = await client.post("/api/breakpoint/re-audit/flow-codex")
+            assert response.status_code == 200
+            assert response.json()["tokens_before"] is None
+            assert stub.calls == 0
+        finally:
+            counting.set_counter(None)
+
     async def test_re_audit_skips_counter_when_auth_missing(
         self, client: AsyncClient
     ) -> None:
@@ -401,3 +491,112 @@ class TestReAudit:
             assert stub.calls == 0
         finally:
             counting.set_counter(None)
+
+
+class TestReleaseValidation:
+    async def test_release_stashes_validated_payload(self, client: AsyncClient) -> None:
+        event = asyncio.Event()
+        codex_ir = InternalRequest(
+            model="codex/gpt-5-codex",
+            provider="codex",
+            system=[],
+            tools=[],
+            messages=[Message(role="user", content=[TextBlock(text="hello")])],
+            sampling=SamplingParams(max_tokens=1024),
+            metadata=RequestMetadata(),
+            stream=False,
+            provider_extras={},
+        )
+        pf = bp.PausedFlow(
+            flow=None,  # type: ignore[arg-type]
+            event=event,
+            original_ir=codex_ir,
+            curated_ir=codex_ir,
+            transport="websocket",
+            audit=None,
+            paused_at_ms=1_700_000_000_000,
+        )
+        bp._paused["flow-release"] = pf
+
+        response = await client.post(
+            "/api/breakpoint/release/flow-release",
+            json=codex_ir.model_dump(mode="json"),
+        )
+
+        assert response.status_code == 200
+        assert pf.event.is_set()
+        assert pf.release_payload is not None
+        assert json.loads(pf.release_payload.decode())["type"] == "response.create"
+
+    async def test_release_rejects_provider_mismatch(self, client: AsyncClient) -> None:
+        event = asyncio.Event()
+        pf = bp.PausedFlow(
+            flow=None,  # type: ignore[arg-type]
+            event=event,
+            original_ir=_MINIMAL_IR,
+            curated_ir=_MINIMAL_IR,
+            transport="http",
+            audit=None,
+            paused_at_ms=1_700_000_000_000,
+        )
+        bp._paused["flow-provider-mismatch"] = pf
+        mismatched_ir = _MINIMAL_IR.model_copy(
+            update={"provider": "codex", "model": "codex/gpt-5-codex"}
+        )
+
+        response = await client.post(
+            "/api/breakpoint/release/flow-provider-mismatch",
+            json=mismatched_ir.model_dump(mode="json"),
+        )
+
+        assert response.status_code == 422
+        assert response.json()["detail"] == (
+            "Edited request changed provider from anthropic to codex"
+        )
+        assert not pf.event.is_set()
+        assert pf.release_payload is None
+
+    async def test_release_surfaces_serialization_errors(
+        self, client: AsyncClient
+    ) -> None:
+        event = asyncio.Event()
+        broken_ir = InternalRequest(
+            model="codex/gpt-5-codex",
+            provider="codex",
+            system=[],
+            tools=[],
+            messages=[Message(role="user", content=[TextBlock(text="hello")])],
+            sampling=SamplingParams(max_tokens=1024),
+            metadata=RequestMetadata(),
+            stream=False,
+            provider_extras={
+                "input_item_raw": [
+                    {
+                        "index": 3,
+                        "raw": {
+                            "type": "function_call",
+                            "call_id": "call_read",
+                            "name": "read_file",
+                            "arguments": "{}",
+                        },
+                    }
+                ]
+            },
+        )
+        bp._paused["flow-bad-release"] = bp.PausedFlow(
+            flow=None,  # type: ignore[arg-type]
+            event=event,
+            original_ir=broken_ir,
+            curated_ir=broken_ir,
+            transport="websocket",
+            audit=None,
+            paused_at_ms=1_700_000_000_000,
+        )
+
+        response = await client.post(
+            "/api/breakpoint/release/flow-bad-release",
+            json=broken_ir.model_dump(mode="json"),
+        )
+
+        assert response.status_code == 422
+        assert "Failed to serialize edited request" in response.json()["detail"]

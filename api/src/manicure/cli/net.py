@@ -7,6 +7,13 @@ import time
 
 import typer
 
+LOOPBACK_HOST = "127.0.0.1"
+
+
+def loopback_http_url(port: int) -> str:
+    """Return the explicit IPv4 loopback URL for *port*."""
+    return f"http://{LOOPBACK_HOST}:{port}"
+
 
 def validate_port_option(value: int | None) -> int | None:
     """Typer callback: reject ports outside ``[1, 65535]``.
@@ -15,7 +22,7 @@ def validate_port_option(value: int | None) -> int | None:
     surface as either an unhandled ``OverflowError`` (negative or
     >65535) or as a silently-broken invocation (``--proxy-port 0``
     passes 0 to mitmdump and into the injected system-prompt URL,
-    yielding ``http://localhost:0`` — a URL the model can't use).
+    yielding ``http://127.0.0.1:0`` — a URL the model can't use).
 
     Omitting the flag (``value is None``) means "let manicure
     allocate"; we let that through unchanged.
@@ -31,7 +38,7 @@ def validate_port_option(value: int | None) -> int | None:
 
 
 def _port_in_use(port: int) -> bool:
-    """Return True if *port* on localhost has an active listener.
+    """Return True if *port* on the IPv4 loopback has an active listener.
 
     We probe with ``connect_ex`` instead of ``bind``. Rebinding can fail
     transiently after a recent shutdown on macOS because the old socket

@@ -41,7 +41,7 @@ def test_validate_port_accepts_valid_range(value: int) -> None:
 @pytest.mark.parametrize("value", [0, -1, 65536, 99999])
 def test_validate_port_rejects_out_of_range(value: int) -> None:
     """Reject 0 too: it would silently flow into ``--listen-port 0`` and
-    into the injected system-prompt URL as ``http://localhost:0``."""
+    into the injected system-prompt URL as ``http://127.0.0.1:0``."""
     with pytest.raises(typer.BadParameter) as exc_info:
         validate_port_option(value)
     msg = str(exc_info.value)

@@ -28,8 +28,10 @@ class PausedFlow:
     original_ir: InternalRequest
     curated_ir: InternalRequest
     paused_at_ms: int
+    transport: Literal["http", "websocket"] = "http"
     audit: OverrideAudit | None = None
     mutated_ir: InternalRequest | None = None
+    release_payload: bytes | None = None
     dropped: bool = False
     # Anthropic auth headers captured at pause time so the FastAPI route
     # layer (which does not have access to the mitmproxy flow directly)
@@ -83,6 +85,7 @@ async def pause(
     flow: http.HTTPFlow,
     original_ir: InternalRequest,
     curated_ir: InternalRequest,
+    transport: Literal["http", "websocket"] = "http",
     audit: OverrideAudit | None = None,
     auth_headers: dict[str, str] | None = None,
 ) -> asyncio.Event:
@@ -99,6 +102,7 @@ async def pause(
             event=event,
             original_ir=original_ir,
             curated_ir=curated_ir,
+            transport=transport,
             audit=audit,
             paused_at_ms=int(time.time() * 1000),
             auth_headers=dict(auth_headers) if auth_headers else {},
@@ -120,12 +124,17 @@ async def set_tokens_before(flow_id: str, tokens: int | None) -> bool:
         return True
 
 
-async def release(flow_id: str, mutated_ir: InternalRequest | None = None) -> bool:
+async def release(
+    flow_id: str,
+    mutated_ir: InternalRequest | None = None,
+    release_payload: bytes | None = None,
+) -> bool:
     async with _lock:
         pf = _paused.get(flow_id)
         if pf is None:
             return False
         pf.mutated_ir = mutated_ir
+        pf.release_payload = release_payload
         pf.event.set()
         return True
 

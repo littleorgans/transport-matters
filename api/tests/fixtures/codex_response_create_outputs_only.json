@@ -1,0 +1,37 @@
+{
+  "type": "response.create",
+  "model": "gpt-5.4",
+  "input": [
+    {
+      "type": "function_call_output",
+      "call_id": "call_readme",
+      "output": "README.md"
+    },
+    {
+      "type": "function_call_output",
+      "call_id": "call_pwd",
+      "output": "/workspace"
+    },
+    {
+      "type": "function_call_output",
+      "call_id": "call_status",
+      "output": "git status --short"
+    },
+    {
+      "type": "function_call_output",
+      "call_id": "call_branch",
+      "output": "nancy/ALP-1815"
+    },
+    {
+      "type": "function_call_output",
+      "call_id": "call_diff",
+      "output": "M api/src/manicure/overrides.py"
+    },
+    {
+      "type": "custom_tool_call_output",
+      "call_id": "call_workspace",
+      "output": "workspace/path"
+    }
+  ],
+  "tools": []
+}

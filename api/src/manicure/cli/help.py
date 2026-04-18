@@ -27,16 +27,18 @@ _ROOT_HELP = dedent(f"""\
     manicure {__version__} — context control plane for coding agents
 
     Commands
-      start     Run proxy + Claude Code together (one command, one session)
+      claude    Run proxy + Claude Code together (one command, one session)
+      codex     Run proxy + Codex together (ChatGPT transport path)
       list      List live manicure instances
       doctor    Diagnose the local environment
       paths     Show storage and package locations
       version   Print installed version
 
     Quick start
-      $ manicure start               # proxy + claude in cwd
-      $ manicure start ~/project     # proxy + claude in ~/project
-      $ manicure start --no-claude   # proxy only (old UX)
+      $ manicure claude              # proxy + claude in cwd
+      $ manicure claude ~/project    # proxy + claude in ~/project
+      $ manicure codex               # proxy + codex in cwd
+      $ manicure claude --no-claude  # proxy only (old UX)
 
     Environment
       MANICURE_PROXY_PORT       pin proxy port (default: kernel-allocated)
@@ -51,7 +53,7 @@ _ROOT_HELP = dedent(f"""\
     https://github.com/srobinson/manicure
 """)
 
-_START_HELP = dedent("""\
+_CLAUDE_HELP = dedent("""\
     Start the manicure workbench: proxy + Claude Code.
 
     Spawns mitmproxy in reverse-proxy mode with the manicure addon,
@@ -76,7 +78,7 @@ _START_HELP = dedent("""\
     Port allocation
       With no `--proxy-port` / `--web-port` flags, manicure asks the
       kernel for two free TCP ports on localhost and uses those. This
-      lets two `manicure start` sessions in different workspaces run
+      lets two `manicure claude` sessions in different workspaces run
       concurrently without colliding on the default 8787 / 8788. Any
       port you pin explicitly is honoured as-is.
 
@@ -92,23 +94,72 @@ _START_HELP = dedent("""\
       Anything after `--` is forwarded verbatim to the claude subprocess.
       Manicure does not validate or rewrite these args; whatever claude
       accepts today it accepts here.
-        $ manicure start -- --help                 # claude's help
-        $ manicure start -- --model sonnet --resume
-        $ manicure start ~/proj -- -p "fix the bug"
+        $ manicure claude -- --help                 # claude's help
+        $ manicure claude -- --model sonnet --resume
+        $ manicure claude ~/proj -- -p "fix the bug"
 
       If the first pass-through token does not start with `-`, pass an
       explicit working directory first (e.g. `.`) so it isn't captured
       by `[DIRECTORY]`:
-        $ manicure start . -- "what is 2+2"
+        $ manicure claude . -- "what is 2+2"
 
     Examples
-      $ manicure start
-      $ manicure start ~/my-project
-      $ manicure start --proxy-port 9000 --web-port 9001
-      $ manicure start --no-claude
-      $ manicure start --no-system-prompt
-      $ manicure start --claude-bin /opt/homebrew/bin/claude
-      $ manicure start --print-command
+      $ manicure claude
+      $ manicure claude ~/my-project
+      $ manicure claude --proxy-port 9000 --web-port 9001
+      $ manicure claude --no-claude
+      $ manicure claude --no-system-prompt
+      $ manicure claude --claude-bin /opt/homebrew/bin/claude
+      $ manicure claude --print-command
+""")
+
+_CODEX_HELP = dedent("""\
+    Start the manicure workbench: proxy + Codex.
+
+    Spawns mitmproxy in explicit proxy mode with the manicure addon,
+    waits for it to come up, then launches `codex` in the working
+    directory you point at (defaults to cwd). Ctrl+C tears both down.
+
+    Arguments
+      [DIRECTORY]               Working dir for Codex (default: cwd)
+
+    Options
+      -p, --proxy-port INT      Proxy listener port (default: kernel-allocated free port)
+      -w, --web-port INT        Web UI port (default: kernel-allocated free port)
+      -d, --storage-dir PATH    Data directory (default ~/.manicure/)
+          --codex-bin PATH      Path to Codex (default: `codex` on PATH)
+          --no-codex            Run proxy only; skip spawning Codex
+          --debug               Verbose mitmproxy output
+          --print-command       Print the child invocations and exit
+      -h, --help                Show this message and exit
+
+    Proxy environment
+      Manicure exports `HTTP_PROXY` and `HTTPS_PROXY` to the codex
+      subprocess, pointed at the local listener. If your shell already
+      exports `CODEX_CA_CERTIFICATE`, manicure validates that path and
+      passes it through. Otherwise it snapshots the active Python trust
+      roots, appends `~/.mitmproxy/mitmproxy-ca-cert.pem`, and exports
+      the merged bundle as a process scoped `CODEX_CA_CERTIFICATE`.
+
+    Pass-through to codex
+      Anything after `--` is forwarded verbatim to the codex subprocess.
+      Manicure does not validate or rewrite these args.
+        $ manicure codex -- --help
+        $ manicure codex -- exec "fix the failing test"
+        $ manicure codex ~/proj -- exec --model gpt-5 "trace startup"
+
+      If the first pass-through token does not start with `-`, pass an
+      explicit working directory first (e.g. `.`) so it isn't captured
+      by `[DIRECTORY]`:
+        $ manicure codex . -- exec "what failed?"
+
+    Examples
+      $ manicure codex
+      $ manicure codex ~/my-project
+      $ manicure codex --proxy-port 9000 --web-port 9001
+      $ manicure codex --no-codex
+      $ manicure codex --codex-bin /opt/homebrew/bin/codex
+      $ manicure codex --print-command
 """)
 
 _DOCTOR_HELP = dedent("""\
@@ -122,7 +173,7 @@ _DOCTOR_HELP = dedent("""\
 
     Examples
       $ manicure doctor
-      $ manicure doctor && manicure start
+      $ manicure doctor && manicure claude
 """)
 
 _PATHS_HELP = dedent("""\
@@ -171,7 +222,9 @@ _LIST_HELP = dedent("""\
 """)
 
 _SUBCOMMAND_HELP = {
-    "start": _START_HELP,
+    "claude": _CLAUDE_HELP,
+    "start": _CLAUDE_HELP,
+    "codex": _CODEX_HELP,
     "list": _LIST_HELP,
     "doctor": _DOCTOR_HELP,
     "paths": _PATHS_HELP,

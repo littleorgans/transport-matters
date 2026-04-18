@@ -17,6 +17,8 @@ claude's exact argv parser.
 
 from __future__ import annotations
 
+from .net import loopback_http_url
+
 __all__ = [
     "build_system_prompt",
     "inject_system_prompt",
@@ -31,8 +33,8 @@ def build_system_prompt(*, proxy_port: int, web_port: int) -> str:
     """Render the manicure-awareness system prompt for a given port pair."""
     return (
         "You are running inside manicure. "
-        f"Proxy URL: http://localhost:{proxy_port}. "
-        f"Inspector UI: http://localhost:{web_port}."
+        f"Proxy URL: {loopback_http_url(proxy_port)}. "
+        f"Inspector UI: {loopback_http_url(web_port)}."
     )
 
 

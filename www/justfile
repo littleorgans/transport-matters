@@ -17,6 +17,12 @@ start:
 
 test:
     pnpm test
+
+test-visual:
+    pnpm test:visual
+
+test-visual-update:
+    pnpm test:visual:update
     
 typecheck:
     pnpm typecheck

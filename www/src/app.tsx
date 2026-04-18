@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { ArmToggle } from "./components/ArmToggle";
 import { ExchangeDetail } from "./components/ExchangeDetail";
 import { ExchangeList } from "./components/ExchangeList";
@@ -10,6 +11,7 @@ import { TraceView } from "./components/routes/TraceView";
 import { useBreakpoint } from "./hooks/useBreakpoint";
 import { useExchangeStream } from "./hooks/useExchangeStream";
 import { useExchanges } from "./hooks/useExchanges";
+import { useMeta } from "./hooks/useMeta";
 import { useRouteHotkeys } from "./hooks/useRouteHotkeys";
 import { useUIStore } from "./stores/uiStore";
 
@@ -32,9 +34,17 @@ interface AppBarProps {
   onToggleArm: () => void;
   breakpointError: boolean;
   exchangeCount: number;
+  includeHistory: boolean;
 }
 
-function AppBar({ connected, mode, onToggleArm, breakpointError, exchangeCount }: AppBarProps) {
+function AppBar({
+  connected,
+  mode,
+  onToggleArm,
+  breakpointError,
+  exchangeCount,
+  includeHistory,
+}: AppBarProps) {
   return (
     <>
       <div className="top-highlight flex items-center justify-between gap-4 bg-surface px-6 py-3">
@@ -53,8 +63,9 @@ function AppBar({ connected, mode, onToggleArm, breakpointError, exchangeCount }
         {/* Controls cluster */}
         <div className="flex items-center gap-5 shrink-0">
           <div className="hidden md:flex items-center gap-2 text-[11px]">
-            <span className="label">Exchanges</span>
+            <span className="label">{includeHistory ? "Visible" : "Exchanges"}</span>
             <span className="text-[13px] text-txt-2 metric-num">{exchangeCount}</span>
+            {includeHistory && <span className="label text-sky">history on</span>}
           </div>
           <span className="hidden md:block h-4 w-px bg-edge" aria-hidden />
           <ConnectionDot connected={connected} />
@@ -68,7 +79,10 @@ function AppBar({ connected, mode, onToggleArm, breakpointError, exchangeCount }
 }
 
 export function App() {
-  const { exchanges } = useExchanges();
+  const includeHistory = useUIStore((s) => s.includeHistory);
+  const setIncludeHistory = useUIStore((s) => s.setIncludeHistory);
+  const { exchanges, isLoading } = useExchanges(includeHistory);
+  const { meta } = useMeta();
   const { connected } = useExchangeStream();
   const { mode, arm, disarm, error: breakpointError } = useBreakpoint();
   const activeRoute = useUIStore((s) => s.activeRoute);
@@ -79,8 +93,39 @@ export function App() {
 
   useRouteHotkeys();
 
+  const selectedExchangeVisible =
+    selectedId != null && exchanges.some((entry) => entry.id === selectedId);
+  const shouldLookupHiddenSelection =
+    !includeHistory && selectedId != null && !selectedExchangeVisible;
+  const { exchanges: historyExchanges, isLoading: isHistoryLookupLoading } = useExchanges(
+    true,
+    shouldLookupHiddenSelection,
+  );
+  const selectedExchangeExistsInHistory =
+    selectedId != null && historyExchanges.some((entry) => entry.id === selectedId);
+  const selectedExchangeHiddenByFilter =
+    shouldLookupHiddenSelection && selectedExchangeExistsInHistory;
+
+  useEffect(() => {
+    if (isLoading || !selectedId) return;
+    if (selectedExchangeVisible) return;
+    if (!includeHistory) {
+      if (isHistoryLookupLoading) return;
+      if (selectedExchangeExistsInHistory) return;
+    }
+    setSelectedId(null);
+  }, [
+    includeHistory,
+    isHistoryLookupLoading,
+    isLoading,
+    selectedExchangeExistsInHistory,
+    selectedExchangeVisible,
+    selectedId,
+    setSelectedId,
+  ]);
+
   const toggleArm = () => (mode === "off" ? arm() : disarm());
-  const showEntryPage = exchanges.length === 0 && pausedFlow == null;
+  const showEntryPage = !includeHistory && exchanges.length === 0 && pausedFlow == null;
 
   if (showEntryPage) {
     return (
@@ -99,6 +144,13 @@ export function App() {
           <ConnectionDot connected={connected} />
           <div className="flex items-center gap-4">
             <ArmToggle mode={mode} onToggle={toggleArm} error={!!breakpointError} />
+            <button
+              type="button"
+              onClick={() => setIncludeHistory(true)}
+              className="btn border border-edge bg-surface px-3.5 py-1.5 text-[12px] font-semibold uppercase tracking-[0.18em] text-txt-3 transition-colors hover:bg-raised hover:text-txt"
+            >
+              Show history
+            </button>
           </div>
         </div>
       </div>
@@ -114,6 +166,7 @@ export function App() {
           onToggleArm={toggleArm}
           breakpointError={!!breakpointError}
           exchangeCount={exchanges.length}
+          includeHistory={includeHistory}
         />
 
         <RouteRail />
@@ -124,6 +177,9 @@ export function App() {
             <aside className="flex w-[340px] min-w-[300px] flex-col border-r border-edge">
               <ExchangeList
                 exchanges={exchanges}
+                currentRunId={meta?.runId ?? null}
+                includeHistory={includeHistory}
+                onIncludeHistoryChange={setIncludeHistory}
                 selectedId={selectedId}
                 onSelect={setSelectedId}
               />
@@ -137,8 +193,24 @@ export function App() {
                   pausedFlow={pausedFlow}
                   onResolved={clearPausedFlow}
                 />
-              ) : selectedId ? (
+              ) : selectedExchangeVisible && selectedId ? (
                 <ExchangeDetail id={selectedId} />
+              ) : selectedExchangeHiddenByFilter ? (
+                <div className="flex h-full items-center justify-center px-8">
+                  <div className="max-w-md border border-edge bg-surface px-5 py-4 text-center">
+                    <p className="text-[13px] leading-6 text-txt-2">
+                      The selected exchange is outside the live session view. Turn on history to
+                      restore that prior-run selection.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setIncludeHistory(true)}
+                      className="mt-4 btn border border-edge bg-raised px-3.5 py-1.5 text-[12px] font-semibold uppercase tracking-[0.18em] text-txt transition-colors hover:bg-surface"
+                    >
+                      Show history
+                    </button>
+                  </div>
+                </div>
               ) : (
                 <div className="flex h-full items-center justify-center">
                   <span className="label">Select an exchange to inspect</span>

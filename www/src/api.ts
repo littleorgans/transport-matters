@@ -10,8 +10,31 @@ import type {
 
 export const MAX_ENTRIES = 500;
 
-export async function fetchExchanges(limit = 50, offset = 0): Promise<IndexEntry[]> {
-  const res = await fetch(`/api/exchanges?limit=${limit}&offset=${offset}`);
+async function throwWithDetail(res: Response, fallback: string): Promise<never> {
+  let detail: string | null = null;
+  try {
+    const data = (await res.json()) as { detail?: string };
+    detail = typeof data.detail === "string" ? data.detail : null;
+  } catch {}
+  if (detail) {
+    throw new Error(detail);
+  }
+  throw new Error(fallback);
+}
+
+export async function fetchExchanges(
+  limit = 50,
+  offset = 0,
+  includeHistory = false,
+): Promise<IndexEntry[]> {
+  const params = new URLSearchParams({
+    limit: String(limit),
+    offset: String(offset),
+  });
+  if (includeHistory) {
+    params.set("include_history", "true");
+  }
+  const res = await fetch(`/api/exchanges?${params.toString()}`);
   if (!res.ok) {
     throw new Error(`Failed to fetch exchanges: ${res.status}`);
   }
@@ -30,7 +53,8 @@ export type PipelineTokensReason =
   | "counter_unavailable"
   | "no_auth"
   | "artifact_missing"
-  | "counter_failed";
+  | "counter_failed"
+  | "unsupported_provider";
 
 export interface PipelineTokensResponse {
   tokens_before: number | null;
@@ -147,7 +171,7 @@ export async function releaseFlow(flowId: string, ir: InternalRequest): Promise<
     body: JSON.stringify(ir),
   });
   if (!res.ok) {
-    throw new Error(`Failed to release flow ${flowId}: ${res.status}`);
+    await throwWithDetail(res, `Failed to release flow ${flowId}: ${res.status}`);
   }
 }
 
@@ -156,7 +180,7 @@ export async function releaseFlowUnmodified(flowId: string): Promise<void> {
     method: "POST",
   });
   if (!res.ok) {
-    throw new Error(`Failed to release flow ${flowId}: ${res.status}`);
+    await throwWithDetail(res, `Failed to release flow ${flowId}: ${res.status}`);
   }
 }
 
@@ -165,7 +189,7 @@ export async function dropFlow(flowId: string): Promise<void> {
     method: "POST",
   });
   if (!res.ok) {
-    throw new Error(`Failed to drop flow ${flowId}: ${res.status}`);
+    await throwWithDetail(res, `Failed to drop flow ${flowId}: ${res.status}`);
   }
 }
 
@@ -180,7 +204,7 @@ export async function reauditFlow(flowId: string): Promise<ReauditResponse> {
     method: "POST",
   });
   if (!res.ok) {
-    throw new Error(`Failed to re-audit flow ${flowId}: ${res.status}`);
+    await throwWithDetail(res, `Failed to re-audit flow ${flowId}: ${res.status}`);
   }
   return (await res.json()) as ReauditResponse;
 }

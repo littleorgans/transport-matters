@@ -10,12 +10,14 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from manicure.adapters.anthropic import AnthropicAdapter
+from manicure.codex.diagnostics import build_codex_transport_diagnostics
 from manicure.config import get_settings
 from manicure.counting import count_before_after, get_counter, get_recent_auth
 from manicure.exceptions import NotFoundError
 from manicure.ir import InternalRequest, InternalResponse
+from manicure.overrides import OverrideAudit
 from manicure.storage import StorageBackend, get_storage
-from manicure.storage.base import IndexEntry
+from manicure.storage.base import IndexEntry, TransportArtifacts, TransportDiagnostic
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +47,10 @@ class ExchangeDetailResponse(BaseModel):
     entry: IndexEntry | None
     request_ir: InternalRequest
     request_curated_ir: InternalRequest | None
+    request_audit: OverrideAudit | None
     response_ir: InternalResponse | None
+    transport: TransportArtifacts | None
+    transport_diagnostics: list[TransportDiagnostic]
 
 
 @router.get("")
@@ -77,12 +82,17 @@ async def get_exchange(
         raise NotFoundError(detail=f"Exchange {exchange_id} not found") from exc
 
     entry = await storage.read_index_entry(exchange_id)
+    if entry is None:
+        raise NotFoundError(detail=f"Exchange {exchange_id} not found")
 
     return ExchangeDetailResponse(
         entry=entry,
         request_ir=artifacts.request_ir,
         request_curated_ir=artifacts.request_curated_ir,
+        request_audit=artifacts.request_audit,
         response_ir=artifacts.response_ir,
+        transport=artifacts.transport,
+        transport_diagnostics=build_codex_transport_diagnostics(artifacts),
     )
 
 
@@ -97,6 +107,7 @@ class PipelineTokensResponse(BaseModel):
     #   ``no_auth``              no live flow seen this session
     #   ``artifact_missing``     exchange artifacts gone from disk
     #   ``counter_failed``       count_tokens returned None for ≥1 side
+    #   ``unsupported_provider`` endpoint only implemented for Anthropic
     #
     # We don't surface it in the UI yet — the chars fallback is good
     # enough — but leaving the channel open lets future UI features
@@ -134,6 +145,12 @@ async def get_pipeline_tokens(
     if entry.pipeline is None:
         raise NotFoundError(
             detail=f"Exchange {exchange_id} has no pipeline record",
+        )
+    if entry.provider != "anthropic":
+        return PipelineTokensResponse(
+            tokens_before=None,
+            tokens_after=None,
+            reason="unsupported_provider",
         )
 
     if (

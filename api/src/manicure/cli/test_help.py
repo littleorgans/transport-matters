@@ -1,4 +1,4 @@
-"""Tests for the root help surface and ``manicure start --help``.
+"""Tests for the root help surface and Claude command help.
 
 Per-command help (``doctor``, ``paths``, ``list``) lives next to its
 command's behaviour tests in the matching ``test_<cmd>.py`` module.
@@ -22,7 +22,8 @@ def test_root_help_includes_quick_start() -> None:
     assert "manicure" in output
     assert "Quick start" in output
     assert "Commands" in output
-    assert "start" in output
+    assert "claude" in output
+    assert "  start     " not in output
 
 
 def test_root_help_includes_environment() -> None:
@@ -41,9 +42,35 @@ def test_root_help_lists_list_command() -> None:
     assert "List live manicure instances" in output
 
 
-def test_start_help_includes_examples() -> None:
-    result = runner.invoke(main, ["start", "--help"])
+def test_root_help_lists_codex_command() -> None:
+    result = runner.invoke(main, ["--help"])
+    assert result.exit_code == 0
+    output = _plain(result.output)
+    assert "codex" in output
+    assert "Run proxy + Codex together" in output
+
+
+def test_claude_help_includes_examples() -> None:
+    result = runner.invoke(main, ["claude", "--help"])
     assert result.exit_code == 0
     output = _plain(result.output)
     assert "Examples" in output
     assert "--proxy-port" in output
+
+
+def test_start_alias_help_matches_claude() -> None:
+    result = runner.invoke(main, ["start", "--help"])
+    assert result.exit_code == 0
+    output = _plain(result.output)
+    assert "Claude Code" in output
+    assert "manicure claude" in output
+
+
+def test_codex_help_includes_proxy_env() -> None:
+    result = runner.invoke(main, ["codex", "--help"])
+    assert result.exit_code == 0
+    output = _plain(result.output)
+    assert "HTTP_PROXY" in output
+    assert "HTTPS_PROXY" in output
+    assert "CODEX_CA_CERTIFICATE" in output
+    assert "--codex-bin" in output

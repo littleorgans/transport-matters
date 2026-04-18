@@ -8,13 +8,17 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from datetime import datetime
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from manicure.ir import InternalRequest, InternalResponse
 from manicure.overrides import (
-    OverrideAuditEntry as OverrideAuditEntry,
+    OverrideAudit,
 )  # explicit re-export
+from manicure.overrides import (
+    OverrideAuditEntry as OverrideAuditEntry,
+)
 
 # ── Stats models ────────────────────────────────────────────────────
 
@@ -85,9 +89,62 @@ class ExchangeArtifacts(BaseModel):
 
     request_raw: bytes
     request_ir: InternalRequest
+    request_curated_raw: bytes | None = None
     request_curated_ir: InternalRequest | None = None
+    request_audit: OverrideAudit | None = None
     response_raw: bytes | None = None
     response_ir: InternalResponse | None = None
+    transport: TransportArtifacts | None = None
+
+
+class TransportHeader(BaseModel):
+    name: str
+    value: str
+
+
+class TransportUpgradeArtifacts(BaseModel):
+    scheme: str
+    host: str
+    path: str
+    request_headers: list[TransportHeader] = Field(default_factory=list)
+    response_status_code: int | None = None
+    response_headers: list[TransportHeader] = Field(default_factory=list)
+
+
+class TransportCloseArtifacts(BaseModel):
+    close_code: int | None = None
+    close_reason: str | None = None
+    closed_by_client: bool | None = None
+    initial_client_frame_captured: bool = False
+    client_message_count: int = 0
+    server_message_count: int = 0
+
+
+class TransportMessageArtifact(BaseModel):
+    direction: Literal["client", "server"]
+    is_text: bool
+    size_bytes: int
+    dropped: bool = False
+    event_type: str | None = None
+    payload_text: str | None = None
+    payload_json: dict[str, Any] | list[Any] | None = None
+    payload_base64: str | None = None
+
+
+class TransportDiagnostic(BaseModel):
+    severity: Literal["info", "warning", "error"]
+    code: str
+    summary: str
+    detail: str | None = None
+    operator_checks: list[str] = Field(default_factory=list)
+
+
+class TransportArtifacts(BaseModel):
+    provider: str
+    protocol: Literal["websocket"] = "websocket"
+    upgrade: TransportUpgradeArtifacts
+    close: TransportCloseArtifacts | None = None
+    messages: list[TransportMessageArtifact] = Field(default_factory=list)
 
 
 # ── Abstract backend ───────────────────────────────────────────────
@@ -96,6 +153,22 @@ class ExchangeArtifacts(BaseModel):
 class StorageBackend(ABC):
     @abstractmethod
     async def append_index(self, entry: IndexEntry) -> None: ...
+
+    @abstractmethod
+    async def persist_exchange(
+        self, entry: IndexEntry, artifacts: ExchangeArtifacts
+    ) -> None:
+        """Persist artifacts plus the matching index row as one operation.
+
+        Implementations must not leave an index row pointing at missing
+        artifacts when the write is interrupted or fails.
+        """
+        ...
+
+    @abstractmethod
+    async def upsert_index(self, entry: IndexEntry) -> None:
+        """Insert or replace an index row by exchange id."""
+        ...
 
     @abstractmethod
     async def write_exchange(
@@ -112,6 +185,16 @@ class StorageBackend(ABC):
 
     @abstractmethod
     async def read_index_entry(self, exchange_id: str) -> IndexEntry | None: ...
+
+    @abstractmethod
+    async def delete_exchange(self, exchange_id: str) -> bool:
+        """Delete an exchange index row plus its artifact directory.
+
+        Returns True when either the index row or artifact directory
+        existed and was removed. Returns False when the exchange was not
+        present at all.
+        """
+        ...
 
     @abstractmethod
     async def update_pipeline_tokens(

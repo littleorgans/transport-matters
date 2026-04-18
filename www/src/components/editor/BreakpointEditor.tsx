@@ -30,6 +30,7 @@ export function BreakpointEditor({ pausedFlow, onResolved }: BreakpointEditorPro
   const queryClient = useQueryClient();
   const setForwardingFlowId = useUIStore((s) => s.setForwardingFlowId);
   const setPausedFlow = useUIStore((s) => s.setPausedFlow);
+  const setSelectedId = useUIStore((s) => s.setSelectedId);
   const forwardingFlowId = useUIStore((s) => s.forwardingFlowId);
   const forwardingLastActivityAt = useUIStore((s) => s.forwardingLastActivityAt);
   const [editedIr, setEditedIr] = useState<InternalRequest>(() => structuredClone(pausedFlow.ir));
@@ -128,13 +129,21 @@ export function BreakpointEditor({ pausedFlow, onResolved }: BreakpointEditorPro
   );
 
   const invalidateExchange = () => {
-    void queryClient.invalidateQueries({ queryKey: ["exchange", pausedFlow.flow_id] });
+    const detailId = pausedFlow.provisional_exchange_id ?? pausedFlow.flow_id;
+    void queryClient.invalidateQueries({ queryKey: ["exchange", detailId] });
   };
 
   const handleForward = () =>
     withLoading("Forward", async () => {
       await releaseFlow(pausedFlow.flow_id, editedIr);
       invalidateExchange();
+      if (pausedFlow.transport === "websocket") {
+        if (pausedFlow.provisional_exchange_id) {
+          setSelectedId(pausedFlow.provisional_exchange_id);
+        }
+        onResolved();
+        return;
+      }
       setForwardingFlowId(pausedFlow.flow_id);
     });
 
@@ -142,6 +151,13 @@ export function BreakpointEditor({ pausedFlow, onResolved }: BreakpointEditorPro
     withLoading("Pass through", async () => {
       await releaseFlowUnmodified(pausedFlow.flow_id);
       invalidateExchange();
+      if (pausedFlow.transport === "websocket") {
+        if (pausedFlow.provisional_exchange_id) {
+          setSelectedId(pausedFlow.provisional_exchange_id);
+        }
+        onResolved();
+        return;
+      }
       setForwardingFlowId(pausedFlow.flow_id);
     });
 

@@ -7,6 +7,8 @@ import type { IndexEntry, PausedFlow } from "../types";
 function isValidPausedEvent(data: Record<string, unknown>): data is {
   type: "paused";
   flow_id: string;
+  transport?: PausedFlow["transport"];
+  provisional_exchange_id?: string | null;
   ir: PausedFlow["ir"];
   original_tools?: PausedFlow["original_tools"];
   original_system?: PausedFlow["original_system"];
@@ -59,6 +61,14 @@ function isValidExchangeEvent(data: Record<string, unknown>): data is {
   );
 }
 
+function isValidExchangeDeletedEvent(data: Record<string, unknown>): data is {
+  type: "exchange_deleted";
+  id: string;
+  flow_id?: string;
+} {
+  return typeof data.id === "string";
+}
+
 /**
  * Pure SSE pump: manages the EventSource connection and pushes incoming
  * events into the query cache (exchanges) or Zustand store (pausedFlow).
@@ -103,6 +113,11 @@ export function useExchangeStream(): { connected: boolean } {
           setSelectedId(null);
           setPausedFlow({
             flow_id: data.flow_id,
+            transport: data.transport === "websocket" ? "websocket" : "http",
+            provisional_exchange_id:
+              typeof data.provisional_exchange_id === "string"
+                ? data.provisional_exchange_id
+                : null,
             ir: data.ir,
             original_tools: data.original_tools ?? data.ir.tools,
             original_system: data.original_system ?? data.ir.system,
@@ -142,9 +157,16 @@ export function useExchangeStream(): { connected: boolean } {
             res: data.res ?? null,
             mutated_manually: data.mutated_manually ?? false,
           };
-          queryClient.setQueryData<IndexEntry[]>(["exchanges"], (prev = []) =>
+          queryClient.setQueryData<IndexEntry[]>(["exchanges", false], (prev = []) =>
             [entry, ...prev.filter((e) => e.id !== entry.id)].slice(0, MAX_ENTRIES),
           );
+          queryClient.setQueriesData<IndexEntry[]>({ queryKey: ["exchanges", true] }, (prev) =>
+            prev ? [entry, ...prev.filter((e) => e.id !== entry.id)].slice(0, MAX_ENTRIES) : prev,
+          );
+          // ExchangeDetail caches by exchange id, so a provisional row that
+          // later finalizes needs an explicit refetch signal to pick up the
+          // stored response artifacts and finalized stats.
+          void queryClient.invalidateQueries({ queryKey: ["exchange", entry.id] });
           setSelectedId(entry.id);
 
           // Only clear the breakpoint editor if the completed exchange matches
@@ -156,6 +178,21 @@ export function useExchangeStream(): { connected: boolean } {
             } else {
               useUIStore.getState().setForwardingFlowId(null);
             }
+          }
+          return;
+        }
+
+        if (data.type === "exchange_deleted") {
+          if (!isValidExchangeDeletedEvent(data)) return;
+          queryClient.setQueryData<IndexEntry[]>(["exchanges", false], (prev = []) =>
+            prev.filter((entry) => entry.id !== data.id),
+          );
+          queryClient.setQueriesData<IndexEntry[]>({ queryKey: ["exchanges", true] }, (prev) =>
+            prev?.filter((entry) => entry.id !== data.id),
+          );
+          queryClient.removeQueries({ queryKey: ["exchange", data.id], exact: true });
+          if (useUIStore.getState().selectedId === data.id) {
+            setSelectedId(null);
           }
         }
       } catch (e) {

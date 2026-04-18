@@ -1,0 +1,344 @@
+"""Tests for the `manicure codex` launch path."""
+
+from __future__ import annotations
+
+from pathlib import Path
+from unittest.mock import MagicMock
+
+import pytest
+from typer.testing import CliRunner
+
+from manicure.cli import main
+from manicure.cli.trust import (
+    ConfiguredCACertificateMissingError,
+    MitmproxyCAMissingError,
+    SystemTrustSnapshotError,
+    TrustBundleWriteError,
+)
+
+from ._helpers import _which_by_name
+
+runner = CliRunner()
+
+
+@pytest.fixture
+def spy_run_client_children(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
+    """Replace the generic client runner so `codex` never forks."""
+    spy = MagicMock()
+    monkeypatch.setattr("manicure.cli.runner._run_client_children", spy)
+    return spy
+
+
+def test_codex_print_command_uses_explicit_proxy_mode(
+    tmp_storage: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "manicure.cli.shutil.which",
+        _which_by_name({"mitmdump": "/bin/mitmdump", "codex": "/bin/codex"}),
+    )
+    monkeypatch.setattr("manicure.cli._port_in_use", lambda _: False)
+
+    result = runner.invoke(
+        main,
+        ["codex", "--proxy-port", "9000", "--web-port", "9001", "--print-command"],
+    )
+    assert result.exit_code == 0, result.output
+    lines = [line.strip() for line in result.stdout.splitlines() if line.strip()]
+    assert any("--mode regular" in line for line in lines)
+    assert any("--listen-port 9000" in line for line in lines)
+    assert any(line == "/bin/codex" for line in lines)
+
+
+def test_codex_sets_proxy_env_on_managed_child(
+    tmp_storage: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    spy_run_client_children: MagicMock,
+) -> None:
+    monkeypatch.setattr(
+        "manicure.cli.shutil.which",
+        _which_by_name({"mitmdump": "/bin/mitmdump", "codex": "/bin/codex"}),
+    )
+    monkeypatch.setattr("manicure.cli._port_in_use", lambda _: False)
+    bundle_path = tmp_path / "ca.pem"
+    bundle_path.write_text("bundle", encoding="utf-8")
+    monkeypatch.setattr(
+        "manicure.cli.resolve_codex_ca_certificate",
+        lambda *, env, bundle_dir: bundle_path,
+    )
+
+    result = runner.invoke(
+        main,
+        [
+            "codex",
+            ".",
+            "--proxy-port",
+            "9000",
+            "--web-port",
+            "9001",
+            "--",
+            "exec",
+            "ping",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+
+    kwargs = spy_run_client_children.call_args.kwargs
+    client = kwargs["client"]
+    assert client is not None
+    assert client.name == "codex"
+    assert client.argv == ["/bin/codex", "exec", "ping"]
+    assert client.env["HTTP_PROXY"] == "http://127.0.0.1:9000"
+    assert client.env["HTTPS_PROXY"] == "http://127.0.0.1:9000"
+    assert client.env["http_proxy"] == "http://127.0.0.1:9000"
+    assert client.env["https_proxy"] == "http://127.0.0.1:9000"
+    assert client.env["CODEX_CA_CERTIFICATE"] == str(bundle_path)
+    assert "localhost" in client.env["NO_PROXY"]
+    assert "127.0.0.1" in client.env["NO_PROXY"]
+    assert kwargs["mitmdump_argv"][:3] == ["/bin/mitmdump", "--mode", "regular"]
+
+
+def test_codex_sanitizes_managed_child_proxy_and_trust_env(
+    tmp_storage: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    spy_run_client_children: MagicMock,
+) -> None:
+    monkeypatch.setattr(
+        "manicure.cli.shutil.which",
+        _which_by_name({"mitmdump": "/bin/mitmdump", "codex": "/bin/codex"}),
+    )
+    monkeypatch.setattr("manicure.cli._port_in_use", lambda _: False)
+    monkeypatch.setenv("HTTP_PROXY", "http://corp-proxy:8080")
+    monkeypatch.setenv("HTTPS_PROXY", "http://corp-proxy:8080")
+    monkeypatch.setenv("ALL_PROXY", "socks5://corp-proxy:1080")
+    monkeypatch.setenv("NO_PROXY", "internal.example")
+    monkeypatch.setenv("SSL_CERT_FILE", "/tmp/custom.pem")
+    monkeypatch.setenv("REQUESTS_CA_BUNDLE", "/tmp/requests.pem")
+    monkeypatch.setenv("NODE_EXTRA_CA_CERTS", "/tmp/node-extra.pem")
+    monkeypatch.setenv("NODE_TLS_REJECT_UNAUTHORIZED", "0")
+    monkeypatch.setenv("npm_config_proxy", "http://corp-proxy:8080")
+    monkeypatch.setenv("npm_config_cafile", "/tmp/npm-ca.pem")
+    bundle_path = tmp_path / "ca.pem"
+    bundle_path.write_text("bundle", encoding="utf-8")
+    monkeypatch.setattr(
+        "manicure.cli.resolve_codex_ca_certificate",
+        lambda *, env, bundle_dir: bundle_path,
+    )
+
+    result = runner.invoke(
+        main,
+        [
+            "codex",
+            ".",
+            "--proxy-port",
+            "9000",
+            "--web-port",
+            "9001",
+            "--",
+            "exec",
+            "ping",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+
+    client_env = spy_run_client_children.call_args.kwargs["client"].env
+    assert client_env["HTTP_PROXY"] == "http://127.0.0.1:9000"
+    assert client_env["HTTPS_PROXY"] == "http://127.0.0.1:9000"
+    assert client_env["ALL_PROXY"] == "http://127.0.0.1:9000"
+    assert client_env["WS_PROXY"] == "http://127.0.0.1:9000"
+    assert client_env["WSS_PROXY"] == "http://127.0.0.1:9000"
+    assert client_env["NO_PROXY"] == "127.0.0.1,localhost"
+    assert client_env["no_proxy"] == "127.0.0.1,localhost"
+    assert client_env["CODEX_CA_CERTIFICATE"] == str(bundle_path)
+    for key in (
+        "SSL_CERT_FILE",
+        "REQUESTS_CA_BUNDLE",
+        "NODE_EXTRA_CA_CERTS",
+        "NODE_TLS_REJECT_UNAUTHORIZED",
+        "npm_config_proxy",
+        "npm_config_cafile",
+    ):
+        assert key not in client_env
+
+
+def test_codex_no_codex_plus_passthrough_fails(
+    tmp_storage: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    spy_run_client_children: MagicMock,
+) -> None:
+    monkeypatch.setattr(
+        "manicure.cli.shutil.which",
+        _which_by_name({"mitmdump": "/bin/mitmdump"}),
+    )
+
+    result = runner.invoke(main, ["codex", "--no-codex", "--", "exec", "ping"])
+    assert result.exit_code == 2
+    assert "--no-codex is incompatible" in result.output
+    spy_run_client_children.assert_not_called()
+
+
+def test_codex_refuses_when_codex_missing(
+    tmp_storage: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    spy_run_client_children: MagicMock,
+) -> None:
+    monkeypatch.setattr(
+        "manicure.cli.shutil.which",
+        _which_by_name({"mitmdump": "/bin/mitmdump"}),
+    )
+
+    result = runner.invoke(main, ["codex"])
+    assert result.exit_code == 2
+    assert "`codex` was not found" in result.output
+    spy_run_client_children.assert_not_called()
+
+
+def test_codex_no_codex_print_command_omits_child(
+    tmp_storage: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "manicure.cli.shutil.which",
+        _which_by_name({"mitmdump": "/bin/mitmdump"}),
+    )
+    monkeypatch.setattr("manicure.cli._port_in_use", lambda _: False)
+
+    result = runner.invoke(main, ["codex", "--no-codex", "--print-command"])
+    assert result.exit_code == 0, result.output
+    lines = [line.strip() for line in result.stdout.splitlines() if line.strip()]
+    assert len(lines) == 1
+    assert lines[0].startswith("/bin/mitmdump --mode regular")
+
+
+def test_codex_no_codex_skips_trust_bootstrap_failures(
+    tmp_storage: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    spy_run_client_children: MagicMock,
+) -> None:
+    monkeypatch.setattr(
+        "manicure.cli.shutil.which",
+        _which_by_name({"mitmdump": "/bin/mitmdump"}),
+    )
+    monkeypatch.setattr("manicure.cli._port_in_use", lambda _: False)
+
+    def raise_error(*, env: dict[str, str], bundle_dir: Path | None) -> Path:
+        raise MitmproxyCAMissingError(Path("/missing/mitmproxy-ca-cert.pem"))
+
+    monkeypatch.setattr("manicure.cli.resolve_codex_ca_certificate", raise_error)
+
+    result = runner.invoke(main, ["codex", "--no-codex"])
+    assert result.exit_code == 0, result.output
+    assert "point your client at the proxy:" in result.output
+    assert "HTTP_PROXY=http://127.0.0.1:" in result.output
+    assert "Set CODEX_CA_CERTIFICATE to a PEM bundle" in result.output
+    spy_run_client_children.assert_called_once()
+    assert spy_run_client_children.call_args.kwargs["client"] is None
+
+
+def test_codex_no_codex_uses_existing_ca_hint_when_present(
+    tmp_storage: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    spy_run_client_children: MagicMock,
+) -> None:
+    monkeypatch.setattr(
+        "manicure.cli.shutil.which",
+        _which_by_name({"mitmdump": "/bin/mitmdump"}),
+    )
+    monkeypatch.setattr("manicure.cli._port_in_use", lambda _: False)
+    bundle_path = tmp_path / "ca.pem"
+    bundle_path.write_text("bundle", encoding="utf-8")
+    monkeypatch.setenv("CODEX_CA_CERTIFICATE", str(bundle_path))
+
+    def fail_if_called(*, env: dict[str, str], bundle_dir: Path | None) -> Path:
+        raise AssertionError("proxy-only mode should not resolve trust bundles")
+
+    monkeypatch.setattr("manicure.cli.resolve_codex_ca_certificate", fail_if_called)
+
+    result = runner.invoke(main, ["codex", "--no-codex"])
+    assert result.exit_code == 0, result.output
+    assert f"CODEX_CA_CERTIFICATE={bundle_path.resolve()} codex" in result.output
+    spy_run_client_children.assert_called_once()
+    assert spy_run_client_children.call_args.kwargs["client"] is None
+
+
+def test_codex_cleans_generated_bundle_after_exit(
+    tmp_storage: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    spy_run_client_children: MagicMock,
+) -> None:
+    monkeypatch.setattr(
+        "manicure.cli.shutil.which",
+        _which_by_name({"mitmdump": "/bin/mitmdump", "codex": "/bin/codex"}),
+    )
+    monkeypatch.setattr("manicure.cli._port_in_use", lambda _: False)
+    captured: dict[str, str] = {}
+
+    def fake_resolve(*, env: dict[str, str], bundle_dir: Path | None) -> Path:
+        assert bundle_dir is not None
+        bundle_path = bundle_dir / "codex-ca-bundle.pem"
+        bundle_path.write_text("generated", encoding="utf-8")
+        captured["path"] = str(bundle_path)
+        return bundle_path
+
+    monkeypatch.setattr("manicure.cli.resolve_codex_ca_certificate", fake_resolve)
+
+    result = runner.invoke(
+        main, ["codex", "--proxy-port", "9000", "--web-port", "9001"]
+    )
+    assert result.exit_code == 0, result.output
+
+    bundle_path = Path(captured["path"])
+    assert spy_run_client_children.call_args.kwargs["client"].env[
+        "CODEX_CA_CERTIFICATE"
+    ] == str(bundle_path)
+    assert not bundle_path.exists()
+
+
+@pytest.mark.parametrize(
+    ("error", "needle"),
+    [
+        (
+            ConfiguredCACertificateMissingError(Path("/missing/codex-ca.pem")),
+            "CODEX_CA_CERTIFICATE points to a missing file.",
+        ),
+        (
+            MitmproxyCAMissingError(Path("/missing/mitmproxy-ca-cert.pem")),
+            "mitmproxy CA missing for Codex trust bootstrap.",
+        ),
+        (
+            SystemTrustSnapshotError("snapshot failed"),
+            "could not snapshot the active system trust roots.",
+        ),
+        (
+            TrustBundleWriteError(
+                Path("/tmp/codex-ca-bundle.pem"), "permission denied"
+            ),
+            "could not expose CODEX_CA_CERTIFICATE for Codex.",
+        ),
+    ],
+)
+def test_codex_surfaces_trust_bootstrap_failures(
+    tmp_storage: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    spy_run_client_children: MagicMock,
+    error: RuntimeError,
+    needle: str,
+) -> None:
+    monkeypatch.setattr(
+        "manicure.cli.shutil.which",
+        _which_by_name({"mitmdump": "/bin/mitmdump", "codex": "/bin/codex"}),
+    )
+    monkeypatch.setattr("manicure.cli._port_in_use", lambda _: False)
+
+    def raise_error(*, env: dict[str, str], bundle_dir: Path | None) -> Path:
+        raise error
+
+    monkeypatch.setattr("manicure.cli.resolve_codex_ca_certificate", raise_error)
+
+    result = runner.invoke(main, ["codex"])
+    assert result.exit_code == 2
+    assert needle in result.output
+    spy_run_client_children.assert_not_called()

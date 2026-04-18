@@ -11,6 +11,12 @@ from manicure.storage.base import (
     ReqStats,
     ResStats,
     StorageBackend,
+    TransportArtifacts,
+    TransportCloseArtifacts,
+    TransportDiagnostic,
+    TransportHeader,
+    TransportMessageArtifact,
+    TransportUpgradeArtifacts,
 )
 from manicure.storage.disk import DiskStorageBackend
 
@@ -55,6 +61,12 @@ __all__ = [
     "ReqStats",
     "ResStats",
     "StorageBackend",
+    "TransportArtifacts",
+    "TransportCloseArtifacts",
+    "TransportDiagnostic",
+    "TransportHeader",
+    "TransportMessageArtifact",
+    "TransportUpgradeArtifacts",
     "get_storage",
     "init_storage",
     "reset_storage",

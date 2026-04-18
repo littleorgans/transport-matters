@@ -41,7 +41,10 @@ export interface ExchangeDetail {
    * nor the user mutated the original request.
    */
   request_curated_ir: Record<string, unknown> | null;
+  request_audit: OverrideAudit | null;
   response_ir: Record<string, unknown> | null;
+  transport: TransportArtifacts | null;
+  transport_diagnostics: TransportDiagnostic[];
 }
 
 // ── Overrides ─────────────────────────────────────────────────────
@@ -89,6 +92,56 @@ export interface OverrideAudit {
   tools_chars_after: number;
   messages_chars_before: number;
   messages_chars_after: number;
+}
+
+export interface TransportHeader {
+  name: string;
+  value: string;
+}
+
+export interface TransportUpgradeArtifacts {
+  scheme: string;
+  host: string;
+  path: string;
+  request_headers: TransportHeader[];
+  response_status_code: number | null;
+  response_headers: TransportHeader[];
+}
+
+export interface TransportCloseArtifacts {
+  close_code: number | null;
+  close_reason: string | null;
+  closed_by_client: boolean | null;
+  initial_client_frame_captured: boolean;
+  client_message_count: number;
+  server_message_count: number;
+}
+
+export interface TransportMessageArtifact {
+  direction: "client" | "server";
+  is_text: boolean;
+  size_bytes: number;
+  dropped: boolean;
+  event_type: string | null;
+  payload_text: string | null;
+  payload_json: Record<string, unknown> | unknown[] | null;
+  payload_base64: string | null;
+}
+
+export interface TransportArtifacts {
+  provider: string;
+  protocol: "websocket";
+  upgrade: TransportUpgradeArtifacts;
+  close: TransportCloseArtifacts | null;
+  messages: TransportMessageArtifact[];
+}
+
+export interface TransportDiagnostic {
+  severity: "info" | "warning" | "error";
+  code: string;
+  summary: string;
+  detail: string | null;
+  operator_checks: string[];
 }
 
 // ── IR content blocks ─────────────────────────────────────────────
@@ -208,6 +261,8 @@ export interface PipelineStats {
 
 export interface PausedFlow {
   flow_id: string;
+  transport: "http" | "websocket";
+  provisional_exchange_id?: string | null;
   ir: InternalRequest;
   original_tools: ToolDef[];
   original_system: SystemPart[];

@@ -1,0 +1,24 @@
+{
+  "provider": "codex",
+  "protocol": "websocket",
+  "upgrade": {
+    "scheme": "wss",
+    "host": "chatgpt.com",
+    "path": "/backend-api/codex/responses?client=cli",
+    "request_headers": [
+      {
+        "name": "origin",
+        "value": "https://chatgpt.com"
+      }
+    ],
+    "response_status_code": 403,
+    "response_headers": [
+      {
+        "name": "content-type",
+        "value": "application/json"
+      }
+    ]
+  },
+  "close": null,
+  "messages": []
+}

@@ -4,6 +4,7 @@ import { useUIStore } from "./uiStore";
 
 const mockPausedFlow: PausedFlow = {
   flow_id: "test-flow-id",
+  transport: "http",
   ir: {} as PausedFlow["ir"],
   original_tools: [],
   original_system: [],

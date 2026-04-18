@@ -41,7 +41,16 @@ describe("ExchangeList", () => {
       makeEntry({ id: "b", model: "anthropic/claude-haiku-4-20250506" }),
     ];
 
-    render(<ExchangeList exchanges={entries} selectedId={null} onSelect={() => {}} />);
+    render(
+      <ExchangeList
+        exchanges={entries}
+        currentRunId="run-current"
+        includeHistory={false}
+        onIncludeHistoryChange={() => {}}
+        selectedId={null}
+        onSelect={() => {}}
+      />,
+    );
 
     expect(screen.getByText("claude-sonnet-4-20250514")).toBeInTheDocument();
     expect(screen.getByText("claude-haiku-4-20250506")).toBeInTheDocument();
@@ -51,14 +60,32 @@ describe("ExchangeList", () => {
     const onSelect = vi.fn();
     const entries = [makeEntry({ id: "click-me" })];
 
-    render(<ExchangeList exchanges={entries} selectedId={null} onSelect={onSelect} />);
+    render(
+      <ExchangeList
+        exchanges={entries}
+        currentRunId="run-current"
+        includeHistory={false}
+        onIncludeHistoryChange={() => {}}
+        selectedId={null}
+        onSelect={onSelect}
+      />,
+    );
 
     fireEvent.click(screen.getByText("claude-sonnet-4-20250514"));
     expect(onSelect).toHaveBeenCalledWith("click-me");
   });
 
   it("shows empty state when no exchanges", () => {
-    render(<ExchangeList exchanges={[]} selectedId={null} onSelect={() => {}} />);
+    render(
+      <ExchangeList
+        exchanges={[]}
+        currentRunId="run-current"
+        includeHistory={false}
+        onIncludeHistoryChange={() => {}}
+        selectedId={null}
+        onSelect={() => {}}
+      />,
+    );
 
     expect(screen.getByText("Waiting for traffic")).toBeInTheDocument();
   });
@@ -78,11 +105,91 @@ describe("ExchangeList", () => {
       configurable: true,
     });
 
-    render(<ExchangeList exchanges={entries} selectedId="row-42" onSelect={() => {}} />);
+    render(
+      <ExchangeList
+        exchanges={entries}
+        currentRunId="run-current"
+        includeHistory={false}
+        onIncludeHistoryChange={() => {}}
+        selectedId="row-42"
+        onSelect={() => {}}
+      />,
+    );
 
     // Scroll is queued via requestAnimationFrame.
     await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
 
     expect(scrollToImpl).toHaveBeenCalled();
+  });
+
+  it("re-scrolls when a hidden selection becomes visible again", async () => {
+    const entries = Array.from({ length: 50 }, (_, i) =>
+      makeEntry({ id: `row-${i}`, model: `anthropic/model-${i}` }),
+    );
+    const scrollToImpl = vi.fn();
+    Object.defineProperty(HTMLElement.prototype, "scrollTo", {
+      value: scrollToImpl,
+      writable: true,
+      configurable: true,
+    });
+
+    const { rerender } = render(
+      <ExchangeList
+        exchanges={entries}
+        currentRunId="run-current"
+        includeHistory
+        onIncludeHistoryChange={() => {}}
+        selectedId="row-42"
+        onSelect={() => {}}
+      />,
+    );
+
+    await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+    const initialScrollCalls = scrollToImpl.mock.calls.length;
+    expect(initialScrollCalls).toBeGreaterThan(0);
+
+    rerender(
+      <ExchangeList
+        exchanges={entries.filter((entry) => entry.id !== "row-42")}
+        currentRunId="run-current"
+        includeHistory={false}
+        onIncludeHistoryChange={() => {}}
+        selectedId="row-42"
+        onSelect={() => {}}
+      />,
+    );
+
+    rerender(
+      <ExchangeList
+        exchanges={entries}
+        currentRunId="run-current"
+        includeHistory
+        onIncludeHistoryChange={() => {}}
+        selectedId="row-42"
+        onSelect={() => {}}
+      />,
+    );
+
+    await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+    expect(scrollToImpl.mock.calls.length).toBeGreaterThan(initialScrollCalls);
+  });
+
+  it("marks exchanges from prior runs when history is enabled", () => {
+    render(
+      <ExchangeList
+        exchanges={[makeEntry({ id: "history-1", run_id: "run-old" })]}
+        currentRunId="run-current"
+        includeHistory
+        onIncludeHistoryChange={() => {}}
+        selectedId={null}
+        onSelect={() => {}}
+      />,
+    );
+
+    expect(screen.getByText("prior run")).toBeInTheDocument();
+    expect(screen.getByRole("switch", { name: "Show prior runs" })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
   });
 });

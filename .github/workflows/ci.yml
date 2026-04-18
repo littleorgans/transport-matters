@@ -171,7 +171,7 @@ jobs:
           /tmp/smoke/bin/manicure version
           /tmp/smoke/bin/manicure paths --json
           /tmp/smoke/bin/manicure --help > /dev/null
-          /tmp/smoke/bin/manicure start --help > /dev/null
+          /tmp/smoke/bin/manicure claude --help > /dev/null
           /tmp/smoke/bin/manicure doctor --help > /dev/null
 
       - name: Confirm embedded www/ inside the wheel

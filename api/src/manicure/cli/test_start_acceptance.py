@@ -80,7 +80,7 @@ def test_start_dynamic_ports_appear_in_print_command(
     assert "54321" in result.stdout
     # Web port surfaces via the injected system-prompt URL on the claude
     # line — that's the contract of the print-command output now.
-    assert "http://localhost:54322" in result.stdout
+    assert "http://127.0.0.1:54322" in result.stdout
 
 
 def test_start_explicit_proxy_port_overrides_allocation(
@@ -110,7 +110,7 @@ def test_start_explicit_proxy_port_overrides_allocation(
     # Allocator still ran (web port is missing) but the allocated proxy
     # value is discarded; only the allocated web port lands in output.
     assert "11111" not in result.stdout
-    assert "http://localhost:22222" in result.stdout
+    assert "http://127.0.0.1:22222" in result.stdout
 
 
 def test_start_port_allocation_error_surfaces_actionable_message(
@@ -185,8 +185,8 @@ def test_start_injects_system_prompt_by_default(
     assert argv[0] == "/bin/claude"
     assert argv[1] == "--append-system-prompt"
     prompt = argv[2]
-    assert "http://localhost:9000" in prompt
-    assert "http://localhost:9001" in prompt
+    assert "http://127.0.0.1:9000" in prompt
+    assert "http://127.0.0.1:9001" in prompt
 
 
 def test_start_no_system_prompt_skips_injection(
@@ -258,6 +258,7 @@ def test_start_user_supplied_append_system_prompt_wins(
     # And manicure's URL is NOT in the prompt — only the user's "extra".
     assert "extra" in argv
     assert not any("http://localhost:9000" in tok for tok in argv)
+    assert not any("http://127.0.0.1:9000" in tok for tok in argv)
 
 
 # --------------------------------------------------------------------------- #

@@ -35,7 +35,10 @@ function makeDetail(pipeline: PipelineStats | null): ExchangeDetail {
       model: "c-3",
       messages: [],
     } as unknown as ExchangeDetail["request_curated_ir"],
+    request_audit: null,
     response_ir: null,
+    transport: null,
+    transport_diagnostics: [],
   };
 }
 
@@ -130,5 +133,23 @@ describe("ExchangeCard pipeline tokens", () => {
     expect(screen.getByText("300")).toBeInTheDocument();
     expect(screen.getByText("33")).toBeInTheDocument();
     expect(screen.getAllByText("tokens").length).toBeGreaterThan(0);
+  });
+
+  it("does not lazy recount non-anthropic rows", async () => {
+    const { fetchPipelineTokens } = await import("../../api");
+    const detail = makeDetail({
+      overrides_applied: [],
+      chars_before: 2048,
+      chars_after: 1024,
+      tokens_before: null,
+      tokens_after: null,
+    });
+    detail.entry.provider = "codex";
+
+    renderCard(detail);
+    fireEvent.click(screen.getByRole("button", pipelineTabMatcher));
+
+    await waitFor(() => expect(screen.getAllByText("2.0K").length).toBeGreaterThan(0));
+    expect(fetchPipelineTokens).not.toHaveBeenCalled();
   });
 });

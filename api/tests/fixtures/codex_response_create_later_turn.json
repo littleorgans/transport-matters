@@ -1,0 +1,50 @@
+{
+  "type": "response.create",
+  "model": "gpt-5-codex",
+  "input": [
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "input_text",
+          "text": "Run pwd and summarize the result."
+        }
+      ]
+    },
+    {
+      "type": "function_call",
+      "id": "fc_shell",
+      "call_id": "call_shell",
+      "name": "run_terminal_cmd",
+      "arguments": "{\"cmd\":\"pwd\"}"
+    },
+    {
+      "type": "custom_tool_call_output",
+      "call_id": "call_shell",
+      "output": "workspace/path"
+    },
+    {
+      "role": "developer",
+      "id": "msg_dev",
+      "content": [
+        {
+          "type": "input_text",
+          "text": "Keep the summary to one line.",
+          "cache_control": {
+            "type": "ephemeral"
+          }
+        }
+      ]
+    },
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "input_text",
+          "text": "Reply with just the path."
+        }
+      ]
+    }
+  ],
+  "tools": []
+}

@@ -22,7 +22,10 @@ export function ExchangeCard({ detail }: { detail: ExchangeDetail }) {
   // on the Pipeline tab to avoid recounting rows the user never looks
   // at.
   const needsTokenRecount =
-    pipeline !== null && pipeline.tokens_before === null && pipeline.tokens_after === null;
+    entry.provider === "anthropic" &&
+    pipeline !== null &&
+    pipeline.tokens_before === null &&
+    pipeline.tokens_after === null;
   const pipelineTokensQuery = useQuery({
     queryKey: ["pipeline-tokens", entry.id],
     queryFn: () => fetchPipelineTokens(entry.id),

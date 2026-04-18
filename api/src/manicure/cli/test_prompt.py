@@ -18,8 +18,8 @@ from manicure.cli.prompt import (
 def test_build_system_prompt_includes_both_urls() -> None:
     msg = build_system_prompt(proxy_port=9000, web_port=9001)
     assert "running inside manicure" in msg
-    assert "http://localhost:9000" in msg
-    assert "http://localhost:9001" in msg
+    assert "http://127.0.0.1:9000" in msg
+    assert "http://127.0.0.1:9001" in msg
 
 
 def test_build_system_prompt_distinguishes_proxy_from_web() -> None:
@@ -74,8 +74,8 @@ def test_user_supplied_system_prompt_true(passthrough: list[str]) -> None:
 def test_inject_prepends_to_passthrough() -> None:
     out = inject_system_prompt(["--model", "sonnet"], proxy_port=8000, web_port=8001)
     assert out[0] == "--append-system-prompt"
-    assert "http://localhost:8000" in out[1]
-    assert "http://localhost:8001" in out[1]
+    assert "http://127.0.0.1:8000" in out[1]
+    assert "http://127.0.0.1:8001" in out[1]
     assert out[2:] == ["--model", "sonnet"]
 
 

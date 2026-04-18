@@ -6,12 +6,15 @@ Named ``breakpoint_routes`` to avoid shadowing ``manicure.breakpoint``.
 from __future__ import annotations
 
 import logging
+from typing import Literal
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from manicure import breakpoint as bp
+from manicure.adapters import get_adapter_for_provider
 from manicure.adapters.anthropic import AnthropicAdapter
+from manicure.codex.transport import get_codex_transport_state
 from manicure.counting import get_counter
 from manicure.exceptions import NotFoundError
 from manicure.ir import (  # noqa: TC001 — FastAPI needs runtime access
@@ -45,6 +48,8 @@ async def _recount_tokens(pf: bp.PausedFlow) -> int | None:
     counter = get_counter()
     if counter is None or not pf.auth_headers:
         return None
+    if pf.original_ir.provider != "anthropic":
+        return None
     try:
         return await counter.count(
             AnthropicAdapter().outbound_request(pf.curated_ir),
@@ -64,6 +69,7 @@ class PausedFlowDetail(BaseModel):
     """Full paused flow data for hydrating the UI after a browser refresh."""
 
     flow_id: str
+    transport: Literal["http", "websocket"]
     ir: InternalRequest
     original_tools: list[ToolDef]
     original_system: list[SystemPart]
@@ -78,6 +84,7 @@ class PausedFlowDetail(BaseModel):
     original_provider_extras: dict[str, object]
     audit: OverrideAudit | None
     paused_at_ms: int
+    provisional_exchange_id: str | None = None
     # Authoritative count_tokens result for the curated IR, or null when
     # the count has not landed yet (fire-and-forget on pause) or failed.
     tokens_before: int | None = None
@@ -113,8 +120,14 @@ async def get_paused_flow(flow_id: str) -> PausedFlowDetail:
         raise NotFoundError(
             f"Flow {flow_id} is not paused or has already been resolved"
         )
+    provisional_exchange_id = None
+    if pf.transport == "websocket" and pf.flow is not None:
+        state = get_codex_transport_state(pf.flow)
+        if state is not None:
+            provisional_exchange_id = state.provisional_exchange_id
     return PausedFlowDetail(
         flow_id=flow_id,
+        transport=pf.transport,
         ir=pf.curated_ir,
         original_tools=list(pf.original_ir.tools),
         original_system=list(pf.original_ir.system),
@@ -123,6 +136,7 @@ async def get_paused_flow(flow_id: str) -> PausedFlowDetail:
         original_provider_extras=dict(pf.original_ir.provider_extras),
         audit=pf.audit,
         paused_at_ms=pf.paused_at_ms,
+        provisional_exchange_id=provisional_exchange_id,
         tokens_before=pf.tokens_before,
     )
 
@@ -141,7 +155,20 @@ async def disarm_breakpoint() -> dict[str, str]:
 
 @router.post("/release/{flow_id}")
 async def release_flow(flow_id: str, ir: InternalRequest) -> dict[str, str]:
-    ok = await bp.release(flow_id, ir)
+    paused = await bp.get_paused()
+    pf = paused.get(flow_id)
+    if pf is None:
+        raise NotFoundError(f"Flow {flow_id} not found or already resolved")
+    if ir.provider != pf.original_ir.provider:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "Edited request changed provider from "
+                f"{pf.original_ir.provider} to {ir.provider}"
+            ),
+        )
+    payload = _validated_release_payload(ir)
+    ok = await bp.release(flow_id, ir, release_payload=payload)
     if not ok:
         raise NotFoundError(f"Flow {flow_id} not found or already resolved")
     return {"status": "released"}
@@ -149,7 +176,12 @@ async def release_flow(flow_id: str, ir: InternalRequest) -> dict[str, str]:
 
 @router.post("/release-unmodified/{flow_id}")
 async def release_flow_unmodified(flow_id: str) -> dict[str, str]:
-    ok = await bp.release(flow_id)
+    paused = await bp.get_paused()
+    pf = paused.get(flow_id)
+    if pf is None:
+        raise NotFoundError(f"Flow {flow_id} not found or already resolved")
+    payload = _validated_release_payload(pf.curated_ir)
+    ok = await bp.release(flow_id, release_payload=payload)
     if not ok:
         raise NotFoundError(f"Flow {flow_id} not found or already resolved")
     return {"status": "released"}
@@ -206,3 +238,14 @@ async def drop_flow(flow_id: str) -> dict[str, str]:
     if not ok:
         raise NotFoundError(f"Flow {flow_id} not found or already resolved")
     return {"status": "dropped"}
+
+
+def _validated_release_payload(ir: InternalRequest) -> bytes:
+    try:
+        adapter = get_adapter_for_provider(ir.provider)
+        return adapter.outbound_request(ir)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Failed to serialize edited request: {exc}",
+        ) from exc

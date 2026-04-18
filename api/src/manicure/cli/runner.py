@@ -16,13 +16,15 @@ keeps failing fast rather than burning retry budget.
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import typer
 
 from manicure.supervisor import SIGNAL_EXIT, ProcessSupervisor
 
-from .net import _wait_for_port_ready
+from .launch_runtime import build_managed_child_env
+from .net import _wait_for_port_ready, loopback_http_url
 from .ports import PortAllocationError, allocate_port_pair
 
 if TYPE_CHECKING:
@@ -32,6 +34,8 @@ if TYPE_CHECKING:
 __all__ = [
     "BindFailure",
     "_handle_bind_failure",
+    "_run_client_children",
+    "_run_client_with_retry",
     "_run_children",
     "_run_with_retry",
 ]
@@ -75,6 +79,17 @@ _BIND_NEEDLES = (
     "[Errno 98]",
 )
 _PORT_RE = re.compile(r"\b(\d{2,5})\b")
+
+
+@dataclass(frozen=True)
+class ManagedClient:
+    """Descriptor for the foreground interactive child process."""
+
+    name: str
+    display_name: str
+    argv: list[str]
+    env: dict[str, str]
+    cwd: Path
 
 
 class BindFailure(RuntimeError):
@@ -223,16 +238,8 @@ def _run_with_retry(
     resolved_storage: Path,
     working_dir: Path,
 ) -> None:
-    """Run the spawn lifecycle with bounded allocate-→-spawn retry.
+    """Run the Claude spawn lifecycle with bounded allocate-→-spawn retry."""
 
-    Loops up to :data:`_BIND_RETRY_ATTEMPTS` attempts. Each attempt
-    refreshes the manifest with the current ports, re-prints the banner
-    (with a "retrying" preamble after the first), rebuilds the child
-    invocations via ``build_invocation``, and calls :func:`_run_children`.
-    On :class:`BindFailure` the retry decision lives in
-    :func:`_handle_bind_failure`. On exhaustion we surface the attempted
-    port pairs and exit non-zero with an actionable message.
-    """
     attempted: list[tuple[int, int]] = []
     for attempt in range(_BIND_RETRY_ATTEMPTS):
         attempted.append((proxy_port, web_port))
@@ -255,12 +262,104 @@ def _run_with_retry(
                 claude_env=(
                     None
                     if claude_argv is None
-                    else {
-                        **child_env,
-                        "ANTHROPIC_BASE_URL": f"http://localhost:{proxy_port}",
-                    }
+                    else build_managed_child_env(
+                        child_env,
+                        extra_env={"ANTHROPIC_BASE_URL": loopback_http_url(proxy_port)},
+                    )
                 ),
                 claude_cwd=working_dir,
+                proxy_port=proxy_port,
+                web_port=web_port,
+            )
+            return
+        except BindFailure as exc:
+            if attempt + 1 >= _BIND_RETRY_ATTEMPTS:
+                break
+            proxy_port, web_port = _handle_bind_failure(
+                exc,
+                proxy_port=proxy_port,
+                web_port=web_port,
+                proxy_user_supplied=proxy_user_supplied,
+                web_user_supplied=web_user_supplied,
+            )
+
+    attempted_str = ", ".join(f"({p}, {w})" for p, w in attempted)
+    typer.secho(
+        f"error: could not bind ports after {_BIND_RETRY_ATTEMPTS} attempts.",
+        fg=typer.colors.RED,
+        err=True,
+    )
+    typer.echo(f"  Tried (proxy, web): {attempted_str}.", err=True)
+
+    pinned_notes: list[str] = []
+    if proxy_user_supplied:
+        pinned_notes.append(f"--proxy-port {proxy_port}")
+    if web_user_supplied:
+        pinned_notes.append(f"--web-port {web_port}")
+
+    if pinned_notes:
+        typer.echo(
+            f"  Pinned (held constant across all attempts): {', '.join(pinned_notes)}.",
+            err=True,
+        )
+        typer.echo(
+            "Free the pinned port(s), or omit the flag to let manicure allocate\n"
+            "one. Check what is holding the conflicting ports "
+            "(e.g. `lsof -nP -iTCP -sTCP:LISTEN`).",
+            err=True,
+        )
+    else:
+        typer.echo(
+            "Pin specific values with --proxy-port and --web-port, or check what is\n"
+            "holding the conflicting ports (e.g. `lsof -nP -iTCP -sTCP:LISTEN`).",
+            err=True,
+        )
+    raise typer.Exit(1)
+
+
+def _run_client_with_retry(
+    *,
+    proxy_port: int,
+    web_port: int,
+    proxy_user_supplied: bool,
+    web_user_supplied: bool,
+    build_invocation: Callable[
+        [int, int], tuple[list[str], dict[str, str], ManagedClient | None]
+    ],
+    print_banner_for: Callable[[int, int], None],
+    write_manifest_for: Callable[[int, int], None],
+    resolved_storage: Path,
+) -> None:
+    """Run the spawn lifecycle with bounded allocate-→-spawn retry.
+
+    Loops up to :data:`_BIND_RETRY_ATTEMPTS` attempts. Each attempt
+    refreshes the manifest with the current ports, re-prints the banner
+    (with a "retrying" preamble after the first), rebuilds the child
+    invocations via ``build_invocation``, and calls
+    :func:`_run_client_children`. On :class:`BindFailure` the retry
+    decision lives in :func:`_handle_bind_failure`. On exhaustion we
+    surface the attempted port pairs and exit non-zero with an
+    actionable message.
+    """
+    attempted: list[tuple[int, int]] = []
+    for attempt in range(_BIND_RETRY_ATTEMPTS):
+        attempted.append((proxy_port, web_port))
+        write_manifest_for(proxy_port, web_port)
+        if attempt > 0:
+            typer.secho(
+                f"retrying after bind conflict "
+                f"(attempt {attempt + 1}/{_BIND_RETRY_ATTEMPTS})",
+                fg=typer.colors.YELLOW,
+                err=True,
+            )
+        print_banner_for(proxy_port, web_port)
+        mitmdump_argv, child_env, client = build_invocation(proxy_port, web_port)
+        try:
+            _run_client_children(
+                mitmdump_argv=mitmdump_argv,
+                mitmdump_env=child_env,
+                storage_dir=resolved_storage,
+                client=client,
                 proxy_port=proxy_port,
                 web_port=web_port,
             )
@@ -330,19 +429,51 @@ def _run_children(
     proxy_port: int,
     web_port: int,
 ) -> None:
+    """Claude-specific wrapper over the generic client lifecycle."""
+
+    client = None
+    if claude_argv is not None:
+        assert claude_env is not None
+        client = ManagedClient(
+            name="claude",
+            display_name="Claude",
+            argv=claude_argv,
+            env=claude_env,
+            cwd=claude_cwd,
+        )
+    _run_client_children(
+        mitmdump_argv=mitmdump_argv,
+        mitmdump_env=mitmdump_env,
+        storage_dir=storage_dir,
+        client=client,
+        proxy_port=proxy_port,
+        web_port=web_port,
+    )
+
+
+def _run_client_children(
+    *,
+    mitmdump_argv: list[str],
+    mitmdump_env: dict[str, str],
+    storage_dir: Path,
+    client: ManagedClient | None,
+    proxy_port: int,
+    web_port: int,
+) -> None:
     """Own both child processes end to end.
 
     Spawn order is fixed: mitmdump first (so the proxy port is live),
-    then Claude Code (pointed at the proxy). We then wait for whichever
-    child exits first and translate that into a sensible top-level exit:
+    then the interactive client (pointed at the proxy, if present). We
+    then wait for whichever child exits first and translate that into a
+    sensible top-level exit:
 
     - Ctrl+C (SIGINT): terminate both, exit 0.
-    - claude exits first: proxy stays up, user can review the web UI;
+    - client exits first: proxy stays up, user can review the web UI;
       Ctrl+C at that point tears down the proxy.
-    - mitmdump exits first: report the log path and bring down claude
-      too (it has no backend anyway), exit 1.
-    - `--no-claude`: mitmdump runs in the foreground; its exit code is
-      ours.
+    - mitmdump exits first: report the log path and bring down the
+      client too (it has no backend anyway), exit 1.
+    - proxy-only mode: mitmdump runs in the foreground; its exit code
+      is ours.
     """
     # The log path is only needed in the default (background-mitmdump)
     # path; `--no-claude` keeps mitmdump in the foreground. We still
@@ -355,7 +486,7 @@ def _run_children(
     sup = ProcessSupervisor()
     sup.install_signal_handlers()
     try:
-        if claude_argv is None:
+        if client is None:
             # Proxy-only. mitmdump owns the terminal so its output is live.
             sup.spawn("mitmdump", mitmdump_argv, env=mitmdump_env, foreground=True)
             name, rc = sup.wait_one("mitmdump")
@@ -401,19 +532,16 @@ def _run_children(
             sup.terminate_all()
             raise typer.Exit(0)
 
-        # claude_env is non-None whenever claude_argv is non-None — the
-        # caller wires them up as a pair.
-        assert claude_env is not None
-        # Spawn claude attached to a real PTY. The supervisor falls
+        # Spawn the client attached to a real PTY. The supervisor falls
         # back to inherited stdio with a warning if our stdin isn't a
         # TTY (CI, piped input), so this stays safe in non-interactive
         # runs. cbreak keeps SIGINT routed to us, so Ctrl+C still
         # flips us into the `SIGNAL_EXIT` branch below.
         sup.spawn(
-            "claude",
-            claude_argv,
-            env=claude_env,
-            cwd=claude_cwd,
+            client.name,
+            client.argv,
+            env=client.env,
+            cwd=client.cwd,
             foreground=True,
             pty=True,
         )
@@ -423,10 +551,10 @@ def _run_children(
             sup.terminate_all()
             raise typer.Exit(0)
 
-        if name == "claude":
+        if name == client.name:
             typer.secho(
-                f"Claude exited — web UI still live at http://localhost:{web_port}. "
-                "Ctrl+C to stop.",
+                f"{client.display_name} exited; web UI still live at "
+                f"{loopback_http_url(web_port)}. Ctrl+C to stop.",
                 fg=typer.colors.CYAN,
             )
             # Wait on the proxy; Ctrl+C (SIGNAL_EXIT) flips us into
@@ -447,8 +575,8 @@ def _run_children(
             sup.terminate_all()
             raise typer.Exit(0)
 
-        # mitmdump died first — claude has no backend. Surface the error
-        # with a pointer at the log, tear down claude, and exit non-zero.
+        # mitmdump died first. Surface the error with a pointer at the
+        # log, tear down the client, and exit non-zero.
         typer.secho(
             f"error: mitmdump exited unexpectedly (rc={rc}).",
             fg=typer.colors.RED,

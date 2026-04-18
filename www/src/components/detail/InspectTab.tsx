@@ -145,7 +145,7 @@ export function InspectTab({ detail }: InspectTabProps) {
   const responseData = response_ir as InternalResponse | null;
   const responseContent = responseData?.content ?? [];
 
-  const audit = detail.entry.pipeline?.overrides_applied ?? [];
+  const audit = detail.request_audit?.entries ?? detail.entry.pipeline?.overrides_applied ?? [];
   const syntheticOverrides = buildSyntheticOverrides(originalRequest, curatedRequest, audit);
 
   return (

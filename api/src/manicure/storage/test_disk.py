@@ -6,11 +6,8 @@ Uses ``tmp_path`` to avoid touching the real filesystem.
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from pathlib import Path
 from unittest.mock import patch
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 import pytest
 
@@ -23,6 +20,7 @@ from manicure.ir import (
     TextBlock,
     UsageStats,
 )
+from manicure.overrides import OverrideAudit, OverrideAuditEntry
 from manicure.storage.base import ExchangeArtifacts, IndexEntry, ReqStats, ResStats
 from manicure.storage.disk import DiskStorageBackend
 
@@ -63,6 +61,22 @@ def _make_index_entry(entry_id: str = "ex-001") -> IndexEntry:
     )
 
 
+def _make_audit() -> OverrideAudit:
+    return OverrideAudit(
+        entries=[
+            OverrideAuditEntry(
+                kind="system_part_text",
+                target="system:0",
+                applied=True,
+                chars_delta=-3,
+                curated_value="patched",
+            )
+        ],
+        chars_before=10,
+        chars_after=7,
+    )
+
+
 class TestAppendAndReadIndex:
     async def test_append_and_read(self, storage: DiskStorageBackend) -> None:
         entry = _make_index_entry()
@@ -83,6 +97,23 @@ class TestAppendAndReadIndex:
         assert page[0].id == "ex-001"
         assert page[1].id == "ex-002"
 
+    async def test_upsert_replaces_existing_row(
+        self, storage: DiskStorageBackend
+    ) -> None:
+        original = _make_index_entry("ex-upsert")
+        await storage.append_index(original)
+
+        updated = original.model_copy(
+            update={"res": ResStats(stop_reason="completed", text_chars=12)}
+        )
+        await storage.upsert_index(updated)
+
+        entries = await storage.read_index(limit=10, offset=0)
+        assert len(entries) == 1
+        assert entries[0].id == "ex-upsert"
+        assert entries[0].res is not None
+        assert entries[0].res.stop_reason == "completed"
+
 
 class TestWriteAndReadExchange:
     async def test_round_trip(self, storage: DiskStorageBackend) -> None:
@@ -95,8 +126,11 @@ class TestWriteAndReadExchange:
 
         assert loaded.request_raw == raw
         assert loaded.request_ir == ir
+        assert loaded.request_curated_raw is None
         assert loaded.request_curated_ir is None
+        assert loaded.request_audit is None
         assert loaded.response_raw is None
+        assert loaded.transport is None
 
     async def test_with_response(self, storage: DiskStorageBackend) -> None:
         from manicure.ir import InternalResponse, UsageStats
@@ -125,6 +159,194 @@ class TestWriteAndReadExchange:
         assert loaded.response_raw == resp_raw
         assert loaded.response_ir is not None
         assert loaded.response_ir.id == "msg_01"
+
+    async def test_with_curated_request_audit_and_transport(
+        self, storage: DiskStorageBackend
+    ) -> None:
+        ir = _make_ir()
+        curated_raw = b'{"model":"claude-sonnet-4-20250514","max_tokens":256}'
+        artifacts = ExchangeArtifacts(
+            request_raw=b'{"model":"claude-sonnet-4-20250514","max_tokens":1024}',
+            request_ir=ir,
+            request_curated_raw=curated_raw,
+            request_curated_ir=ir.model_copy(
+                update={
+                    "messages": [
+                        Message(role="user", content=[TextBlock(text="patched")]),
+                    ]
+                }
+            ),
+            request_audit=_make_audit(),
+            transport={
+                "provider": "codex",
+                "protocol": "websocket",
+                "upgrade": {
+                    "scheme": "wss",
+                    "host": "chatgpt.com",
+                    "path": "/backend-api/codex/responses",
+                    "request_headers": [
+                        {"name": "authorization", "value": "Bearer super-secret"},
+                        {"name": "x-test", "value": "1"},
+                    ],
+                    "response_status_code": 101,
+                    "response_headers": [
+                        {"name": "set-cookie", "value": "session=secret; Path=/"},
+                        {"name": "x-upstream", "value": "chatgpt"},
+                    ],
+                },
+                "close": {
+                    "close_code": 1000,
+                    "close_reason": "done",
+                    "closed_by_client": False,
+                    "initial_client_frame_captured": True,
+                    "client_message_count": 1,
+                    "server_message_count": 2,
+                },
+                "messages": [
+                    {
+                        "direction": "client",
+                        "is_text": True,
+                        "size_bytes": 24,
+                        "dropped": False,
+                        "event_type": "response.create",
+                        "payload_text": '{"type":"response.create"}',
+                        "payload_json": {"type": "response.create"},
+                        "payload_base64": None,
+                    }
+                ],
+            },
+        )
+
+        await storage.write_exchange("codex0001-5678", artifacts)
+        loaded = await storage.read_exchange("codex0001-5678")
+
+        assert loaded.request_curated_raw == curated_raw
+        assert loaded.request_curated_ir is not None
+        block = loaded.request_curated_ir.messages[0].content[0]
+        assert isinstance(block, TextBlock)
+        assert block.text == "patched"
+        assert loaded.request_audit is not None
+        assert loaded.request_audit.entries[0].target == "system:0"
+        assert loaded.transport is not None
+        assert loaded.transport.provider == "codex"
+        assert loaded.transport.close is not None
+        assert loaded.transport.close.close_code == 1000
+        request_headers = {
+            header.name: header.value
+            for header in loaded.transport.upgrade.request_headers
+        }
+        response_headers = {
+            header.name: header.value
+            for header in loaded.transport.upgrade.response_headers
+        }
+        assert request_headers["authorization"] == "Bearer [redacted]"
+        assert request_headers["x-test"] == "1"
+        assert response_headers["set-cookie"] == "[redacted]"
+        assert response_headers["x-upstream"] == "chatgpt"
+        assert loaded.transport.messages[0].event_type == "response.create"
+
+    async def test_rewrite_existing_exchange_dir(
+        self, storage: DiskStorageBackend
+    ) -> None:
+        exchange_id = "rewrite01-1234"
+        original_ir = _make_ir()
+        await storage.write_exchange(
+            exchange_id,
+            ExchangeArtifacts(
+                request_raw=b'{"model":"claude-sonnet-4-20250514","max_tokens":1024}',
+                request_ir=original_ir,
+            ),
+        )
+        original_dir = storage._find_exchange_dir(exchange_id)
+
+        final_response = InternalResponse(
+            id="msg_final",
+            model="anthropic/claude-sonnet-4-20250514",
+            provider="anthropic",
+            stop_reason="end_turn",
+            usage=UsageStats(input_tokens=10, output_tokens=20),
+            content=[TextBlock(text="done")],
+        )
+        await storage.write_exchange(
+            exchange_id,
+            ExchangeArtifacts(
+                request_raw=b'{"model":"claude-sonnet-4-20250514","max_tokens":1024}',
+                request_ir=original_ir,
+                request_curated_raw=b'{"model":"claude-sonnet-4-20250514","max_tokens":256}',
+                request_curated_ir=original_ir.model_copy(
+                    update={
+                        "messages": [
+                            Message(role="user", content=[TextBlock(text="patched")])
+                        ]
+                    }
+                ),
+                response_raw=b'{"id":"msg_final"}',
+                response_ir=final_response,
+            ),
+        )
+
+        dirs = [path for path in storage.root.iterdir() if path.is_dir()]
+        assert dirs == [original_dir]
+        loaded = await storage.read_exchange(exchange_id)
+        assert loaded.request_curated_raw is not None
+        assert loaded.response_ir is not None
+        assert loaded.response_ir.id == "msg_final"
+
+    async def test_read_exchange_redacts_and_rewrites_legacy_transport_headers(
+        self, storage: DiskStorageBackend
+    ) -> None:
+        exchange_id = "legacy000-5678"
+        exchange_dir = storage.root / f"20250601T120000Z-{exchange_id[:8]}"
+        exchange_dir.mkdir()
+        (exchange_dir / "request.raw").write_bytes(
+            b'{"type":"response.create","model":"gpt-5-codex"}'
+        )
+        (exchange_dir / "request.ir.json").write_text(_make_ir().model_dump_json())
+        (exchange_dir / "transport.json").write_text(
+            """
+{
+  "provider": "codex",
+  "protocol": "websocket",
+  "upgrade": {
+    "scheme": "wss",
+    "host": "chatgpt.com",
+    "path": "/backend-api/codex/responses",
+    "request_headers": [
+      {"name": "authorization", "value": "Bearer legacy-secret"},
+      {"name": "origin", "value": "https://chatgpt.com"}
+    ],
+    "response_status_code": 403,
+    "response_headers": [
+      {"name": "set-cookie", "value": "session=legacy; Path=/"},
+      {"name": "content-type", "value": "application/json"}
+    ]
+  },
+  "close": null,
+  "messages": []
+}
+""".strip()
+        )
+
+        loaded = await storage.read_exchange(exchange_id)
+
+        assert loaded.transport is not None
+        request_headers = {
+            header.name: header.value
+            for header in loaded.transport.upgrade.request_headers
+        }
+        response_headers = {
+            header.name: header.value
+            for header in loaded.transport.upgrade.response_headers
+        }
+        assert request_headers["authorization"] == "Bearer [redacted]"
+        assert request_headers["origin"] == "https://chatgpt.com"
+        assert response_headers["set-cookie"] == "[redacted]"
+        assert response_headers["content-type"] == "application/json"
+
+        persisted = (exchange_dir / "transport.json").read_text()
+        assert "legacy-secret" not in persisted
+        assert "session=legacy" not in persisted
+        assert "Bearer [redacted]" in persisted
 
     async def test_not_found(self, storage: DiskStorageBackend) -> None:
         with pytest.raises(FileNotFoundError):
@@ -174,6 +396,78 @@ class TestReadIndexEntry:
         found = await storage.read_index_entry("cached-id")
         assert found is not None
         assert found.id == "cached-id"
+
+
+class TestDeleteExchange:
+    async def test_removes_index_row_and_artifacts(
+        self, storage: DiskStorageBackend
+    ) -> None:
+        exchange_id = "deadbeef-1234"
+        await storage.append_index(_make_index_entry(exchange_id))
+        await storage.write_exchange(
+            exchange_id,
+            ExchangeArtifacts(request_raw=b"{}", request_ir=_make_ir()),
+        )
+
+        removed = await storage.delete_exchange(exchange_id)
+
+        assert removed is True
+        assert await storage.read_index_entry(exchange_id) is None
+        with pytest.raises(FileNotFoundError):
+            await storage.read_exchange(exchange_id)
+
+    async def test_returns_false_when_exchange_is_missing(
+        self, storage: DiskStorageBackend
+    ) -> None:
+        assert await storage.delete_exchange("missing-0000") is False
+
+    async def test_rewrite_failure_restores_index_row_and_artifacts(
+        self, storage: DiskStorageBackend
+    ) -> None:
+        exchange_id = "deadbeef-rollback"
+        entry = _make_index_entry(exchange_id)
+        artifacts = ExchangeArtifacts(request_raw=b"{}", request_ir=_make_ir())
+        await storage.append_index(entry)
+        await storage.write_exchange(exchange_id, artifacts)
+
+        async def fail_rewrite(_: dict[str, IndexEntry]) -> None:
+            raise OSError("index rewrite failed")
+
+        with (
+            patch.object(storage, "_rewrite_index", side_effect=fail_rewrite),
+            pytest.raises(OSError, match="index rewrite failed"),
+        ):
+            await storage.delete_exchange(exchange_id)
+
+        restored = await storage.read_index_entry(exchange_id)
+        assert restored == entry
+        restored_artifacts = await storage.read_exchange(exchange_id)
+        assert restored_artifacts.request_raw == artifacts.request_raw
+
+    async def test_rewrite_failure_preserves_cache_order(
+        self, storage: DiskStorageBackend
+    ) -> None:
+        first = _make_index_entry("deadbeef-first")
+        middle = _make_index_entry("deadbeef-middle")
+        last = _make_index_entry("deadbeef-last")
+        await storage.append_index(first)
+        await storage.append_index(middle)
+        await storage.append_index(last)
+
+        async def fail_rewrite(_: dict[str, IndexEntry]) -> None:
+            raise OSError("index rewrite failed")
+
+        with (
+            patch.object(storage, "_rewrite_index", side_effect=fail_rewrite),
+            pytest.raises(OSError, match="index rewrite failed"),
+        ):
+            await storage.delete_exchange(middle.id)
+
+        assert [entry.id for entry in await storage.read_index(limit=10, offset=0)] == [
+            first.id,
+            middle.id,
+            last.id,
+        ]
 
 
 class TestCacheCreationBackfill:
@@ -355,3 +649,42 @@ class TestAtomicWrite:
 
         tmp_dirs = [d for d in storage.root.iterdir() if d.name.endswith(".tmp")]
         assert tmp_dirs == []
+
+    async def test_rewrite_failure_restores_original_exchange_dir(
+        self, storage: DiskStorageBackend
+    ) -> None:
+        exchange_id = "rewrite-fail-001"
+        original_ir = _make_ir()
+        await storage.write_exchange(
+            exchange_id,
+            ExchangeArtifacts(
+                request_raw=b'{"model":"original","max_tokens":1024}',
+                request_ir=original_ir,
+            ),
+        )
+
+        original_dir = storage._find_exchange_dir(exchange_id)
+        original_raw = (original_dir / "request.raw").read_bytes()
+        original_rename = Path.rename
+
+        def fail_final_rename(self: Path, target: Path) -> Path:
+            if self.name.endswith(".tmp") and target == original_dir:
+                raise OSError("rename failed")
+            return original_rename(self, target)
+
+        with (
+            patch.object(Path, "rename", autospec=True, side_effect=fail_final_rename),
+            pytest.raises(OSError, match="rename failed"),
+        ):
+            await storage.write_exchange(
+                exchange_id,
+                ExchangeArtifacts(
+                    request_raw=b'{"model":"rewritten","max_tokens":2048}',
+                    request_ir=original_ir,
+                ),
+            )
+
+        restored_dir = storage._find_exchange_dir(exchange_id)
+        assert restored_dir == original_dir
+        assert (restored_dir / "request.raw").read_bytes() == original_raw
+        assert not any(path.name.endswith(".tmp") for path in storage.root.iterdir())

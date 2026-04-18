@@ -17,6 +17,8 @@ import typer
 from manicure.lock import WorkspaceLock, WorkspaceLocked
 from manicure.manifest import Manifest, read, read_all
 
+from .net import loopback_http_url
+
 __all__ = ["_list_instances", "_print_contention_error"]
 
 
@@ -54,11 +56,11 @@ def _print_contention_error(exc: WorkspaceLocked, working_dir: Path) -> None:
         typer.echo("", err=True)
         typer.echo(f"  pid       {existing.pid}", err=True)
         typer.echo(
-            f"  proxy     http://localhost:{existing.proxy_port}",
+            f"  proxy     {loopback_http_url(existing.proxy_port)}",
             err=True,
         )
         typer.echo(
-            f"  web       http://localhost:{existing.web_port}",
+            f"  web       {loopback_http_url(existing.web_port)}",
             err=True,
         )
         typer.echo(f"  started   {existing.started_at}", err=True)

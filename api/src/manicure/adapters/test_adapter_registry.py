@@ -31,6 +31,15 @@ class TestGetAdapter:
         adapter = get_adapter(flow)
         assert adapter.name == "anthropic"
 
+    def test_returns_adapter_for_codex_websocket_flow(self) -> None:
+        """Codex adapter matches the ChatGPT websocket transport."""
+        flow = MagicMock()
+        flow.request.path = "/backend-api/codex/responses?client=cli"
+        flow.request.host = "chatgpt.com"
+
+        adapter = get_adapter(flow)
+        assert adapter.name == "codex"
+
     def test_exception_has_detail_attribute(self) -> None:
         """UnsupportedProviderError carries a detail message."""
         flow = MagicMock()

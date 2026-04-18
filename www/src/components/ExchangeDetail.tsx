@@ -1,9 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
 import { useDeferredValue, useEffect, useState } from "react";
 import { fetchExchange } from "../api";
-import { displayModel } from "../lib/formatting";
+import { useMeta } from "../hooks/useMeta";
+import { displayCwd, displayModel } from "../lib/formatting";
 import { useUIStore } from "../stores/uiStore";
-import type { ExchangeDetail as ExchangeDetailPayload } from "../types";
+import type { ExchangeDetail as ExchangeDetailPayload, TransportDiagnostic } from "../types";
 import { InspectTab } from "./detail/InspectTab";
 import { JsonView } from "./detail/JsonView";
 
@@ -11,7 +12,7 @@ interface ExchangeDetailProps {
   id: string;
 }
 
-type DetailTab = "inspect" | "request" | "response";
+type DetailTab = "inspect" | "request" | "response" | "transport";
 
 /**
  * Per-tab readout. Turns the INSPECT|REQUEST|RESPONSE bar from a label row
@@ -24,7 +25,7 @@ type DetailTab = "inspect" | "request" | "response";
  * absent instead of fake-empty.
  */
 function tabReadout(t: DetailTab, detail: ExchangeDetailPayload): string | null {
-  const { entry, response_ir } = detail;
+  const { entry, response_ir, transport } = detail;
 
   if (t === "inspect") {
     const n = entry.req?.messages_count ?? 0;
@@ -44,6 +45,12 @@ function tabReadout(t: DetailTab, detail: ExchangeDetailPayload): string | null 
     return chars > 0 ? `${chars.toLocaleString()} chars` : null;
   }
 
+  if (t === "transport") {
+    const frames = transport?.messages.length ?? 0;
+    if (frames === 0) return null;
+    return `${frames.toLocaleString()} ${frames === 1 ? "frame" : "frames"}`;
+  }
+
   // response — em dash when there's no payload, so the dimmed tab reads
   // as "no channel here" instead of ambiguously empty.
   if (!response_ir || !entry.res) return "\u2014";
@@ -51,9 +58,53 @@ function tabReadout(t: DetailTab, detail: ExchangeDetailPayload): string | null 
   return out > 0 ? `${out.toLocaleString()} tokens` : "\u2014";
 }
 
+function TransportDiagnostics({ diagnostics }: { diagnostics: TransportDiagnostic[] }) {
+  if (diagnostics.length === 0) {
+    return null;
+  }
+
+  const toneClass = (severity: TransportDiagnostic["severity"]): string => {
+    if (severity === "error") return "border-rose/30 bg-rose/8 text-rose";
+    if (severity === "warning") return "border-amber/30 bg-amber/8 text-amber";
+    return "border-sky/30 bg-sky/8 text-sky";
+  };
+
+  return (
+    <section className="px-8 py-6">
+      <div className="space-y-3">
+        {diagnostics.map((diagnostic) => (
+          <div
+            key={diagnostic.code}
+            className={`rounded-md border px-4 py-3 ${toneClass(diagnostic.severity)}`}
+          >
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] uppercase tracking-[0.14em]">{diagnostic.severity}</span>
+              <span className="text-[11px] text-txt-3">{diagnostic.code}</span>
+            </div>
+            <p className="mt-2 text-[13px] font-medium text-txt">{diagnostic.summary}</p>
+            {diagnostic.detail && (
+              <p className="mt-1 text-[12px] text-txt-2">{diagnostic.detail}</p>
+            )}
+            {diagnostic.operator_checks.length > 0 && (
+              <div className="mt-3 space-y-1">
+                {diagnostic.operator_checks.map((check) => (
+                  <p key={check} className="text-[12px] text-txt-2">
+                    {check}
+                  </p>
+                ))}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 export function ExchangeDetail({ id }: ExchangeDetailProps) {
   const [tab, setTab] = useState<DetailTab>("inspect");
   const deferredTab = useDeferredValue(tab);
+  const { meta } = useMeta();
 
   const {
     data: detail,
@@ -128,16 +179,27 @@ export function ExchangeDetail({ id }: ExchangeDetailProps) {
             </h2>
           </div>
 
-          {/* Captured — archival hero readout. Date leads in txt
-              weight, a whisper-thin middle dot separates, time trails
-              in muted txt-2. JetBrains tabular figures keep the glyphs
-              on-grid so it reads as instrument typography. */}
+          {/* Workspace cwd — sibling cell to provider/model, same rhythm
+              and typography. Full absolute path rides the title attribute
+              for disambiguation without widening the rail. */}
+          {meta?.cwd && (
+            <div className="flex min-w-0 max-w-[22rem] flex-col justify-center gap-1 px-6 py-2 border-r border-edge">
+              <h2
+                className="metric-num text-[13px] leading-none text-txt truncate label"
+                title={meta.cwd}
+              >
+                {displayCwd(meta.cwd)}
+              </h2>
+            </div>
+          )}
+
+          {/* Captured — archival readout. Matches the provider/model and
+              cwd cell rhythm so the three metadata slots read as one row
+              of instrument labels. */}
           <div className="flex shrink-0 flex-col justify-center gap-1 px-6 py-2">
-            <span className="metric-num text-[13px] leading-none tabular-nums whitespace-nowrap">
-              <span className="text-txt">{dateStr}</span>
-              <span className="mx-2 text-txt-3">&middot;</span>
-              <span className="text-txt-2">{timeStr}</span>
-            </span>
+            <h2 className="metric-num text-[13px] leading-none text-txt truncate label tabular-nums whitespace-nowrap">
+              {dateStr} &middot; {timeStr}
+            </h2>
           </div>
         </div>
       </div>
@@ -153,8 +215,10 @@ export function ExchangeDetail({ id }: ExchangeDetailProps) {
           The EDITED marker rides the right filler: it's metadata, not an
           alert, so it belongs alongside navigation. */}
       <div className="flex border-y border-edge">
-        {(["inspect", "request", "response"] as const).map((t) => {
-          const disabled = t === "response" && detail.response_ir == null;
+        {(["inspect", "request", "response", "transport"] as const).map((t) => {
+          const disabled =
+            (t === "response" && detail.response_ir == null) ||
+            (t === "transport" && detail.transport == null);
           const active = tab === t;
           const readout = tabReadout(t, detail);
           return (
@@ -211,6 +275,14 @@ export function ExchangeDetail({ id }: ExchangeDetailProps) {
           <InspectTab detail={detail} />
         ) : deferredTab === "request" ? (
           <JsonView payload={detail.request_curated_ir ?? detail.request_ir} />
+        ) : deferredTab === "transport" ? (
+          <div className="flex h-full flex-col">
+            <TransportDiagnostics diagnostics={detail.transport_diagnostics} />
+            {detail.transport_diagnostics.length > 0 && <div className="hairline-x" />}
+            <div className="min-h-0 flex-1">
+              <JsonView payload={detail.transport} emptyLabel="No transport data" />
+            </div>
+          </div>
         ) : (
           <JsonView payload={detail.response_ir} emptyLabel="No response data" />
         )}

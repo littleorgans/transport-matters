@@ -1,0 +1,38 @@
+{
+  "type": "response.create",
+  "model": "gpt-5-codex",
+  "input": [
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "input_text",
+          "text": "Check the tool outputs."
+        }
+      ]
+    },
+    {
+      "type": "function_call",
+      "call_id": "call_read",
+      "name": "read_file",
+      "arguments": "{\"path\":\"README.md\"}"
+    },
+    {
+      "type": "function_call_output",
+      "call_id": "call_read",
+      "output": "README contents"
+    },
+    {
+      "type": "function_call",
+      "call_id": "call_shell",
+      "name": "run_terminal_cmd",
+      "arguments": "{\"cmd\":\"pwd\"}"
+    },
+    {
+      "type": "custom_tool_call_output",
+      "call_id": "call_shell",
+      "output": "workspace/path"
+    }
+  ],
+  "tools": []
+}

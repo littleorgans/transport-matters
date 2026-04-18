@@ -10,9 +10,11 @@ from typing import Any  # Any: mitmproxy flow object, untyped
 
 from manicure.adapters.anthropic import AnthropicAdapter
 from manicure.adapters.base import ProviderAdapter
+from manicure.codex import CodexAdapter
 from manicure.exceptions import UnsupportedProviderError
 
 _adapters: list[ProviderAdapter] = [
+    CodexAdapter(),
     AnthropicAdapter(),
 ]
 
@@ -30,4 +32,17 @@ def get_adapter(flow: Any) -> ProviderAdapter:  # Any: mitmproxy flow object
     )
 
 
-__all__ = ["ProviderAdapter", "UnsupportedProviderError", "get_adapter"]
+def get_adapter_for_provider(provider: str) -> ProviderAdapter:
+    """Return the adapter registered for an IR provider name."""
+    for adapter in _adapters:
+        if adapter.name == provider:
+            return adapter
+    raise UnsupportedProviderError(detail=f"No adapter registered for {provider}")
+
+
+__all__ = [
+    "ProviderAdapter",
+    "UnsupportedProviderError",
+    "get_adapter",
+    "get_adapter_for_provider",
+]

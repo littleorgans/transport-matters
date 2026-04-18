@@ -76,7 +76,7 @@ async def count_before_after(
 ) -> tuple[int | None, int | None]:
     """Count two versions of a request, collapsing to one call when possible.
 
-    Both the live addon stamp (``addon._stamp_pipeline_tokens``) and the
+    Both the live addon stamp (``addon.stamp_pipeline_tokens``) and the
     lazy recount endpoint (``api.v1.exchanges.get_pipeline_tokens``)
     face the same decision: if the pipeline produced no structural
     change, the before and after payloads are byte-identical and a
