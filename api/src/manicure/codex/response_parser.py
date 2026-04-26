@@ -5,6 +5,16 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from manicure.codex.protocol import (
+    CODEX_MESSAGE_ITEM_TYPE,
+    CODEX_OUTPUT_ITEM_DONE_EVENT_TYPE,
+    CODEX_OUTPUT_TEXT_DELTA_EVENT_TYPE,
+    CODEX_OUTPUT_TEXT_DONE_EVENT_TYPE,
+    CODEX_REASONING_ITEM_TYPE,
+    CODEX_TERMINAL_EVENT_TYPES,
+    CODEX_TOOL_CALL_ITEM_TYPES,
+    codex_response_status_reason,
+)
 from manicure.ir import (
     ContentBlock,
     InternalResponse,
@@ -30,22 +40,22 @@ def parse_codex_response_payloads(
 
     for payload in payloads:
         event_type = payload.get("type")
-        if event_type in {"response.completed", "response.failed"}:
+        if event_type in CODEX_TERMINAL_EVENT_TYPES:
             response = payload.get("response")
             if isinstance(response, dict):
                 response_payload = response
             continue
-        if event_type == "response.output_item.done":
+        if event_type == CODEX_OUTPUT_ITEM_DONE_EVENT_TYPE:
             item = payload.get("item")
             if isinstance(item, dict):
                 output_items.append(item)
             continue
-        if event_type == "response.output_text.done":
+        if event_type == CODEX_OUTPUT_TEXT_DONE_EVENT_TYPE:
             text = payload.get("text")
             if isinstance(text, str) and text:
                 done_texts.append(text)
             continue
-        if event_type == "response.output_text.delta":
+        if event_type == CODEX_OUTPUT_TEXT_DELTA_EVENT_TYPE:
             delta = payload.get("delta")
             if isinstance(delta, str) and delta:
                 deltas.append(delta)
@@ -112,15 +122,7 @@ def _response_model(
 def _response_stop_reason(response_payload: dict[str, Any] | None) -> str | None:
     if response_payload is None:
         return None
-    status = response_payload.get("status")
-    if isinstance(status, str) and status:
-        return status
-    incomplete = response_payload.get("incomplete_details")
-    if isinstance(incomplete, dict):
-        reason = incomplete.get("reason")
-        if isinstance(reason, str) and reason:
-            return reason
-    return None
+    return codex_response_status_reason(response_payload)
 
 
 def _parse_usage(raw_usage: object) -> UsageStats:
@@ -151,13 +153,13 @@ def _parse_output_items(
         if meta:
             output_item_meta.append(meta)
 
-        if item_type == "message":
+        if item_type == CODEX_MESSAGE_ITEM_TYPE:
             content.extend(_message_blocks(item))
             continue
-        if item_type == "reasoning":
+        if item_type == CODEX_REASONING_ITEM_TYPE:
             content.append(_reasoning_block(item))
             continue
-        if item_type in {"function_call", "custom_tool_call"}:
+        if item_type in CODEX_TOOL_CALL_ITEM_TYPES:
             tool_block = _tool_use_block(item)
             content.append(
                 tool_block if tool_block is not None else UnknownBlock(raw=item)
@@ -222,6 +224,8 @@ def _reasoning_block(item: dict[str, Any]) -> ThinkingBlock:
 def _tool_use_block(item: dict[str, Any]) -> ToolUseBlock | None:
     call_id = item.get("call_id") or item.get("id")
     name = item.get("name")
+    if item.get("type") == "tool_search_call" and name is None:
+        name = "tool_search"
     if not isinstance(call_id, str) or not call_id:
         return None
     if not isinstance(name, str) or not name:

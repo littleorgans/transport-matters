@@ -129,7 +129,7 @@ describe("App", () => {
     await waitFor(() => {
       expect(screen.getByText("claude-sonnet-4-20250514")).toBeInTheDocument();
     });
-    expect(screen.getByText("prior run")).toBeInTheDocument();
+    expect(screen.getByText("prior")).toBeInTheDocument();
   });
 
   it("keeps a persisted prior-run selection latent until history is re-enabled", async () => {

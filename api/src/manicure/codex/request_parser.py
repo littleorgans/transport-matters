@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from manicure.codex.protocol import CODEX_TOOL_OUTPUT_ITEM_TYPES
 from manicure.ir import (
     ContentBlock,
     ImageBlock,
@@ -36,6 +37,10 @@ MAPPED_REQUEST_KEYS = frozenset(
         "stop",
         "stop_sequences",
     }
+)
+STANDARD_FUNCTION_CALL_OUTPUT_KEYS = frozenset({"type", "call_id", "output"})
+STANDARD_TOOL_SEARCH_OUTPUT_KEYS = frozenset(
+    {"type", "call_id", "status", "execution", "tools"}
 )
 
 
@@ -122,13 +127,9 @@ def _parse_input(
             if set(item) - {"type", "call_id", "name", "arguments"}:
                 preserved_raw.append({"index": index, "raw": item})
             continue
-        if item_type in {"function_call_output", "custom_tool_call_output"}:
+        if item_type in CODEX_TOOL_OUTPUT_ITEM_TYPES:
             messages.append(_parse_function_call_output(item))
-            if item_type == "custom_tool_call_output" or set(item) - {
-                "type",
-                "call_id",
-                "output",
-            }:
+            if _should_preserve_tool_output_raw(item):
                 preserved_raw.append({"index": index, "raw": item})
             continue
         if item_type == "reasoning":
@@ -139,6 +140,15 @@ def _parse_input(
         preserved_raw.append({"index": index, "raw": item})
 
     return system, messages, preserved_raw
+
+
+def _should_preserve_tool_output_raw(item: dict[str, Any]) -> bool:
+    item_type = item.get("type")
+    if item_type == "function_call_output":
+        return bool(set(item) - STANDARD_FUNCTION_CALL_OUTPUT_KEYS)
+    if item_type == "tool_search_output":
+        return bool(set(item) - STANDARD_TOOL_SEARCH_OUTPUT_KEYS)
+    return True
 
 
 def _parse_message_item(
@@ -274,8 +284,19 @@ def _parse_function_call(item: dict[str, Any]) -> Message:
 def _parse_function_call_output(item: dict[str, Any]) -> Message:
     item_type = item.get("type")
     provider_data = {"type": item_type} if isinstance(item_type, str) else None
-    output = item.get("output")
-    if isinstance(output, list):
+    if item_type == "tool_search_output":
+        provider_data = dict(provider_data or {})
+        for key in ("status", "execution", "tools"):
+            if key in item:
+                provider_data[key] = item[key]
+
+    output = (
+        item.get("tools") if item_type == "tool_search_output" else item.get("output")
+    )
+    tool_content: list[TextBlock | ImageBlock]
+    if item_type == "tool_search_output":
+        tool_content = [TextBlock(text=json.dumps(output, indent=2, sort_keys=True))]
+    elif isinstance(output, list):
         content, _ = _parse_user_content(output)
         tool_content = [
             block for block in content if isinstance(block, (TextBlock, ImageBlock))

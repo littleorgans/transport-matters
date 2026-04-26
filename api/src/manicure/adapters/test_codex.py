@@ -208,6 +208,104 @@ def test_outbound_request_round_trips_response_create_fixture() -> None:
     )
 
 
+def test_outbound_request_round_trips_client_tool_search_parameters() -> None:
+    schema: dict[str, object] = {
+        "type": "object",
+        "properties": {
+            "limit": {
+                "type": "number",
+                "description": "Maximum number of tools to return.",
+            },
+            "query": {
+                "type": "string",
+                "description": "Search query for deferred tools.",
+            },
+        },
+        "required": ["query"],
+        "additionalProperties": False,
+    }
+    payload: dict[str, object] = {
+        "type": "response.create",
+        "model": "gpt-5.4",
+        "input": [
+            {
+                "role": "user",
+                "content": [{"type": "input_text", "text": "Find GitHub tools."}],
+            }
+        ],
+        "tools": [
+            {
+                "type": "tool_search",
+                "execution": "client",
+                "description": "Search deferred tool metadata.",
+                "parameters": schema,
+            }
+        ],
+    }
+    adapter = CodexAdapter()
+
+    ir = adapter.inbound_request(json.dumps(payload).encode())
+    result = json.loads(adapter.outbound_request(ir).decode())
+
+    assert ir.tools[0].name == "tool_search"
+    assert ir.tools[0].input_schema == schema
+    assert ir.tools[0].provider_data == {
+        "type": "tool_search",
+        "execution": "client",
+    }
+    tool = cast("dict[str, object]", cast("list[object]", result["tools"])[0])
+    assert tool["parameters"] == schema
+    assert "input_schema" not in tool
+    assert result == payload
+
+
+def test_outbound_request_round_trips_tool_search_output() -> None:
+    payload: dict[str, object] = {
+        "type": "response.create",
+        "model": "gpt-5.5",
+        "input": [
+            {
+                "type": "tool_search_output",
+                "call_id": "call_search",
+                "status": "completed",
+                "execution": "client",
+                "tools": [
+                    {
+                        "type": "namespace",
+                        "name": "mcp__fmm__",
+                        "description": "Tools in the mcp__fmm__ namespace.",
+                        "tools": [
+                            {
+                                "type": "function",
+                                "name": "fmm_list_files",
+                                "description": "List indexed files.",
+                                "parameters": {"type": "object", "properties": {}},
+                            }
+                        ],
+                    }
+                ],
+            }
+        ],
+        "tools": [],
+    }
+    adapter = CodexAdapter()
+
+    ir = adapter.inbound_request(json.dumps(payload).encode())
+    result = json.loads(adapter.outbound_request(ir).decode())
+
+    assert len(ir.messages) == 1
+    block = cast("ToolResultBlock", ir.messages[0].content[0])
+    assert block.type == "tool_result"
+    assert block.tool_use_id == "call_search"
+    assert len(block.content) == 1
+    assert isinstance(block.content[0], TextBlock)
+    assert "fmm_list_files" in block.content[0].text
+    assert block.provider_data is not None
+    assert block.provider_data["type"] == "tool_search_output"
+    assert "input_item_raw" not in ir.provider_extras
+    assert result == payload
+
+
 def test_outbound_request_round_trips_custom_tool_output_fixture() -> None:
     payload = _tool_output_fixture_payload()
     adapter = CodexAdapter()

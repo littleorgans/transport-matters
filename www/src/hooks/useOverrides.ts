@@ -6,7 +6,7 @@ import {
   toggleOverrides as apiToggle,
   fetchOverrides,
 } from "../api";
-import type { InternalRequest, Override, OverrideAudit } from "../types";
+import type { InternalRequest, Override, OverrideAudit, OverrideScope } from "../types";
 
 export interface UseOverridesResult {
   overrides: Override[];
@@ -18,19 +18,24 @@ export interface UseOverridesResult {
   toggle: () => Promise<ToggleResponse>;
 }
 
-export function useOverrides(): UseOverridesResult {
+function overridesQueryKey(scope?: OverrideScope | null) {
+  return ["overrides", scope?.run_id ?? null, scope?.track_id ?? null] as const;
+}
+
+export function useOverrides(scope?: OverrideScope | null): UseOverridesResult {
   const queryClient = useQueryClient();
-  const invalidate = () => queryClient.invalidateQueries({ queryKey: ["overrides"] });
+  const queryKey = overridesQueryKey(scope);
+  const invalidate = () => queryClient.invalidateQueries({ queryKey });
 
   const { data } = useQuery({
-    queryKey: ["overrides"],
-    queryFn: fetchOverrides,
+    queryKey,
+    queryFn: () => fetchOverrides(scope),
   });
 
   const patchMutation = useMutation({
-    mutationFn: apiPatch,
+    mutationFn: (overrides: Override[]) => apiPatch(overrides, scope),
     onSuccess: (resp) => {
-      queryClient.setQueryData(["overrides"], {
+      queryClient.setQueryData(queryKey, {
         overrides: resp.overrides,
         enabled: resp.enabled,
       });
@@ -38,15 +43,15 @@ export function useOverrides(): UseOverridesResult {
   });
 
   const clearMutation = useMutation({
-    mutationFn: apiClear,
+    mutationFn: () => apiClear(scope),
     onSuccess: invalidate,
   });
 
   const toggleMutation = useMutation({
-    mutationFn: apiToggle,
+    mutationFn: () => apiToggle(scope),
     onSuccess: (resp) => {
       queryClient.setQueryData(
-        ["overrides"],
+        queryKey,
         (prev: { overrides: Override[]; enabled: boolean } | undefined) => ({
           overrides: prev?.overrides ?? [],
           enabled: resp.enabled,

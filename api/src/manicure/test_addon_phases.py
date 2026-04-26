@@ -30,7 +30,7 @@ from manicure.ir import (
     UsageStats,
 )
 from manicure.overrides import OverrideAudit, OverrideAuditEntry
-from manicure.storage.base import PipelineStats
+from manicure.storage.base import CodexTurnListSummary, PipelineStats
 
 
 def _make_ir(
@@ -441,6 +441,47 @@ class TestEmitExchange:
 
         data = json.loads(q.get_nowait())
         assert data["flow_id"] == "mitmproxy-flow-abc123"
+
+    def test_payload_includes_codex_turn_when_provided(self) -> None:
+        import json
+        from datetime import UTC, datetime
+
+        ir = _make_ir().model_copy(
+            update={"provider": "codex", "model": "codex/gpt-5-codex"}
+        )
+        req_stats = build_req_stats(ir)
+        q = broadcast.subscribe()
+
+        emit_exchange(
+            ir,
+            req_stats,
+            None,
+            "exchange-codex-1",
+            datetime(2026, 1, 1, tzinfo=UTC),
+            None,
+            codex_turn=CodexTurnListSummary(
+                turn_index=2,
+                message_range_start=4,
+                message_range_end=7,
+                status="completed",
+                terminal_cause="response_completed",
+                stop_reason="completed",
+                text_chars=321,
+                tool_calls=2,
+            ),
+        )
+
+        data = json.loads(q.get_nowait())
+        assert data["codex_turn"] == {
+            "turn_index": 2,
+            "message_range_start": 4,
+            "message_range_end": 7,
+            "status": "completed",
+            "terminal_cause": "response_completed",
+            "stop_reason": "completed",
+            "text_chars": 321,
+            "tool_calls": 2,
+        }
 
     def test_payload_omits_flow_id_when_none(self) -> None:
         import json

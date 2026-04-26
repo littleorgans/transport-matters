@@ -229,7 +229,7 @@ function ToolGroupSection({
   // Mirror the per-tool disabled treatment (opacity-40 on ToolRow) so a
   // fully-disabled group reads the same at the group level.
   const allDisabled = checkedCount === 0;
-  const overrideLabel = readOnly ? "modified" : "override";
+  const overrideLabel = readOnly ? "modified" : overrideCount === 1 ? "override" : "overrides";
 
   return (
     <div
@@ -254,7 +254,6 @@ function ToolGroupSection({
         {overrideCount > 0 && (
           <span className="chip text-amber">
             {overrideCount} {overrideLabel}
-            {overrideCount !== 1 ? "s" : ""}
           </span>
         )}
         {/* Per-group all/none only make sense when the reader can drive
@@ -317,7 +316,7 @@ export function ToolsSection({
   const totalOverrides = overrides.filter(
     (o) => o.kind === "tool_toggle" || o.kind === "tool_description",
   ).length;
-  const overrideLabel = readOnly ? "modified" : "override";
+  const overrideLabel = readOnly ? "modified" : totalOverrides === 1 ? "override" : "overrides";
 
   const checkAll = () => {
     const batch: Override[] = tools
@@ -352,7 +351,6 @@ export function ToolsSection({
           {totalOverrides > 0 && (
             <span className="chip text-amber ml-2">
               {totalOverrides} {overrideLabel}
-              {totalOverrides !== 1 ? "s" : ""}
             </span>
           )}
         </div>

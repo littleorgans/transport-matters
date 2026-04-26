@@ -8,6 +8,7 @@ from httpx import ASGITransport, AsyncClient
 
 from manicure import config
 from manicure.main import create_app
+from manicure.storage import CodexTurnListSummary
 
 from .test_exchanges_support import make_index_entry
 
@@ -65,6 +66,48 @@ class TestListExchanges:
         data = response.json()
         assert [row["id"] for row in data] == ["ex-old", "ex-new"]
 
+    async def test_list_filters_by_track_id(
+        self, client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from manicure.storage import get_storage
+
+        monkeypatch.setenv("MANICURE_RUN_ID", "run-current")
+        config.get_settings.cache_clear()
+        storage = await get_storage()
+        await storage.append_index(
+            make_index_entry("parent", run_id="run-current").model_copy(
+                update={
+                    "track_id": "run-current",
+                    "track_role": "parent",
+                }
+            )
+        )
+        await storage.append_index(
+            make_index_entry("subagent-a", run_id="run-current").model_copy(
+                update={
+                    "track_id": "agent-a",
+                    "parent_track_id": "run-current",
+                    "track_display_name": "research-a",
+                    "track_role": "subagent",
+                }
+            )
+        )
+        await storage.append_index(
+            make_index_entry("subagent-b", run_id="run-current").model_copy(
+                update={
+                    "track_id": "agent-b",
+                    "parent_track_id": "run-current",
+                    "track_display_name": "research-b",
+                    "track_role": "subagent",
+                }
+            )
+        )
+
+        response = await client.get("/api/exchanges", params={"track_id": "agent-a"})
+
+        assert response.status_code == 200
+        assert [entry["id"] for entry in response.json()] == ["subagent-a"]
+
     async def test_list_mixed_providers_respects_run_scope_and_history(
         self, client: AsyncClient, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -113,6 +156,48 @@ class TestListExchanges:
             ("anth-current", "run-current", "anthropic"),
             ("codex-current", "run-current", "codex"),
         ]
+
+    async def test_list_surfaces_codex_turn_summary_when_present(
+        self, client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from manicure.storage import get_storage
+
+        monkeypatch.setenv("MANICURE_RUN_ID", "run-current")
+        config.get_settings.cache_clear()
+        storage = await get_storage()
+        await storage.append_index(
+            make_index_entry("codex-current", run_id="run-current").model_copy(
+                update={
+                    "provider": "codex",
+                    "model": "codex/gpt-5-codex",
+                    "codex_turn": CodexTurnListSummary(
+                        turn_index=3,
+                        message_range_start=8,
+                        message_range_end=11,
+                        status="completed",
+                        terminal_cause="response_completed",
+                        stop_reason="completed",
+                        text_chars=144,
+                        tool_calls=1,
+                    ),
+                }
+            )
+        )
+
+        response = await client.get("/api/exchanges")
+        assert response.status_code == 200
+        data = response.json()
+        assert data[0]["id"] == "codex-current"
+        assert data[0]["codex_turn"] == {
+            "turn_index": 3,
+            "message_range_start": 8,
+            "message_range_end": 11,
+            "status": "completed",
+            "terminal_cause": "response_completed",
+            "stop_reason": "completed",
+            "text_chars": 144,
+            "tool_calls": 1,
+        }
 
 
 class TestListExchangesStorageFailure:

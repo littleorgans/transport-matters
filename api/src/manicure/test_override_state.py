@@ -71,5 +71,24 @@ class TestOverrideStore:
         store.enabled = True
         assert store.enabled is True
 
+    def test_scopes_are_isolated(self) -> None:
+        store = OverrideStore()
+        root_override = Override(kind="tool_toggle", target="tool:bash", value=False)
+        sub_override = Override(kind="tool_toggle", target="tool:bash", value=True)
+
+        store.upsert(root_override, scope=("run-1", "run-1"))
+        store.upsert(sub_override, scope=("run-1", "agent-1"))
+
+        assert store.get_all(scope=("run-1", "run-1")) == [root_override]
+        assert store.get_all(scope=("run-1", "agent-1")) == [sub_override]
+
+    def test_enabled_is_scoped(self) -> None:
+        store = OverrideStore()
+
+        store.set_enabled(False, scope=("run-1", "agent-1"))
+
+        assert store.is_enabled(scope=("run-1", "agent-1")) is False
+        assert store.is_enabled(scope=("run-1", "agent-2")) is True
+
     def test_module_singleton(self) -> None:
         assert get_store() is get_store()

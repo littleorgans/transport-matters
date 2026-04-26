@@ -45,8 +45,8 @@ export function RouteRail() {
             onClick={() => setActiveRoute(route.id)}
             aria-current={isActive ? "page" : undefined}
             className={[
-              "group relative flex items-center gap-3 px-6 py-3 cursor-pointer",
-              "text-[12px] font-medium uppercase tracking-[0.18em] transition-all duration-150",
+              "group relative flex items-center gap-2.5 px-6 py-3 cursor-pointer",
+              "text-[10px] font-medium uppercase tracking-[0.2em] transition-all duration-150",
               idx > 0 ? "border-l border-edge" : "",
               isActive ? "tab-pressed text-txt" : "tab-rest text-txt-3 hover:text-txt-2",
             ].join(" ")}
@@ -56,7 +56,7 @@ export function RouteRail() {
               <span
                 title="Not available yet"
                 className={[
-                  "hidden md:inline text-[9px] tracking-[0.22em]",
+                  "hidden md:inline text-[8px] tracking-[0.22em]",
                   route.soonClass,
                   isActive ? "" : "opacity-60 group-hover:opacity-100",
                 ].join(" ")}

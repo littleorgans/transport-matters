@@ -24,6 +24,7 @@ from manicure.ir import (  # noqa: TC001 — FastAPI needs runtime access
     SystemPart,
     ToolDef,
 )
+from manicure.override_state import LEGACY_SCOPE_ID, OverrideScope, normalize_scope
 from manicure.overrides import (
     OverrideAudit,  # noqa: TC001 — FastAPI needs runtime access
     apply_overrides,
@@ -34,6 +35,12 @@ from manicure.overrides import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+def _scope_for_paused_flow(pf: bp.PausedFlow) -> OverrideScope:
+    if pf.run_id is None:
+        return normalize_scope((LEGACY_SCOPE_ID, pf.track_id or LEGACY_SCOPE_ID))
+    return normalize_scope((pf.run_id, pf.track_id or pf.run_id))
 
 
 async def _recount_tokens(pf: bp.PausedFlow) -> int | None:
@@ -70,6 +77,11 @@ class PausedFlowDetail(BaseModel):
 
     flow_id: str
     transport: Literal["http", "websocket"]
+    run_id: str | None = None
+    track_id: str | None = None
+    parent_track_id: str | None = None
+    track_display_name: str | None = None
+    track_role: Literal["parent", "subagent"] | None = None
     ir: InternalRequest
     original_tools: list[ToolDef]
     original_system: list[SystemPart]
@@ -128,6 +140,11 @@ async def get_paused_flow(flow_id: str) -> PausedFlowDetail:
     return PausedFlowDetail(
         flow_id=flow_id,
         transport=pf.transport,
+        run_id=pf.run_id,
+        track_id=pf.track_id,
+        parent_track_id=pf.parent_track_id,
+        track_display_name=pf.track_display_name,
+        track_role=pf.track_role,
         ir=pf.curated_ir,
         original_tools=list(pf.original_ir.tools),
         original_system=list(pf.original_ir.system),
@@ -213,12 +230,13 @@ async def re_audit_flow(flow_id: str) -> ReAuditResponse:
 
     store = get_store()
 
-    if not store.enabled:
+    scope = _scope_for_paused_flow(pf)
+    if not store.is_enabled(scope=scope):
         audit = identity_audit(pf.original_ir)
         pf.curated_ir = pf.original_ir
         pf.audit = audit
     else:
-        curated_ir, audit = apply_overrides(store.get_all(), pf.original_ir)
+        curated_ir, audit = apply_overrides(store.get_all(scope=scope), pf.original_ir)
         pf.curated_ir = curated_ir
         pf.audit = audit
 

@@ -41,6 +41,11 @@ const mockPausedFlow: PausedFlow = {
   flow_id: "flow-abc123",
   transport: "http",
   provisional_exchange_id: null,
+  run_id: "run-1",
+  track_id: "agent-1",
+  parent_track_id: "run-1",
+  track_display_name: "backend-engineer",
+  track_role: "subagent",
   ir: mockIr,
   original_tools: mockIr.tools,
   original_system: mockIr.system,
@@ -389,7 +394,7 @@ describe("BreakpointEditor — forwarding timeout", () => {
  * real `fetchOverrides` returns so there's no mock drift.
  */
 function seedOverrides(qc: QueryClient, overrides: Override[]) {
-  qc.setQueryData(["overrides"], { overrides, enabled: true });
+  qc.setQueryData(["overrides", "run-1", "agent-1"], { overrides, enabled: true });
 }
 
 describe("BreakpointEditor — tab restructure", () => {
@@ -417,6 +422,18 @@ describe("BreakpointEditor — tab restructure", () => {
     expect(messagesTab.className).toMatch(/tab-pressed/);
     expect(overlayTab.className).not.toMatch(/tab-pressed/);
     expect(rawTab.className).not.toMatch(/tab-pressed/);
+  });
+
+  it("loads overrides for the paused track scope", async () => {
+    const { wrapper } = makeWrapper();
+    render(<BreakpointEditor pausedFlow={mockPausedFlow} onResolved={vi.fn()} />, { wrapper });
+
+    await waitFor(() =>
+      expect(api.fetchOverrides).toHaveBeenCalledWith({
+        run_id: "run-1",
+        track_id: "agent-1",
+      }),
+    );
   });
 
   it("MESSAGES tab shows Global + Messages sections and hides Sampling", () => {

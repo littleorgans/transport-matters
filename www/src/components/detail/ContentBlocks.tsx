@@ -30,7 +30,7 @@ export function blockSummary(block: ContentBlock, maxPreview = 220): string {
       return trimmed.slice(0, maxPreview) + (trimmed.length > maxPreview ? "\u2026" : "");
     }
     case "tool_use":
-      return `${block.name}  \u00b7  ${block.id.slice(0, 8)}`;
+      return `${block.name}  \u00b7  ${block.id}`;
     case "tool_result":
       return `\u2192 ${block.tool_use_id.slice(0, 8)}${block.is_error ? "  [error]" : ""}`;
     case "thinking":

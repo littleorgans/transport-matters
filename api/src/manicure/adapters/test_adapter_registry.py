@@ -2,15 +2,45 @@
 
 from __future__ import annotations
 
+import os
+import subprocess
+import sys
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
 
-from manicure.adapters import get_adapter
+from manicure.adapters import get_adapter, get_adapter_for_provider
 from manicure.exceptions import UnsupportedProviderError
 
 
+@pytest.mark.parametrize("module_name", ["manicure.storage", "manicure.codex"])
+def test_low_level_packages_import_cleanly_in_fresh_interpreter(
+    module_name: str,
+) -> None:
+    """Regression for package-level cycles masked by pytest import order."""
+    api_root = Path(__file__).resolve().parents[3]
+    env = dict(os.environ)
+    env["PYTHONPATH"] = str(api_root / "src")
+    proc = subprocess.run(  # noqa: S603
+        [sys.executable, "-c", f"import {module_name}"],
+        cwd=api_root,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert proc.returncode == 0, proc.stderr
+
+
 class TestGetAdapter:
+    def test_returns_adapter_for_provider_name(self) -> None:
+        """Provider lookup still resolves the Codex adapter after import cleanup."""
+        adapter = get_adapter_for_provider("codex")
+
+        assert adapter.name == "codex"
+
     def test_raises_unsupported_provider_for_unknown_host(self) -> None:
         """get_adapter raises UnsupportedProviderError when no adapter matches."""
         flow = MagicMock()

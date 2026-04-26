@@ -18,7 +18,7 @@ from manicure.ir import (
     TextBlock,
 )
 from manicure.main import create_app
-from manicure.overrides import get_store
+from manicure.overrides import Override, get_store
 from manicure.storage import init_storage, reset_storage
 
 if TYPE_CHECKING:
@@ -87,6 +87,24 @@ class TestGetOverrides:
         data = response.json()
         assert data["overrides"] == []
         assert data["enabled"] is True
+
+    async def test_get_is_scoped(self, client: AsyncClient) -> None:
+        store = get_store()
+        store.upsert(
+            Override(kind="system_part_toggle", target="system:0", value=False),
+            scope=("run-1", "agent-1"),
+        )
+        store.upsert(
+            Override(kind="system_part_toggle", target="system:0", value=True),
+            scope=("run-1", "agent-2"),
+        )
+
+        response = await client.get("/api/overrides?run_id=run-1&track_id=agent-1")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["overrides"]) == 1
+        assert data["overrides"][0]["value"] is False
 
 
 class TestPatchOverrides:
@@ -171,6 +189,69 @@ class TestPatchOverrides:
         assert response.status_code == 200
         assert response.json()["overrides"] == []
 
+    async def test_upsert_is_scoped(self, client: AsyncClient) -> None:
+        response = await client.patch(
+            "/api/overrides?run_id=run-1&track_id=agent-1",
+            json={
+                "overrides": [
+                    {
+                        "kind": "system_part_toggle",
+                        "target": "system:0",
+                        "value": False,
+                    }
+                ]
+            },
+        )
+
+        assert response.status_code == 200
+        assert len(response.json()["overrides"]) == 1
+        other = await client.get("/api/overrides?run_id=run-1&track_id=agent-2")
+        assert other.json()["overrides"] == []
+
+    async def test_upsert_updates_matching_paused_scope(
+        self, client: AsyncClient
+    ) -> None:
+        event = asyncio.Event()
+        first = bp.PausedFlow(
+            flow=None,  # type: ignore[arg-type]
+            event=event,
+            original_ir=_IR_WITH_SYSTEM,
+            curated_ir=_IR_WITH_SYSTEM,
+            audit=None,
+            paused_at_ms=1_700_000_000_000,
+            run_id="run-1",
+            track_id="agent-1",
+        )
+        second = bp.PausedFlow(
+            flow=None,  # type: ignore[arg-type]
+            event=event,
+            original_ir=_IR_WITH_SYSTEM,
+            curated_ir=_IR_WITH_SYSTEM,
+            audit=None,
+            paused_at_ms=1_700_000_000_001,
+            run_id="run-1",
+            track_id="agent-2",
+        )
+        bp._paused["flow-1"] = first
+        bp._paused["flow-2"] = second
+
+        response = await client.patch(
+            "/api/overrides?run_id=run-1&track_id=agent-2",
+            json={
+                "overrides": [
+                    {
+                        "kind": "system_part_toggle",
+                        "target": "system:0",
+                        "value": False,
+                    }
+                ]
+            },
+        )
+
+        assert response.status_code == 200
+        assert first.curated_ir.system == _IR_WITH_SYSTEM.system
+        assert second.curated_ir.system == []
+
 
 class TestDeleteOverrides:
     async def test_clear(self, client: AsyncClient) -> None:
@@ -186,11 +267,34 @@ class TestDeleteOverrides:
                 ]
             },
         )
+        get_store().upsert(
+            Override(kind="system_part_toggle", target="system:0", value=False),
+            scope=("run-1", "agent-1"),
+        )
+
         response = await client.delete("/api/overrides")
         assert response.status_code == 204
 
         get_resp = await client.get("/api/overrides")
         assert get_resp.json()["overrides"] == []
+        assert get_store().get_all(scope=("run-1", "agent-1")) == []
+
+    async def test_clear_is_scoped(self, client: AsyncClient) -> None:
+        store = get_store()
+        store.upsert(
+            Override(kind="system_part_toggle", target="system:0", value=False),
+            scope=("run-1", "agent-1"),
+        )
+        store.upsert(
+            Override(kind="system_part_toggle", target="system:0", value=False),
+            scope=("run-1", "agent-2"),
+        )
+
+        response = await client.delete("/api/overrides?run_id=run-1&track_id=agent-1")
+
+        assert response.status_code == 204
+        assert get_store().get_all(scope=("run-1", "agent-1")) == []
+        assert len(get_store().get_all(scope=("run-1", "agent-2"))) == 1
 
 
 class TestToggle:
@@ -202,12 +306,20 @@ class TestToggle:
         response = await client.post("/api/overrides/toggle")
         assert response.json()["enabled"] is True
 
+    async def test_toggle_is_scoped(self, client: AsyncClient) -> None:
+        response = await client.post(
+            "/api/overrides/toggle?run_id=run-1&track_id=agent-1"
+        )
+
+        assert response.status_code == 200
+        assert response.json()["enabled"] is False
+        assert get_store().is_enabled(scope=("run-1", "agent-1")) is False
+        assert get_store().is_enabled(scope=("run-1", "agent-2")) is True
+
     async def test_toggle_with_paused_flow(self, client: AsyncClient) -> None:
         # Add an override first
         get_store().upsert(
-            __import__("manicure.overrides", fromlist=["Override"]).Override(
-                kind="system_part_toggle", target="system:0", value=False
-            )
+            Override(kind="system_part_toggle", target="system:0", value=False)
         )
 
         event = asyncio.Event()
@@ -233,9 +345,7 @@ class TestBypassPreview:
     async def test_patch_bypass_returns_identity(self, client: AsyncClient) -> None:
         store = get_store()
         store.upsert(
-            __import__("manicure.overrides", fromlist=["Override"]).Override(
-                kind="system_part_toggle", target="system:0", value=False
-            )
+            Override(kind="system_part_toggle", target="system:0", value=False)
         )
         store.enabled = False
 
@@ -263,9 +373,7 @@ class TestBypassPreview:
     async def test_toggle_off_bypasses_overrides(self, client: AsyncClient) -> None:
         store = get_store()
         store.upsert(
-            __import__("manicure.overrides", fromlist=["Override"]).Override(
-                kind="system_part_toggle", target="system:0", value=False
-            )
+            Override(kind="system_part_toggle", target="system:0", value=False)
         )
 
         event = asyncio.Event()

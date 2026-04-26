@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import json
 from typing import TYPE_CHECKING
 
+from manicure.codex.derivation import CodexReplayRequest, derive_codex_turn_replay
+from manicure.codex.test_derivation_support import make_context, make_message
 from manicure.ir import InternalResponse, Message, TextBlock, UsageStats
 from manicure.storage.base import ExchangeArtifacts
 
@@ -32,6 +35,9 @@ class TestGetExchange:
         assert data["request_ir"]["model"] == "anthropic/claude-sonnet-4-20250514"
         assert data["request_curated_ir"] is None
         assert data["response_ir"] is None
+        assert data["events"] is None
+        assert data["turn"] is None
+        assert data["codex_derived_artifacts"] is None
 
     async def test_get_returns_404_when_index_row_is_missing(
         self, client: AsyncClient
@@ -156,6 +162,209 @@ class TestGetExchange:
         assert response_headers["set-cookie"] == "[redacted]"
         assert data["transport"]["messages"][0]["event_type"] == "response.completed"
         assert data["transport_diagnostics"] == []
+        assert data["events"] is None
+        assert data["turn"] is None
+
+    async def test_get_existing_surfaces_codex_events_and_turn_without_raw_payloads(
+        self, client: AsyncClient
+    ) -> None:
+        from manicure.storage import get_storage
+
+        storage = await get_storage()
+        entry = make_index_entry().model_copy(
+            update={
+                "provider": "codex",
+                "model": "codex/gpt-5-codex",
+            }
+        )
+        ir = make_ir().model_copy(
+            update={
+                "provider": "codex",
+                "model": "codex/gpt-5-codex",
+            }
+        )
+
+        tool_arguments = '{"path":"secrets.txt","token":"raw-secret"}'
+        assistant_text = "hidden assistant output"
+        derived = derive_codex_turn_replay(
+            CodexReplayRequest(
+                context=make_context(
+                    exchange_id="ex-001",
+                    session_id="ws-api",
+                    turn_id="turn-001",
+                    turn_index=1,
+                    model="codex/gpt-5-codex",
+                ),
+                transport_messages=[
+                    make_message(
+                        23,
+                        10,
+                        14,
+                        3,
+                        direction="client",
+                        event_type="response.create",
+                        payload_json={
+                            "type": "response.create",
+                            "model": "gpt-5-codex",
+                        },
+                    ),
+                    make_message(
+                        24,
+                        10,
+                        14,
+                        4,
+                        direction="server",
+                        event_type="response.output_item.added",
+                        payload_json={
+                            "type": "response.output_item.added",
+                            "item": {
+                                "type": "function_call",
+                                "id": "fc_01",
+                                "call_id": "call_secret",
+                                "name": "read_file",
+                                "arguments": "",
+                            },
+                        },
+                    ),
+                    make_message(
+                        25,
+                        10,
+                        14,
+                        5,
+                        direction="server",
+                        event_type="response.function_call_arguments.done",
+                        payload_json={
+                            "type": "response.function_call_arguments.done",
+                            "item_id": "fc_01",
+                            "call_id": "call_secret",
+                            "arguments": tool_arguments,
+                        },
+                    ),
+                    make_message(
+                        26,
+                        10,
+                        14,
+                        6,
+                        direction="server",
+                        event_type="response.output_item.done",
+                        payload_json={
+                            "type": "response.output_item.done",
+                            "item": {
+                                "type": "function_call",
+                                "id": "fc_01",
+                                "call_id": "call_secret",
+                                "name": "read_file",
+                                "arguments": tool_arguments,
+                            },
+                        },
+                    ),
+                    make_message(
+                        27,
+                        10,
+                        14,
+                        7,
+                        direction="server",
+                        event_type="response.output_text.delta",
+                        payload_json={
+                            "type": "response.output_text.delta",
+                            "item_id": "msg_01",
+                            "delta": assistant_text,
+                        },
+                    ),
+                    make_message(
+                        28,
+                        10,
+                        14,
+                        8,
+                        direction="server",
+                        event_type="response.output_item.done",
+                        payload_json={
+                            "type": "response.output_item.done",
+                            "item": {
+                                "id": "msg_01",
+                                "type": "message",
+                                "status": "completed",
+                                "phase": "final_answer",
+                                "role": "assistant",
+                                "content": [
+                                    {
+                                        "type": "output_text",
+                                        "text": assistant_text,
+                                    }
+                                ],
+                            },
+                        },
+                    ),
+                    make_message(
+                        29,
+                        10,
+                        14,
+                        9,
+                        direction="server",
+                        event_type="response.completed",
+                        payload_json={
+                            "type": "response.completed",
+                            "response": {
+                                "id": "resp_01",
+                                "status": "completed",
+                            },
+                        },
+                    ),
+                ],
+            )
+        )
+        assert derived is not None
+
+        artifacts = ExchangeArtifacts(
+            request_raw=b'{"type":"response.create"}',
+            request_ir=ir,
+            events=derived.events,
+            turn=derived.turn,
+        )
+
+        await storage.append_index(entry)
+        await storage.write_exchange("ex-001", artifacts)
+
+        response = await client.get("/api/exchanges/ex-001")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["transport"] is None
+        assert data["transport_diagnostics"] == []
+        assert [event["kind"] for event in data["events"]] == [
+            "turn_started",
+            "tool_call_completed",
+            "assistant_item_completed",
+            "response_completed",
+            "turn_finalized",
+        ]
+        assert data["events"][1]["data"] == {
+            "arguments_chars": len(tool_arguments),
+            "call_id": "call_secret",
+            "item_id": "fc_01",
+            "item_type": "function_call",
+            "tool_name": "read_file",
+        }
+        assert data["events"][2]["data"] == {
+            "item_id": "msg_01",
+            "item_type": "message",
+            "phase": "final_answer",
+            "role": "assistant",
+            "text_chars": len(assistant_text),
+        }
+        assert data["turn"]["status"] == "completed"
+        assert data["turn"]["turn_id"] == "turn-001"
+        assert data["turn"]["terminal_cause"] == "response_completed"
+        assert data["turn"]["derivation_version"] == 1
+        assert data["codex_derived_artifacts"] == {
+            "status": "supported",
+            "diagnostics": [],
+            "repair": None,
+        }
+
+        events_json = json.dumps(data["events"], sort_keys=True)
+        assert tool_arguments not in events_json
+        assert assistant_text not in events_json
+        assert "raw-secret" not in events_json
 
     async def test_get_existing_surfaces_codex_transport_diagnostics(
         self, client: AsyncClient

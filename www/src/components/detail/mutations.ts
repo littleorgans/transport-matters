@@ -1,4 +1,22 @@
-import type { ContentBlock, InternalRequest, Message, OverrideAuditEntry } from "../../types";
+import type {
+  ContentBlock,
+  InternalRequest,
+  Message,
+  Override,
+  OverrideAuditEntry,
+} from "../../types";
+import {
+  DISPLAY_TARGET,
+  EFFORT_TARGET,
+  getBudget,
+  getDisplay,
+  getEffort,
+  getThinkingMode,
+  readThinkingDict,
+  SAMPLING_TARGETS,
+  samplingValuesEqual,
+  THINKING_TARGET,
+} from "../editor/samplingShared";
 
 /**
  * Structured diff between the original request IR and the curated IR the
@@ -55,6 +73,11 @@ export interface MessageBlockMutation {
   kind: "edited" | "disabled";
   /** Present only when ``kind === "edited"``. */
   curatedText?: string;
+}
+
+export interface ToolResultMutation {
+  toolUseId: string;
+  curatedText: string;
 }
 
 // ── Audit-driven detectors (primary path) ────────────────────────
@@ -159,8 +182,60 @@ export function detectMessageMutations(
         curatedText: entry.curated_value,
       });
     }
-    // truncate_tool_result carries curated_value too, but Inspect has
-    // no UI surface for it yet — deferred per the research doc.
+  }
+
+  return mutations;
+}
+
+function toolResultText(block: ContentBlock | undefined): string | null {
+  if (!block || block.type !== "tool_result") return null;
+  return block.content
+    .map((contentBlock) => ("text" in contentBlock ? contentBlock.text : ""))
+    .join("");
+}
+
+function findToolResultText(
+  request: InternalRequest | undefined,
+  toolUseId: string,
+): string | null {
+  if (!request) return null;
+
+  for (const message of request.messages ?? []) {
+    for (const block of message.content) {
+      if (block.type === "tool_result" && block.tool_use_id === toolUseId) {
+        return toolResultText(block);
+      }
+    }
+  }
+
+  return null;
+}
+
+export function detectToolResultMutations(
+  audit: OverrideAuditEntry[] | undefined,
+  original: InternalRequest | undefined,
+  curated: InternalRequest | undefined,
+): ToolResultMutation[] {
+  const mutations: ToolResultMutation[] = [];
+  if (!audit) return mutations;
+
+  for (const entry of audit) {
+    if (!entry.applied || entry.kind !== "truncate_tool_result") {
+      continue;
+    }
+    if (!entry.target.startsWith("toolresult:")) continue;
+
+    const toolUseId = entry.target.slice("toolresult:".length);
+    if (toolUseId.length === 0) continue;
+
+    const originalText = findToolResultText(original, toolUseId);
+    if (originalText === null) continue;
+
+    const curatedText =
+      curated !== undefined ? findToolResultText(curated, toolUseId) : entry.curated_value;
+    if (curatedText === null || originalText === curatedText) continue;
+
+    mutations.push({ toolUseId, curatedText });
   }
 
   return mutations;
@@ -213,6 +288,65 @@ export function detectSystemPartMutationsStructural(
   }
 
   return mutations;
+}
+
+function encodeReadOnlyOverrideValue(value: unknown): string | boolean | number | null {
+  if (typeof value === "number" || typeof value === "boolean") return value;
+  if (value === null) return "null";
+  return JSON.stringify(value);
+}
+
+export function detectSamplingOverridesStructural(
+  original: InternalRequest | undefined,
+  curated: InternalRequest | undefined,
+): Override[] {
+  const overrides: Override[] = [];
+  if (!original || !curated) return overrides;
+
+  for (const field of Object.keys(SAMPLING_TARGETS) as Array<keyof typeof SAMPLING_TARGETS>) {
+    const originalValue = original.sampling[field];
+    const curatedValue = curated.sampling[field];
+    if (!samplingValuesEqual(field, originalValue, curatedValue)) {
+      overrides.push({
+        kind: "sampling_set",
+        target: SAMPLING_TARGETS[field],
+        value: encodeReadOnlyOverrideValue(curatedValue),
+      });
+    }
+  }
+
+  const originalThinkingMode = getThinkingMode(original.provider_extras);
+  const curatedThinkingMode = getThinkingMode(curated.provider_extras);
+  const originalBudget = getBudget(original.provider_extras);
+  const curatedBudget = getBudget(curated.provider_extras);
+  if (
+    originalThinkingMode !== curatedThinkingMode ||
+    (curatedThinkingMode === "enabled" && originalBudget !== curatedBudget)
+  ) {
+    overrides.push({
+      kind: "provider_extras_set",
+      target: THINKING_TARGET,
+      value: encodeReadOnlyOverrideValue(readThinkingDict(curated.provider_extras)),
+    });
+  }
+
+  if (getDisplay(original.provider_extras) !== getDisplay(curated.provider_extras)) {
+    overrides.push({
+      kind: "provider_extras_set",
+      target: DISPLAY_TARGET,
+      value: encodeReadOnlyOverrideValue(getDisplay(curated.provider_extras)),
+    });
+  }
+
+  if (getEffort(original.provider_extras) !== getEffort(curated.provider_extras)) {
+    overrides.push({
+      kind: "provider_extras_set",
+      target: EFFORT_TARGET,
+      value: encodeReadOnlyOverrideValue(getEffort(curated.provider_extras)),
+    });
+  }
+
+  return overrides;
 }
 
 export function detectToolMutationsStructural(

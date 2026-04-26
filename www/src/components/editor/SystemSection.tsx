@@ -128,7 +128,7 @@ export function SystemSection({
   // after hooks to respect React's rules-of-hooks ordering.
   if (parts.length === 0) return null;
 
-  const overrideLabel = readOnly ? "modified" : "override";
+  const overrideLabel = readOnly ? "modified" : overrideCount === 1 ? "override" : "overrides";
 
   return (
     <section className="space-y-4">
@@ -144,7 +144,6 @@ export function SystemSection({
                 <span className="h-1 w-1 rounded-full bg-amber" />
                 <span className="label text-amber">
                   {overrideCount} {overrideLabel}
-                  {overrideCount !== 1 ? "s" : ""}
                 </span>
               </>
             ) : undefined

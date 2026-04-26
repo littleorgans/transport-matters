@@ -25,6 +25,11 @@ function blockTarget(msgIdx: number, blkIdx: number): string {
   return `msg:${msgIdx}:blk:${blkIdx}`;
 }
 
+function toolResultTarget(message: Message, blkIdx: number): string | null {
+  const block = message.content[blkIdx];
+  return block?.type === "tool_result" ? `toolresult:${block.tool_use_id}` : null;
+}
+
 /**
  * Walk every message and emit a target -> pairTarget map for tool_use
  * and tool_result block pairs (matched on `id` / `tool_use_id`). Any
@@ -108,9 +113,12 @@ function MessageCard({
 
   const modifiedCount = message.content.filter((_block, blkIdx) => {
     const target = blockTarget(msgIdx, blkIdx);
+    const truncateTarget = toolResultTarget(message, blkIdx);
     return (
       overrideValue<string>(overrides, "message_text", target) !== undefined ||
-      overrideValue<boolean>(overrides, "message_block_toggle", target) === false
+      overrideValue<boolean>(overrides, "message_block_toggle", target) === false ||
+      (truncateTarget !== null &&
+        overrideValue<string>(overrides, "truncate_tool_result", truncateTarget) !== undefined)
     );
   }).length;
 
@@ -177,7 +185,10 @@ export function MessagesSection({
   readOnly,
 }: MessagesSectionProps) {
   const messageOverrideCount = overrides.filter(
-    (o) => o.kind === "message_text" || o.kind === "message_block_toggle",
+    (o) =>
+      o.kind === "message_text" ||
+      o.kind === "message_block_toggle" ||
+      o.kind === "truncate_tool_result",
   ).length;
 
   // Pair-tandem wrapping is an edit-mode invariant: keep tool_use /
@@ -198,7 +209,11 @@ export function MessagesSection({
     key: `${msg.role}-${idx}`,
   }));
 
-  const overrideLabel = readOnly ? "modified" : "override";
+  const overrideLabel = readOnly
+    ? "modified"
+    : messageOverrideCount === 1
+      ? "override"
+      : "overrides";
 
   return (
     <section className="space-y-4">
@@ -207,7 +222,6 @@ export function MessagesSection({
         {messageOverrideCount > 0 && (
           <span className="chip text-amber ml-2">
             {messageOverrideCount} {overrideLabel}
-            {messageOverrideCount !== 1 ? "s" : ""}
           </span>
         )}
       </div>

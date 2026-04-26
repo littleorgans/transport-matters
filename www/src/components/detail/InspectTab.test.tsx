@@ -1,0 +1,264 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { render, screen } from "@testing-library/react";
+import { beforeEach, describe, expect, it } from "vitest";
+import { useUIStore } from "../../stores/uiStore";
+import type { ExchangeDetail, InternalRequest, OverrideAudit } from "../../types";
+import { InspectTab } from "./InspectTab";
+
+function makeRequest(overrides: Partial<InternalRequest> = {}): InternalRequest {
+  return {
+    model: "gpt-5-codex",
+    provider: "codex",
+    system: [],
+    tools: [],
+    messages: [],
+    sampling: {
+      max_tokens: 1024,
+      temperature: null,
+      top_p: null,
+      top_k: null,
+      stop_sequences: [],
+    },
+    metadata: {
+      session_id: "sess-1",
+      device_id: null,
+      account_id: null,
+      provider_metadata: {},
+    },
+    stream: false,
+    provider_extras: {},
+    ...overrides,
+  };
+}
+
+function makeAudit(entries: OverrideAudit["entries"]): OverrideAudit {
+  return {
+    entries,
+    chars_before: 0,
+    chars_after: 0,
+    system_chars_before: 0,
+    system_chars_after: 0,
+    tools_chars_before: 0,
+    tools_chars_after: 0,
+    messages_chars_before: 0,
+    messages_chars_after: 0,
+  };
+}
+
+function makeDetail({
+  request,
+  curated,
+  audit = null,
+}: {
+  request: InternalRequest;
+  curated?: InternalRequest | null;
+  audit?: OverrideAudit | null;
+}): ExchangeDetail {
+  return {
+    entry: {
+      id: "exchange-1",
+      ts: new Date("2026-01-01T12:00:00Z").toISOString(),
+      provider: "codex",
+      model: "codex/gpt-5-codex",
+      path: "exchanges/test/",
+      req: {
+        system_parts: request.system.length,
+        system_chars: 0,
+        tools_count: request.tools.length,
+        tools_chars: 0,
+        messages_count: request.messages.length,
+        messages_chars: 0,
+        total_chars: 0,
+      },
+      pipeline: null,
+      res: null,
+      mutated_manually: false,
+    },
+    request_ir: request as unknown as Record<string, unknown>,
+    request_curated_ir: curated ? (curated as unknown as Record<string, unknown>) : null,
+    request_audit: audit,
+    response_ir: null,
+    transport: null,
+    events: null,
+    turn: null,
+    transport_diagnostics: [],
+    codex_derived_artifacts: null,
+  };
+}
+
+function renderTab(detail: ExchangeDetail) {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <InspectTab detail={detail} />
+    </QueryClientProvider>,
+  );
+}
+
+describe("InspectTab", () => {
+  beforeEach(() => {
+    useUIStore.setState({ autoExpandBlocks: true });
+  });
+
+  it("does not render sampling controls in the inspect panel", () => {
+    const detail = makeDetail({
+      request: makeRequest(),
+      curated: makeRequest({
+        sampling: {
+          max_tokens: 2048,
+          temperature: 0.3,
+          top_p: null,
+          top_k: null,
+          stop_sequences: ["END"],
+        },
+      }),
+    });
+
+    renderTab(detail);
+
+    expect(screen.queryByLabelText("Max tokens")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Temperature")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Stop sequences")).not.toBeInTheDocument();
+  });
+
+  it("does not render provider extras controls in the inspect panel", () => {
+    const detail = makeDetail({
+      request: makeRequest({
+        provider_extras: {
+          thinking: { type: "adaptive", display: "summarized" },
+          output_config: { effort: "medium" },
+        },
+      }),
+      curated: makeRequest({
+        provider_extras: {
+          thinking: { type: "enabled", budget_tokens: 8192, display: "omitted" },
+          output_config: { effort: "high" },
+        },
+      }),
+    });
+
+    renderTab(detail);
+
+    expect(screen.queryByLabelText("Budget")).not.toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "enabled" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "omitted" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "high" })).not.toBeInTheDocument();
+  });
+
+  it("renders truncate_tool_result with the curated truncated text instead of the original", () => {
+    const originalText = "A".repeat(220);
+    const truncatedText = `${"A".repeat(80)} [truncated]`;
+    const detail = makeDetail({
+      request: makeRequest({
+        messages: [
+          {
+            role: "assistant",
+            content: [{ type: "tool_use", id: "tu-1", name: "bash", input: { cmd: "ls" } }],
+          },
+          {
+            role: "user",
+            content: [
+              {
+                type: "tool_result",
+                tool_use_id: "tu-1",
+                content: [{ type: "text", text: originalText }],
+                is_error: false,
+              },
+            ],
+          },
+        ],
+      }),
+      curated: makeRequest({
+        messages: [
+          {
+            role: "assistant",
+            content: [{ type: "tool_use", id: "tu-1", name: "bash", input: { cmd: "ls" } }],
+          },
+          {
+            role: "user",
+            content: [
+              {
+                type: "tool_result",
+                tool_use_id: "tu-1",
+                content: [{ type: "text", text: truncatedText }],
+                is_error: false,
+              },
+            ],
+          },
+        ],
+      }),
+      audit: makeAudit([
+        {
+          kind: "truncate_tool_result",
+          target: "toolresult:tu-1",
+          applied: true,
+          chars_delta: truncatedText.length - originalText.length,
+          curated_value: truncatedText,
+        },
+      ]),
+    });
+
+    renderTab(detail);
+
+    expect(screen.getByText("truncated")).toBeInTheDocument();
+    expect(screen.getByText(truncatedText)).toBeInTheDocument();
+    expect(screen.queryByText(originalText)).not.toBeInTheDocument();
+  });
+
+  it("does not render truncate_tool_result when the final curated request removed that tool result", () => {
+    const originalText = "A".repeat(220);
+    const truncatedText = `${"A".repeat(80)} [truncated]`;
+    const detail = makeDetail({
+      request: makeRequest({
+        messages: [
+          {
+            role: "assistant",
+            content: [{ type: "tool_use", id: "tu-1", name: "bash", input: { cmd: "ls" } }],
+          },
+          {
+            role: "user",
+            content: [
+              {
+                type: "tool_result",
+                tool_use_id: "tu-1",
+                content: [{ type: "text", text: originalText }],
+                is_error: false,
+              },
+            ],
+          },
+        ],
+      }),
+      curated: makeRequest({
+        messages: [
+          {
+            role: "assistant",
+            content: [{ type: "tool_use", id: "tu-1", name: "bash", input: { cmd: "ls" } }],
+          },
+        ],
+      }),
+      audit: makeAudit([
+        {
+          kind: "truncate_tool_result",
+          target: "toolresult:tu-1",
+          applied: true,
+          chars_delta: truncatedText.length - originalText.length,
+          curated_value: truncatedText,
+        },
+        {
+          kind: "message_block_toggle",
+          target: "msg:1:blk:0",
+          applied: true,
+          chars_delta: -originalText.length,
+          curated_value: null,
+        },
+      ]),
+    });
+
+    renderTab(detail);
+
+    expect(screen.queryByText(truncatedText)).not.toBeInTheDocument();
+    expect(screen.getByText(originalText)).toBeInTheDocument();
+  });
+});

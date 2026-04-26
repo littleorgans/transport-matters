@@ -127,6 +127,7 @@ class ProcessSupervisor:
         # pass it straight back in `restore_signal_handlers`.
         self._prev_sigint: Any = signal.SIG_DFL  # opaque previous handler
         self._prev_sigterm: Any = signal.SIG_DFL  # opaque previous handler
+        self._prev_sighup: Any = signal.SIG_DFL  # opaque previous handler
 
     # ------------------------------------------------------------- #
     # Introspection                                                 #
@@ -421,17 +422,22 @@ class ProcessSupervisor:
     # ------------------------------------------------------------- #
 
     def install_signal_handlers(self) -> None:
-        """Route SIGINT/SIGTERM to `received_signal` without raising.
+        """Route SIGINT/SIGTERM/SIGHUP to `received_signal` without raising.
 
         Callers must drive shutdown themselves by checking
         `received_signal` in their wait loop. This keeps the control
         flow explicit and avoids the racy `KeyboardInterrupt` path
         where a second Ctrl+C can arrive mid-cleanup.
+
+        SIGHUP is trapped so that closing the controlling terminal
+        (tmux pane close, ssh disconnect) tears down children instead
+        of orphaning them holding bound ports.
         """
         if self._signal_installed:
             return
         self._prev_sigint = signal.signal(signal.SIGINT, self._on_signal)
         self._prev_sigterm = signal.signal(signal.SIGTERM, self._on_signal)
+        self._prev_sighup = signal.signal(signal.SIGHUP, self._on_signal)
         self._signal_installed = True
 
     def restore_signal_handlers(self) -> None:
@@ -440,6 +446,7 @@ class ProcessSupervisor:
             return
         signal.signal(signal.SIGINT, self._prev_sigint)
         signal.signal(signal.SIGTERM, self._prev_sigterm)
+        signal.signal(signal.SIGHUP, self._prev_sighup)
         self._signal_installed = False
 
     def _on_signal(self, signum: int, _frame: FrameType | None) -> None:

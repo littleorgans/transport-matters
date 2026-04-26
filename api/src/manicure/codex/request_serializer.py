@@ -13,6 +13,7 @@ from manicure.codex.preserved_raw import (
     materialize_input_items,
     parse_preserved_input_item_raw,
 )
+from manicure.codex.protocol import CODEX_TOOL_OUTPUT_ITEM_TYPES
 from manicure.ir import (
     ContentBlock,
     ImageBlock,
@@ -193,8 +194,22 @@ def _tool_result_to_dict(block: ToolResultBlock) -> dict[str, Any]:
     wire_type = "function_call_output"
     if isinstance(block.provider_data, dict):
         raw_type = block.provider_data.get("type")
-        if raw_type in {"function_call_output", "custom_tool_call_output"}:
+        if raw_type in CODEX_TOOL_OUTPUT_ITEM_TYPES:
             wire_type = str(raw_type)
+    if wire_type == "tool_search_output":
+        provider_data: dict[str, Any] = (
+            block.provider_data if isinstance(block.provider_data, dict) else {}
+        )
+        payload: dict[str, Any] = {
+            "type": wire_type,
+            "call_id": block.tool_use_id,
+            "tools": provider_data.get("tools", []),
+        }
+        for key in ("status", "execution"):
+            value = provider_data.get(key)
+            if isinstance(value, str):
+                payload[key] = value
+        return payload
     if len(block.content) == 1 and isinstance(block.content[0], TextBlock):
         output: object = block.content[0].text
     elif len(block.content) == 0:
@@ -202,14 +217,14 @@ def _tool_result_to_dict(block: ToolResultBlock) -> dict[str, Any]:
     else:
         output = [_message_content_to_dict("user", item) for item in block.content]
 
-    payload: dict[str, Any] = {
+    output_payload: dict[str, Any] = {
         "type": wire_type,
         "call_id": block.tool_use_id,
         "output": output,
     }
     if block.is_error:
-        payload["is_error"] = True
-    return payload
+        output_payload["is_error"] = True
+    return output_payload
 
 
 def _tool_result_kind(block: ToolResultBlock) -> str:
@@ -237,10 +252,10 @@ def _tool_to_dict(tool: ToolDef) -> dict[str, Any]:
     if tool_type == "function" or tool.description:
         payload["description"] = tool.description
 
-    if tool_type == "function":
+    if tool_type == "function" or (
+        tool_type == "tool_search" and payload.get("execution") == "client"
+    ):
         payload["parameters"] = tool.input_schema
-    elif tool.input_schema not in ({}, {"type": "object", "properties": {}}):
-        payload["input_schema"] = tool.input_schema
 
     return payload
 

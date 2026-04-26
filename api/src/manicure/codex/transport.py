@@ -9,7 +9,9 @@ from __future__ import annotations
 
 import base64
 import json
+import time
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -18,6 +20,14 @@ if TYPE_CHECKING:
 
     from manicure.ir import InternalResponse
 
+from manicure.codex.protocol import (
+    CODEX_NORMAL_CLOSE_CODES,
+    codex_close_stop_reason,
+    codex_payload_event_type,
+    codex_terminal_status,
+    codex_terminal_stop_reason,
+    is_codex_turn_start,
+)
 from manicure.codex.response_parser import parse_codex_response_payloads
 from manicure.storage.base import (
     ResStats,
@@ -32,7 +42,6 @@ from manicure.transport_redaction import redact_transport_artifacts
 CODEX_CHATGPT_HOST = "chatgpt.com"
 CODEX_RESPONSES_PATH = "/backend-api/codex/responses"
 CODEX_TRANSPORT_METADATA_KEY = "manicure_codex_transport"
-_NORMAL_CLOSE_CODES = {1000, 1001}
 
 
 @dataclass(slots=True)
@@ -59,6 +68,8 @@ class CodexTransportState:
     turn_server_messages_before: int = 0
     client_message_count: int = 0
     server_message_count: int = 0
+    current_turn_index: int | None = None
+    next_turn_index: int = 0
 
 
 @dataclass(slots=True)
@@ -73,7 +84,7 @@ class CodexCloseSummary:
 
     @property
     def is_normal(self) -> bool:
-        return self.close_code in _NORMAL_CLOSE_CODES
+        return self.close_code in CODEX_NORMAL_CLOSE_CODES
 
 
 def is_codex_websocket_flow(flow: http.HTTPFlow) -> bool:
@@ -128,11 +139,14 @@ def record_codex_websocket_message(
         return None
 
     message = websocket.messages[-1]
+    if getattr(message, "timestamp", None) is None:
+        message.timestamp = time.time()
     captured_initial = False
 
     if message.from_client:
         state.client_message_count += 1
-        if _message_event_type(message) == "response.create":
+        payload = _payload_json(_payload_text(message))
+        if is_codex_turn_start(payload, from_client=True):
             state.initial_client_frame = bytes(message.content)
             state.initial_client_frame_is_text = message.is_text
             state.initial_client_frame_text = None
@@ -148,9 +162,8 @@ def record_codex_websocket_message(
 
 def is_codex_turn_terminal_message(message: WebSocketMessage) -> bool:
     """Return True when a server frame marks the end of the current turn."""
-    if message.from_client:
-        return False
-    return _message_event_type(message) in {"response.completed", "response.failed"}
+    payload = _payload_json(_payload_text(message))
+    return codex_terminal_status(payload, from_client=message.from_client) is not None
 
 
 def close_codex_transport(flow: http.HTTPFlow) -> CodexCloseSummary | None:
@@ -158,6 +171,8 @@ def close_codex_transport(flow: http.HTTPFlow) -> CodexCloseSummary | None:
     websocket = getattr(flow, "websocket", None)
     if state is None or websocket is None:
         return None
+    if getattr(websocket, "timestamp_end", None) is None:
+        websocket.timestamp_end = time.time()
     client_message_count = state.client_message_count
     server_message_count = state.server_message_count
     if state.turn_start_message_index is not None:
@@ -199,6 +214,7 @@ def build_codex_transport_artifacts(
 
     close = (
         TransportCloseArtifacts(
+            ts=_transport_ts(getattr(websocket, "timestamp_end", None)),
             close_code=summary.close_code,
             close_reason=summary.close_reason,
             closed_by_client=summary.closed_by_client,
@@ -295,6 +311,7 @@ def _message_artifact(message: WebSocketMessage) -> TransportMessageArtifact:
         None if message.is_text else base64.b64encode(bytes(message.content)).decode()
     )
     return TransportMessageArtifact(
+        ts=_transport_ts(getattr(message, "timestamp", None)),
         direction="client" if message.from_client else "server",
         is_text=bool(message.is_text),
         size_bytes=len(bytes(message.content)),
@@ -304,6 +321,12 @@ def _message_artifact(message: WebSocketMessage) -> TransportMessageArtifact:
         payload_json=payload_json,
         payload_base64=payload_base64,
     )
+
+
+def _transport_ts(timestamp: float | None) -> datetime | None:
+    if timestamp is None:
+        return None
+    return datetime.fromtimestamp(timestamp, tz=UTC)
 
 
 def _payload_text(message: WebSocketMessage) -> str | None:
@@ -332,11 +355,7 @@ def _message_event_type(message: WebSocketMessage) -> str | None:
 
 
 def _payload_event_type(payload: dict[str, Any] | list[Any] | None) -> str | None:
-    if isinstance(payload, dict):
-        event_type = payload.get("type")
-        if isinstance(event_type, str):
-            return event_type
-    return None
+    return codex_payload_event_type(payload)
 
 
 def _turn_messages(
@@ -368,35 +387,12 @@ def _codex_stop_reason(
 ) -> str | None:
     payloads = _server_json_messages(messages)
     for payload in reversed(payloads):
-        event_type = payload.get("type")
-        if isinstance(event_type, str) and event_type in {
-            "response.completed",
-            "response.failed",
-        }:
-            reason = _response_status_reason(payload)
-            return reason or event_type.removeprefix("response.")
+        reason = codex_terminal_stop_reason(payload, from_client=False)
+        if reason is not None:
+            return reason
     if summary is None:
         return None
-    if summary.close_code in _NORMAL_CLOSE_CODES:
-        return "ws_closed"
-    if summary.close_code is not None:
-        return f"ws_close_{summary.close_code}"
-    return "ws_closed"
-
-
-def _response_status_reason(payload: dict[str, Any]) -> str | None:
-    response = payload.get("response")
-    if not isinstance(response, dict):
-        return None
-    status = response.get("status")
-    if isinstance(status, str) and status:
-        return status
-    incomplete = response.get("incomplete_details")
-    if isinstance(incomplete, dict):
-        reason = incomplete.get("reason")
-        if isinstance(reason, str) and reason:
-            return reason
-    return None
+    return codex_close_stop_reason(summary.close_code)
 
 
 def _codex_text_chars(messages: list[WebSocketMessage]) -> int:

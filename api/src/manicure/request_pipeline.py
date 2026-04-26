@@ -7,7 +7,9 @@ from typing import TYPE_CHECKING, Any
 
 from manicure.adapters import get_adapter
 from manicure.flow_state import capture_request_flow_state
+from manicure.override_state import root_scope
 from manicure.overrides import OverrideAudit, apply_overrides, get_store
+from manicure.track_manager import TrackAssignment, get_track_manager
 
 if TYPE_CHECKING:
     from mitmproxy import http
@@ -58,18 +60,27 @@ def capture_codex_initial_request_ir(
 async def run_pipeline(
     ir: InternalRequest,
     flow_id: str,
-) -> tuple[InternalRequest, OverrideAudit | None]:
+    run_id: str | None = None,
+) -> tuple[InternalRequest, OverrideAudit | None, TrackAssignment | None]:
     """Apply overrides from the store to the IR. Never raises."""
     store = get_store()
-    if not store.enabled:
-        return ir, None
+    track_assignment = (
+        get_track_manager().classify_request(run_id, ir) if run_id is not None else None
+    )
+    scope = (
+        (run_id, track_assignment.track_id)
+        if run_id is not None and track_assignment is not None
+        else root_scope(run_id)
+    )
+    if not store.is_enabled(scope=scope):
+        return ir, None, track_assignment
 
     try:
-        curated_ir, audit = apply_overrides(store.get_all(), ir)
+        curated_ir, audit = apply_overrides(store.get_all(scope=scope), ir)
     except Exception:
         logger.exception(
             "Override pipeline failed for flow %s, forwarding unmodified", flow_id
         )
-        return ir, None
+        return ir, None, track_assignment
 
-    return curated_ir, audit
+    return curated_ir, audit, track_assignment

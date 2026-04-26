@@ -1,5 +1,8 @@
 import { defineConfig, devices } from "@playwright/test";
 
+const DEV_SERVER_URL = "http://127.0.0.1:4173";
+const DEV_SERVER_COMMAND = "pnpm dev --host 127.0.0.1 --port 4173 --strictPort";
+
 export default defineConfig({
   testDir: "./tests",
   fullyParallel: true,
@@ -8,7 +11,7 @@ export default defineConfig({
   workers: process.env.CI ? 1 : undefined,
   reporter: process.env.CI ? "github" : "html",
   use: {
-    baseURL: "http://localhost:5173",
+    baseURL: DEV_SERVER_URL,
     trace: "on-first-retry",
   },
   // ── Visual regression tolerance ──
@@ -29,8 +32,10 @@ export default defineConfig({
     { name: "visual", testDir: "./tests/visual", use: { ...devices["Desktop Chrome"] } },
   ],
   webServer: {
-    command: "pnpm dev",
-    url: "http://localhost:5173",
+    // Use a repo-specific strict port so Playwright never "reuses" an
+    // unrelated Vite app already listening on the default 5173.
+    command: DEV_SERVER_COMMAND,
+    url: DEV_SERVER_URL,
     reuseExistingServer: !process.env.CI,
   },
 });

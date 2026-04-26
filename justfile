@@ -27,8 +27,8 @@ check:
     cd api && just check
 
 [no-exit-message]
-dev directory=dev_target_dir:
-    MANICURE_CWD="$(cd '{{directory}}' && pwd)" overmind start
+dev client directory=dev_target_dir:
+    ./scripts/local-dev-mode.sh {{client}} {{directory}}
 
 build:
     cd www && just build

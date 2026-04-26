@@ -10,7 +10,7 @@ from typing import Any  # Any: mitmproxy flow object, untyped
 
 from manicure.adapters.anthropic import AnthropicAdapter
 from manicure.adapters.base import ProviderAdapter
-from manicure.codex import CodexAdapter
+from manicure.codex.adapter import CodexAdapter
 from manicure.exceptions import UnsupportedProviderError
 
 _adapters: list[ProviderAdapter] = [

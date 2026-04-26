@@ -67,7 +67,11 @@ def input_item_kind(raw: object) -> str:
     item_type = raw.get("type")
     if item_type == "function_call":
         return "tool_use"
-    if item_type in {"function_call_output", "custom_tool_call_output"}:
+    if item_type in {
+        "function_call_output",
+        "custom_tool_call_output",
+        "tool_search_output",
+    }:
         return f"tool_result:{item_type}"
     if item_type == "reasoning":
         return "reasoning"
@@ -85,6 +89,7 @@ def looks_like_input_item(raw: object) -> bool:
             "function_call",
             "function_call_output",
             "custom_tool_call_output",
+            "tool_search_output",
             "reasoning",
         }
     )
@@ -140,6 +145,9 @@ def _merge_input_item_raw(
     if kind.startswith("tool_result:"):
         merged = dict(raw)
         merged["call_id"] = payload["call_id"]
+        if kind == "tool_result:tool_search_output":
+            merged["tools"] = payload.get("tools", [])
+            return merged
         merged["output"] = payload["output"]
         if payload.get("is_error"):
             merged["is_error"] = True

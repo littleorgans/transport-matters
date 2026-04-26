@@ -16,9 +16,20 @@ from manicure.exchange_stats import (
     build_req_stats,
     stamp_pipeline_tokens,
 )
-from manicure.ir import InternalRequest
-from manicure.storage import IndexEntry, PipelineStats, ReqStats, ResStats
+from manicure.ir import InternalRequest, InternalResponse
+from manicure.storage import (
+    CodexTurnListSummary,
+    IndexEntry,
+    PipelineStats,
+    ReqStats,
+    ResStats,
+)
 from manicure.storage.base import ExchangeArtifacts, StorageBackend
+from manicure.track_manager import (
+    TrackAssignment,
+    assignment_index_fields,
+    get_track_manager,
+)
 
 if TYPE_CHECKING:
     from mitmproxy import http
@@ -75,6 +86,11 @@ def emit_exchange(
     mutated_manually: bool = False,
     pipeline_stats: PipelineStats | None = None,
     flow_id: str | None = None,
+    codex_turn: CodexTurnListSummary | None = None,
+    track_id: str | None = None,
+    parent_track_id: str | None = None,
+    track_display_name: str | None = None,
+    track_role: str | None = None,
 ) -> None:
     """Broadcast the exchange event to SSE subscribers."""
     payload: dict[str, object] = {
@@ -88,9 +104,15 @@ def emit_exchange(
         "res": res_stats.model_dump(mode="json") if res_stats else None,
         "mutated_manually": mutated_manually,
         "pipeline": pipeline_stats.model_dump(mode="json") if pipeline_stats else None,
+        "track_id": track_id or run_id,
+        "parent_track_id": parent_track_id,
+        "track_display_name": track_display_name,
+        "track_role": track_role or "parent",
     }
     if flow_id is not None:
         payload["flow_id"] = flow_id
+    if codex_turn is not None:
+        payload["codex_turn"] = codex_turn.model_dump(mode="json")
     broadcast.emit(payload)
 
 
@@ -99,6 +121,34 @@ def _emit_exchange_deleted(exchange_id: str, flow_id: str | None = None) -> None
     if flow_id is not None:
         payload["flow_id"] = flow_id
     broadcast.emit(payload)
+
+
+def _assign_track(
+    run_id: str | None,
+    ir: InternalRequest,
+    res_ir: InternalResponse | None,
+) -> TrackAssignment | None:
+    if run_id is None:
+        return None
+    return get_track_manager().record_exchange(run_id, ir, res_ir)
+
+
+def _persist_track_assignment(
+    run_id: str | None,
+    request_state: RequestFlowState,
+    res_ir: InternalResponse | None,
+) -> TrackAssignment | None:
+    if run_id is None:
+        return None
+    if request_state.track_assignment is None:
+        return _assign_track(run_id, request_state.request_ir, res_ir)
+    if res_ir is not None:
+        get_track_manager().observe_response(
+            run_id,
+            request_state.track_assignment.track_id,
+            res_ir,
+        )
+    return request_state.track_assignment
 
 
 async def _persist_http_exchange(
@@ -142,9 +192,11 @@ async def _persist_http_exchange(
             )
 
     ts_slug = ts.strftime("%Y%m%dT%H%M%S")
+    run_id = get_settings().run_id
+    track_assignment = _persist_track_assignment(run_id, request_state, res_ir)
     entry = IndexEntry(
         id=exchange_id,
-        run_id=get_settings().run_id,
+        run_id=run_id,
         ts=ts,
         provider=ir.provider,
         model=ir.model,
@@ -153,6 +205,7 @@ async def _persist_http_exchange(
         pipeline=pipeline_stats,
         res=res_stats,
         mutated_manually=request_state.mutated_manually,
+        **assignment_index_fields(track_assignment),
     )
     artifacts = ExchangeArtifacts(
         request_raw=raw_req,
@@ -172,9 +225,15 @@ async def _persist_http_exchange(
         res_stats,
         exchange_id,
         ts,
-        get_settings().run_id,
+        run_id,
         request_state.mutated_manually,
         pipeline_stats,
         flow_id=flow.id,
+        track_id=track_assignment.track_id if track_assignment else None,
+        parent_track_id=track_assignment.parent_track_id if track_assignment else None,
+        track_display_name=(
+            track_assignment.track_display_name if track_assignment else None
+        ),
+        track_role=track_assignment.track_role if track_assignment else None,
     )
     return True

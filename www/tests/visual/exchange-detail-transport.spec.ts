@@ -20,7 +20,10 @@ test.describe("exchange detail transport — codex websocket states", () => {
       .locator("main")
       .getByRole("button", { name: /^transport(?:\s+\d+\s+frames?)?$/i });
     await transportTab.click();
-    await page.getByText("/backend-api/codex/responses?client=cli").waitFor();
+    await page.locator('[data-transport-message-index="0"]').waitFor();
+    await expect(page.locator('[data-transport-message-index="0"]')).toContainText(
+      "response.create",
+    );
 
     await expect(page).toHaveScreenshot("exchange-detail-transport-codex.png", {
       animations: "disabled",

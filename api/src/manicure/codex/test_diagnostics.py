@@ -15,7 +15,7 @@ from manicure.ir import (
 )
 from manicure.storage.base import ExchangeArtifacts, TransportArtifacts
 
-_FIXTURES = Path(__file__).resolve().parents[2] / "tests" / "fixtures"
+_FIXTURES = Path(__file__).resolve().parents[3] / "tests" / "fixtures"
 
 
 def _transport_fixture(name: str) -> TransportArtifacts:

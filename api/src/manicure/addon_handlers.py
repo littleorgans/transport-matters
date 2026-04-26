@@ -13,6 +13,10 @@ from manicure.codex.exchange import (
     _persist_codex_handshake_failure,
     _persist_codex_provisional_exchange,
 )
+from manicure.codex.exchange_derivation import (
+    _clear_codex_breakpoint_lifecycle,
+    _rewrite_codex_provisional_exchange,
+)
 from manicure.codex.transport import (
     close_codex_transport,
     ensure_codex_transport_state,
@@ -74,7 +78,9 @@ async def handle_http_request(
         len(ir.messages),
     )
 
-    curated_ir, audit = await run_pipeline(ir, flow.id)
+    curated_ir, audit, track_assignment = await run_pipeline(
+        ir, flow.id, get_settings().run_id
+    )
     capture_request_flow_state(
         flow,
         adapter=adapter,
@@ -82,6 +88,7 @@ async def handle_http_request(
         raw_request=raw,
         curated_request_ir=curated_ir,
         audit=audit,
+        track_assignment=track_assignment,
     )
 
     if _should_skip_breakpoint(ir.model):
@@ -129,6 +136,17 @@ async def handle_codex_websocket_message(flow: http.HTTPFlow) -> None:
                 flow.id,
             )
         return
+    if (
+        state.provisional_exchange_id is not None
+        and not captured_initial
+        and not message.from_client
+    ):
+        rewritten = await _rewrite_codex_provisional_exchange(flow)
+        if not rewritten:
+            logger.warning(
+                "Failed to rewrite provisional Codex exchange during live server advance for %s",
+                flow.id,
+            )
     if not captured_initial:
         return
     websocket = getattr(flow, "websocket", None)
@@ -146,6 +164,7 @@ async def handle_codex_websocket_message(flow: http.HTTPFlow) -> None:
                 "Failed to finalize prior provisional Codex exchange before rotating turn for %s",
                 flow.id,
             )
+    _clear_codex_breakpoint_lifecycle(flow)
     state.finalized_exchange_id = None
     state.turn_start_message_index = turn_start_index
     state.turn_client_messages_before = max(0, state.client_message_count - 1)
@@ -162,11 +181,14 @@ async def handle_codex_websocket_message(flow: http.HTTPFlow) -> None:
         return
     state.provisional_exchange_id = None
     adapter = request_state.adapter
-    curated_ir, audit = await run_pipeline(ir, flow.id)
+    curated_ir, audit, track_assignment = await run_pipeline(
+        ir, flow.id, get_settings().run_id
+    )
     update_request_flow_state(
         flow,
         curated_request_ir=curated_ir,
         audit=audit,
+        track_assignment=track_assignment,
     )
     await _persist_codex_provisional_exchange(flow)
     level = logging.INFO if message.is_text else logging.WARNING

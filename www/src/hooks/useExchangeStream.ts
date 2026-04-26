@@ -2,13 +2,18 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { MAX_ENTRIES } from "../api";
 import { useUIStore } from "../stores/uiStore";
-import type { IndexEntry, PausedFlow } from "../types";
+import type { CodexTurnListSummary, IndexEntry, PausedFlow } from "../types";
 
 function isValidPausedEvent(data: Record<string, unknown>): data is {
   type: "paused";
   flow_id: string;
   transport?: PausedFlow["transport"];
   provisional_exchange_id?: string | null;
+  run_id?: string | null;
+  track_id?: string | null;
+  parent_track_id?: string | null;
+  track_display_name?: string | null;
+  track_role?: PausedFlow["track_role"];
   ir: PausedFlow["ir"];
   original_tools?: PausedFlow["original_tools"];
   original_system?: PausedFlow["original_system"];
@@ -48,7 +53,12 @@ function isValidExchangeEvent(data: Record<string, unknown>): data is {
   req: IndexEntry["req"];
   pipeline?: IndexEntry["pipeline"];
   res?: IndexEntry["res"];
+  codex_turn?: IndexEntry["codex_turn"];
   mutated_manually?: boolean;
+  track_id?: string | null;
+  parent_track_id?: string | null;
+  track_display_name?: string | null;
+  track_role?: IndexEntry["track_role"];
   flow_id?: string;
 } {
   return (
@@ -61,12 +71,52 @@ function isValidExchangeEvent(data: Record<string, unknown>): data is {
   );
 }
 
+function parseCodexTurnSummary(value: unknown): CodexTurnListSummary | null {
+  if (value == null || typeof value !== "object") return null;
+  const candidate = value as Record<string, unknown>;
+  if (
+    typeof candidate.turn_index !== "number" ||
+    typeof candidate.message_range_start !== "number" ||
+    typeof candidate.message_range_end !== "number" ||
+    (candidate.status !== "open" &&
+      candidate.status !== "completed" &&
+      candidate.status !== "failed" &&
+      candidate.status !== "interrupted") ||
+    (candidate.terminal_cause !== null &&
+      candidate.terminal_cause !== undefined &&
+      candidate.terminal_cause !== "response_completed" &&
+      candidate.terminal_cause !== "response_failed" &&
+      candidate.terminal_cause !== "websocket_close") ||
+    (candidate.stop_reason !== null &&
+      candidate.stop_reason !== undefined &&
+      typeof candidate.stop_reason !== "string") ||
+    typeof candidate.text_chars !== "number" ||
+    typeof candidate.tool_calls !== "number"
+  ) {
+    return null;
+  }
+  return {
+    turn_index: candidate.turn_index,
+    message_range_start: candidate.message_range_start,
+    message_range_end: candidate.message_range_end,
+    status: candidate.status,
+    terminal_cause: candidate.terminal_cause ?? null,
+    stop_reason: candidate.stop_reason ?? null,
+    text_chars: candidate.text_chars,
+    tool_calls: candidate.tool_calls,
+  };
+}
+
 function isValidExchangeDeletedEvent(data: Record<string, unknown>): data is {
   type: "exchange_deleted";
   id: string;
   flow_id?: string;
 } {
   return typeof data.id === "string";
+}
+
+function parseTrackRole(value: unknown): IndexEntry["track_role"] {
+  return value === "parent" || value === "subagent" ? value : null;
 }
 
 /**
@@ -118,6 +168,12 @@ export function useExchangeStream(): { connected: boolean } {
               typeof data.provisional_exchange_id === "string"
                 ? data.provisional_exchange_id
                 : null,
+            run_id: typeof data.run_id === "string" ? data.run_id : null,
+            track_id: typeof data.track_id === "string" ? data.track_id : null,
+            parent_track_id: typeof data.parent_track_id === "string" ? data.parent_track_id : null,
+            track_display_name:
+              typeof data.track_display_name === "string" ? data.track_display_name : null,
+            track_role: parseTrackRole(data.track_role),
             ir: data.ir,
             original_tools: data.original_tools ?? data.ir.tools,
             original_system: data.original_system ?? data.ir.system,
@@ -145,9 +201,14 @@ export function useExchangeStream(): { connected: boolean } {
 
         if (data.type === "exchange") {
           if (!isValidExchangeEvent(data)) return;
+          const codexTurn = parseCodexTurnSummary(data.codex_turn);
           const entry: IndexEntry = {
             id: data.id,
             run_id: data.run_id ?? null,
+            track_id: data.track_id ?? data.run_id ?? null,
+            parent_track_id: data.parent_track_id ?? null,
+            track_display_name: data.track_display_name ?? null,
+            track_role: parseTrackRole(data.track_role),
             ts: data.ts,
             provider: data.provider,
             model: data.model,
@@ -155,6 +216,7 @@ export function useExchangeStream(): { connected: boolean } {
             req: data.req,
             pipeline: data.pipeline ?? null,
             res: data.res ?? null,
+            codex_turn: codexTurn,
             mutated_manually: data.mutated_manually ?? false,
           };
           queryClient.setQueryData<IndexEntry[]>(["exchanges", false], (prev = []) =>
@@ -167,7 +229,6 @@ export function useExchangeStream(): { connected: boolean } {
           // later finalizes needs an explicit refetch signal to pick up the
           // stored response artifacts and finalized stats.
           void queryClient.invalidateQueries({ queryKey: ["exchange", entry.id] });
-          setSelectedId(entry.id);
 
           // Only clear the breakpoint editor if the completed exchange matches
           // the flow we're forwarding AND no new flow has paused in the meantime.

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Message, TextBlock } from "../../types";
-import { countContentBlocks } from "./ContentBlocks";
+import { blockSummary, countContentBlocks } from "./ContentBlocks";
 
 function text(t: string): TextBlock {
   return { type: "text", text: t };
@@ -35,5 +35,21 @@ describe("countContentBlocks", () => {
   it("skips empty messages in the total", () => {
     const messages = [msg("user"), msg("user", text("real")), msg("assistant")];
     expect(countContentBlocks(messages)).toBe(1); // 0 + 1 + 0
+  });
+});
+
+describe("blockSummary", () => {
+  it.each([
+    ["Claude Agent", "toolu_01MiLL7GyXKvFTneZmojAazu"],
+    ["Codex spawn_agent", "call_Lnc2jHDm8pTHtzdhTGeMOgdH"],
+  ])("shows the full %s tool use id", (name, id) => {
+    const block = {
+      type: "tool_use",
+      id,
+      name,
+      input: {},
+    } as const;
+
+    expect(blockSummary(block)).toBe(`${name}  ·  ${id}`);
   });
 });

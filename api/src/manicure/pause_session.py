@@ -5,18 +5,23 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, Literal, TypedDict, cast
 
 from manicure import breakpoint as bp
 from manicure import broadcast
 from manicure.codex.exchange import _delete_codex_provisional_exchange
+from manicure.codex.exchange_derivation import (
+    _clear_codex_breakpoint_lifecycle,
+    _record_codex_breakpoint_release,
+    _rewrite_codex_provisional_exchange,
+)
 from manicure.codex.transport import (
     get_codex_transport_state,
     mark_codex_initial_request_dropped,
 )
 from manicure.config import get_settings
 from manicure.counting import TokenCountingClient, _relevant_auth_headers
-from manicure.flow_state import update_request_flow_state
+from manicure.flow_state import get_request_flow_state, update_request_flow_state
 
 if TYPE_CHECKING:
     from mitmproxy import http
@@ -25,6 +30,14 @@ if TYPE_CHECKING:
     from manicure.overrides import OverrideAudit
 
 logger = logging.getLogger(__name__)
+
+
+class TrackFields(TypedDict):
+    run_id: str | None
+    track_id: str | None
+    parent_track_id: str | None
+    track_display_name: str | None
+    track_role: Literal["parent", "subagent"] | None
 
 
 def resolve_paused_flow(
@@ -102,6 +115,11 @@ def _paused_event_payload(
     audit: OverrideAudit | None,
     paused_at_ms: int,
     provisional_exchange_id: str | None = None,
+    run_id: str | None = None,
+    track_id: str | None = None,
+    parent_track_id: str | None = None,
+    track_display_name: str | None = None,
+    track_role: Literal["parent", "subagent"] | None = None,
 ) -> dict[str, object]:
     payload: dict[str, object] = {
         "type": "paused",
@@ -116,10 +134,31 @@ def _paused_event_payload(
         "audit": audit.model_dump(mode="json") if audit else None,
         "paused_at_ms": paused_at_ms,
         "tokens_before": None,
+        "run_id": run_id,
+        "track_id": track_id,
+        "parent_track_id": parent_track_id,
+        "track_display_name": track_display_name,
+        "track_role": track_role,
     }
     if provisional_exchange_id is not None:
         payload["provisional_exchange_id"] = provisional_exchange_id
     return payload
+
+
+def _flow_track_fields(flow: http.HTTPFlow) -> TrackFields:
+    request_state = get_request_flow_state(flow)
+    assignment = request_state.track_assignment if request_state is not None else None
+    return {
+        "run_id": get_settings().run_id,
+        "track_id": assignment.track_id if assignment is not None else None,
+        "parent_track_id": assignment.parent_track_id
+        if assignment is not None
+        else None,
+        "track_display_name": (
+            assignment.track_display_name if assignment is not None else None
+        ),
+        "track_role": assignment.track_role if assignment is not None else None,
+    }
 
 
 async def handle_breakpoint(
@@ -138,6 +177,7 @@ async def handle_breakpoint(
         logger.info("BREAKPOINT %s acquired serializer, pausing", flow.id)
         auth = _relevant_auth_headers(flow.request.headers)
         paused_at_ms = int(time.time() * 1000)
+        track_fields = _flow_track_fields(flow)
         event = await bp.pause(
             flow,
             original_ir,
@@ -145,6 +185,7 @@ async def handle_breakpoint(
             transport="http",
             audit=audit,
             auth_headers=auth,
+            **track_fields,
         )
         broadcast.emit(
             _paused_event_payload(
@@ -154,6 +195,7 @@ async def handle_breakpoint(
                 curated_ir=curated_ir,
                 audit=audit,
                 paused_at_ms=paused_at_ms,
+                **track_fields,
             )
         )
         if counter is not None:
@@ -210,12 +252,14 @@ async def handle_websocket_breakpoint(
         logger.info("CODEX BREAKPOINT %s acquired serializer, pausing", flow.id)
         transport_state = get_codex_transport_state(flow)
         paused_at_ms = int(time.time() * 1000)
+        track_fields = _flow_track_fields(flow)
         event = await bp.pause(
             flow,
             original_ir,
             curated_ir,
             transport="websocket",
             audit=audit,
+            **track_fields,
         )
         broadcast.emit(
             _paused_event_payload(
@@ -230,6 +274,7 @@ async def handle_websocket_breakpoint(
                     if transport_state is not None
                     else None
                 ),
+                **track_fields,
             )
         )
         settings = get_settings()
@@ -247,11 +292,17 @@ async def handle_websocket_breakpoint(
         return
 
     if pf.dropped:
+        _clear_codex_breakpoint_lifecycle(flow)
         mark_codex_initial_request_dropped(flow)
         await _delete_codex_provisional_exchange(flow)
         message.drop()
         return
 
+    _record_codex_breakpoint_release(
+        flow,
+        paused_at_ms=pf.paused_at_ms,
+        released_at_ms=int(time.time() * 1000),
+    )
     final_ir, mutated_manually, final_audit = resolve_paused_flow(pf)
     message.content = _release_payload(pf, adapter, final_ir)
     update_request_flow_state(
@@ -260,3 +311,4 @@ async def handle_websocket_breakpoint(
         audit=final_audit,
         mutated_manually=mutated_manually,
     )
+    await _rewrite_codex_provisional_exchange(flow, force_replay=True)

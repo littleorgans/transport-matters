@@ -2,6 +2,22 @@ import { useEffect, useRef, useState } from "react";
 import { hasOverride } from "../../lib/overrides";
 import type { Override, SamplingParams } from "../../types";
 import { HelpBubble } from "../HelpBubble";
+import {
+  DISPLAY_TARGET,
+  type DisplayMode,
+  EFFORT_TARGET,
+  type EffortLevel,
+  getBudget,
+  getDisplay,
+  getEffort,
+  getThinkingMode,
+  MIN_BUDGET,
+  readThinkingDict,
+  SAMPLING_TARGETS,
+  samplingValuesEqual,
+  THINKING_TARGET,
+  type ThinkingMode,
+} from "./samplingShared";
 
 /**
  * SAMPLING section. All edits flow through the override pipeline as
@@ -21,10 +37,6 @@ import { HelpBubble } from "../HelpBubble";
  * user is typing.
  */
 
-type ThinkingMode = "off" | "adaptive" | "enabled";
-type DisplayMode = "summarized" | "omitted";
-type EffortLevel = "low" | "medium" | "high" | "max";
-
 interface SamplingSectionProps {
   sampling: SamplingParams;
   /**
@@ -37,82 +49,13 @@ interface SamplingSectionProps {
   originalProviderExtras: Record<string, unknown>;
   overrides: Override[];
   onOverride: (batch: Override[]) => void;
+  readOnly?: boolean;
 }
 
 const inputClass =
   "w-full bg-canvas border border-edge px-3 py-2 text-[13px] text-txt focus:border-accent/50 focus:outline-none transition-colors metric-num";
 
 const labelClass = "label flex items-center";
-
-const THINKING_TARGET = "provider_extras:thinking";
-const DISPLAY_TARGET = "provider_extras:thinking.display";
-const EFFORT_TARGET = "provider_extras:output_config.effort";
-
-const SAMPLING_TARGETS: Record<keyof SamplingParams, string> = {
-  max_tokens: "sampling:max_tokens",
-  temperature: "sampling:temperature",
-  top_p: "sampling:top_p",
-  top_k: "sampling:top_k",
-  stop_sequences: "sampling:stop_sequences",
-};
-
-const MIN_BUDGET = 1024;
-const DEFAULT_BUDGET = 10000;
-
-// ─── Provider-extras readers ────────────────────────────────────────
-
-function readThinkingDict(extras: Record<string, unknown>): Record<string, unknown> | null {
-  const t = extras.thinking;
-  if (!t || typeof t !== "object") return null;
-  return t as Record<string, unknown>;
-}
-
-function getThinkingMode(extras: Record<string, unknown>): ThinkingMode {
-  const t = readThinkingDict(extras);
-  if (!t) return "off";
-  if (t.type === "adaptive") return "adaptive";
-  if (t.type === "enabled") return "enabled";
-  return "off";
-}
-
-function getBudget(extras: Record<string, unknown>): number {
-  const t = readThinkingDict(extras);
-  if (t && typeof t.budget_tokens === "number") return t.budget_tokens;
-  return DEFAULT_BUDGET;
-}
-
-function getDisplay(extras: Record<string, unknown>): DisplayMode {
-  const t = readThinkingDict(extras);
-  if (t && t.display === "omitted") return "omitted";
-  return "summarized"; // default (absent key == summarized in the Anthropic API)
-}
-
-function getEffort(extras: Record<string, unknown>): EffortLevel | null {
-  const oc = extras.output_config;
-  if (!oc || typeof oc !== "object") return null;
-  const e = (oc as Record<string, unknown>).effort;
-  if (e === "low" || e === "medium" || e === "high" || e === "max") return e;
-  return null;
-}
-
-// ─── Value equality helpers ─────────────────────────────────────────
-
-function stopSeqsEqual(a: string[], b: string[]): boolean {
-  if (a.length !== b.length) return false;
-  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
-  return true;
-}
-
-function samplingValuesEqual<K extends keyof SamplingParams>(
-  field: K,
-  a: SamplingParams[K],
-  b: SamplingParams[K],
-): boolean {
-  if (field === "stop_sequences") {
-    return stopSeqsEqual(a as string[], b as string[]);
-  }
-  return a === b;
-}
 
 function buildCommit<K extends keyof SamplingParams>(
   field: K,
@@ -144,6 +87,7 @@ interface SegmentedTrackProps<T extends string> {
   options: readonly SegmentOption<T>[];
   onChange: (value: T) => void;
   disabled?: boolean;
+  readOnly?: boolean;
   ariaLabel: string;
 }
 
@@ -152,14 +96,17 @@ function SegmentedTrack<T extends string>({
   options,
   onChange,
   disabled = false,
+  readOnly = false,
   ariaLabel,
 }: SegmentedTrackProps<T>) {
+  const inert = disabled || readOnly;
+
   return (
     <div
       role="tablist"
       aria-label={ariaLabel}
       className={`flex border border-edge bg-canvas divide-x divide-edge ${
-        disabled ? "opacity-40 pointer-events-none" : ""
+        disabled ? "opacity-40 pointer-events-none" : readOnly ? "pointer-events-none" : ""
       }`}
     >
       {options.map((opt) => {
@@ -170,10 +117,14 @@ function SegmentedTrack<T extends string>({
             type="button"
             role="tab"
             aria-selected={selected}
-            disabled={disabled}
+            disabled={inert}
             onClick={() => onChange(opt.value)}
             className={`flex-1 px-3 py-1.5 uppercase text-[11px] tracking-[0.2em] cursor-pointer transition-colors ${
-              selected ? "bg-sage/15 text-txt" : "text-txt-3 hover:text-txt-2"
+              selected
+                ? "bg-sage/15 text-txt"
+                : readOnly
+                  ? "text-txt-3"
+                  : "text-txt-3 hover:text-txt-2"
             }`}
           >
             {opt.label}
@@ -193,6 +144,7 @@ export function SamplingSection({
   originalProviderExtras,
   overrides,
   onOverride,
+  readOnly = false,
 }: SamplingSectionProps) {
   const [localMaxTokens, setLocalMaxTokens] = useState(String(sampling.max_tokens));
   const [localTemp, setLocalTemp] = useState(
@@ -460,7 +412,8 @@ export function SamplingSection({
         <span className="label">Sampling</span>
         {samplingOverrideCount > 0 && (
           <span className="chip text-amber ml-2">
-            {samplingOverrideCount} override{samplingOverrideCount !== 1 ? "s" : ""}
+            {samplingOverrideCount}{" "}
+            {readOnly ? "modified" : samplingOverrideCount === 1 ? "override" : "overrides"}
           </span>
         )}
       </div>
@@ -471,7 +424,9 @@ export function SamplingSection({
           <label htmlFor="max-tokens" className={labelClass}>
             Max tokens
             <HelpBubble>Maximum number of tokens to generate before stopping.</HelpBubble>
-            {isFieldModified("max_tokens") && <ResetBtn onClick={() => resetField("max_tokens")} />}
+            {!readOnly && isFieldModified("max_tokens") && (
+              <ResetBtn onClick={() => resetField("max_tokens")} />
+            )}
           </label>
           <input
             id="max-tokens"
@@ -480,6 +435,7 @@ export function SamplingSection({
             required
             className={inputClass}
             value={localMaxTokens}
+            readOnly={readOnly}
             onChange={(e) => setLocalMaxTokens(e.target.value)}
             onBlur={commitMaxTokens}
           />
@@ -489,7 +445,7 @@ export function SamplingSection({
           <label htmlFor="stop-sequences" className={labelClass}>
             Stop sequences
             <HelpBubble>Comma separated strings that halt generation when produced.</HelpBubble>
-            {isFieldModified("stop_sequences") && (
+            {!readOnly && isFieldModified("stop_sequences") && (
               <ResetBtn onClick={() => resetField("stop_sequences")} />
             )}
           </label>
@@ -498,6 +454,7 @@ export function SamplingSection({
             className={inputClass}
             value={localStopSeqs}
             placeholder="comma separated"
+            readOnly={readOnly}
             onChange={(e) => setLocalStopSeqs(e.target.value)}
             onBlur={commitStopSeqs}
           />
@@ -510,12 +467,13 @@ export function SamplingSection({
           <span className={labelClass}>
             Thinking
             {thinkingHelp}
-            {thinkingModified && <ResetBtn onClick={resetThinking} />}
+            {!readOnly && thinkingModified && <ResetBtn onClick={resetThinking} />}
           </span>
           <SegmentedTrack<ThinkingMode>
             ariaLabel="Thinking mode"
             value={thinkingMode}
             onChange={changeThinkingMode}
+            readOnly={readOnly}
             options={[
               { label: "off", value: "off" },
               { label: "adaptive", value: "adaptive" },
@@ -537,6 +495,7 @@ export function SamplingSection({
             min={MIN_BUDGET}
             className={inputClass}
             value={localBudget}
+            readOnly={readOnly}
             disabled={!budgetEnabled}
             onChange={(e) => setLocalBudget(e.target.value)}
             onBlur={commitBudget}
@@ -554,13 +513,14 @@ export function SamplingSection({
               Controls how thinking content is returned. SUMMARIZED shows a compact summary; OMITTED
               hides thinking entirely from the response.
             </HelpBubble>
-            {displayModified && <ResetBtn onClick={resetDisplay} />}
+            {!readOnly && displayModified && <ResetBtn onClick={resetDisplay} />}
           </span>
           <SegmentedTrack<DisplayMode>
             ariaLabel="Thinking display"
             value={display}
             onChange={changeDisplay}
             disabled={!thinkingActive}
+            readOnly={readOnly}
             options={[
               { label: "summarized", value: "summarized" },
               { label: "omitted", value: "omitted" },
@@ -574,12 +534,13 @@ export function SamplingSection({
               Provider-level reasoning effort hint. — leaves the key unset. Higher levels ask the
               model for more careful reasoning; providers that don't support effort ignore the hint.
             </HelpBubble>
-            {effortModified && <ResetBtn onClick={resetEffort} />}
+            {!readOnly && effortModified && <ResetBtn onClick={resetEffort} />}
           </span>
           <SegmentedTrack<EffortLevel | "none">
             ariaLabel="Output effort"
             value={effort ?? "none"}
             onChange={changeEffort}
+            readOnly={readOnly}
             options={[
               { label: "—", value: "none" },
               { label: "low", value: "low" },
@@ -614,7 +575,7 @@ export function SamplingSection({
                 </li>
               </ul>
             </HelpBubble>
-            {isFieldModified("temperature") && (
+            {!readOnly && isFieldModified("temperature") && (
               <ResetBtn onClick={() => resetField("temperature")} />
             )}
           </label>
@@ -626,6 +587,7 @@ export function SamplingSection({
             max={1}
             className={inputClass}
             value={localTemp}
+            readOnly={readOnly || thinkingActive}
             disabled={thinkingActive}
             onChange={(e) => setLocalTemp(e.target.value)}
             onBlur={() => commitFloatField("temperature", localTemp, setLocalTemp)}
@@ -653,7 +615,9 @@ export function SamplingSection({
               </ul>
               <p className="mt-1.5 text-txt-3">Common default: 40</p>
             </HelpBubble>
-            {isFieldModified("top_k") && <ResetBtn onClick={() => resetField("top_k")} />}
+            {!readOnly && isFieldModified("top_k") && (
+              <ResetBtn onClick={() => resetField("top_k")} />
+            )}
           </label>
           <input
             id="top-k"
@@ -661,6 +625,7 @@ export function SamplingSection({
             min={1}
             className={inputClass}
             value={localTopK}
+            readOnly={readOnly || thinkingActive}
             disabled={thinkingActive}
             onChange={(e) => setLocalTopK(e.target.value)}
             onBlur={commitTopK}
@@ -691,7 +656,9 @@ export function SamplingSection({
               </ul>
               <p className="mt-1.5 text-txt-3">Common default: 0.9 or 0.95</p>
             </HelpBubble>
-            {isFieldModified("top_p") && <ResetBtn onClick={() => resetField("top_p")} />}
+            {!readOnly && isFieldModified("top_p") && (
+              <ResetBtn onClick={() => resetField("top_p")} />
+            )}
           </label>
           <input
             id="top-p"
@@ -701,6 +668,7 @@ export function SamplingSection({
             max={1}
             className={inputClass}
             value={localTopP}
+            readOnly={readOnly || thinkingActive}
             disabled={thinkingActive}
             onChange={(e) => setLocalTopP(e.target.value)}
             onBlur={() => commitFloatField("top_p", localTopP, setLocalTopP)}

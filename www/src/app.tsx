@@ -47,7 +47,7 @@ function AppBar({
 }: AppBarProps) {
   return (
     <>
-      <div className="top-highlight flex items-center justify-between gap-4 bg-surface px-6 py-3">
+      <div className="top-highlight relative overflow-hidden flex items-center justify-between gap-4 bg-surface px-6 py-3">
         {/* Brand lockup */}
         <div className="flex items-center gap-3 min-w-0">
           <ManicureIcon className="h-[22px] w-[22px] text-txt shrink-0" />
@@ -81,7 +81,7 @@ function AppBar({
 export function App() {
   const includeHistory = useUIStore((s) => s.includeHistory);
   const setIncludeHistory = useUIStore((s) => s.setIncludeHistory);
-  const { exchanges, isLoading } = useExchanges(includeHistory);
+  const { exchanges, trackTree, isLoading } = useExchanges(includeHistory);
   const { meta } = useMeta();
   const { connected } = useExchangeStream();
   const { mode, arm, disarm, error: breakpointError } = useBreakpoint();
@@ -174,9 +174,10 @@ export function App() {
         {activeRoute === "intercept" ? (
           <div className="flex flex-1 overflow-hidden">
             {/* Left panel */}
-            <aside className="flex w-[340px] min-w-[300px] flex-col border-r border-edge">
+            <aside className="flex w-[460px] min-w-[400px] flex-col border-r border-edge">
               <ExchangeList
                 exchanges={exchanges}
+                trackTree={trackTree}
                 currentRunId={meta?.runId ?? null}
                 includeHistory={includeHistory}
                 onIncludeHistoryChange={setIncludeHistory}

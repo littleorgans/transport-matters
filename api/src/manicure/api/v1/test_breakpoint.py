@@ -151,6 +151,32 @@ class TestGetPausedFlow:
         assert data["ir"]["model"] == "claude-3"
         assert data["tokens_before"] is None
 
+    async def test_returns_track_scope(self, client: AsyncClient) -> None:
+        event = asyncio.Event()
+        bp._paused["flow-track"] = bp.PausedFlow(
+            flow=None,  # type: ignore[arg-type]
+            event=event,
+            original_ir=_MINIMAL_IR,
+            curated_ir=_MINIMAL_IR,
+            audit=None,
+            paused_at_ms=1_700_000_000_000,
+            run_id="run-1",
+            track_id="agent-1",
+            parent_track_id="run-1",
+            track_display_name="backend-engineer",
+            track_role="subagent",
+        )
+
+        response = await client.get("/api/breakpoint/paused/flow-track")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["run_id"] == "run-1"
+        assert data["track_id"] == "agent-1"
+        assert data["parent_track_id"] == "run-1"
+        assert data["track_display_name"] == "backend-engineer"
+        assert data["track_role"] == "subagent"
+
     async def test_returns_tokens_before_when_stamped(
         self, client: AsyncClient
     ) -> None:
@@ -278,6 +304,36 @@ class TestReAudit:
         assert len(data["audit"]["entries"]) == 1
         # System part should be stripped
         assert data["curated_ir"]["system"] == []
+
+    async def test_re_audit_applies_matching_track_scope(
+        self, client: AsyncClient
+    ) -> None:
+        store = get_store()
+        store.upsert(
+            Override(kind="system_part_toggle", target="system:0", value=False),
+            scope=("run-1", "agent-1"),
+        )
+        store.upsert(
+            Override(kind="system_part_toggle", target="system:0", value=True),
+            scope=("run-1", "agent-2"),
+        )
+
+        event = asyncio.Event()
+        bp._paused["flow-scope"] = bp.PausedFlow(
+            flow=None,  # type: ignore[arg-type]
+            event=event,
+            original_ir=_IR_WITH_SYSTEM,
+            curated_ir=_IR_WITH_SYSTEM,
+            audit=None,
+            paused_at_ms=1_700_000_000_000,
+            run_id="run-1",
+            track_id="agent-1",
+        )
+
+        response = await client.post("/api/breakpoint/re-audit/flow-scope")
+
+        assert response.status_code == 200
+        assert response.json()["curated_ir"]["system"] == []
 
     async def test_re_audit_updates_paused_flow(self, client: AsyncClient) -> None:
         """Re-audit mutates the PausedFlow curated_ir and audit in place."""

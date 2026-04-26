@@ -6,11 +6,19 @@ Uses ``tmp_path`` to avoid touching the real filesystem.
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from pathlib import Path
+from typing import TYPE_CHECKING
 from unittest.mock import patch
 
 import pytest
 
+from manicure.codex.derivation import CODEX_DERIVATION_VERSION
+from manicure.codex.events import (
+    CodexDerivationCursor,
+    CodexOpenAssistantItem,
+    CodexSemanticEvent,
+    CodexTransportRef,
+    CodexTurnSummary,
+)
 from manicure.ir import (
     InternalRequest,
     InternalResponse,
@@ -21,8 +29,16 @@ from manicure.ir import (
     UsageStats,
 )
 from manicure.overrides import OverrideAudit, OverrideAuditEntry
-from manicure.storage.base import ExchangeArtifacts, IndexEntry, ReqStats, ResStats
+from manicure.storage.base import (
+    ExchangeArtifacts,
+    IndexEntry,
+    ReqStats,
+    ResStats,
+)
 from manicure.storage.disk import DiskStorageBackend
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 @pytest.fixture
@@ -77,6 +93,77 @@ def _make_audit() -> OverrideAudit:
     )
 
 
+def _make_codex_event(event_id: str = "evt_000001") -> CodexSemanticEvent:
+    return CodexSemanticEvent(
+        event_id=event_id,
+        exchange_id="codex-exchange-001",
+        session_id="ws_123",
+        turn_id="turn_001",
+        seq=1,
+        ts=datetime(2026, 4, 19, 12, 0, 0, tzinfo=UTC),
+        source="client",
+        kind="turn_started",
+        transport_ref=CodexTransportRef(message_index=0),
+        derivation_version=CODEX_DERIVATION_VERSION,
+    )
+
+
+def _make_open_turn() -> CodexTurnSummary:
+    return CodexTurnSummary(
+        turn_id="turn_001",
+        exchange_id="codex-exchange-001",
+        session_id="ws_123",
+        turn_index=0,
+        request_message_index=0,
+        message_range_start=0,
+        message_range_end=0,
+        model="codex/gpt-5-codex",
+        status="open",
+        text_chars=12,
+        tool_calls=0,
+        started_at=datetime(2026, 4, 19, 12, 0, 0, tzinfo=UTC),
+        derivation_version=CODEX_DERIVATION_VERSION,
+        cursor=CodexDerivationCursor(
+            next_message_index=1,
+            next_seq=2,
+            open_assistant_items={
+                "msg_01": CodexOpenAssistantItem(text="partial assistant text")
+            },
+            open_tool_calls={},
+            terminal_seen=False,
+        ),
+    )
+
+
+def _make_completed_turn() -> CodexTurnSummary:
+    return CodexTurnSummary(
+        turn_id="turn_001",
+        exchange_id="codex-exchange-001",
+        session_id="ws_123",
+        turn_index=0,
+        request_message_index=0,
+        terminal_message_index=2,
+        terminal_cause="response_completed",
+        message_range_start=0,
+        message_range_end=2,
+        model="codex/gpt-5-codex",
+        status="completed",
+        stop_reason="completed",
+        text_chars=42,
+        tool_calls=1,
+        started_at=datetime(2026, 4, 19, 12, 0, 0, tzinfo=UTC),
+        ended_at=datetime(2026, 4, 19, 12, 0, 2, tzinfo=UTC),
+        derivation_version=CODEX_DERIVATION_VERSION,
+        cursor=CodexDerivationCursor(
+            next_message_index=3,
+            next_seq=4,
+            open_assistant_items={},
+            open_tool_calls={},
+            terminal_seen=True,
+        ),
+    )
+
+
 class TestAppendAndReadIndex:
     async def test_append_and_read(self, storage: DiskStorageBackend) -> None:
         entry = _make_index_entry()
@@ -113,6 +200,32 @@ class TestAppendAndReadIndex:
         assert entries[0].id == "ex-upsert"
         assert entries[0].res is not None
         assert entries[0].res.stop_reason == "completed"
+
+    async def test_track_fields_round_trip(self, storage: DiskStorageBackend) -> None:
+        entry = _make_index_entry("ex-001").model_copy(
+            update={
+                "track_id": "toolu_child",
+                "parent_track_id": "run-root",
+                "track_display_name": "worker",
+                "track_role": "subagent",
+            }
+        )
+
+        await storage.append_index(entry)
+
+        entries = await storage.read_index(limit=10, offset=0)
+        assert entries[0].track_id == "toolu_child"
+        assert entries[0].parent_track_id == "run-root"
+        assert entries[0].track_display_name == "worker"
+        assert entries[0].track_role == "subagent"
+
+    def test_legacy_entry_defaults_to_root_track(self) -> None:
+        entry = IndexEntry.model_validate(_make_index_entry("ex-001").model_dump())
+
+        assert entry.track_id == entry.run_id
+        assert entry.parent_track_id is None
+        assert entry.track_display_name is None
+        assert entry.track_role == "parent"
 
 
 class TestWriteAndReadExchange:
@@ -602,89 +715,3 @@ class TestCacheCreationBackfill:
         assert reloaded is not None
         assert reloaded.res is not None
         assert reloaded.res.cache_creation_input_tokens == 0
-
-
-class TestAtomicWrite:
-    async def test_no_tmp_dir_after_successful_write(
-        self, storage: DiskStorageBackend
-    ) -> None:
-        """Successful write should leave no .tmp directories."""
-        ir = _make_ir()
-        raw = b'{"model":"test","max_tokens":1024}'
-        artifacts = ExchangeArtifacts(request_raw=raw, request_ir=ir)
-
-        await storage.write_exchange("atomic-001", artifacts)
-
-        tmp_dirs = [d for d in storage.root.iterdir() if d.name.endswith(".tmp")]
-        assert tmp_dirs == []
-
-    async def test_crash_recovery_cleans_tmp_on_init(self, tmp_path: Path) -> None:
-        """Leftover .tmp dirs from interrupted writes are cleaned up on init."""
-        leftover = tmp_path / "20260101T000000Z-deadbeef.tmp"
-        leftover.mkdir()
-        (leftover / "request.raw").write_bytes(b"partial")
-
-        DiskStorageBackend(root=str(tmp_path))
-
-        assert not leftover.exists()
-        # Normal dirs are not cleaned
-        normal = tmp_path / "20260101T000000Z-abcd1234"
-        normal.mkdir()
-        DiskStorageBackend(root=str(tmp_path))
-        assert normal.exists()
-
-    async def test_failed_write_cleans_up_tmp(
-        self, storage: DiskStorageBackend
-    ) -> None:
-        """If write_exchange fails mid-write, the .tmp dir is removed."""
-        ir = _make_ir()
-        raw = b'{"model":"test","max_tokens":1024}'
-        artifacts = ExchangeArtifacts(request_raw=raw, request_ir=ir)
-
-        with (
-            patch("aiofiles.open", side_effect=OSError("disk full")),
-            pytest.raises(OSError, match="disk full"),
-        ):
-            await storage.write_exchange("fail-001", artifacts)
-
-        tmp_dirs = [d for d in storage.root.iterdir() if d.name.endswith(".tmp")]
-        assert tmp_dirs == []
-
-    async def test_rewrite_failure_restores_original_exchange_dir(
-        self, storage: DiskStorageBackend
-    ) -> None:
-        exchange_id = "rewrite-fail-001"
-        original_ir = _make_ir()
-        await storage.write_exchange(
-            exchange_id,
-            ExchangeArtifacts(
-                request_raw=b'{"model":"original","max_tokens":1024}',
-                request_ir=original_ir,
-            ),
-        )
-
-        original_dir = storage._find_exchange_dir(exchange_id)
-        original_raw = (original_dir / "request.raw").read_bytes()
-        original_rename = Path.rename
-
-        def fail_final_rename(self: Path, target: Path) -> Path:
-            if self.name.endswith(".tmp") and target == original_dir:
-                raise OSError("rename failed")
-            return original_rename(self, target)
-
-        with (
-            patch.object(Path, "rename", autospec=True, side_effect=fail_final_rename),
-            pytest.raises(OSError, match="rename failed"),
-        ):
-            await storage.write_exchange(
-                exchange_id,
-                ExchangeArtifacts(
-                    request_raw=b'{"model":"rewritten","max_tokens":2048}',
-                    request_ir=original_ir,
-                ),
-            )
-
-        restored_dir = storage._find_exchange_dir(exchange_id)
-        assert restored_dir == original_dir
-        assert (restored_dir / "request.raw").read_bytes() == original_raw
-        assert not any(path.name.endswith(".tmp") for path in storage.root.iterdir())

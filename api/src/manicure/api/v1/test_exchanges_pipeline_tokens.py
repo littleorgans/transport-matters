@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import gc
 from typing import TYPE_CHECKING
 from unittest.mock import patch
 
@@ -101,6 +102,26 @@ class TestGetPipelineTokens:
         response = await client.get("/api/exchanges/ex-pipe/pipeline_tokens")
         assert response.status_code == 200
         assert stub.calls == 1
+
+    async def test_lazy_recount_lock_is_released_after_request(
+        self, client: AsyncClient
+    ) -> None:
+        """Per-exchange recount locks must not accumulate after the request."""
+        from manicure import counting
+        from manicure.api.v1 import exchanges
+
+        exchanges._compute_locks.clear()
+        stub = CountingStub(value=42)
+        counting.set_counter(stub)  # type: ignore[arg-type]
+        counting.set_recent_auth({"x-api-key": "sk-test"})
+
+        await seed_pipeline_entry()
+
+        response = await client.get("/api/exchanges/ex-pipe/pipeline_tokens")
+        gc.collect()
+
+        assert response.status_code == 200
+        assert "ex-pipe" not in exchanges._compute_locks
 
     async def test_first_call_two_roundtrips_when_curated_differs(
         self, client: AsyncClient

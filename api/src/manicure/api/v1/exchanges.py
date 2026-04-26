@@ -4,20 +4,37 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from typing import TYPE_CHECKING
+from weakref import WeakValueDictionary
 
-from fastapi import APIRouter, Depends, Query
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 
 from manicure.adapters.anthropic import AnthropicAdapter
 from manicure.codex.diagnostics import build_codex_transport_diagnostics
+from manicure.codex.events import CodexSemanticEvent, CodexTurnSummary
+from manicure.codex.repair import (
+    CodexDerivedArtifactsDiagnostic,
+    CodexDerivedArtifactsRepairAction,
+    CodexDerivedArtifactsStatus,
+    repair_codex_derived_artifacts,
+    resolve_codex_derived_artifacts,
+)
 from manicure.config import get_settings
 from manicure.counting import count_before_after, get_counter, get_recent_auth
 from manicure.exceptions import NotFoundError
 from manicure.ir import InternalRequest, InternalResponse
 from manicure.overrides import OverrideAudit
 from manicure.storage import StorageBackend, get_storage
-from manicure.storage.base import IndexEntry, TransportArtifacts, TransportDiagnostic
+from manicure.storage.base import (
+    ExchangeArtifacts,
+    IndexEntry,
+    TransportArtifacts,
+    TransportDiagnostic,
+)
+
+if TYPE_CHECKING:
+    from manicure.codex.derivation import CodexDerivedTurnArtifacts
 
 logger = logging.getLogger(__name__)
 
@@ -25,12 +42,9 @@ router = APIRouter()
 
 # Per-exchange locks serialize concurrent lazy recounts so the second
 # caller picks up the first caller's result from the index instead of
-# issuing its own round-trip to count_tokens. The dict grows with the
-# set of exchange ids that a session lazily recounts; each lock is a
-# couple hundred bytes (asyncio.Lock is not free) and the total is
-# bounded by archive size, so an explicit eviction policy is not worth
-# the complexity here.
-_compute_locks: dict[str, asyncio.Lock] = {}
+# issuing its own round-trip to count_tokens. Weak values keep the map
+# bounded by in-flight recounts instead of every exchange ever opened.
+_compute_locks: WeakValueDictionary[str, asyncio.Lock] = WeakValueDictionary()
 _compute_locks_meta: asyncio.Lock = asyncio.Lock()
 
 
@@ -43,6 +57,56 @@ async def _lock_for(exchange_id: str) -> asyncio.Lock:
         return lock
 
 
+class CodexDerivedArtifactsState(BaseModel):
+    status: CodexDerivedArtifactsStatus
+    diagnostics: tuple[CodexDerivedArtifactsDiagnostic, ...] = ()
+    repair: "CodexDerivedArtifactsRepairState | None" = None
+
+
+class CodexDerivedArtifactsRepairState(BaseModel):
+    action: CodexDerivedArtifactsRepairAction
+    status_before: CodexDerivedArtifactsStatus
+
+
+def _codex_derived_artifacts_state(
+    *,
+    status: CodexDerivedArtifactsStatus,
+    diagnostics: tuple[CodexDerivedArtifactsDiagnostic, ...],
+    repair: CodexDerivedArtifactsRepairState | None = None,
+) -> CodexDerivedArtifactsState:
+    return CodexDerivedArtifactsState(
+        status=status,
+        diagnostics=diagnostics,
+        repair=repair,
+    )
+
+
+async def _resolved_codex_derived_artifacts(
+    exchange_id: str,
+    artifacts: ExchangeArtifacts,
+    storage: StorageBackend,
+) -> tuple[CodexDerivedTurnArtifacts | None, CodexDerivedArtifactsState | None]:
+    resolution = resolve_codex_derived_artifacts(artifacts)
+    if resolution.status == "not_applicable":
+        return None, None
+    if resolution.status == "supported":
+        return resolution.derived, _codex_derived_artifacts_state(
+            status=resolution.status,
+            diagnostics=resolution.diagnostics,
+        )
+
+    repair = await repair_codex_derived_artifacts(storage, exchange_id)
+    status = "supported" if repair.derived is not None else repair.status_before
+    return repair.derived, _codex_derived_artifacts_state(
+        status=status,
+        diagnostics=repair.diagnostics,
+        repair=CodexDerivedArtifactsRepairState(
+            action=repair.action,
+            status_before=repair.status_before,
+        ),
+    )
+
+
 class ExchangeDetailResponse(BaseModel):
     entry: IndexEntry | None
     request_ir: InternalRequest
@@ -50,6 +114,9 @@ class ExchangeDetailResponse(BaseModel):
     request_audit: OverrideAudit | None
     response_ir: InternalResponse | None
     transport: TransportArtifacts | None
+    events: tuple[CodexSemanticEvent, ...] | None = None
+    turn: CodexTurnSummary | None = None
+    codex_derived_artifacts: CodexDerivedArtifactsState | None = None
     transport_diagnostics: list[TransportDiagnostic]
 
 
@@ -58,17 +125,23 @@ async def list_exchanges(
     limit: int = Query(default=50, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
     include_history: bool = Query(default=False),
+    track_id: str | None = Query(default=None),
     storage: StorageBackend = Depends(get_storage),
 ) -> list[IndexEntry]:
     try:
         run_id = None if include_history else get_settings().run_id
-        return await storage.read_index(limit=limit, offset=offset, run_id=run_id)
-    except Exception:
-        logger.exception("Failed to read exchange index")
-        return JSONResponse(  # type: ignore[return-value]
-            status_code=500,
-            content={"detail": "Failed to read exchange index"},
+        return await storage.read_index(
+            limit=limit,
+            offset=offset,
+            run_id=run_id,
+            track_id=track_id,
         )
+    except Exception as exc:
+        logger.exception("Failed to read exchange index")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to read exchange index",
+        ) from exc
 
 
 @router.get("/{exchange_id}")
@@ -84,6 +157,9 @@ async def get_exchange(
     entry = await storage.read_index_entry(exchange_id)
     if entry is None:
         raise NotFoundError(detail=f"Exchange {exchange_id} not found")
+    derived, codex_derived_artifacts = await _resolved_codex_derived_artifacts(
+        exchange_id, artifacts, storage
+    )
 
     return ExchangeDetailResponse(
         entry=entry,
@@ -92,6 +168,9 @@ async def get_exchange(
         request_audit=artifacts.request_audit,
         response_ir=artifacts.response_ir,
         transport=artifacts.transport,
+        events=derived.events if derived is not None else None,
+        turn=derived.turn if derived is not None else None,
+        codex_derived_artifacts=codex_derived_artifacts,
         transport_diagnostics=build_codex_transport_diagnostics(artifacts),
     )
 

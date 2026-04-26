@@ -5,6 +5,7 @@ import type {
   InternalRequest,
   Override,
   OverrideAudit,
+  OverrideScope,
   PausedFlow,
 } from "./types";
 
@@ -105,16 +106,27 @@ export interface ToggleResponse {
   curated_ir: InternalRequest | null;
 }
 
-export async function fetchOverrides(): Promise<OverrideListResponse> {
-  const res = await fetch("/api/overrides");
+function overrideScopeQuery(scope?: OverrideScope | null): string {
+  const params = new URLSearchParams();
+  if (scope?.run_id) params.set("run_id", scope.run_id);
+  if (scope?.track_id) params.set("track_id", scope.track_id);
+  const query = params.toString();
+  return query ? `?${query}` : "";
+}
+
+export async function fetchOverrides(scope?: OverrideScope | null): Promise<OverrideListResponse> {
+  const res = await fetch(`/api/overrides${overrideScopeQuery(scope)}`);
   if (!res.ok) {
     throw new Error(`Failed to fetch overrides: ${res.status}`);
   }
   return (await res.json()) as OverrideListResponse;
 }
 
-export async function patchOverrides(overrides: Override[]): Promise<OverrideMutateResponse> {
-  const res = await fetch("/api/overrides", {
+export async function patchOverrides(
+  overrides: Override[],
+  scope?: OverrideScope | null,
+): Promise<OverrideMutateResponse> {
+  const res = await fetch(`/api/overrides${overrideScopeQuery(scope)}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ overrides }),
@@ -125,15 +137,15 @@ export async function patchOverrides(overrides: Override[]): Promise<OverrideMut
   return (await res.json()) as OverrideMutateResponse;
 }
 
-export async function clearOverrides(): Promise<void> {
-  const res = await fetch("/api/overrides", { method: "DELETE" });
+export async function clearOverrides(scope?: OverrideScope | null): Promise<void> {
+  const res = await fetch(`/api/overrides${overrideScopeQuery(scope)}`, { method: "DELETE" });
   if (!res.ok) {
     throw new Error(`Failed to clear overrides: ${res.status}`);
   }
 }
 
-export async function toggleOverrides(): Promise<ToggleResponse> {
-  const res = await fetch("/api/overrides/toggle", { method: "POST" });
+export async function toggleOverrides(scope?: OverrideScope | null): Promise<ToggleResponse> {
+  const res = await fetch(`/api/overrides/toggle${overrideScopeQuery(scope)}`, { method: "POST" });
   if (!res.ok) {
     throw new Error(`Failed to toggle overrides: ${res.status}`);
   }

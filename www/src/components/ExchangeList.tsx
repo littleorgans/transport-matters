@@ -1,11 +1,16 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { useEffect, useRef } from "react";
-import { contextTokens, displayModel } from "../lib/formatting";
-import type { IndexEntry } from "../types";
+import { useMemo, useRef, useState } from "react";
+import { buildExchangeTrackTree } from "../hooks/useExchanges";
+import { useUIStore } from "../stores/uiStore";
+import type { ExchangeTrack, ExchangeTrackStub, IndexEntry } from "../types";
+import { ExchangeTurnCard } from "./ExchangeTurnCard";
 import { Toggle } from "./Toggle";
+import { TrackHeader } from "./TrackHeader";
 
 interface ExchangeListProps {
   exchanges: IndexEntry[];
+  trackTree?: ExchangeTrack[];
+  trackStubs?: ExchangeTrackStub[];
   currentRunId: string | null;
   includeHistory: boolean;
   onIncludeHistoryChange: (next: boolean) => void;
@@ -13,33 +18,99 @@ interface ExchangeListProps {
   onSelect: (id: string) => void;
 }
 
-// Two-line row (title + metrics) with py-3.5 padding and an mt-2 gap.
-// Title uses ``truncate`` and the metrics line never wraps, so rows
-// are uniform and we can skip ``measureElement``.
-const ROW_HEIGHT = 76;
+// Fixed virtual rows keep long sessions cheap. Root and subagent turns
+// share the same instrument panel layout.
+const TRACK_ROW_HEIGHT = 92;
+const EXCHANGE_ROW_HEIGHT = 212;
+const EMPTY_TRACK_IDS: string[] = [];
+const EMPTY_TRACK_STUBS: ExchangeTrackStub[] = [];
 
-function formatRelativeTime(ts: string): string {
-  const diff = Date.now() - new Date(ts).getTime();
-  const seconds = Math.floor(diff / 1000);
-  if (seconds < 60) return `${seconds}s ago`;
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  return new Date(ts).toLocaleDateString();
+type ExchangeListRow =
+  | {
+      type: "track";
+      key: string;
+      track: ExchangeTrack;
+      depth: number;
+    }
+  | {
+      type: "exchange";
+      key: string;
+      entry: IndexEntry;
+      depth: number;
+      turnSequence: number;
+    };
+
+function flattenTrackRows(
+  tracks: ExchangeTrack[],
+  collapsedTrackIds: Set<string>,
+  depth = 0,
+): ExchangeListRow[] {
+  const rows: ExchangeListRow[] = [];
+  for (const track of tracks) {
+    const rendersHeader = track.track_role === "subagent";
+    if (rendersHeader) {
+      rows.push({
+        type: "track",
+        key: `track:${track.track_id}`,
+        track,
+        depth,
+      });
+      if (collapsedTrackIds.has(track.track_id)) continue;
+    }
+    const entryDepth = rendersHeader ? depth + 1 : depth;
+    const childDepth = depth + 1;
+    for (const [entryIndex, entry] of track.exchanges.entries()) {
+      rows.push({
+        type: "exchange",
+        key: `exchange:${entry.id}`,
+        entry,
+        depth: entryDepth,
+        turnSequence: entryIndex + 1,
+      });
+    }
+    rows.push(...flattenTrackRows(track.children, collapsedTrackIds, childDepth));
+  }
+  return rows;
 }
 
-const STOP_TONE: Record<string, string> = {
-  end_turn: "text-sage",
-  tool_use: "text-sky",
-  max_tokens: "text-amber",
-};
+function findTrack(tracks: ExchangeTrack[], trackId: string): ExchangeTrack | null {
+  for (const track of tracks) {
+    if (track.track_id === trackId) return track;
+    const child = findTrack(track.children, trackId);
+    if (child) return child;
+  }
+  return null;
+}
+
+function focusEntryForTrack(tracks: ExchangeTrack[], trackId: string): IndexEntry | null {
+  const track = findTrack(tracks, trackId);
+  if (!track) return null;
+  if (track.parent_track_id) {
+    const parent = findTrack(tracks, track.parent_track_id);
+    const firstChildTs = track.exchanges[0] ? new Date(track.exchanges[0].ts).getTime() : null;
+    const parentExchange =
+      firstChildTs == null
+        ? parent?.exchanges.at(-1)
+        : parent?.exchanges
+            .slice()
+            .reverse()
+            .find((entry) => new Date(entry.ts).getTime() <= firstChildTs);
+    if (parentExchange) return parentExchange;
+  }
+  return track.exchanges[0] ?? null;
+}
+
+function sessionKey(currentRunId: string | null, exchanges: IndexEntry[]): string {
+  return currentRunId ?? exchanges[0]?.run_id ?? "history";
+}
 
 interface ExchangeListHeaderProps {
   count: number;
   historyCount: number;
   includeHistory: boolean;
   onIncludeHistoryChange: (next: boolean) => void;
+  previewWaiting: boolean;
+  onPreviewWaitingChange: (next: boolean) => void;
 }
 
 function ExchangeListHeader({
@@ -47,6 +118,8 @@ function ExchangeListHeader({
   historyCount,
   includeHistory,
   onIncludeHistoryChange,
+  previewWaiting,
+  onPreviewWaitingChange,
 }: ExchangeListHeaderProps) {
   return (
     <div className="border-b border-edge px-5 py-4">
@@ -65,14 +138,25 @@ function ExchangeListHeader({
               : "Live session only. Turn on history to inspect prior runs."}
           </p>
         </div>
-        <div className="flex shrink-0 items-center gap-2 text-[11px] uppercase tracking-[0.18em] text-txt-3">
-          <Toggle
-            checked={includeHistory}
-            onChange={onIncludeHistoryChange}
-            label="Show prior runs"
-            size="sm"
-          />
-          <span>History</span>
+        <div className="flex shrink-0 flex-col items-end gap-2 text-[11px] uppercase tracking-[0.18em] text-txt-3">
+          <div className="flex items-center gap-2">
+            <Toggle
+              checked={previewWaiting}
+              onChange={onPreviewWaitingChange}
+              label="Preview open waiting cards"
+              size="sm"
+            />
+            <span>Waiting</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <Toggle
+              checked={includeHistory}
+              onChange={onIncludeHistoryChange}
+              label="Show prior runs"
+              size="sm"
+            />
+            <span>History</span>
+          </div>
         </div>
       </div>
     </div>
@@ -90,86 +174,10 @@ function ExchangeListEmptyState({ includeHistory }: { includeHistory: boolean })
   );
 }
 
-interface ExchangeRowProps {
-  entry: IndexEntry;
-  isHistorical: boolean;
-  isSelected: boolean;
-  index: number;
-  offsetTop: number;
-  onSelect: (id: string) => void;
-}
-
-function ExchangeRow({
-  entry,
-  isHistorical,
-  isSelected,
-  index,
-  offsetTop,
-  onSelect,
-}: ExchangeRowProps) {
-  const tone = entry.res?.stop_reason ? STOP_TONE[entry.res.stop_reason] : undefined;
-  const context = contextTokens(entry.res);
-
-  return (
-    <button
-      type="button"
-      data-index={index}
-      onClick={() => onSelect(entry.id)}
-      className={`group absolute left-0 right-0 top-0 cursor-pointer px-5 py-3.5 text-left transition-colors duration-150 ${
-        isSelected ? "row-selected text-txt" : "text-txt-2 hover:bg-surface hover:text-txt"
-      }`}
-      style={{ transform: `translateY(${offsetTop}px)` }}
-    >
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-2">
-          <span className="truncate text-[14px] font-medium text-txt">
-            {displayModel(entry.provider, entry.model)}
-          </span>
-          {isHistorical && (
-            <span
-              className={`label shrink-0 ${isSelected ? "text-sky" : "text-txt-3"}`}
-              title={entry.run_id ? `run ${entry.run_id}` : "Captured before this run"}
-            >
-              prior run
-            </span>
-          )}
-        </div>
-        <span
-          className={`shrink-0 text-[11px] metric-num uppercase tracking-wider ${
-            isSelected ? "text-accent/80" : "text-txt-3"
-          }`}
-        >
-          {formatRelativeTime(entry.ts)}
-        </span>
-      </div>
-      <div
-        className={`mt-2 flex items-center gap-2.5 text-[12px] ${
-          isSelected ? "text-txt-2" : "text-txt-3"
-        }`}
-      >
-        <span className="metric-num">{entry.req.tools_count} tools</span>
-        {context > 0 && (
-          <>
-            <span className="text-edge-strong">&middot;</span>
-            <span className="metric-num text-sky">{context.toLocaleString()} tokens</span>
-          </>
-        )}
-        {entry.res?.stop_reason && (
-          <span
-            className={`ml-auto label ${tone ?? "text-txt-3"}`}
-            title={`stop: ${entry.res.stop_reason}`}
-          >
-            {entry.res.stop_reason}
-          </span>
-        )}
-      </div>
-      {!isSelected && <span className="absolute bottom-0 left-5 right-5 h-px bg-edge-subtle" />}
-    </button>
-  );
-}
-
 export function ExchangeList({
   exchanges,
+  trackTree,
+  trackStubs = EMPTY_TRACK_STUBS,
   currentRunId,
   includeHistory,
   onIncludeHistoryChange,
@@ -177,49 +185,36 @@ export function ExchangeList({
   onSelect,
 }: ExchangeListProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [previewWaiting, setPreviewWaiting] = useState(false);
+  const collapseSessionKey = sessionKey(currentRunId, exchanges);
+  const collapsedTrackIds = useUIStore(
+    (s) => s.collapsedTrackIdsBySession[collapseSessionKey] ?? EMPTY_TRACK_IDS,
+  );
+  const toggleCollapsedTrack = useUIStore((s) => s.toggleCollapsedTrack);
   const historyCount = currentRunId
     ? exchanges.filter((entry) => entry.run_id !== currentRunId).length
     : 0;
+  const tree = useMemo(
+    () => trackTree ?? buildExchangeTrackTree(exchanges, trackStubs),
+    [exchanges, trackStubs, trackTree],
+  );
+  const collapsedTrackSet = useMemo(() => new Set(collapsedTrackIds), [collapsedTrackIds]);
+  const rows = useMemo(() => flattenTrackRows(tree, collapsedTrackSet), [tree, collapsedTrackSet]);
 
   const virtualizer = useVirtualizer({
-    count: exchanges.length,
+    count: rows.length,
     getScrollElement: () => scrollRef.current,
-    estimateSize: () => ROW_HEIGHT,
+    estimateSize: (index) =>
+      rows[index]?.type === "track" ? TRACK_ROW_HEIGHT : EXCHANGE_ROW_HEIGHT,
     // Generous overscan: the list can grow long during a session, and
     // the rows are cheap. Matches JsonView's approach.
     overscan: 30,
-    getItemKey: (index) => exchanges[index]?.id ?? index,
+    getItemKey: (index) => rows[index]?.key ?? index,
   });
-  const selectedIndex = selectedId ? exchanges.findIndex((entry) => entry.id === selectedId) : -1;
-
-  // The selection itself is persisted by uiStore (`partialize`), so it
-  // survives tab switches and reloads. What does not survive is the
-  // scroll position of the virtualized list — remounting the Intercept
-  // panel resets scrollTop to 0, and toggling history can temporarily
-  // hide then re-show the selected row. Track the last row we
-  // intentionally scrolled to so restored selections recentre once
-  // without hijacking normal browsing on every list append.
-  const lastScrolledSelectionRef = useRef<string | null>(null);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: keyed to selection visibility, not every list mutation
-  useEffect(() => {
-    if (!selectedId || exchanges.length === 0) {
-      lastScrolledSelectionRef.current = null;
-      return;
-    }
-    if (selectedIndex < 0) {
-      lastScrolledSelectionRef.current = null;
-      return;
-    }
-    if (lastScrolledSelectionRef.current === selectedId) return;
-    // rAF so the virtualizer has a rect (ResizeObserver fires on the
-    // layout pass that follows mount); without it scrollToIndex sees a
-    // 0-height viewport and the computed offset collapses to 0.
-    const raf = requestAnimationFrame(() => {
-      virtualizer.scrollToIndex(selectedIndex, { align: "center" });
-      lastScrolledSelectionRef.current = selectedId;
-    });
-    return () => cancelAnimationFrame(raf);
-  }, [selectedId, selectedIndex]);
+  const focusTrack = (trackId: string) => {
+    const entry = focusEntryForTrack(tree, trackId);
+    if (entry) onSelect(entry.id);
+  };
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -228,9 +223,11 @@ export function ExchangeList({
         historyCount={historyCount}
         includeHistory={includeHistory}
         onIncludeHistoryChange={onIncludeHistoryChange}
+        previewWaiting={previewWaiting}
+        onPreviewWaitingChange={setPreviewWaiting}
       />
 
-      {exchanges.length === 0 ? (
+      {rows.length === 0 ? (
         <ExchangeListEmptyState includeHistory={includeHistory} />
       ) : (
         // flex-1 claims the remaining aside height inside its flex-column
@@ -239,18 +236,37 @@ export function ExchangeList({
         <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto">
           <div className="relative w-full" style={{ height: virtualizer.getTotalSize() }}>
             {virtualizer.getVirtualItems().map((vRow) => {
-              const entry = exchanges[vRow.index];
-              if (!entry) return null;
+              const row = rows[vRow.index];
+              if (!row) return null;
+              if (row.type === "track") {
+                const isCollapsed = collapsedTrackSet.has(row.track.track_id);
+                return (
+                  <TrackHeader
+                    key={vRow.key}
+                    track={row.track}
+                    depth={row.depth}
+                    index={vRow.index}
+                    offsetTop={vRow.start}
+                    isCollapsed={isCollapsed}
+                    onToggle={(trackId) => toggleCollapsedTrack(collapseSessionKey, trackId)}
+                    onFocusParent={focusTrack}
+                  />
+                );
+              }
+              const { entry } = row;
               return (
-                <ExchangeRow
+                <ExchangeTurnCard
                   key={vRow.key}
                   entry={entry}
+                  depth={row.depth}
                   isHistorical={
                     includeHistory && currentRunId != null && entry.run_id !== currentRunId
                   }
                   isSelected={entry.id === selectedId}
+                  previewWaiting={previewWaiting}
                   index={vRow.index}
                   offsetTop={vRow.start}
+                  turnSequence={row.turnSequence}
                   onSelect={onSelect}
                 />
               );

@@ -10,8 +10,14 @@ from abc import ABC, abstractmethod
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from manicure.codex.events import (
+    CodexSemanticEvent,
+    CodexTerminalCause,
+    CodexTurnStatus,
+    CodexTurnSummary,
+)
 from manicure.ir import InternalRequest, InternalResponse
 from manicure.overrides import (
     OverrideAudit,
@@ -61,6 +67,35 @@ class ResStats(BaseModel):
     tool_calls: int = 0
 
 
+class CodexTurnListSummary(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    turn_index: int = Field(ge=0)
+    message_range_start: int = Field(ge=0)
+    message_range_end: int = Field(ge=0)
+    status: CodexTurnStatus
+    terminal_cause: CodexTerminalCause | None = None
+    stop_reason: str | None = None
+    text_chars: int = Field(default=0, ge=0)
+    tool_calls: int = Field(default=0, ge=0)
+
+    @classmethod
+    def from_turn(cls, turn: CodexTurnSummary) -> CodexTurnListSummary:
+        projected_tool_calls = turn.tool_calls
+        if turn.status == "open" and turn.cursor is not None:
+            projected_tool_calls += len(turn.cursor.open_tool_calls)
+        return cls(
+            turn_index=turn.turn_index,
+            message_range_start=turn.message_range_start,
+            message_range_end=turn.message_range_end,
+            status=turn.status,
+            terminal_cause=turn.terminal_cause,
+            stop_reason=turn.stop_reason,
+            text_chars=turn.text_chars,
+            tool_calls=projected_tool_calls,
+        )
+
+
 # ── Index entry ─────────────────────────────────────────────────────
 
 
@@ -76,7 +111,22 @@ class IndexEntry(BaseModel):
     req: ReqStats
     pipeline: PipelineStats | None = None
     res: ResStats | None = None
+    codex_turn: CodexTurnListSummary | None = None
     mutated_manually: bool = False
+    track_id: str | None = None
+    parent_track_id: str | None = None
+    track_display_name: str | None = None
+    track_role: Literal["parent", "subagent"] | None = None
+
+    @model_validator(mode="after")
+    def default_root_track(self) -> IndexEntry:
+        if self.track_id is None and self.run_id is not None:
+            object.__setattr__(self, "track_id", self.run_id)
+        if self.track_role is None and self.parent_track_id is None:
+            object.__setattr__(self, "track_role", "parent")
+        if self.track_role is None and self.parent_track_id is not None:
+            object.__setattr__(self, "track_role", "subagent")
+        return self
 
 
 # ── Exchange artifacts ──────────────────────────────────────────────
@@ -95,6 +145,26 @@ class ExchangeArtifacts(BaseModel):
     response_raw: bytes | None = None
     response_ir: InternalResponse | None = None
     transport: TransportArtifacts | None = None
+    events: tuple[CodexSemanticEvent, ...] | None = None
+    turn: CodexTurnSummary | None = None
+
+    def validate_codex_derived_artifacts(self) -> None:
+        """Enforce the shared Codex derivation contract when artifacts exist."""
+        if self.events is None and self.turn is None:
+            return
+        if self.events is None or self.turn is None:
+            msg = "Codex derived artifacts require both events and turn"
+            raise ValueError(msg)
+        from manicure.codex.derivation_contract import CodexDerivedTurnArtifacts
+
+        CodexDerivedTurnArtifacts(events=self.events, turn=self.turn)
+
+
+class CodexDerivedArtifactFiles(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    events_jsonl: bytes | None = None
+    turn_json: bytes | None = None
 
 
 class TransportHeader(BaseModel):
@@ -112,6 +182,7 @@ class TransportUpgradeArtifacts(BaseModel):
 
 
 class TransportCloseArtifacts(BaseModel):
+    ts: datetime | None = None
     close_code: int | None = None
     close_reason: str | None = None
     closed_by_client: bool | None = None
@@ -121,6 +192,7 @@ class TransportCloseArtifacts(BaseModel):
 
 
 class TransportMessageArtifact(BaseModel):
+    ts: datetime | None = None
     direction: Literal["client", "server"]
     is_text: bool
     size_bytes: int
@@ -177,11 +249,25 @@ class StorageBackend(ABC):
 
     @abstractmethod
     async def read_index(
-        self, limit: int, offset: int, run_id: str | None = None
+        self,
+        limit: int,
+        offset: int,
+        run_id: str | None = None,
+        track_id: str | None = None,
     ) -> list[IndexEntry]: ...
 
     @abstractmethod
     async def read_exchange(self, exchange_id: str) -> ExchangeArtifacts: ...
+
+    @abstractmethod
+    async def read_codex_derived_files(
+        self, exchange_id: str
+    ) -> CodexDerivedArtifactFiles: ...
+
+    @abstractmethod
+    async def write_codex_derived_artifacts(
+        self, exchange_id: str, artifacts: ExchangeArtifacts
+    ) -> None: ...
 
     @abstractmethod
     async def read_index_entry(self, exchange_id: str) -> IndexEntry | None: ...

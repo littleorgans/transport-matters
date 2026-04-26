@@ -1,5 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { dropFlow, reauditFlow, releaseFlow, releaseFlowUnmodified } from "../../api";
 import { useMeta } from "../../hooks/useMeta";
 import { useOverrides } from "../../hooks/useOverrides";
@@ -38,7 +38,14 @@ export function BreakpointEditor({ pausedFlow, onResolved }: BreakpointEditorPro
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("messages");
-  const { overrides, enabled, upsert, clear, toggle } = useOverrides();
+  const overrideScope = useMemo(
+    () => ({
+      run_id: pausedFlow.run_id ?? null,
+      track_id: pausedFlow.track_id ?? pausedFlow.run_id ?? null,
+    }),
+    [pausedFlow.run_id, pausedFlow.track_id],
+  );
+  const { overrides, enabled, upsert, clear, toggle } = useOverrides(overrideScope);
   const createDraft = useOverlaysStore((s) => s.createDraft);
   const setActiveRoute = useUIStore((s) => s.setActiveRoute);
   const { meta } = useMeta();

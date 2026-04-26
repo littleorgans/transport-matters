@@ -1,5 +1,7 @@
 import { useCollapsibleSet } from "../../hooks/useCollapsibleSet";
 import type {
+  CodexDerivedArtifactsDiagnostic,
+  CodexDerivedArtifactsState,
   ContentBlock,
   ExchangeDetail,
   InternalRequest,
@@ -14,6 +16,7 @@ import { MessagesSection } from "../editor/MessagesSection";
 import { SystemSection } from "../editor/SystemSection";
 import { ToolsSection } from "../editor/ToolsSection";
 import { MasterBar, SECTION_TONE } from "./atoms";
+import { CodexTimeline } from "./CodexTimeline";
 import { blockKey, ContentBlockRow } from "./ContentBlocks";
 import { ExchangeCard } from "./ExchangeCard";
 import {
@@ -23,6 +26,7 @@ import {
   detectSystemPartMutationsStructural,
   detectToolMutations,
   detectToolMutationsStructural,
+  detectToolResultMutations,
 } from "./mutations";
 
 function ResponseCard({ content }: { content: ContentBlock[] }) {
@@ -56,6 +60,7 @@ function ResponseCard({ content }: { content: ContentBlock[] }) {
 
 interface InspectTabProps {
   detail: ExchangeDetail;
+  onJumpToTransportFrame?: (messageIndex: number) => void;
 }
 
 /**
@@ -125,11 +130,117 @@ function buildSyntheticOverrides(
     }
   }
 
+  if (useAudit) {
+    const toolResultMutations = detectToolResultMutations(audit, original, curated);
+    for (const mutation of toolResultMutations) {
+      batch.push({
+        kind: "truncate_tool_result",
+        target: `toolresult:${mutation.toolUseId}`,
+        value: mutation.curatedText,
+      });
+    }
+  }
+
   return batch;
 }
 
-export function InspectTab({ detail }: InspectTabProps) {
+function diagnosticTone(severity: CodexDerivedArtifactsDiagnostic["severity"]): string {
+  if (severity === "error") return "border-rose/30 bg-rose/8 text-rose";
+  if (severity === "warning") return "border-amber/30 bg-amber/8 text-amber";
+  return "border-sky/30 bg-sky/8 text-sky";
+}
+
+function derivedArtifactsTone(status: CodexDerivedArtifactsState["status"]): {
+  text: string;
+  bg: string;
+} {
+  if (status === "inconsistent") {
+    return { text: "text-rose", bg: "bg-rose/5" };
+  }
+  if (status === "migration_required") {
+    return { text: "text-amber", bg: "bg-amber/5" };
+  }
+  return { text: "text-sky", bg: "bg-sky/5" };
+}
+
+function derivedArtifactsStatusLabel(status: CodexDerivedArtifactsState["status"]): string {
+  return status.replaceAll("_", " ");
+}
+
+function derivedArtifactsRepairLabel(
+  repair: NonNullable<CodexDerivedArtifactsState["repair"]>,
+): string {
+  const statusBefore = repair.status_before.replaceAll("_", " ");
+  return repair.action === "migrated"
+    ? `migrated from ${statusBefore}`
+    : `repaired from ${statusBefore}`;
+}
+
+function CodexDerivedArtifactsCard({
+  state,
+}: {
+  state: CodexDerivedArtifactsState | null | undefined;
+}) {
+  const repaired = state?.repair?.action != null && state.repair.action !== "none";
+  if (
+    state == null ||
+    state.status === "not_applicable" ||
+    (!repaired && (state.status === "supported" || state.diagnostics.length === 0))
+  ) {
+    return null;
+  }
+
+  return (
+    <section className="card-flush">
+      <div
+        className={`flex items-center gap-3 px-4 py-2.5 ${derivedArtifactsTone(state.status).bg}`}
+      >
+        <span className={`chip ${derivedArtifactsTone(state.status).text}`}>timeline</span>
+        <span className="text-[13px] text-txt-3 metric-num">
+          {state.diagnostics.length} diagnostic
+          {state.diagnostics.length === 1 ? "" : "s"}
+        </span>
+        <span className="ml-auto chip text-txt-3">
+          {state.repair != null && state.repair.action !== "none"
+            ? derivedArtifactsRepairLabel(state.repair)
+            : derivedArtifactsStatusLabel(state.status)}
+        </span>
+      </div>
+      <div className="hairline-x" />
+      <div className="px-4 py-4 space-y-3">
+        <p className="text-[13px] font-medium text-txt">
+          {state.repair?.action === "migrated"
+            ? "Semantic timeline migrated from persisted sidecars and rebuilt from canonical transport during read."
+            : repaired
+              ? "Semantic timeline rebuilt from canonical transport during read."
+              : "Semantic timeline unavailable. Showing backend derived-artifact diagnostics."}
+        </p>
+        {state.diagnostics.map((diagnostic) => (
+          <div
+            key={diagnostic.code}
+            className={`rounded-md border px-4 py-3 ${diagnosticTone(diagnostic.severity)}`}
+          >
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] uppercase tracking-[0.14em]">{diagnostic.severity}</span>
+              <span className="text-[11px] text-txt-3">{diagnostic.code}</span>
+            </div>
+            <p className="mt-2 text-[13px] font-medium text-txt">{diagnostic.summary}</p>
+            {diagnostic.detail && (
+              <p className="mt-1 text-[12px] text-txt-2">{diagnostic.detail}</p>
+            )}
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+export function InspectTab({ detail, onJumpToTransportFrame }: InspectTabProps) {
   const { response_ir } = detail;
+  const codexEvents = detail.events;
+  const codexTurn = detail.turn;
+  const showsCodexTimeline =
+    detail.entry.provider === "codex" && codexEvents != null && codexTurn != null;
   const originalRequest = detail.request_ir as unknown as InternalRequest | undefined;
   const curatedRequest = detail.request_curated_ir as unknown as InternalRequest | undefined;
 
@@ -152,27 +263,30 @@ export function InspectTab({ detail }: InspectTabProps) {
     <div className="px-8 py-7 space-y-10">
       <ExchangeCard detail={detail} />
 
-      {/* System parts */}
+      <CodexDerivedArtifactsCard state={detail.codex_derived_artifacts} />
+
+      {showsCodexTimeline && (
+        <CodexTimeline
+          events={codexEvents}
+          turn={codexTurn}
+          onJumpToTransportFrame={onJumpToTransportFrame}
+        />
+      )}
+
       {systemParts.length > 0 && (
         <SystemSection parts={systemParts} overrides={syntheticOverrides} readOnly />
       )}
 
-      {/* Request messages — share the editor's MessagesSection in
-          readOnly mode so text edits show the EDIT|DIFF tabs and
-          disabled blocks grey out against the original baseline.
-          Synthesised overrides carry the curated payload's delta. */}
       {requestMessages.length > 0 && (
         <MessagesSection messages={requestMessages} overrides={syntheticOverrides} readOnly />
       )}
 
-      {/* Response content */}
       {responseContent.length > 0 && (
         <section>
           <ResponseCard content={responseContent} />
         </section>
       )}
 
-      {/* Tools */}
       {tools.length > 0 && <ToolsSection tools={tools} overrides={syntheticOverrides} readOnly />}
 
       <div className="h-8" />

@@ -1,5 +1,6 @@
 import { useEditableOverride } from "../../hooks/useEditableOverride";
 import { ColorizedPre } from "../../lib/colorizeLine";
+import { overrideValue } from "../../lib/overrides";
 import type { ContentBlock, Override } from "../../types";
 import { CompositeEditableRow, SizeDelta } from "../detail/atoms";
 import { blockSummary } from "../detail/ContentBlocks";
@@ -39,10 +40,17 @@ export function BlockRow({
 }) {
   const target = blockTarget(msgIdx, blkIdx);
   const isText = block.type === "text";
+  const toolResultTarget = block.type === "tool_result" ? `toolresult:${block.tool_use_id}` : null;
+  const toolResultOverride =
+    toolResultTarget === null
+      ? undefined
+      : overrideValue<string | number>(overrides, "truncate_tool_result", toolResultTarget);
+  const toolResultCuratedText =
+    typeof toolResultOverride === "string" ? toolResultOverride : undefined;
 
   const {
     checked,
-    isModified,
+    isModified: textModified,
     localText,
     setLocalText,
     textRef,
@@ -59,6 +67,8 @@ export function BlockRow({
     initialExpanded: true,
   });
 
+  const isModified = textModified || toolResultCuratedText !== undefined;
+
   // For text blocks the size label expands to ``orig → current`` when
   // the user has edited. Recompute the block JSON with the live text so
   // the delta reflects wire-accurate bytes — not just raw text length.
@@ -66,7 +76,18 @@ export function BlockRow({
   // size (SizeDelta collapses to the raw number when current === original).
   const baseBlockSize = blockSize(block);
   const currentBlockSize =
-    isText && isModified ? JSON.stringify({ ...block, text: localText }).length : baseBlockSize;
+    isText && textModified
+      ? JSON.stringify({ ...block, text: localText }).length
+      : block.type === "tool_result" && toolResultCuratedText !== undefined
+        ? JSON.stringify({
+            ...block,
+            content: [{ type: "text" as const, text: toolResultCuratedText }],
+          }).length
+        : baseBlockSize;
+  const preview =
+    block.type === "tool_result" && toolResultCuratedText !== undefined
+      ? `${blockSummary(block)}  ·  truncated`
+      : blockSummary(block);
 
   return (
     <CompositeEditableRow
@@ -81,10 +102,13 @@ export function BlockRow({
           {block.type === "tool_result" && block.is_error && (
             <span className="chip shrink-0 text-rose">error</span>
           )}
+          {block.type === "tool_result" && toolResultCuratedText !== undefined && (
+            <span className="chip shrink-0 text-amber">truncated</span>
+          )}
         </>
       }
       isModified={isModified}
-      preview={blockSummary(block)}
+      preview={preview}
       size={<SizeDelta original={baseBlockSize} current={currentBlockSize} />}
       onToggleExpanded={onToggleExpanded}
       readOnly={readOnly}
@@ -113,9 +137,12 @@ export function BlockRow({
           )}
           {block.type === "tool_result" && (
             <ColorizedPre
-              text={block.content
-                .map((b) => ("text" in b ? b.text : JSON.stringify(b, null, 2)))
-                .join("\n")}
+              text={
+                toolResultCuratedText ??
+                block.content
+                  .map((b) => ("text" in b ? b.text : JSON.stringify(b, null, 2)))
+                  .join("\n")
+              }
             />
           )}
         </>

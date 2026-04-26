@@ -10,21 +10,26 @@ import asyncio
 import json
 import logging
 import shutil
-import tempfile
 from concurrent.futures import Executor, ThreadPoolExecutor
 from datetime import UTC, datetime
-from functools import partial
 from pathlib import Path
-from typing import Any, cast
 
-import aiofiles
-
+from manicure.codex.derivation_codec import (
+    serialize_codex_events_jsonl,
+    serialize_codex_turn_json,
+)
+from manicure.codex.events import CodexSemanticEvent, CodexTurnSummary
 from manicure.ir import InternalRequest, InternalResponse
 from manicure.storage.base import (
+    CodexDerivedArtifactFiles,
     ExchangeArtifacts,
     IndexEntry,
     StorageBackend,
     TransportArtifacts,
+)
+from manicure.storage.disk_helpers import (
+    ENTRY_FILENAME,
+    DiskStorageRecoveryMixin,
 )
 from manicure.transport_redaction import redact_transport_artifacts
 
@@ -33,7 +38,7 @@ logger = logging.getLogger(__name__)
 _DEFAULT_ROOT = Path.home() / ".manicure" / "exchanges"
 
 
-class DiskStorageBackend(StorageBackend):
+class DiskStorageBackend(DiskStorageRecoveryMixin, StorageBackend):
     """Append-only JSONL index with per-exchange artifact directories."""
 
     def __init__(self, root: str | Path | None = None) -> None:
@@ -88,13 +93,21 @@ class DiskStorageBackend(StorageBackend):
         # index in place. Rows where the artifact also reports zero stay
         # untouched — the probe is cheap and only runs until every row has
         # a nonzero value or has been confirmed zero by the artifact.
+        recovered_delete_dirs = await self._reconcile_staged_deletes(entries)
+        recovered_rows = await self._recover_missing_index_entries(entries)
         corrected = await self._backfill_cache_creation(entries)
-        if corrected > 0:
+        if recovered_rows > 0 or corrected > 0:
             logger.info(
-                "Backfilled cache_creation_input_tokens on %d index row(s)",
+                "Recovered %d exchange row(s) and backfilled cache_creation_input_tokens on %d row(s)",
+                recovered_rows,
                 corrected,
             )
             await self._rewrite_index(entries)
+        if recovered_delete_dirs > 0:
+            logger.info(
+                "Reconciled %d staged exchange delete(s)",
+                recovered_delete_dirs,
+            )
 
         self._index_cache = entries
         return entries
@@ -180,11 +193,13 @@ class DiskStorageBackend(StorageBackend):
     async def persist_exchange(
         self, entry: IndexEntry, artifacts: ExchangeArtifacts
     ) -> None:
+        artifacts.validate_codex_derived_artifacts()
         final_dir, tmp_dir = self._prepare_exchange_write(entry.id, artifacts)
         backup_dir: Path | None = None
 
         try:
             await self._write_exchange_files(tmp_dir, artifacts)
+            await self._write_entry_json(tmp_dir / ENTRY_FILENAME, entry)
             backup_dir = await self._activate_exchange_dir(tmp_dir, final_dir)
             try:
                 async with self._index_lock:
@@ -208,13 +223,19 @@ class DiskStorageBackend(StorageBackend):
             raise
 
     async def read_index(
-        self, limit: int, offset: int, run_id: str | None = None
+        self,
+        limit: int,
+        offset: int,
+        run_id: str | None = None,
+        track_id: str | None = None,
     ) -> list[IndexEntry]:
         async with self._index_lock:
             cache = await self._ensure_index_cache()
         entries = list(cache.values())
         if run_id is not None:
             entries = [entry for entry in entries if entry.run_id == run_id]
+        if track_id is not None:
+            entries = [entry for entry in entries if entry.track_id == track_id]
         return entries[offset : offset + limit]
 
     async def read_index_entry(self, exchange_id: str) -> IndexEntry | None:
@@ -226,24 +247,44 @@ class DiskStorageBackend(StorageBackend):
         """Delete an exchange row and artifact directory if present."""
         removed = False
         exchange_dir = self._find_exchange_dir_or_none(exchange_id)
+        staged_dir: Path | None = None
 
         async with self._index_lock:
             cache = await self._ensure_index_cache()
             previous_entry = cache.get(exchange_id)
+            previous_items = tuple(cache.items())
+            if exchange_dir is not None and exchange_dir.exists():
+                staged_dir = await self._stage_exchange_delete(exchange_dir)
+                removed = True
             if previous_entry is not None:
-                previous_items = tuple(cache.items())
                 cache.pop(exchange_id, None)
                 try:
                     await self._rewrite_index(cache)
                 except BaseException:
                     cache.clear()
                     cache.update(previous_items)
+                    if staged_dir is not None:
+                        assert exchange_dir is not None
+                        await self._restore_staged_delete(staged_dir, exchange_dir)
                     raise
                 removed = True
 
-        if exchange_dir is not None and exchange_dir.exists():
-            await self._run_io(shutil.rmtree, exchange_dir, True)
-            removed = True
+            if staged_dir is not None and staged_dir.exists():
+                try:
+                    await self._run_io(shutil.rmtree, staged_dir, True)
+                except BaseException:
+                    cache.clear()
+                    cache.update(previous_items)
+                    try:
+                        await self._rewrite_index(cache)
+                    except Exception:
+                        logger.exception(
+                            "Failed to restore index row for %s after delete cleanup failure",
+                            exchange_id,
+                        )
+                    assert exchange_dir is not None
+                    await self._restore_staged_delete(staged_dir, exchange_dir)
+                    raise
 
         return removed
 
@@ -285,6 +326,7 @@ class DiskStorageBackend(StorageBackend):
     async def write_exchange(
         self, exchange_id: str, artifacts: ExchangeArtifacts
     ) -> None:
+        artifacts.validate_codex_derived_artifacts()
         final_dir, tmp_dir = self._prepare_exchange_write(exchange_id, artifacts)
         try:
             await self._write_exchange_files(tmp_dir, artifacts)
@@ -341,6 +383,31 @@ class DiskStorageBackend(StorageBackend):
             if changed and transport is not None:
                 await self._rewrite_transport_json(transport_path, transport)
 
+        events: tuple[CodexSemanticEvent, ...] | None = None
+        events_path = exchange_dir / "events.jsonl"
+        if events_path.exists():
+            try:
+                events = await self._read_events_jsonl(events_path)
+            except Exception:
+                logger.warning(
+                    "Failed to read Codex events sidecar for %s",
+                    exchange_id,
+                    exc_info=True,
+                )
+
+        turn: CodexTurnSummary | None = None
+        turn_path = exchange_dir / "turn.json"
+        if turn_path.exists():
+            try:
+                turn_json = await self._read_text(turn_path)
+                turn = CodexTurnSummary.model_validate_json(turn_json)
+            except Exception:
+                logger.warning(
+                    "Failed to read Codex turn sidecar for %s",
+                    exchange_id,
+                    exc_info=True,
+                )
+
         return ExchangeArtifacts(
             request_raw=request_raw,
             request_ir=request_ir,
@@ -350,7 +417,50 @@ class DiskStorageBackend(StorageBackend):
             response_raw=response_raw,
             response_ir=response_ir,
             transport=transport,
+            events=events,
+            turn=turn,
         )
+
+    async def read_codex_derived_files(
+        self, exchange_id: str
+    ) -> CodexDerivedArtifactFiles:
+        exchange_dir = self._find_exchange_dir(exchange_id)
+
+        events_jsonl: bytes | None = None
+        events_path = exchange_dir / "events.jsonl"
+        if events_path.exists():
+            events_jsonl = await self._read_bytes(events_path)
+
+        turn_json: bytes | None = None
+        turn_path = exchange_dir / "turn.json"
+        if turn_path.exists():
+            turn_json = await self._read_bytes(turn_path)
+
+        return CodexDerivedArtifactFiles(
+            events_jsonl=events_jsonl,
+            turn_json=turn_json,
+        )
+
+    async def write_codex_derived_artifacts(
+        self, exchange_id: str, artifacts: ExchangeArtifacts
+    ) -> None:
+        artifacts.validate_codex_derived_artifacts()
+        if artifacts.events is None or artifacts.turn is None:
+            msg = "Codex derived artifacts require both events and turn"
+            raise ValueError(msg)
+
+        final_dir = self._find_exchange_dir(exchange_id)
+        tmp_dir = final_dir.parent / f"{final_dir.name}.tmp"
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+        try:
+            await self._run_io(shutil.copytree, final_dir, tmp_dir)
+            await self._write_events_jsonl(tmp_dir / "events.jsonl", artifacts.events)
+            await self._write_turn_json(tmp_dir / "turn.json", artifacts.turn)
+            backup_dir = await self._activate_exchange_dir(tmp_dir, final_dir)
+            await self._cleanup_exchange_backup(backup_dir)
+        except BaseException:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+            raise
 
     # ── private helpers ─────────────────────────────────────────────
 
@@ -427,65 +537,11 @@ class DiskStorageBackend(StorageBackend):
                     sanitized_transport,
                 )
 
-    async def _activate_exchange_dir(
-        self, tmp_dir: Path, final_dir: Path
-    ) -> Path | None:
-        """Swap a staged exchange dir into place and keep any backup for rollback."""
-        backup_dir = final_dir.parent / f"{final_dir.name}.bak"
-        if backup_dir.exists():
-            if final_dir.exists():
-                await self._run_io(shutil.rmtree, backup_dir, True)
-            else:
-                backup_dir.rename(final_dir)
+        if artifacts.events is not None:
+            await self._write_events_jsonl(tmp_dir / "events.jsonl", artifacts.events)
 
-        had_existing = final_dir.exists()
-        if had_existing:
-            final_dir.rename(backup_dir)
-
-        try:
-            tmp_dir.rename(final_dir)
-        except Exception:
-            if had_existing and backup_dir.exists() and not final_dir.exists():
-                try:
-                    backup_dir.rename(final_dir)
-                except Exception:
-                    logger.exception(
-                        "Failed to restore exchange dir %s after rewrite failure",
-                        final_dir,
-                    )
-            raise
-
-        return backup_dir if had_existing else None
-
-    async def _rollback_activated_exchange(
-        self, final_dir: Path, backup_dir: Path | None
-    ) -> None:
-        if backup_dir is not None and backup_dir.exists():
-            if final_dir.exists():
-                await self._run_io(shutil.rmtree, final_dir, True)
-            backup_dir.rename(final_dir)
-            return
-        if final_dir.exists():
-            await self._run_io(shutil.rmtree, final_dir, True)
-
-    async def _cleanup_exchange_backup(self, backup_dir: Path | None) -> None:
-        if backup_dir is None or not backup_dir.exists():
-            return
-        try:
-            await self._run_io(shutil.rmtree, backup_dir, True)
-        except Exception:
-            logger.warning(
-                "Failed to remove exchange dir backup %s", backup_dir, exc_info=True
-            )
-
-    def _cleanup_partial_writes(self) -> None:
-        """Remove leftover ``.tmp`` directories from interrupted writes."""
-        if not self._root.exists():
-            return
-        for d in self._root.iterdir():
-            if d.is_dir() and d.name.endswith(".tmp"):
-                logger.warning("Cleaning up partial write: %s", d)
-                shutil.rmtree(d, ignore_errors=True)
+        if artifacts.turn is not None:
+            await self._write_turn_json(tmp_dir / "turn.json", artifacts.turn)
 
     async def _write_transport_json(
         self,
@@ -495,72 +551,34 @@ class DiskStorageBackend(StorageBackend):
         transport_json = transport.model_dump_json(indent=2)
         await self._write_text(path, transport_json)
 
-    async def _open(self, path: Path, mode: str = "r") -> Any:
-        return await aiofiles.open(  # type: ignore[call-overload]
-            str(path),
-            mode=mode,
-            executor=self._io_executor,
-        )
+    async def _read_events_jsonl(self, path: Path) -> tuple[CodexSemanticEvent, ...]:
+        lines = await self._read_lines(path)
+        events: list[CodexSemanticEvent] = []
+        for line in lines:
+            stripped = line.strip()
+            if not stripped:
+                continue
+            events.append(CodexSemanticEvent.model_validate_json(stripped))
+        return tuple(events)
 
-    async def _read_lines(self, path: Path) -> list[str]:
-        handle = await self._open(path)
-        try:
-            return cast("list[str]", await handle.readlines())
-        finally:
-            await handle.close()
-
-    async def _read_text(self, path: Path) -> str:
-        handle = await self._open(path)
-        try:
-            return cast("str", await handle.read())
-        finally:
-            await handle.close()
-
-    async def _read_bytes(self, path: Path) -> bytes:
-        handle = await self._open(path, mode="rb")
-        try:
-            return cast("bytes", await handle.read())
-        finally:
-            await handle.close()
-
-    async def _write_text(self, path: Path, content: str, *, mode: str = "w") -> None:
-        handle = await self._open(path, mode=mode)
-        try:
-            await handle.write(content)
-        finally:
-            await handle.close()
-
-    async def _write_bytes(
+    async def _write_events_jsonl(
         self,
         path: Path,
-        content: bytes,
-        *,
-        mode: str = "wb",
+        events: tuple[CodexSemanticEvent, ...],
     ) -> None:
-        handle = await self._open(path, mode=mode)
-        try:
-            await handle.write(content)
-        finally:
-            await handle.close()
+        await self._write_bytes(path, serialize_codex_events_jsonl(events))
 
-    async def _run_io(self, func: Any, *args: object) -> Any:
-        loop = asyncio.get_running_loop()
-        bound = partial(func, *args)
-        return await loop.run_in_executor(self._io_executor, bound)
-
-    async def _rewrite_transport_json(
+    async def _write_turn_json(
         self,
         path: Path,
-        transport: TransportArtifacts,
+        turn: CodexTurnSummary,
     ) -> None:
-        with tempfile.NamedTemporaryFile(
-            mode="w",
-            encoding="utf-8",
-            dir=path.parent,
-            prefix=f"{path.name}.",
-            suffix=".tmp",
-            delete=False,
-        ) as tmp:
-            tmp_path = Path(tmp.name)
-            tmp.write(transport.model_dump_json(indent=2))
-        tmp_path.replace(path)
+        durable_turn = self._durable_turn(turn)
+        await self._write_bytes(path, serialize_codex_turn_json(durable_turn))
+
+    def _durable_turn(self, turn: CodexTurnSummary) -> CodexTurnSummary:
+        if turn.status == "open":
+            return turn
+        if turn.cursor is None:
+            return turn
+        return turn.model_copy(update={"cursor": None})

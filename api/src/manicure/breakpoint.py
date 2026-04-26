@@ -38,6 +38,11 @@ class PausedFlow:
     # can call /v1/messages/count_tokens on the user's behalf when the
     # pipeline is re-audited.
     auth_headers: dict[str, str] = field(default_factory=dict)
+    run_id: str | None = None
+    track_id: str | None = None
+    parent_track_id: str | None = None
+    track_display_name: str | None = None
+    track_role: Literal["parent", "subagent"] | None = None
     # Authoritative "before" token count — the number of tokens the curated
     # IR would cost if forwarded unchanged. None when the counter failed
     # or is not configured; the UI renders an em dash in that case.
@@ -88,6 +93,11 @@ async def pause(
     transport: Literal["http", "websocket"] = "http",
     audit: OverrideAudit | None = None,
     auth_headers: dict[str, str] | None = None,
+    run_id: str | None = None,
+    track_id: str | None = None,
+    parent_track_id: str | None = None,
+    track_display_name: str | None = None,
+    track_role: Literal["parent", "subagent"] | None = None,
 ) -> asyncio.Event:
     """Register flow, re-arm for next request, return event to await on.
 
@@ -106,6 +116,11 @@ async def pause(
             audit=audit,
             paused_at_ms=int(time.time() * 1000),
             auth_headers=dict(auth_headers) if auth_headers else {},
+            run_id=run_id,
+            track_id=track_id,
+            parent_track_id=parent_track_id,
+            track_display_name=track_display_name,
+            track_role=track_role,
         )
         return event
 

@@ -31,6 +31,8 @@ interface UIState {
   forwardingLastActivityAt: number | null;
   /** When true, newly-mounted message/system cards start fully expanded. */
   autoExpandBlocks: boolean;
+  /** Collapsed track ids keyed by run/session id. */
+  collapsedTrackIdsBySession: Record<string, string[]>;
   setActiveRoute: (route: Route) => void;
   setSelectedId: (id: string | null) => void;
   setIncludeHistory: (value: boolean) => void;
@@ -39,6 +41,7 @@ interface UIState {
   setForwardingFlowId: (id: string | null) => void;
   bumpForwardingActivity: () => void;
   setAutoExpandBlocks: (value: boolean) => void;
+  toggleCollapsedTrack: (sessionId: string, trackId: string) => void;
 }
 
 export const useUIStore = create<UIState>()(
@@ -51,6 +54,7 @@ export const useUIStore = create<UIState>()(
       forwardingFlowId: null,
       forwardingLastActivityAt: null,
       autoExpandBlocks: false,
+      collapsedTrackIdsBySession: {},
       setActiveRoute: (route) => set({ activeRoute: route }),
       setSelectedId: (id) => set({ selectedId: id }),
       setIncludeHistory: (value) => set({ includeHistory: value }),
@@ -65,6 +69,19 @@ export const useUIStore = create<UIState>()(
         ),
       bumpForwardingActivity: () => set({ forwardingLastActivityAt: Date.now() }),
       setAutoExpandBlocks: (value) => set({ autoExpandBlocks: value }),
+      toggleCollapsedTrack: (sessionId, trackId) =>
+        set((state) => {
+          const current = state.collapsedTrackIdsBySession[sessionId] ?? [];
+          const next = current.includes(trackId)
+            ? current.filter((id) => id !== trackId)
+            : [...current, trackId];
+          return {
+            collapsedTrackIdsBySession: {
+              ...state.collapsedTrackIdsBySession,
+              [sessionId]: next,
+            },
+          };
+        }),
     }),
     {
       name: "manicure-ui",
@@ -72,6 +89,7 @@ export const useUIStore = create<UIState>()(
         activeRoute: state.activeRoute,
         selectedId: state.selectedId,
         autoExpandBlocks: state.autoExpandBlocks,
+        collapsedTrackIdsBySession: state.collapsedTrackIdsBySession,
       }),
     },
   ),
