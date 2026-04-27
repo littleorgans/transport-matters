@@ -23,6 +23,7 @@ from manicure.storage import (
     PipelineStats,
     ReqStats,
     ResStats,
+    SpawnAnchor,
 )
 from manicure.storage.base import ExchangeArtifacts, StorageBackend
 from manicure.track_manager import (
@@ -91,6 +92,7 @@ def emit_exchange(
     parent_track_id: str | None = None,
     track_display_name: str | None = None,
     track_role: str | None = None,
+    spawn_anchor: SpawnAnchor | None = None,
 ) -> None:
     """Broadcast the exchange event to SSE subscribers."""
     payload: dict[str, object] = {
@@ -108,6 +110,9 @@ def emit_exchange(
         "parent_track_id": parent_track_id,
         "track_display_name": track_display_name,
         "track_role": track_role or "parent",
+        "spawn_anchor": spawn_anchor.model_dump(mode="json")
+        if spawn_anchor is not None
+        else None,
     }
     if flow_id is not None:
         payload["flow_id"] = flow_id
@@ -127,26 +132,35 @@ def _assign_track(
     run_id: str | None,
     ir: InternalRequest,
     res_ir: InternalResponse | None,
+    *,
+    exchange_id: str | None = None,
 ) -> TrackAssignment | None:
     if run_id is None:
         return None
-    return get_track_manager().record_exchange(run_id, ir, res_ir)
+    return get_track_manager().record_exchange(
+        run_id, ir, res_ir, exchange_id=exchange_id
+    )
 
 
 def _persist_track_assignment(
     run_id: str | None,
     request_state: RequestFlowState,
     res_ir: InternalResponse | None,
+    *,
+    exchange_id: str | None = None,
 ) -> TrackAssignment | None:
     if run_id is None:
         return None
     if request_state.track_assignment is None:
-        return _assign_track(run_id, request_state.request_ir, res_ir)
+        return _assign_track(
+            run_id, request_state.request_ir, res_ir, exchange_id=exchange_id
+        )
     if res_ir is not None:
         get_track_manager().observe_response(
             run_id,
             request_state.track_assignment.track_id,
             res_ir,
+            exchange_id=exchange_id,
         )
     return request_state.track_assignment
 
@@ -193,7 +207,9 @@ async def _persist_http_exchange(
 
     ts_slug = ts.strftime("%Y%m%dT%H%M%S")
     run_id = get_settings().run_id
-    track_assignment = _persist_track_assignment(run_id, request_state, res_ir)
+    track_assignment = _persist_track_assignment(
+        run_id, request_state, res_ir, exchange_id=exchange_id
+    )
     entry = IndexEntry(
         id=exchange_id,
         run_id=run_id,
@@ -229,11 +245,6 @@ async def _persist_http_exchange(
         request_state.mutated_manually,
         pipeline_stats,
         flow_id=flow.id,
-        track_id=track_assignment.track_id if track_assignment else None,
-        parent_track_id=track_assignment.parent_track_id if track_assignment else None,
-        track_display_name=(
-            track_assignment.track_display_name if track_assignment else None
-        ),
-        track_role=track_assignment.track_role if track_assignment else None,
+        **assignment_index_fields(track_assignment),
     )
     return True

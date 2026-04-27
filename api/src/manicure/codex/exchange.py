@@ -43,7 +43,13 @@ from manicure.ir import (
     SamplingParams,
     TextBlock,
 )
-from manicure.storage import CodexTurnListSummary, IndexEntry, ResStats
+from manicure.storage import (
+    CodexTurnListSummary,
+    IndexEntry,
+    PipelineStats,
+    ReqStats,
+    ResStats,
+)
 from manicure.storage.base import ExchangeArtifacts
 from manicure.track_manager import assignment_index_fields, get_track_manager
 
@@ -91,7 +97,9 @@ async def _persist_codex_provisional_exchange(flow: http.HTTPFlow) -> str | None
         else None
     )
     run_id = get_settings().run_id
-    track_assignment = _persist_track_assignment(run_id, request_state, None)
+    track_assignment = _persist_track_assignment(
+        run_id, request_state, None, exchange_id=exchange_id
+    )
     entry = IndexEntry(
         id=exchange_id,
         run_id=run_id,
@@ -137,12 +145,7 @@ async def _persist_codex_provisional_exchange(flow: http.HTTPFlow) -> str | None
         pipeline_stats,
         flow_id=flow.id,
         codex_turn=entry.codex_turn,
-        track_id=track_assignment.track_id if track_assignment else None,
-        parent_track_id=track_assignment.parent_track_id if track_assignment else None,
-        track_display_name=(
-            track_assignment.track_display_name if track_assignment else None
-        ),
-        track_role=track_assignment.track_role if track_assignment else None,
+        **assignment_index_fields(track_assignment),
     )
     return exchange_id
 
@@ -232,7 +235,9 @@ async def _persist_codex_exchange(
         else None
     )
     run_id = get_settings().run_id
-    track_assignment = _persist_track_assignment(run_id, request_state, res_ir)
+    track_assignment = _persist_track_assignment(
+        run_id, request_state, res_ir, exchange_id=exchange_id
+    )
     entry = IndexEntry(
         id=exchange_id,
         run_id=run_id,
@@ -276,12 +281,7 @@ async def _persist_codex_exchange(
         pipeline_stats,
         flow_id=flow.id,
         codex_turn=entry.codex_turn,
-        track_id=track_assignment.track_id if track_assignment else None,
-        parent_track_id=track_assignment.parent_track_id if track_assignment else None,
-        track_display_name=(
-            track_assignment.track_display_name if track_assignment else None
-        ),
-        track_role=track_assignment.track_role if track_assignment else None,
+        **assignment_index_fields(track_assignment),
     )
     return True
 
@@ -392,6 +392,7 @@ async def _finalize_codex_provisional_exchange(
             existing_entry.run_id,
             existing_entry.track_id,
             res_ir,
+            exchange_id=existing_entry.id,
         )
     entry = existing_entry.model_copy(
         update={
@@ -423,18 +424,45 @@ async def _finalize_codex_provisional_exchange(
         )
         return False
 
-    if state is not None:
-        state.provisional_exchange_id = None
-        state.finalized_exchange_id = exchange_id
-        state.current_turn_index = None
+    _mark_codex_exchange_finalized(state, exchange_id)
+    _emit_codex_entry_exchange(
+        flow=flow,
+        ir=ir,
+        entry=entry,
+        req_stats=req_stats,
+        res_stats=res_stats,
+        pipeline_stats=pipeline_stats,
+        mutated_manually=request_state.mutated_manually,
+    )
+    return True
+
+
+def _mark_codex_exchange_finalized(state: Any | None, exchange_id: str) -> None:
+    if state is None:
+        return
+    state.provisional_exchange_id = None
+    state.finalized_exchange_id = exchange_id
+    state.current_turn_index = None
+
+
+def _emit_codex_entry_exchange(
+    *,
+    flow: http.HTTPFlow,
+    ir: InternalRequest,
+    entry: IndexEntry,
+    req_stats: ReqStats,
+    res_stats: ResStats,
+    pipeline_stats: PipelineStats | None,
+    mutated_manually: bool,
+) -> None:
     emit_exchange(
         ir,
         req_stats,
         res_stats,
-        exchange_id,
+        entry.id,
         entry.ts,
         entry.run_id,
-        request_state.mutated_manually,
+        mutated_manually,
         pipeline_stats,
         flow_id=flow.id,
         codex_turn=entry.codex_turn,
@@ -442,8 +470,8 @@ async def _finalize_codex_provisional_exchange(
         parent_track_id=entry.parent_track_id,
         track_display_name=entry.track_display_name,
         track_role=entry.track_role,
+        spawn_anchor=entry.spawn_anchor,
     )
-    return True
 
 
 def _codex_handshake_failure_ir(flow: http.HTTPFlow) -> InternalRequest:

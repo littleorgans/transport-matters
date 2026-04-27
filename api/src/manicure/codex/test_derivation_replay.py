@@ -171,6 +171,59 @@ def _completed_replay_request() -> CodexReplayRequest:
     )
 
 
+def _pending_tool_finalization_request() -> CodexReplayRequest:
+    return CodexReplayRequest(
+        context=make_context(),
+        transport_messages=[
+            make_message(
+                23,
+                10,
+                14,
+                3,
+                direction="client",
+                event_type="response.create",
+                payload_json={
+                    "type": "response.create",
+                    "model": "gpt-5-codex",
+                },
+            ),
+            make_message(
+                24,
+                10,
+                14,
+                4,
+                direction="server",
+                event_type="response.output_item.added",
+                payload_json={
+                    "type": "response.output_item.added",
+                    "item": {
+                        "type": "function_call",
+                        "id": "fc_01",
+                        "call_id": "call_read",
+                        "name": "read_file",
+                        "arguments": "",
+                    },
+                },
+            ),
+            make_message(
+                25,
+                10,
+                14,
+                5,
+                direction="server",
+                event_type="response.completed",
+                payload_json={
+                    "type": "response.completed",
+                    "response": {
+                        "id": "resp_01",
+                        "status": "completed",
+                    },
+                },
+            ),
+        ],
+    )
+
+
 def test_replay_derives_completed_turn_with_committed_semantics_only() -> None:
     result = derive_codex_turn_replay(_completed_replay_request())
 
@@ -240,6 +293,35 @@ def test_replay_derives_completed_turn_with_committed_semantics_only() -> None:
     assert result.turn.text_chars == 5
     assert result.turn.tool_calls == 1
     assert result.turn.cursor is None
+
+
+def test_replay_carries_pending_tool_activity_into_finalized_count() -> None:
+    result = derive_codex_turn_replay(_pending_tool_finalization_request())
+
+    assert result is not None
+    assert tuple(event.kind for event in result.events) == (
+        "turn_started",
+        "response_completed",
+        "turn_finalized",
+    )
+    assert result.events[-1].data == {
+        "status": "completed",
+        "stop_reason": "completed",
+        "terminal_cause": "response_completed",
+        "text_chars": 0,
+        "tool_calls": 1,
+    }
+    assert result.turn.status == "completed"
+    assert result.turn.tool_calls == 1
+    assert result.turn.cursor is None
+
+
+def test_replay_does_not_double_count_completed_tool_activity() -> None:
+    result = derive_codex_turn_replay(_completed_replay_request())
+
+    assert result is not None
+    assert result.events[-1].data["tool_calls"] == 1
+    assert result.turn.tool_calls == 1
 
 
 def test_replay_derives_interrupted_turn_from_close_fact() -> None:

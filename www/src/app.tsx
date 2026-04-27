@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { ArmToggle } from "./components/ArmToggle";
 import { ExchangeDetail } from "./components/ExchangeDetail";
 import { ExchangeList } from "./components/ExchangeList";
@@ -14,6 +14,7 @@ import { useExchanges } from "./hooks/useExchanges";
 import { useMeta } from "./hooks/useMeta";
 import { useRouteHotkeys } from "./hooks/useRouteHotkeys";
 import { useUIStore } from "./stores/uiStore";
+import type { ExchangeTrackStub, PausedFlow } from "./types";
 
 function ConnectionDot({ connected }: { connected: boolean }) {
   return (
@@ -78,17 +79,83 @@ function AppBar({
   );
 }
 
+function pendingTrackStubsForPausedFlow(pausedFlow: PausedFlow | null): ExchangeTrackStub[] {
+  if (
+    pausedFlow?.track_role !== "subagent" ||
+    !pausedFlow.track_id ||
+    !pausedFlow.parent_track_id ||
+    !pausedFlow.spawn_anchor?.track_spawn_exchange_id
+  ) {
+    return [];
+  }
+  return [
+    {
+      track_id: pausedFlow.track_id,
+      parent_track_id: pausedFlow.parent_track_id,
+      track_display_name: pausedFlow.track_display_name ?? null,
+      track_role: "subagent",
+      status: "pending",
+      spawn_anchor: pausedFlow.spawn_anchor,
+    },
+  ];
+}
+
+interface WaitingScreenProps {
+  connected: boolean;
+  mode: "off" | "armed_once";
+  onToggleArm: () => void;
+  breakpointError: boolean;
+  onShowHistory: () => void;
+}
+
+function WaitingScreen({
+  connected,
+  mode,
+  onToggleArm,
+  breakpointError,
+  onShowHistory,
+}: WaitingScreenProps) {
+  return (
+    <div className="h-screen bg-canvas text-txt relative overflow-hidden">
+      <div className="absolute inset-0 flex items-center justify-center text-edge-subtle opacity-30 pointer-events-none">
+        <ManicureIcon className="spin-gentle h-[90vh] w-[90vh]" />
+      </div>
+      <div className="absolute inset-0 flex flex-col items-center justify-center gap-6">
+        <div className="flex flex-col items-center gap-3">
+          <ManicureIcon className="h-[64px] w-[64px] text-txt shrink-0" />
+          <h1 className="text-[14px] font-semibold tracking-[0.18em] text-txt uppercase">
+            Manicure
+          </h1>
+          <span className="label">Waiting for exchanges</span>
+        </div>
+        <ConnectionDot connected={connected} />
+        <div className="flex items-center gap-4">
+          <ArmToggle mode={mode} onToggle={onToggleArm} error={breakpointError} />
+          <button
+            type="button"
+            onClick={onShowHistory}
+            className="btn border border-edge bg-surface px-3.5 py-1.5 text-[12px] font-semibold uppercase tracking-[0.18em] text-txt-3 transition-colors hover:bg-raised hover:text-txt"
+          >
+            Show history
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function App() {
   const includeHistory = useUIStore((s) => s.includeHistory);
   const setIncludeHistory = useUIStore((s) => s.setIncludeHistory);
-  const { exchanges, trackTree, isLoading } = useExchanges(includeHistory);
+  const pausedFlow = useUIStore((s) => s.pausedFlow);
+  const pendingTrackStubs = useMemo(() => pendingTrackStubsForPausedFlow(pausedFlow), [pausedFlow]);
+  const { exchanges, trackTree, isLoading } = useExchanges(includeHistory, true, pendingTrackStubs);
   const { meta } = useMeta();
   const { connected } = useExchangeStream();
   const { mode, arm, disarm, error: breakpointError } = useBreakpoint();
   const activeRoute = useUIStore((s) => s.activeRoute);
   const selectedId = useUIStore((s) => s.selectedId);
   const setSelectedId = useUIStore((s) => s.setSelectedId);
-  const pausedFlow = useUIStore((s) => s.pausedFlow);
   const clearPausedFlow = useUIStore((s) => s.clearPausedFlow);
 
   useRouteHotkeys();
@@ -129,31 +196,13 @@ export function App() {
 
   if (showEntryPage) {
     return (
-      <div className="h-screen bg-canvas text-txt relative overflow-hidden">
-        <div className="absolute inset-0 flex items-center justify-center text-edge-subtle opacity-30 pointer-events-none">
-          <ManicureIcon className="spin-gentle h-[90vh] w-[90vh]" />
-        </div>
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-6">
-          <div className="flex flex-col items-center gap-3">
-            <ManicureIcon className="h-[64px] w-[64px] text-txt shrink-0" />
-            <h1 className="text-[14px] font-semibold tracking-[0.18em] text-txt uppercase">
-              Manicure
-            </h1>
-            <span className="label">Waiting for exchanges</span>
-          </div>
-          <ConnectionDot connected={connected} />
-          <div className="flex items-center gap-4">
-            <ArmToggle mode={mode} onToggle={toggleArm} error={!!breakpointError} />
-            <button
-              type="button"
-              onClick={() => setIncludeHistory(true)}
-              className="btn border border-edge bg-surface px-3.5 py-1.5 text-[12px] font-semibold uppercase tracking-[0.18em] text-txt-3 transition-colors hover:bg-raised hover:text-txt"
-            >
-              Show history
-            </button>
-          </div>
-        </div>
-      </div>
+      <WaitingScreen
+        connected={connected}
+        mode={mode}
+        onToggleArm={toggleArm}
+        breakpointError={!!breakpointError}
+        onShowHistory={() => setIncludeHistory(true)}
+      />
     );
   }
 

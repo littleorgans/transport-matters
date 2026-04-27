@@ -418,6 +418,8 @@ async def _rewrite_codex_provisional_exchange(
                 parent_track_id=updated_entry.parent_track_id,
                 track_display_name=updated_entry.track_display_name,
                 track_role=updated_entry.track_role,
+                # Rewrites re-emit from IndexEntry because no TrackAssignment is rebuilt here.
+                spawn_anchor=updated_entry.spawn_anchor,
             )
     except Exception:
         logger.exception("Failed to rewrite provisional Codex exchange %s", exchange_id)

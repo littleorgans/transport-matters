@@ -43,6 +43,7 @@ class DiskStorageBackend(DiskStorageRecoveryMixin, StorageBackend):
 
     def __init__(self, root: str | Path | None = None) -> None:
         self._root = Path(root) if root else _DEFAULT_ROOT
+        self._drop_legacy_flat_anchor_cache()
         self._root.mkdir(parents=True, exist_ok=True)
         self._index_lock = asyncio.Lock()
         self._index_cache: dict[str, IndexEntry] | None = None
@@ -55,6 +56,36 @@ class DiskStorageBackend(DiskStorageRecoveryMixin, StorageBackend):
     @property
     def root(self) -> Path:
         return self._root
+
+    def _drop_legacy_flat_anchor_cache(self) -> None:
+        index_path = self._root / "index.jsonl"
+        if not index_path.exists():
+            return
+        try:
+            lines = index_path.read_text().splitlines()
+        except OSError:
+            logger.exception("Failed to inspect legacy storage index")
+            return
+        legacy_keys = {
+            "track_spawn_exchange_id",
+            "track_spawn_tool_use_id",
+            "track_spawn_order",
+        }
+        for line in lines:
+            if not line.strip():
+                continue
+            try:
+                payload = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(payload, dict) and legacy_keys.intersection(payload):
+                break
+        else:
+            return
+        logger.info(
+            "Dropping legacy Manicure storage cache with flat spawn anchor fields"
+        )
+        shutil.rmtree(self._root, ignore_errors=True)
 
     # ── index ───────────────────────────────────────────────────────
 

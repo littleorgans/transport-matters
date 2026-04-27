@@ -11,7 +11,6 @@ from manicure.addon import (
     build_pipeline_stats,
     build_req_stats,
     build_res_stats,
-    emit_exchange,
     fire_pause_count,
     resolve_paused_flow,
     stamp_pipeline_tokens,
@@ -30,7 +29,8 @@ from manicure.ir import (
     UsageStats,
 )
 from manicure.overrides import OverrideAudit, OverrideAuditEntry
-from manicure.storage.base import CodexTurnListSummary, PipelineStats
+from manicure.pause_session import _paused_event_payload
+from manicure.storage.base import PipelineStats, SpawnAnchor
 
 
 def _make_ir(
@@ -165,6 +165,31 @@ def test_build_pipeline_stats_empty_overrides() -> None:
     assert stats is not None
     assert stats.tokens_before is None
     assert stats.tokens_after is None
+
+
+# ── paused event payload ──────────────────────────────────────────
+
+
+def test_paused_event_payload_includes_spawn_anchor() -> None:
+    payload = _paused_event_payload(
+        flow_id="flow-anchor",
+        transport="http",
+        original_ir=_make_ir(),
+        curated_ir=_make_ir(),
+        audit=None,
+        paused_at_ms=1_700_000_000_000,
+        spawn_anchor=SpawnAnchor(
+            track_spawn_exchange_id="exchange-parent-1",
+            track_spawn_tool_use_id="toolu_child",
+            track_spawn_order=0,
+        ),
+    )
+
+    assert payload["spawn_anchor"] == {
+        "track_spawn_exchange_id": "exchange-parent-1",
+        "track_spawn_tool_use_id": "toolu_child",
+        "track_spawn_order": 0,
+    }
 
 
 # ── stamp_pipeline_tokens ──────────────────────────────────────────
@@ -373,152 +398,6 @@ def test_build_res_stats_empty_content_is_zero() -> None:
     stats = build_res_stats(_make_response_ir())
     assert stats.text_chars == 0
     assert stats.tool_calls == 0
-
-
-# ── emit_exchange ─────────────────────────────────────────────────
-
-
-class TestEmitExchange:
-    """emit_exchange SSE payload includes mutated_manually and pipeline fields."""
-
-    def setup_method(self) -> None:
-        broadcast._subscribers.clear()
-        broadcast._next_id = 0
-
-    def teardown_method(self) -> None:
-        broadcast._subscribers.clear()
-        broadcast._next_id = 0
-
-    def test_payload_includes_mutated_manually_and_pipeline(self) -> None:
-        import json
-        from datetime import UTC, datetime
-
-        ir = _make_ir()
-        req_stats = build_req_stats(ir)
-        pipeline_stats = PipelineStats(
-            overrides_applied=[],
-            chars_before=100,
-            chars_after=80,
-            tokens_before=60,
-            tokens_after=50,
-        )
-        q = broadcast.subscribe()
-
-        emit_exchange(
-            ir,
-            req_stats,
-            None,
-            "exchange-1",
-            datetime(2026, 1, 1, tzinfo=UTC),
-            None,
-            mutated_manually=True,
-            pipeline_stats=pipeline_stats,
-        )
-
-        assert not q.empty()
-        data = json.loads(q.get_nowait())
-        assert data["mutated_manually"] is True
-        assert data["pipeline"]["chars_before"] == 100
-        assert data["pipeline"]["chars_after"] == 80
-
-    def test_payload_includes_flow_id_when_provided(self) -> None:
-        import json
-        from datetime import UTC, datetime
-
-        ir = _make_ir()
-        req_stats = build_req_stats(ir)
-        q = broadcast.subscribe()
-
-        emit_exchange(
-            ir,
-            req_stats,
-            None,
-            "exchange-3",
-            datetime(2026, 1, 1, tzinfo=UTC),
-            None,
-            flow_id="mitmproxy-flow-abc123",
-        )
-
-        data = json.loads(q.get_nowait())
-        assert data["flow_id"] == "mitmproxy-flow-abc123"
-
-    def test_payload_includes_codex_turn_when_provided(self) -> None:
-        import json
-        from datetime import UTC, datetime
-
-        ir = _make_ir().model_copy(
-            update={"provider": "codex", "model": "codex/gpt-5-codex"}
-        )
-        req_stats = build_req_stats(ir)
-        q = broadcast.subscribe()
-
-        emit_exchange(
-            ir,
-            req_stats,
-            None,
-            "exchange-codex-1",
-            datetime(2026, 1, 1, tzinfo=UTC),
-            None,
-            codex_turn=CodexTurnListSummary(
-                turn_index=2,
-                message_range_start=4,
-                message_range_end=7,
-                status="completed",
-                terminal_cause="response_completed",
-                stop_reason="completed",
-                text_chars=321,
-                tool_calls=2,
-            ),
-        )
-
-        data = json.loads(q.get_nowait())
-        assert data["codex_turn"] == {
-            "turn_index": 2,
-            "message_range_start": 4,
-            "message_range_end": 7,
-            "status": "completed",
-            "terminal_cause": "response_completed",
-            "stop_reason": "completed",
-            "text_chars": 321,
-            "tool_calls": 2,
-        }
-
-    def test_payload_omits_flow_id_when_none(self) -> None:
-        import json
-        from datetime import UTC, datetime
-
-        ir = _make_ir()
-        req_stats = build_req_stats(ir)
-        q = broadcast.subscribe()
-
-        emit_exchange(
-            ir,
-            req_stats,
-            None,
-            "exchange-4",
-            datetime(2026, 1, 1, tzinfo=UTC),
-            None,
-        )
-
-        data = json.loads(q.get_nowait())
-        assert "flow_id" not in data
-
-    def test_defaults_omit_pipeline_and_mutated_false(self) -> None:
-        import json
-        from datetime import UTC, datetime
-
-        ir = _make_ir()
-        req_stats = build_req_stats(ir)
-        q = broadcast.subscribe()
-
-        emit_exchange(
-            ir, req_stats, None, "exchange-2", datetime(2026, 1, 1, tzinfo=UTC), None
-        )
-
-        assert not q.empty()
-        data = json.loads(q.get_nowait())
-        assert data["mutated_manually"] is False
-        assert data["pipeline"] is None
 
 
 # ── fire_pause_count ──────────────────────────────────────────────

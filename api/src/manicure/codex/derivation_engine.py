@@ -21,6 +21,7 @@ from manicure.codex.events import (
     CodexOpenAssistantItem,
     CodexOpenToolCall,
     CodexSemanticEvent,
+    CodexTerminalCause,
     CodexTransportRef,
     CodexTurnSummary,
 )
@@ -309,11 +310,12 @@ def _derive_codex_turn(
     summary_text_chars = committed_text_chars + _open_assistant_text_chars(
         open_assistant_items
     )
+    finalized_tool_calls = committed_tool_calls + len(open_tool_calls)
 
     if terminal_status is not None:
         stop_reason = terminal_stop_reason or terminal_status
         status = terminal_status
-        terminal_cause = (
+        terminal_cause: CodexTerminalCause = (
             "response_completed"
             if terminal_status == "completed"
             else "response_failed"
@@ -330,7 +332,7 @@ def _derive_codex_turn(
                 terminal_cause=terminal_cause,
                 stop_reason=stop_reason,
                 text_chars=summary_text_chars,
-                tool_calls=committed_tool_calls,
+                tool_calls=finalized_tool_calls,
             ),
         )
         turn = CodexTurnSummary(
@@ -347,7 +349,7 @@ def _derive_codex_turn(
             status=status,
             stop_reason=stop_reason,
             text_chars=summary_text_chars,
-            tool_calls=committed_tool_calls,
+            tool_calls=finalized_tool_calls,
             started_at=started_at,
             ended_at=cast("datetime", terminal_ts),
             derivation_version=context.derivation_version,
@@ -368,7 +370,7 @@ def _derive_codex_turn(
                 terminal_cause="websocket_close",
                 stop_reason=stop_reason,
                 text_chars=summary_text_chars,
-                tool_calls=committed_tool_calls,
+                tool_calls=finalized_tool_calls,
                 close_code=close.close_code,
             ),
         )
@@ -385,7 +387,7 @@ def _derive_codex_turn(
             status="interrupted",
             stop_reason=stop_reason,
             text_chars=summary_text_chars,
-            tool_calls=committed_tool_calls,
+            tool_calls=finalized_tool_calls,
             started_at=started_at,
             ended_at=close.ts,
             derivation_version=context.derivation_version,

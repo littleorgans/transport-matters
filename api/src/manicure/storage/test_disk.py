@@ -5,11 +5,15 @@ Uses ``tmp_path`` to avoid touching the real filesystem.
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 from unittest.mock import patch
 
 import pytest
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 from manicure.codex.derivation import CODEX_DERIVATION_VERSION
 from manicure.codex.events import (
@@ -34,11 +38,9 @@ from manicure.storage.base import (
     IndexEntry,
     ReqStats,
     ResStats,
+    SpawnAnchor,
 )
 from manicure.storage.disk import DiskStorageBackend
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 
 @pytest.fixture
@@ -208,6 +210,11 @@ class TestAppendAndReadIndex:
                 "parent_track_id": "run-root",
                 "track_display_name": "worker",
                 "track_role": "subagent",
+                "spawn_anchor": SpawnAnchor(
+                    track_spawn_exchange_id="ex-parent",
+                    track_spawn_tool_use_id="toolu_child",
+                    track_spawn_order=0,
+                ),
             }
         )
 
@@ -218,14 +225,125 @@ class TestAppendAndReadIndex:
         assert entries[0].parent_track_id == "run-root"
         assert entries[0].track_display_name == "worker"
         assert entries[0].track_role == "subagent"
+        assert entries[0].spawn_anchor is not None
+        assert entries[0].spawn_anchor.track_spawn_exchange_id == "ex-parent"
+        assert entries[0].spawn_anchor.track_spawn_tool_use_id == "toolu_child"
+        assert entries[0].spawn_anchor.track_spawn_order == 0
+        dumped = entries[0].model_dump(mode="json")
+        assert dumped["spawn_anchor"] == {
+            "track_spawn_exchange_id": "ex-parent",
+            "track_spawn_tool_use_id": "toolu_child",
+            "track_spawn_order": 0,
+        }
+        assert "track_spawn_exchange_id" not in dumped
+        assert "track_spawn_tool_use_id" not in dumped
+        assert "track_spawn_order" not in dumped
 
-    def test_legacy_entry_defaults_to_root_track(self) -> None:
+    async def test_null_spawn_anchor_round_trips(
+        self, storage: DiskStorageBackend
+    ) -> None:
+        entry = _make_index_entry("ex-001").model_copy(update={"spawn_anchor": None})
+
+        await storage.append_index(entry)
+
+        entries = await storage.read_index(limit=10, offset=0)
+        assert entries[0].spawn_anchor is None
+        assert entries[0].model_dump(mode="json")["spawn_anchor"] is None
+
+    def test_entry_defaults_to_root_track(self) -> None:
         entry = IndexEntry.model_validate(_make_index_entry("ex-001").model_dump())
 
         assert entry.track_id == entry.run_id
         assert entry.parent_track_id is None
         assert entry.track_display_name is None
         assert entry.track_role == "parent"
+        assert entry.spawn_anchor is None
+
+    def test_spawn_order_rejects_negative_values(self) -> None:
+        payload = _make_index_entry("ex-001").model_dump()
+        payload["spawn_anchor"] = {
+            "track_spawn_exchange_id": "ex-parent",
+            "track_spawn_tool_use_id": "toolu_child",
+            "track_spawn_order": -1,
+        }
+
+        with pytest.raises(ValueError):
+            IndexEntry.model_validate(payload)
+
+
+class TestLegacyFlatAnchorCacheInvalidation:
+    """``DiskStorageBackend.__init__`` drops the cache root on startup when any
+    index row still uses the pre-ALP-2039 top-level flat anchor keys. This is
+    the migration boundary: old wire shape is rejected by validation rather
+    than rewritten in place."""
+
+    def test_wipes_root_when_index_contains_legacy_flat_anchor_keys(
+        self, tmp_path: Path
+    ) -> None:
+        index_path = tmp_path / "index.jsonl"
+        index_path.write_text(
+            json.dumps(
+                {
+                    "id": "ex-legacy",
+                    "track_spawn_exchange_id": "ex-parent",
+                    "track_spawn_tool_use_id": "toolu_child",
+                    "track_spawn_order": 0,
+                }
+            )
+            + "\n"
+        )
+        sibling = tmp_path / "20250101T000000Z-deadbeef"
+        sibling.mkdir()
+        (sibling / "request.raw").write_bytes(b"stale")
+
+        DiskStorageBackend(root=str(tmp_path))
+
+        assert not index_path.exists()
+        assert not sibling.exists()
+        assert tmp_path.exists()
+
+    def test_preserves_root_when_index_uses_nested_spawn_anchor(
+        self, tmp_path: Path
+    ) -> None:
+        index_path = tmp_path / "index.jsonl"
+        index_path.write_text(
+            json.dumps(
+                {
+                    "id": "ex-new",
+                    "spawn_anchor": {
+                        "track_spawn_exchange_id": "ex-parent",
+                        "track_spawn_tool_use_id": "toolu_child",
+                        "track_spawn_order": 0,
+                    },
+                }
+            )
+            + "\n"
+        )
+
+        DiskStorageBackend(root=str(tmp_path))
+
+        assert index_path.exists()
+
+    def test_noop_when_index_missing(self, tmp_path: Path) -> None:
+        sibling = tmp_path / "keep-me"
+        sibling.mkdir()
+
+        DiskStorageBackend(root=str(tmp_path))
+
+        assert sibling.exists()
+
+    def test_skips_malformed_lines_and_still_detects_legacy(
+        self, tmp_path: Path
+    ) -> None:
+        index_path = tmp_path / "index.jsonl"
+        index_path.write_text(
+            "not json\n"
+            "\n" + json.dumps({"id": "ex-legacy", "track_spawn_order": 0}) + "\n"
+        )
+
+        DiskStorageBackend(root=str(tmp_path))
+
+        assert not index_path.exists()
 
 
 class TestWriteAndReadExchange:
@@ -581,137 +699,3 @@ class TestDeleteExchange:
             middle.id,
             last.id,
         ]
-
-
-class TestCacheCreationBackfill:
-    """Lazy backfill of cache_creation_input_tokens on first index read.
-
-    Rows written before ResStats carried the field stored zero. The full
-    UsageStats survives in response.ir.json, so _ensure_index_cache can
-    rehydrate the missing value on first load and rewrite the index in
-    place. Rows whose artifact also reports zero are untouched.
-    """
-
-    async def _seed_exchange(
-        self,
-        storage: DiskStorageBackend,
-        exchange_id: str,
-        usage: UsageStats,
-    ) -> None:
-        """Write a request + response artifact pair into the exchange dir."""
-        ir = _make_ir()
-        resp_ir = InternalResponse(
-            id=f"msg_{exchange_id}",
-            model="anthropic/claude-sonnet-4-20250514",
-            provider="anthropic",
-            stop_reason="end_turn",
-            usage=usage,
-            content=[],
-        )
-        artifacts = ExchangeArtifacts(
-            request_raw=b"{}",
-            request_ir=ir,
-            response_raw=b"{}",
-            response_ir=resp_ir,
-        )
-        await storage.write_exchange(exchange_id, artifacts)
-
-    async def test_backfills_zero_row_from_artifact(
-        self, storage: DiskStorageBackend
-    ) -> None:
-        exchange_id = "aaaa0000-1111-2222-3333-444455556666"
-        # Old-style index entry: res present, cache_creation is zero.
-        entry = _make_index_entry(exchange_id).model_copy(
-            update={
-                "res": ResStats(
-                    input_tokens=100,
-                    output_tokens=50,
-                    cache_creation_input_tokens=0,
-                    cache_read_input_tokens=5,
-                )
-            }
-        )
-        await storage.append_index(entry)
-        # Artifact carries the truth (200 tokens written to cache this turn).
-        await self._seed_exchange(
-            storage,
-            exchange_id,
-            UsageStats(
-                input_tokens=100,
-                output_tokens=50,
-                cache_creation_input_tokens=200,
-                cache_read_input_tokens=5,
-            ),
-        )
-
-        # Drop the in-memory cache so the next read triggers the backfill.
-        storage._index_cache = None
-
-        reloaded = await storage.read_index_entry(exchange_id)
-        assert reloaded is not None
-        assert reloaded.res is not None
-        assert reloaded.res.cache_creation_input_tokens == 200
-        # Other fields stay intact.
-        assert reloaded.res.input_tokens == 100
-        assert reloaded.res.cache_read_input_tokens == 5
-
-    async def test_disk_rewrite_is_durable(
-        self, storage: DiskStorageBackend, tmp_path: Path
-    ) -> None:
-        """A second DiskStorageBackend reading the same root sees the
-        backfilled value without having to redo the work."""
-        exchange_id = "bbbb0000-1111-2222-3333-444455556666"
-        entry = _make_index_entry(exchange_id).model_copy(
-            update={"res": ResStats(input_tokens=10, cache_creation_input_tokens=0)}
-        )
-        await storage.append_index(entry)
-        await self._seed_exchange(
-            storage,
-            exchange_id,
-            UsageStats(input_tokens=10, cache_creation_input_tokens=77),
-        )
-        storage._index_cache = None
-        _ = await storage.read_index_entry(exchange_id)  # triggers backfill + rewrite
-
-        fresh = DiskStorageBackend(root=str(tmp_path))
-        reloaded = await fresh.read_index_entry(exchange_id)
-        assert reloaded is not None
-        assert reloaded.res is not None
-        assert reloaded.res.cache_creation_input_tokens == 77
-
-    async def test_leaves_legitimate_zero_rows_alone(
-        self, storage: DiskStorageBackend
-    ) -> None:
-        """If the artifact also reports zero, the row is not rewritten."""
-        exchange_id = "cccc0000-1111-2222-3333-444455556666"
-        entry = _make_index_entry(exchange_id).model_copy(
-            update={"res": ResStats(input_tokens=5, cache_creation_input_tokens=0)}
-        )
-        await storage.append_index(entry)
-        await self._seed_exchange(
-            storage,
-            exchange_id,
-            UsageStats(input_tokens=5, cache_creation_input_tokens=0),
-        )
-        storage._index_cache = None
-
-        reloaded = await storage.read_index_entry(exchange_id)
-        assert reloaded is not None
-        assert reloaded.res is not None
-        assert reloaded.res.cache_creation_input_tokens == 0
-
-    async def test_rows_without_artifact_are_skipped(
-        self, storage: DiskStorageBackend
-    ) -> None:
-        """Rows whose exchange dir is missing (e.g. pruned) stay as-is."""
-        exchange_id = "dddd0000-1111-2222-3333-444455556666"
-        entry = _make_index_entry(exchange_id).model_copy(
-            update={"res": ResStats(input_tokens=5, cache_creation_input_tokens=0)}
-        )
-        await storage.append_index(entry)
-        storage._index_cache = None
-
-        reloaded = await storage.read_index_entry(exchange_id)
-        assert reloaded is not None
-        assert reloaded.res is not None
-        assert reloaded.res.cache_creation_input_tokens == 0

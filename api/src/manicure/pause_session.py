@@ -28,6 +28,7 @@ if TYPE_CHECKING:
 
     from manicure.ir import InternalRequest
     from manicure.overrides import OverrideAudit
+    from manicure.storage.base import SpawnAnchor
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +39,7 @@ class TrackFields(TypedDict):
     parent_track_id: str | None
     track_display_name: str | None
     track_role: Literal["parent", "subagent"] | None
+    spawn_anchor: SpawnAnchor | None
 
 
 def resolve_paused_flow(
@@ -120,6 +122,7 @@ def _paused_event_payload(
     parent_track_id: str | None = None,
     track_display_name: str | None = None,
     track_role: Literal["parent", "subagent"] | None = None,
+    spawn_anchor: SpawnAnchor | None = None,
 ) -> dict[str, object]:
     payload: dict[str, object] = {
         "type": "paused",
@@ -139,6 +142,9 @@ def _paused_event_payload(
         "parent_track_id": parent_track_id,
         "track_display_name": track_display_name,
         "track_role": track_role,
+        "spawn_anchor": spawn_anchor.model_dump(mode="json")
+        if spawn_anchor is not None
+        else None,
     }
     if provisional_exchange_id is not None:
         payload["provisional_exchange_id"] = provisional_exchange_id
@@ -158,6 +164,7 @@ def _flow_track_fields(flow: http.HTTPFlow) -> TrackFields:
             assignment.track_display_name if assignment is not None else None
         ),
         "track_role": assignment.track_role if assignment is not None else None,
+        "spawn_anchor": assignment.spawn_anchor if assignment is not None else None,
     }
 
 

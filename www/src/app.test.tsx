@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./app";
 import { useUIStore } from "./stores/uiStore";
+import type { IndexEntry, PausedFlow } from "./types";
 
 function renderWithProviders(ui: React.ReactElement) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -16,7 +17,7 @@ function makeJsonResponse(data: unknown): Response {
   });
 }
 
-function makeEntry(id: string, runId: string) {
+function makeEntry(id: string, runId: string, overrides: Partial<IndexEntry> = {}) {
   return {
     id,
     run_id: runId,
@@ -36,6 +37,7 @@ function makeEntry(id: string, runId: string) {
     pipeline: null,
     res: null,
     mutated_manually: false,
+    ...overrides,
   };
 }
 
@@ -168,6 +170,119 @@ describe("App", () => {
       expect(screen.getByText("claude-sonnet-4-20250514")).toBeInTheDocument();
     });
     expect(useUIStore.getState().selectedId).toBe("history-1");
+  });
+
+  it("anchors a paused subagent track from app state before its spawning exchange", async () => {
+    const liveRows = [
+      makeEntry("parent-pre", "run-current", {
+        track_id: "run-current",
+        track_role: "parent",
+        ts: "2026-04-26T00:00:00.000Z",
+      }),
+      makeEntry("parent-spawn", "run-current", {
+        track_id: "run-current",
+        track_role: "parent",
+        ts: "2026-04-26T00:01:00.000Z",
+      }),
+      makeEntry("parent-post", "run-current", {
+        track_id: "run-current",
+        track_role: "parent",
+        ts: "2026-04-26T00:02:00.000Z",
+      }),
+    ];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: string | URL | Request) => {
+        const url =
+          typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+        if (url === "/api/meta") {
+          return Promise.resolve(
+            makeJsonResponse({
+              cwd: "/tmp/project",
+              workspace_id: "workspace-1",
+              run_id: "run-current",
+            }),
+          );
+        }
+        if (url.startsWith("/api/exchanges?")) {
+          return Promise.resolve(makeJsonResponse(liveRows));
+        }
+        return Promise.resolve(makeJsonResponse({}));
+      }),
+    );
+    const pausedFlow: PausedFlow = {
+      flow_id: "flow-pending",
+      transport: "http",
+      run_id: "run-current",
+      track_id: "agent-pending",
+      parent_track_id: "run-current",
+      track_display_name: "pending-worker",
+      track_role: "subagent",
+      spawn_anchor: {
+        track_spawn_exchange_id: "parent-spawn",
+        track_spawn_tool_use_id: "toolu_pending",
+        track_spawn_order: 0,
+      },
+      ir: {
+        model: "anthropic/claude-sonnet-4-20250514",
+        provider: "anthropic",
+        system: [],
+        tools: [],
+        messages: [],
+        sampling: {
+          max_tokens: 1024,
+          temperature: null,
+          top_p: null,
+          top_k: null,
+          stop_sequences: [],
+        },
+        metadata: {
+          session_id: null,
+          device_id: null,
+          account_id: null,
+          provider_metadata: {},
+        },
+        stream: false,
+        provider_extras: {},
+      },
+      original_tools: [],
+      original_system: [],
+      original_messages: [],
+      original_sampling: {
+        max_tokens: 1024,
+        temperature: null,
+        top_p: null,
+        top_k: null,
+        stop_sequences: [],
+      },
+      original_provider_extras: {},
+      audit: null,
+      paused_at_ms: 1_700_000_000_000,
+      tokens_before: null,
+    };
+    useUIStore.setState({ pausedFlow });
+
+    renderWithProviders(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("track-header-agent-pending")).toBeInTheDocument();
+      expect(screen.getByTestId("exchange-row-parent-post")).toBeInTheDocument();
+    });
+    expect(
+      Array.from(
+        document.querySelectorAll<HTMLElement>(
+          '[data-testid^="exchange-row-"], [data-testid^="track-header-"]',
+        ),
+        (element) => element.getAttribute("data-testid"),
+      ),
+    ).toEqual([
+      "exchange-row-parent-post",
+      "track-header-agent-pending",
+      "exchange-row-parent-spawn",
+      "exchange-row-parent-pre",
+    ]);
+    expect(screen.getByText("pending-worker")).toBeInTheDocument();
+    expect(screen.getByText("pending")).toBeInTheDocument();
   });
 
   it("clears a stale hidden selection that no longer exists in history", async () => {

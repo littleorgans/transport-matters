@@ -23,6 +23,7 @@ from manicure.ir import (
 from manicure.main import create_app
 from manicure.overrides import Override, get_store
 from manicure.storage import init_storage, reset_storage
+from manicure.storage.base import SpawnAnchor
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Generator
@@ -153,7 +154,7 @@ class TestGetPausedFlow:
 
     async def test_returns_track_scope(self, client: AsyncClient) -> None:
         event = asyncio.Event()
-        bp._paused["flow-track"] = bp.PausedFlow(
+        paused = bp.PausedFlow(
             flow=None,  # type: ignore[arg-type]
             event=event,
             original_ir=_MINIMAL_IR,
@@ -165,7 +166,13 @@ class TestGetPausedFlow:
             parent_track_id="run-1",
             track_display_name="backend-engineer",
             track_role="subagent",
+            spawn_anchor=SpawnAnchor(
+                track_spawn_exchange_id="exchange-parent-1",
+                track_spawn_tool_use_id="toolu_child",
+                track_spawn_order=0,
+            ),
         )
+        bp._paused["flow-track"] = paused
 
         response = await client.get("/api/breakpoint/paused/flow-track")
 
@@ -176,6 +183,11 @@ class TestGetPausedFlow:
         assert data["parent_track_id"] == "run-1"
         assert data["track_display_name"] == "backend-engineer"
         assert data["track_role"] == "subagent"
+        assert data["spawn_anchor"] == {
+            "track_spawn_exchange_id": "exchange-parent-1",
+            "track_spawn_tool_use_id": "toolu_child",
+            "track_spawn_order": 0,
+        }
 
     async def test_returns_tokens_before_when_stamped(
         self, client: AsyncClient

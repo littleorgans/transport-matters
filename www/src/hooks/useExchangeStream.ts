@@ -2,7 +2,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { MAX_ENTRIES } from "../api";
 import { useUIStore } from "../stores/uiStore";
-import type { CodexTurnListSummary, IndexEntry, PausedFlow } from "../types";
+import type { CodexTurnListSummary, IndexEntry, PausedFlow, SpawnAnchor } from "../types";
 
 function isValidPausedEvent(data: Record<string, unknown>): data is {
   type: "paused";
@@ -14,6 +14,7 @@ function isValidPausedEvent(data: Record<string, unknown>): data is {
   parent_track_id?: string | null;
   track_display_name?: string | null;
   track_role?: PausedFlow["track_role"];
+  spawn_anchor?: SpawnAnchor | null;
   ir: PausedFlow["ir"];
   original_tools?: PausedFlow["original_tools"];
   original_system?: PausedFlow["original_system"];
@@ -59,6 +60,7 @@ function isValidExchangeEvent(data: Record<string, unknown>): data is {
   parent_track_id?: string | null;
   track_display_name?: string | null;
   track_role?: IndexEntry["track_role"];
+  spawn_anchor?: SpawnAnchor | null;
   flow_id?: string;
 } {
   return (
@@ -119,6 +121,23 @@ function parseTrackRole(value: unknown): IndexEntry["track_role"] {
   return value === "parent" || value === "subagent" ? value : null;
 }
 
+function parseSpawnAnchor(value: unknown): SpawnAnchor | null {
+  if (value == null || typeof value !== "object") return null;
+  const candidate = value as Record<string, unknown>;
+  return {
+    track_spawn_exchange_id:
+      typeof candidate.track_spawn_exchange_id === "string"
+        ? candidate.track_spawn_exchange_id
+        : null,
+    track_spawn_tool_use_id:
+      typeof candidate.track_spawn_tool_use_id === "string"
+        ? candidate.track_spawn_tool_use_id
+        : null,
+    track_spawn_order:
+      typeof candidate.track_spawn_order === "number" ? candidate.track_spawn_order : null,
+  };
+}
+
 /**
  * Pure SSE pump: manages the EventSource connection and pushes incoming
  * events into the query cache (exchanges) or Zustand store (pausedFlow).
@@ -174,6 +193,7 @@ export function useExchangeStream(): { connected: boolean } {
             track_display_name:
               typeof data.track_display_name === "string" ? data.track_display_name : null,
             track_role: parseTrackRole(data.track_role),
+            spawn_anchor: parseSpawnAnchor(data.spawn_anchor),
             ir: data.ir,
             original_tools: data.original_tools ?? data.ir.tools,
             original_system: data.original_system ?? data.ir.system,
@@ -209,6 +229,7 @@ export function useExchangeStream(): { connected: boolean } {
             parent_track_id: data.parent_track_id ?? null,
             track_display_name: data.track_display_name ?? null,
             track_role: parseTrackRole(data.track_role),
+            spawn_anchor: parseSpawnAnchor(data.spawn_anchor),
             ts: data.ts,
             provider: data.provider,
             model: data.model,

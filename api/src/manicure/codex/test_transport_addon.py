@@ -336,7 +336,7 @@ async def test_addon_websocket_message_projects_open_tool_activity_into_list_sum
         assert final_event["res"]["stop_reason"] == "failed"
         assert final_event["res"]["tool_calls"] == 0
         assert final_event["codex_turn"]["status"] == "failed"
-        assert final_event["codex_turn"]["tool_calls"] == 0
+        assert final_event["codex_turn"]["tool_calls"] == 1
     finally:
         broadcast.unsubscribe(queue)
 
@@ -347,7 +347,7 @@ async def test_addon_websocket_message_projects_open_tool_activity_into_list_sum
     assert finalized_entry.res.tool_calls == 0
     assert finalized_entry.codex_turn is not None
     assert finalized_entry.codex_turn.status == "failed"
-    assert finalized_entry.codex_turn.tool_calls == 0
+    assert finalized_entry.codex_turn.tool_calls == 1
 
 
 async def test_addon_websocket_message_keeps_provisional_exchange_visible_while_paused() -> (

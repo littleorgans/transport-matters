@@ -19,6 +19,7 @@ if TYPE_CHECKING:
 
     from manicure.ir import InternalRequest
     from manicure.overrides import OverrideAudit
+    from manicure.storage.base import SpawnAnchor
 
 
 @dataclass
@@ -43,6 +44,7 @@ class PausedFlow:
     parent_track_id: str | None = None
     track_display_name: str | None = None
     track_role: Literal["parent", "subagent"] | None = None
+    spawn_anchor: SpawnAnchor | None = None
     # Authoritative "before" token count — the number of tokens the curated
     # IR would cost if forwarded unchanged. None when the counter failed
     # or is not configured; the UI renders an em dash in that case.
@@ -98,6 +100,7 @@ async def pause(
     parent_track_id: str | None = None,
     track_display_name: str | None = None,
     track_role: Literal["parent", "subagent"] | None = None,
+    spawn_anchor: SpawnAnchor | None = None,
 ) -> asyncio.Event:
     """Register flow, re-arm for next request, return event to await on.
 
@@ -121,6 +124,7 @@ async def pause(
             parent_track_id=parent_track_id,
             track_display_name=track_display_name,
             track_role=track_role,
+            spawn_anchor=spawn_anchor,
         )
         return event
 

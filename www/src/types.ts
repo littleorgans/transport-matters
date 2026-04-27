@@ -32,12 +32,19 @@ export interface CodexTurnListSummary {
 export type TrackRole = "parent" | "subagent";
 export type TrackStatus = "pending" | "live" | "closed";
 
+export interface SpawnAnchor {
+  track_spawn_exchange_id: string | null;
+  track_spawn_tool_use_id: string | null;
+  track_spawn_order: number | null;
+}
+
 export interface ExchangeTrackStub {
   track_id: string;
   parent_track_id: string | null;
   track_display_name?: string | null;
   track_role?: TrackRole | null;
   status?: TrackStatus | null;
+  spawn_anchor?: SpawnAnchor | null;
 }
 
 export interface IndexEntry {
@@ -47,6 +54,7 @@ export interface IndexEntry {
   parent_track_id?: string | null;
   track_display_name?: string | null;
   track_role?: TrackRole | null;
+  spawn_anchor?: SpawnAnchor | null;
   ts: string;
   provider: string;
   model: string;
@@ -64,6 +72,11 @@ export interface ExchangeTrack {
   track_display_name: string | null;
   track_role: TrackRole;
   status: TrackStatus;
+  // Runtime tracks keep wire spawn_anchor fields flat. The tree builder adopts
+  // each non null nested anchor field as the latest concrete value for display.
+  track_spawn_exchange_id: string | null;
+  track_spawn_tool_use_id: string | null;
+  track_spawn_order: number | null;
   exchanges: IndexEntry[];
   children: ExchangeTrack[];
 }
@@ -474,6 +487,7 @@ export interface PausedFlow {
   parent_track_id?: string | null;
   track_display_name?: string | null;
   track_role?: "parent" | "subagent" | null;
+  spawn_anchor?: SpawnAnchor | null;
   ir: InternalRequest;
   original_tools: ToolDef[];
   original_system: SystemPart[];

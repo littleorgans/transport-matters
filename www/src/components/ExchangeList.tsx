@@ -4,6 +4,7 @@ import { buildExchangeTrackTree } from "../hooks/useExchanges";
 import { useUIStore } from "../stores/uiStore";
 import type { ExchangeTrack, ExchangeTrackStub, IndexEntry } from "../types";
 import { ExchangeTurnCard } from "./ExchangeTurnCard";
+import { projectAnchoredRows } from "./exchangeListRows";
 import { Toggle } from "./Toggle";
 import { TrackHeader } from "./TrackHeader";
 
@@ -25,54 +26,6 @@ const EXCHANGE_ROW_HEIGHT = 212;
 const EMPTY_TRACK_IDS: string[] = [];
 const EMPTY_TRACK_STUBS: ExchangeTrackStub[] = [];
 
-type ExchangeListRow =
-  | {
-      type: "track";
-      key: string;
-      track: ExchangeTrack;
-      depth: number;
-    }
-  | {
-      type: "exchange";
-      key: string;
-      entry: IndexEntry;
-      depth: number;
-      turnSequence: number;
-    };
-
-function flattenTrackRows(
-  tracks: ExchangeTrack[],
-  collapsedTrackIds: Set<string>,
-  depth = 0,
-): ExchangeListRow[] {
-  const rows: ExchangeListRow[] = [];
-  for (const track of tracks) {
-    const rendersHeader = track.track_role === "subagent";
-    if (rendersHeader) {
-      rows.push({
-        type: "track",
-        key: `track:${track.track_id}`,
-        track,
-        depth,
-      });
-      if (collapsedTrackIds.has(track.track_id)) continue;
-    }
-    const entryDepth = rendersHeader ? depth + 1 : depth;
-    const childDepth = depth + 1;
-    for (const [entryIndex, entry] of track.exchanges.entries()) {
-      rows.push({
-        type: "exchange",
-        key: `exchange:${entry.id}`,
-        entry,
-        depth: entryDepth,
-        turnSequence: entryIndex + 1,
-      });
-    }
-    rows.push(...flattenTrackRows(track.children, collapsedTrackIds, childDepth));
-  }
-  return rows;
-}
-
 function findTrack(tracks: ExchangeTrack[], trackId: string): ExchangeTrack | null {
   for (const track of tracks) {
     if (track.track_id === trackId) return track;
@@ -87,17 +40,21 @@ function focusEntryForTrack(tracks: ExchangeTrack[], trackId: string): IndexEntr
   if (!track) return null;
   if (track.parent_track_id) {
     const parent = findTrack(tracks, track.parent_track_id);
-    const firstChildTs = track.exchanges[0] ? new Date(track.exchanges[0].ts).getTime() : null;
+    const anchorId = track.track_spawn_exchange_id;
+    const anchored = anchorId ? parent?.exchanges.find((entry) => entry.id === anchorId) : null;
+    if (anchored) return anchored;
+    // Legacy fallback: locate the most recent parent exchange at or before the
+    // child's first (oldest) exchange. Track exchanges are sorted newest-first,
+    // so .at(-1) reads the oldest and .find returns the latest match.
+    const firstChild = track.exchanges.at(-1);
+    const firstChildTs = firstChild ? new Date(firstChild.ts).getTime() : null;
     const parentExchange =
       firstChildTs == null
-        ? parent?.exchanges.at(-1)
-        : parent?.exchanges
-            .slice()
-            .reverse()
-            .find((entry) => new Date(entry.ts).getTime() <= firstChildTs);
+        ? parent?.exchanges[0]
+        : parent?.exchanges.find((entry) => new Date(entry.ts).getTime() <= firstChildTs);
     if (parentExchange) return parentExchange;
   }
-  return track.exchanges[0] ?? null;
+  return track.exchanges.at(-1) ?? null;
 }
 
 function sessionKey(currentRunId: string | null, exchanges: IndexEntry[]): string {
@@ -199,7 +156,10 @@ export function ExchangeList({
     [exchanges, trackStubs, trackTree],
   );
   const collapsedTrackSet = useMemo(() => new Set(collapsedTrackIds), [collapsedTrackIds]);
-  const rows = useMemo(() => flattenTrackRows(tree, collapsedTrackSet), [tree, collapsedTrackSet]);
+  const rows = useMemo(
+    () => projectAnchoredRows(tree, collapsedTrackSet),
+    [tree, collapsedTrackSet],
+  );
 
   const virtualizer = useVirtualizer({
     count: rows.length,
@@ -247,6 +207,7 @@ export function ExchangeList({
                     depth={row.depth}
                     index={vRow.index}
                     offsetTop={vRow.start}
+                    anchorMeta={row.meta}
                     isCollapsed={isCollapsed}
                     onToggle={(trackId) => toggleCollapsedTrack(collapseSessionKey, trackId)}
                     onFocusParent={focusTrack}

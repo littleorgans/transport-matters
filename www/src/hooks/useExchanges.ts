@@ -5,9 +5,12 @@ import type {
   ExchangeTrack,
   ExchangeTrackStub,
   IndexEntry,
+  SpawnAnchor,
   TrackRole,
   TrackStatus,
 } from "../types";
+
+const EMPTY_TRACK_STUBS: ExchangeTrackStub[] = [];
 
 interface TrackDraft {
   track: ExchangeTrack;
@@ -34,7 +37,23 @@ function compareTs(a: IndexEntry, b: IndexEntry): number {
   const aTs = new Date(a.ts).getTime();
   const bTs = new Date(b.ts).getTime();
   if (Number.isNaN(aTs) || Number.isNaN(bTs) || aTs === bTs) return 0;
-  return aTs - bTs;
+  return bTs - aTs;
+}
+
+function adoptAnchor(track: ExchangeTrack, source: SpawnAnchor | null | undefined): void {
+  if (source == null) return;
+  // Wire rows and pending stubs may arrive in either order. Each non null
+  // nested anchor field updates the flat runtime track field so stale nulls
+  // never erase known anchor data and later concrete anchors can correct it.
+  if (source.track_spawn_exchange_id != null) {
+    track.track_spawn_exchange_id = source.track_spawn_exchange_id;
+  }
+  if (source.track_spawn_tool_use_id != null) {
+    track.track_spawn_tool_use_id = source.track_spawn_tool_use_id;
+  }
+  if (source.track_spawn_order != null) {
+    track.track_spawn_order = source.track_spawn_order;
+  }
 }
 
 export function buildExchangeTrackTree(
@@ -69,6 +88,9 @@ export function buildExchangeTrackTree(
       track_display_name: displayName,
       track_role: role,
       status,
+      track_spawn_exchange_id: null,
+      track_spawn_tool_use_id: null,
+      track_spawn_order: null,
       exchanges: [],
       children: [],
     };
@@ -78,13 +100,14 @@ export function buildExchangeTrackTree(
   };
 
   for (const stub of stubs) {
-    ensureTrack(
+    const track = ensureTrack(
       stub.track_id,
       stub.parent_track_id,
       stub.track_display_name ?? null,
       stub.track_role ?? "subagent",
       stub.status ?? "pending",
     );
+    adoptAnchor(track, stub.spawn_anchor);
   }
 
   for (const entry of exchanges) {
@@ -100,6 +123,7 @@ export function buildExchangeTrackTree(
     track.exchanges.push(entry);
     track.track_display_name = entry.track_display_name ?? track.track_display_name;
     track.status = statusForTrack(track.exchanges, track.status);
+    adoptAnchor(track, entry.spawn_anchor);
   }
 
   for (const { track } of drafts.values()) {
@@ -118,6 +142,15 @@ export function buildExchangeTrackTree(
   }
 
   const compareTrack = (a: ExchangeTrack, b: ExchangeTrack) => {
+    const aTs = a.exchanges[0]?.ts;
+    const bTs = b.exchanges[0]?.ts;
+    if (aTs && bTs) {
+      const aMs = new Date(aTs).getTime();
+      const bMs = new Date(bTs).getTime();
+      if (!Number.isNaN(aMs) && !Number.isNaN(bMs) && aMs !== bMs) return bMs - aMs;
+    }
+    if (aTs && !bTs) return -1;
+    if (!aTs && bTs) return 1;
     const aOrder = drafts.get(a.track_id)?.order ?? 0;
     const bOrder = drafts.get(b.track_id)?.order ?? 0;
     return aOrder - bOrder;
@@ -134,6 +167,7 @@ export function buildExchangeTrackTree(
 export function useExchanges(
   includeHistory: boolean,
   enabled = true,
+  trackStubs: ExchangeTrackStub[] = EMPTY_TRACK_STUBS,
 ): {
   exchanges: IndexEntry[];
   trackTree: ExchangeTrack[];
@@ -148,6 +182,9 @@ export function useExchanges(
     staleTime: Number.POSITIVE_INFINITY, // SSE keeps data fresh via setQueryData
     enabled,
   });
-  const trackTree = useMemo(() => buildExchangeTrackTree(exchanges), [exchanges]);
+  const trackTree = useMemo(
+    () => buildExchangeTrackTree(exchanges, trackStubs),
+    [exchanges, trackStubs],
+  );
   return { exchanges, trackTree, isLoading };
 }

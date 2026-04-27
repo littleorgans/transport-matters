@@ -99,6 +99,14 @@ class CodexTurnListSummary(BaseModel):
 # ── Index entry ─────────────────────────────────────────────────────
 
 
+class SpawnAnchor(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    track_spawn_exchange_id: str | None = None
+    track_spawn_tool_use_id: str | None = None
+    track_spawn_order: int | None = Field(default=None, ge=0)
+
+
 class IndexEntry(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -117,6 +125,7 @@ class IndexEntry(BaseModel):
     parent_track_id: str | None = None
     track_display_name: str | None = None
     track_role: Literal["parent", "subagent"] | None = None
+    spawn_anchor: SpawnAnchor | None = None
 
     @model_validator(mode="after")
     def default_root_track(self) -> IndexEntry:

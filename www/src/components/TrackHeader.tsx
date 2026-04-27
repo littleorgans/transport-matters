@@ -1,6 +1,7 @@
 import type { CSSProperties } from "react";
 import { agentRailStyle } from "../lib/agentPalette";
 import type { ExchangeTrack } from "../types";
+import type { OrphanAnchorMeta } from "./exchangeListRows";
 
 type TrackDepthStyle = CSSProperties & {
   "--track-depth": string;
@@ -13,6 +14,7 @@ interface TrackHeaderProps {
   depth: number;
   index: number;
   offsetTop: number;
+  anchorMeta?: OrphanAnchorMeta;
   isCollapsed: boolean;
   onToggle: (trackId: string) => void;
   onFocusParent?: (trackId: string) => void;
@@ -39,6 +41,7 @@ export function TrackHeader({
   depth,
   index,
   offsetTop,
+  anchorMeta,
   isCollapsed,
   onToggle,
   onFocusParent,
@@ -107,6 +110,19 @@ export function TrackHeader({
                 </span>
               </span>
               <span className="flex shrink-0 items-baseline gap-2 border border-[rgb(var(--agent-rail-rgb)/0.25)] bg-canvas/35 px-3 py-2">
+                {anchorMeta?.orphanAnchor && (
+                  <>
+                    <span
+                      className="label text-[10px] text-amber"
+                      title={`Spawn anchor ${anchorMeta.missingAnchorId} is outside the fetched exchange window`}
+                    >
+                      anchor outside view
+                    </span>
+                    <span className="text-txt-3" aria-hidden>
+                      ·
+                    </span>
+                  </>
+                )}
                 <span className={`label text-[11px] ${statusTone}`}>{track.status}</span>
                 <span className="text-txt-3" aria-hidden>
                   ·

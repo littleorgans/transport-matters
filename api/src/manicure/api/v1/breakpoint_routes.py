@@ -31,6 +31,7 @@ from manicure.overrides import (
     get_store,
     identity_audit,
 )
+from manicure.storage.base import SpawnAnchor
 
 logger = logging.getLogger(__name__)
 
@@ -82,6 +83,7 @@ class PausedFlowDetail(BaseModel):
     parent_track_id: str | None = None
     track_display_name: str | None = None
     track_role: Literal["parent", "subagent"] | None = None
+    spawn_anchor: SpawnAnchor | None = None
     ir: InternalRequest
     original_tools: list[ToolDef]
     original_system: list[SystemPart]
@@ -145,6 +147,7 @@ async def get_paused_flow(flow_id: str) -> PausedFlowDetail:
         parent_track_id=pf.parent_track_id,
         track_display_name=pf.track_display_name,
         track_role=pf.track_role,
+        spawn_anchor=pf.spawn_anchor,
         ir=pf.curated_ir,
         original_tools=list(pf.original_ir.tools),
         original_system=list(pf.original_ir.system),

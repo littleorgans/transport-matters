@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, TypedDict
+
+from manicure.storage.base import SpawnAnchor
 
 if TYPE_CHECKING:
     from manicure.ir import InternalRequest, InternalResponse, Message, ToolResultBlock
@@ -11,12 +13,41 @@ TrackRole = Literal["parent", "subagent"]
 TrackStatus = Literal["open", "terminating", "closed"]
 
 
+class AssignmentFields(TypedDict, total=False):
+    track_id: str | None
+    parent_track_id: str | None
+    track_display_name: str | None
+    track_role: TrackRole | None
+    spawn_anchor: SpawnAnchor | None
+
+
 @dataclass(frozen=True)
 class TrackAssignment:
     track_id: str
     parent_track_id: str | None
     track_display_name: str | None
     track_role: TrackRole
+    spawn_anchor: SpawnAnchor | None = None
+
+    @property
+    def track_spawn_exchange_id(self) -> str | None:
+        return (
+            self.spawn_anchor.track_spawn_exchange_id
+            if self.spawn_anchor is not None
+            else None
+        )
+
+    @property
+    def track_spawn_tool_use_id(self) -> str | None:
+        return (
+            self.spawn_anchor.track_spawn_tool_use_id
+            if self.spawn_anchor is not None
+            else None
+        )
+
+    @property
+    def track_spawn_order(self) -> int | None:
+        return self.spawn_anchor.track_spawn_order if self.spawn_anchor else None
 
 
 @dataclass(frozen=True)
@@ -33,6 +64,9 @@ class TrackRecord:
     role: TrackRole
     status: TrackStatus = "open"
     signature: TrackSignature | None = None
+    spawn_exchange_id: str | None = None
+    spawn_tool_use_id: str | None = None
+    spawn_order: int | None = None
 
 
 @dataclass
@@ -42,6 +76,9 @@ class PendingSpawn:
     parent_track_id: str
     display_name: str | None
     track_id: str | None = None
+    spawn_exchange_id: str | None = None
+    spawn_tool_use_id: str | None = None
+    spawn_order: int | None = None
 
 
 @dataclass
@@ -68,10 +105,17 @@ class TrackManager:
         run_id: str,
         request: InternalRequest,
         response: InternalResponse | None,
+        *,
+        exchange_id: str | None = None,
     ) -> TrackAssignment:
         assignment = self.classify_request(run_id, request)
         if response is not None:
-            self.observe_response(run_id, assignment.track_id, response)
+            self.observe_response(
+                run_id,
+                assignment.track_id,
+                response,
+                exchange_id=exchange_id,
+            )
         return assignment
 
     def classify_request(
@@ -86,21 +130,47 @@ class TrackManager:
         return self._assignment(state, assignment.track_id)
 
     def observe_response(
-        self, run_id: str, current_track_id: str, response: InternalResponse
+        self,
+        run_id: str,
+        current_track_id: str,
+        response: InternalResponse,
+        *,
+        exchange_id: str | None = None,
     ) -> None:
+        """Record response tool uses and capture subagent spawn anchors.
+
+        ``spawn_order`` is scoped to this response. It disambiguates multiple
+        child tracks that share one ``track_spawn_exchange_id``; chronology
+        across responses comes from distinct spawn exchange anchors and parent
+        exchange ordering.
+        """
         state = self._state(run_id)
+        # Response local ordinal for sibling spawns that share this exchange.
+        spawn_order = 0
         for block in response.content:
             if block.type != "tool_use":
                 continue
             state.track_tool_uses[block.id] = current_track_id
             if block.name == "Agent":
                 self._register_anthropic_spawn(
-                    state, current_track_id, block.id, block.input
+                    state,
+                    current_track_id,
+                    block.id,
+                    block.input,
+                    spawn_exchange_id=exchange_id,
+                    spawn_order=spawn_order,
                 )
+                spawn_order += 1
             elif block.name == "spawn_agent":
                 self._register_codex_spawn(
-                    state, current_track_id, block.id, block.input
+                    state,
+                    current_track_id,
+                    block.id,
+                    block.input,
+                    spawn_exchange_id=exchange_id,
+                    spawn_order=spawn_order,
                 )
+                spawn_order += 1
             elif block.name == "wait_agent":
                 targets = _string_list(block.input.get("targets"))
                 if targets:
@@ -135,7 +205,11 @@ class TrackManager:
         parent_track_id: str,
         spawn_id: str,
         input_payload: dict[str, Any],
+        *,
+        spawn_exchange_id: str | None = None,
+        spawn_order: int | None = None,
     ) -> None:
+        # The ordinal is scoped to the parent response, not the full track.
         display_name = _string_or_none(input_payload.get("subagent_type"))
         state.open_spawns[spawn_id] = PendingSpawn(
             spawn_id=spawn_id,
@@ -143,6 +217,9 @@ class TrackManager:
             parent_track_id=parent_track_id,
             display_name=display_name,
             track_id=spawn_id,
+            spawn_exchange_id=spawn_exchange_id,
+            spawn_tool_use_id=spawn_id,
+            spawn_order=spawn_order,
         )
         state.tracks.setdefault(
             spawn_id,
@@ -151,6 +228,9 @@ class TrackManager:
                 parent_track_id=parent_track_id,
                 display_name=display_name,
                 role="subagent",
+                spawn_exchange_id=spawn_exchange_id,
+                spawn_tool_use_id=spawn_id,
+                spawn_order=spawn_order,
             ),
         )
 
@@ -160,13 +240,20 @@ class TrackManager:
         parent_track_id: str,
         spawn_id: str,
         input_payload: dict[str, Any],
+        *,
+        spawn_exchange_id: str | None = None,
+        spawn_order: int | None = None,
     ) -> None:
+        # The ordinal is scoped to the parent response, not the full track.
         display_name = _string_or_none(input_payload.get("agent_type"))
         state.open_spawns[spawn_id] = PendingSpawn(
             spawn_id=spawn_id,
             provider="codex",
             parent_track_id=parent_track_id,
             display_name=display_name,
+            spawn_exchange_id=spawn_exchange_id,
+            spawn_tool_use_id=spawn_id,
+            spawn_order=spawn_order,
         )
 
     def _resolve_tool_results(
@@ -242,6 +329,9 @@ class TrackManager:
             parent_track_id=pending.parent_track_id,
             display_name=display_name,
             role="subagent",
+            spawn_exchange_id=pending.spawn_exchange_id,
+            spawn_tool_use_id=pending.spawn_tool_use_id,
+            spawn_order=pending.spawn_order,
         )
         state.open_spawns.pop(pending.spawn_id, None)
 
@@ -350,6 +440,17 @@ class TrackManager:
             parent_track_id=track.parent_track_id,
             track_display_name=track.display_name,
             track_role=track.role,
+            spawn_anchor=(
+                SpawnAnchor(
+                    track_spawn_exchange_id=track.spawn_exchange_id,
+                    track_spawn_tool_use_id=track.spawn_tool_use_id,
+                    track_spawn_order=track.spawn_order,
+                )
+                if track.spawn_exchange_id is not None
+                or track.spawn_tool_use_id is not None
+                or track.spawn_order is not None
+                else None
+            ),
         )
 
 
@@ -362,7 +463,7 @@ def get_track_manager() -> TrackManager:
 
 def assignment_index_fields(
     assignment: TrackAssignment | None,
-) -> dict[str, str | None]:
+) -> AssignmentFields:
     if assignment is None:
         return {}
     return {
@@ -370,6 +471,7 @@ def assignment_index_fields(
         "parent_track_id": assignment.parent_track_id,
         "track_display_name": assignment.track_display_name,
         "track_role": assignment.track_role,
+        "spawn_anchor": assignment.spawn_anchor,
     }
 
 
