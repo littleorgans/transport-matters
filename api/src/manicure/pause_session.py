@@ -229,6 +229,7 @@ async def handle_breakpoint(
         return
 
     if pf.dropped:
+        update_request_flow_state(flow, dropped=True)
         flow.response = MitmResponse.make(
             400,
             b'{"error": "dropped by user"}',

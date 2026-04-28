@@ -14,6 +14,7 @@ from manicure.exchange_stats import (
     _parse_response_ir,
     build_pipeline_stats,
     build_req_stats,
+    extract_user_prompt_preview,
     stamp_pipeline_tokens,
 )
 from manicure.ir import InternalRequest, InternalResponse
@@ -128,6 +129,21 @@ def _emit_exchange_deleted(exchange_id: str, flow_id: str | None = None) -> None
     broadcast.emit(payload)
 
 
+def _http_error_response_stats(
+    flow: http.HTTPFlow,
+    raw_res: bytes,
+) -> ResStats | None:
+    response = getattr(flow, "response", None)
+    status_code = getattr(response, "status_code", None)
+    if not isinstance(status_code, int) or status_code < 400:
+        return None
+    response_text = raw_res.decode("utf-8", errors="replace")
+    return ResStats(
+        stop_reason=f"http_{status_code}",
+        text_chars=len(response_text),
+    )
+
+
 def _assign_track(
     run_id: str | None,
     ir: InternalRequest,
@@ -170,6 +186,15 @@ async def _persist_http_exchange(
     request_state: RequestFlowState,
     token_counter: TokenCountingClient | None,
 ) -> bool:
+    if request_state.dropped:
+        return await _delete_http_provisional_exchange(flow, request_state)
+    if request_state.provisional_exchange_id is not None:
+        finalized = await _finalize_http_provisional_exchange(
+            flow, request_state, token_counter
+        )
+        if finalized:
+            return True
+
     from manicure.storage import get_storage
 
     storage = await get_storage()
@@ -186,6 +211,8 @@ async def _persist_http_exchange(
         flow.response.headers.get("content-type", "") if flow.response else ""
     )
     res_ir, res_stats = _parse_response_ir(adapter, raw_res, content_type, exchange_id)
+    if res_stats is None:
+        res_stats = _http_error_response_stats(flow, raw_res)
     req_stats = build_req_stats(curated_ir)
     pipeline_stats = build_pipeline_stats(audit)
     if pipeline_stats is not None and token_counter is not None:
@@ -221,6 +248,7 @@ async def _persist_http_exchange(
         pipeline=pipeline_stats,
         res=res_stats,
         mutated_manually=request_state.mutated_manually,
+        user_prompt_preview=extract_user_prompt_preview(curated_ir),
         **assignment_index_fields(track_assignment),
     )
     artifacts = ExchangeArtifacts(
@@ -246,5 +274,171 @@ async def _persist_http_exchange(
         pipeline_stats,
         flow_id=flow.id,
         **assignment_index_fields(track_assignment),
+    )
+    return True
+
+
+async def _persist_http_provisional_exchange(
+    flow: http.HTTPFlow,
+    request_state: RequestFlowState,
+) -> str | None:
+    if request_state.provisional_exchange_id is not None:
+        return request_state.provisional_exchange_id
+
+    from manicure.storage import get_storage
+
+    storage = await get_storage()
+    adapter = request_state.adapter
+    ir = request_state.request_ir
+    raw_req = request_state.raw_request
+    curated_ir = request_state.curated_request_ir
+    audit = request_state.audit
+    req_stats = build_req_stats(curated_ir)
+    pipeline_stats = build_pipeline_stats(audit)
+
+    exchange_id = str(uuid.uuid4())
+    ts = datetime.now(UTC)
+    ts_slug = ts.strftime("%Y%m%dT%H%M%S")
+    run_id = get_settings().run_id
+    track_assignment = _persist_track_assignment(
+        run_id, request_state, None, exchange_id=exchange_id
+    )
+    entry = IndexEntry(
+        id=exchange_id,
+        run_id=run_id,
+        ts=ts,
+        provider=ir.provider,
+        model=ir.model,
+        path=f"exchanges/{ts_slug}-{exchange_id[:8]}/",
+        req=req_stats,
+        pipeline=pipeline_stats,
+        mutated_manually=request_state.mutated_manually,
+        user_prompt_preview=extract_user_prompt_preview(curated_ir),
+        **assignment_index_fields(track_assignment),
+    )
+    artifacts = ExchangeArtifacts(
+        request_raw=raw_req,
+        request_ir=ir,
+        request_curated_raw=_curated_request_raw(adapter, raw_req, curated_ir),
+        request_curated_ir=_persistable_curated_ir(curated_ir, ir),
+        request_audit=audit,
+    )
+    if not await _persist_exchange(storage, entry, artifacts):
+        return None
+
+    emit_exchange(
+        ir,
+        req_stats,
+        None,
+        exchange_id,
+        ts,
+        run_id,
+        request_state.mutated_manually,
+        pipeline_stats,
+        flow_id=flow.id,
+        **assignment_index_fields(track_assignment),
+    )
+    return exchange_id
+
+
+async def _delete_http_provisional_exchange(
+    flow: http.HTTPFlow,
+    request_state: RequestFlowState,
+) -> bool:
+    exchange_id = request_state.provisional_exchange_id
+    if exchange_id is None:
+        return True
+
+    from manicure.flow_state import update_request_flow_state
+    from manicure.storage import get_storage
+
+    try:
+        storage = await get_storage()
+        await storage.delete_exchange(exchange_id)
+    except Exception:
+        logger.exception("Failed to delete provisional HTTP exchange %s", exchange_id)
+        return False
+
+    request_state.provisional_exchange_id = None
+    update_request_flow_state(flow, provisional_exchange_id=None)
+    _emit_exchange_deleted(exchange_id, flow_id=flow.id)
+    return True
+
+
+async def _finalize_http_provisional_exchange(
+    flow: http.HTTPFlow,
+    request_state: RequestFlowState,
+    token_counter: TokenCountingClient | None,
+) -> bool:
+    exchange_id = request_state.provisional_exchange_id
+    if exchange_id is None:
+        return False
+
+    from manicure.storage import get_storage
+
+    storage = await get_storage()
+    existing_entry = await storage.read_index_entry(exchange_id)
+    if existing_entry is None:
+        return False
+
+    adapter = request_state.adapter
+    ir = request_state.request_ir
+    curated_ir = request_state.curated_request_ir
+    res_text = flow.response.get_text() if flow.response else None
+    raw_res = res_text.encode() if res_text else b""
+    content_type = (
+        flow.response.headers.get("content-type", "") if flow.response else ""
+    )
+    res_ir, res_stats = _parse_response_ir(adapter, raw_res, content_type, exchange_id)
+    if res_stats is None:
+        res_stats = _http_error_response_stats(flow, raw_res)
+    pipeline_stats = existing_entry.pipeline
+    if pipeline_stats is not None and token_counter is not None:
+        try:
+            auth = _relevant_auth_headers(flow.request.headers)
+            pipeline_stats = await stamp_pipeline_tokens(
+                pipeline_stats,
+                ir,
+                curated_ir,
+                adapter,
+                token_counter,
+                auth,
+            )
+        except Exception:
+            logger.exception(
+                "count_tokens stamp failed for %s, leaving tokens unset",
+                exchange_id,
+            )
+
+    run_id = existing_entry.run_id
+    _persist_track_assignment(run_id, request_state, res_ir, exchange_id=exchange_id)
+    entry = existing_entry.model_copy(
+        update={"res": res_stats, "pipeline": pipeline_stats}
+    )
+    existing_artifacts = await storage.read_exchange(exchange_id)
+    artifacts = existing_artifacts.model_copy(
+        update={"response_raw": raw_res or None, "response_ir": res_ir}
+    )
+    try:
+        await storage.persist_exchange(entry, artifacts)
+    except Exception:
+        logger.exception("Failed to finalize provisional HTTP exchange %s", exchange_id)
+        return False
+
+    emit_exchange(
+        ir,
+        existing_entry.req,
+        res_stats,
+        exchange_id,
+        existing_entry.ts,
+        run_id,
+        existing_entry.mutated_manually,
+        pipeline_stats,
+        flow_id=flow.id,
+        track_id=entry.track_id,
+        parent_track_id=entry.parent_track_id,
+        track_display_name=entry.track_display_name,
+        track_role=entry.track_role,
+        spawn_anchor=entry.spawn_anchor,
     )
     return True

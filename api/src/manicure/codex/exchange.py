@@ -34,6 +34,7 @@ from manicure.exchange_stats import (
     build_pipeline_stats,
     build_req_stats,
     build_res_stats,
+    extract_user_prompt_preview,
 )
 from manicure.flow_state import get_request_flow_state
 from manicure.ir import (
@@ -115,6 +116,7 @@ async def _persist_codex_provisional_exchange(flow: http.HTTPFlow) -> str | None
             else None
         ),
         mutated_manually=request_state.mutated_manually,
+        user_prompt_preview=extract_user_prompt_preview(curated_ir),
         **assignment_index_fields(track_assignment),
     )
     artifacts = ExchangeArtifacts(
@@ -254,6 +256,7 @@ async def _persist_codex_exchange(
             else None
         ),
         mutated_manually=request_state.mutated_manually,
+        user_prompt_preview=extract_user_prompt_preview(curated_ir),
         **assignment_index_fields(track_assignment),
     )
     artifacts = ExchangeArtifacts(
@@ -536,6 +539,7 @@ async def _persist_codex_handshake_failure(flow: http.HTTPFlow) -> None:
         path=f"exchanges/{ts_slug}-{exchange_id[:8]}/",
         req=req_stats,
         res=res_stats,
+        user_prompt_preview=extract_user_prompt_preview(ir),
     )
     artifacts = ExchangeArtifacts(
         request_raw=b"",

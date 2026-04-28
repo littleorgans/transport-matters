@@ -206,6 +206,7 @@ export function ExchangeDetail({ id }: ExchangeDetailProps) {
   if (!detail) return null;
 
   const { entry } = detail;
+  const isWaiting = !entry.codex_turn && entry.res === null;
   const inspectLabel = inspectTabLabel(detail);
   const headerTelemetry = codexHeaderTelemetry(detail);
   const ts = new Date(entry.ts);
@@ -247,10 +248,18 @@ export function ExchangeDetail({ id }: ExchangeDetailProps) {
             </span>
           </div>
 
-          {headerTelemetry.length > 0 && (
+          {(isWaiting || headerTelemetry.length > 0) && (
             <>
               <div className="mt-5 h-px bg-edge" />
               <div className="mt-5 flex flex-wrap items-center gap-3">
+                {isWaiting && (
+                  <span
+                    data-testid="exchange-detail-waiting"
+                    className="metric-num border border-amber/30 bg-amber/8 px-4 py-2 text-[14px] font-semibold uppercase leading-none tracking-[0.08em] text-amber"
+                  >
+                    AWAITING RESPONSE
+                  </span>
+                )}
                 {headerTelemetry.map((chip) => (
                   <span
                     key={chip.text}

@@ -16,6 +16,7 @@ from manicure.ir import (
     TextBlock,
 )
 from manicure.overrides import OverrideAudit
+from manicure.track_manager import TrackAssignment
 
 if TYPE_CHECKING:
     from mitmproxy import http
@@ -55,6 +56,8 @@ def test_capture_request_flow_state_sets_defaults() -> None:
     assert state.curated_request_ir == request_ir
     assert state.audit is None
     assert state.mutated_manually is False
+    assert state.provisional_exchange_id is None
+    assert state.dropped is False
     assert flow.metadata["manicure_curated_ir"] == request_ir
 
 
@@ -91,3 +94,86 @@ def test_update_request_flow_state_rewrites_mutable_fields() -> None:
     assert state.audit == audit
     assert state.mutated_manually is True
     assert flow.metadata["manicure_mutated_manually"] is True
+
+
+def test_update_request_flow_state_sets_provisional_id_without_clobbering_state() -> (
+    None
+):
+    flow = cast("http.HTTPFlow", _Flow())
+    adapter = object()
+    original_ir = _make_ir()
+    curated_ir = _make_ir(system_text="curated")
+    audit = OverrideAudit(entries=[], chars_before=10, chars_after=8)
+    track_assignment = TrackAssignment(
+        track_id="track-root",
+        parent_track_id=None,
+        track_display_name=None,
+        track_role="parent",
+    )
+    capture_request_flow_state(
+        flow,
+        adapter=adapter,
+        request_ir=original_ir,
+        raw_request=b"raw",
+        curated_request_ir=curated_ir,
+        audit=audit,
+        track_assignment=track_assignment,
+        mutated_manually=True,
+    )
+
+    state = update_request_flow_state(
+        flow,
+        provisional_exchange_id="exchange-provisional",
+    )
+
+    assert state is not None
+    assert state.curated_request_ir == curated_ir
+    assert state.audit == audit
+    assert state.track_assignment == track_assignment
+    assert state.mutated_manually is True
+    assert state.dropped is False
+    assert state.provisional_exchange_id == "exchange-provisional"
+    assert flow.metadata["manicure_provisional_exchange_id"] == "exchange-provisional"
+
+
+def test_update_request_flow_state_sets_dropped_without_clobbering_provisional_id() -> (
+    None
+):
+    flow = cast("http.HTTPFlow", _Flow())
+    adapter = object()
+    request_ir = _make_ir()
+    capture_request_flow_state(
+        flow,
+        adapter=adapter,
+        request_ir=request_ir,
+        raw_request=b"raw",
+    )
+    update_request_flow_state(flow, provisional_exchange_id="exchange-provisional")
+
+    state = update_request_flow_state(flow, dropped=True)
+
+    assert state is not None
+    assert state.curated_request_ir == request_ir
+    assert state.audit is None
+    assert state.provisional_exchange_id == "exchange-provisional"
+    assert state.dropped is True
+    assert flow.metadata["manicure_dropped"] is True
+
+
+def test_update_request_flow_state_can_clear_provisional_id() -> None:
+    flow = cast("http.HTTPFlow", _Flow())
+    adapter = object()
+    request_ir = _make_ir()
+    capture_request_flow_state(
+        flow,
+        adapter=adapter,
+        request_ir=request_ir,
+        raw_request=b"raw",
+    )
+    update_request_flow_state(flow, provisional_exchange_id="exchange-provisional")
+
+    state = update_request_flow_state(flow, provisional_exchange_id=None)
+
+    assert state is not None
+    assert state.provisional_exchange_id is None
+    assert flow.metadata["manicure_provisional_exchange_id"] is None

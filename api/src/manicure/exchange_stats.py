@@ -6,11 +6,58 @@ import logging
 from typing import Any
 
 from manicure.counting import TokenCountingClient, count_before_after
-from manicure.ir import InternalRequest, InternalResponse, TextBlock, ToolUseBlock
+from manicure.ir import (
+    ContentBlock,
+    InternalRequest,
+    InternalResponse,
+    TextBlock,
+    ToolResultBlock,
+    ToolUseBlock,
+)
 from manicure.overrides import OverrideAudit, count_chars_parts
 from manicure.storage import PipelineStats, ReqStats, ResStats
 
 logger = logging.getLogger(__name__)
+
+_PREVIEW_MAX_CHARS = 1000
+
+
+def extract_user_prompt_preview(ir: InternalRequest) -> str | None:
+    """Raw preview text from the last user message; frontend renders type-aware."""
+    for message in reversed(ir.messages):
+        if message.role != "user":
+            continue
+        text = _flatten_user_text(message.content)
+        if not text:
+            return None
+        stripped = text.strip()
+        if not stripped:
+            return None
+        if len(stripped) > _PREVIEW_MAX_CHARS:
+            return stripped[:_PREVIEW_MAX_CHARS] + "\u2026"
+        return stripped
+    return None
+
+
+def _flatten_user_text(blocks: list[ContentBlock]) -> str:
+    """Pick preview text from the most recent renderable block in a user message.
+
+    TextBlock wins on its own text. ToolResultBlock falls back to joined inner
+    TextBlock text. Image, ToolUse, Thinking, Unknown blocks are skipped.
+    """
+    for block in reversed(blocks):
+        if isinstance(block, TextBlock):
+            if block.text:
+                return block.text
+        elif isinstance(block, ToolResultBlock):
+            parts = [
+                inner.text
+                for inner in block.content
+                if isinstance(inner, TextBlock) and inner.text
+            ]
+            if parts:
+                return "\n".join(parts)
+    return ""
 
 
 def build_req_stats(ir: InternalRequest) -> ReqStats:

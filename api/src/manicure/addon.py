@@ -18,13 +18,15 @@ from manicure.addon_handlers import (
     log_websocket_start,
 )
 from manicure.addon_runtime import AddonRuntime, close_runtime, load_runtime
-from manicure.exchange_recorder import emit_exchange
+from manicure.codex.transport import is_codex_websocket_flow
+from manicure.exchange_recorder import _delete_http_provisional_exchange, emit_exchange
 from manicure.exchange_stats import (
     build_pipeline_stats,
     build_req_stats,
     build_res_stats,
     stamp_pipeline_tokens,
 )
+from manicure.flow_state import get_request_flow_state
 from manicure.pause_session import (
     fire_pause_count,
     resolve_paused_flow,
@@ -76,6 +78,14 @@ class ManicureAddon:
             flow,
             self._runtime.token_counter if self._runtime is not None else None,
         )
+
+    async def error(self, flow: http.HTTPFlow) -> None:
+        if is_codex_websocket_flow(flow):
+            return
+        request_state = get_request_flow_state(flow)
+        if request_state is None or request_state.provisional_exchange_id is None:
+            return
+        await _delete_http_provisional_exchange(flow, request_state)
 
 
 addons = [ManicureAddon()]

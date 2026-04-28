@@ -1,7 +1,45 @@
 import { fireEvent, render, screen } from "@testing-library/react";
+import { act } from "react";
 import { describe, expect, it, vi } from "vitest";
+import type { IndexEntry } from "../types";
 import { legacyClaudeRes, makeEntry } from "./__test-utils__/exchangeList";
 import { ExchangeList } from "./ExchangeList";
+
+function renderExchangeList(exchanges: IndexEntry[]) {
+  return render(
+    <ExchangeList
+      exchanges={exchanges}
+      currentRunId="run-current"
+      includeHistory={false}
+      onIncludeHistoryChange={() => {}}
+      selectedId={null}
+      onSelect={() => {}}
+    />,
+  );
+}
+
+function exchangeCardFrame(row: HTMLElement): HTMLElement {
+  const frame = row.firstElementChild;
+  expect(frame).toBeInstanceOf(HTMLElement);
+  return frame as HTMLElement;
+}
+
+function expectWaitingTransportVisual(entryId: string): HTMLElement {
+  const row = screen.getByTestId(`exchange-row-${entryId}`);
+  expect(exchangeCardFrame(row)).toHaveClass("border-amber/45");
+  expect(row.querySelector(".transport-scan")).toBeInTheDocument();
+  expect(row.querySelectorAll(".token-segment")).toHaveLength(10);
+  expect(screen.getByTestId(`exchange-token-activity-${entryId}`)).toHaveClass("w-full");
+  expect(screen.queryByTestId(`exchange-primary-metric-${entryId}`)).not.toBeInTheDocument();
+  return row;
+}
+
+function expectSettledTransportVisual(entryId: string): HTMLElement {
+  const row = screen.getByTestId(`exchange-row-${entryId}`);
+  expect(exchangeCardFrame(row)).not.toHaveClass("border-amber/45");
+  expect(row.querySelector(".transport-scan")).not.toBeInTheDocument();
+  return row;
+}
 
 describe("ExchangeList — row behavior", () => {
   it("numbers Claude exchange turns within each track", () => {
@@ -35,7 +73,7 @@ describe("ExchangeList — row behavior", () => {
     expect(screen.getByTestId("exchange-row-parent-1")).toHaveTextContent("001");
     expect(screen.getByTestId("exchange-row-parent-2")).toHaveTextContent("002");
     expect(screen.getByTestId("exchange-metrics-parent-1")).toHaveTextContent(
-      "Exchange metrics: Tools: 0, Text: 200 chars, Msgs: 2",
+      "Exchange metrics: Input: 100, Output: 50, Total: 100",
     );
 
     unmount();
@@ -72,6 +110,63 @@ describe("ExchangeList — row behavior", () => {
 
     expect(screen.getByTestId("exchange-row-child-1")).toHaveTextContent("001");
     expect(screen.getByTestId("exchange-row-child-2")).toHaveTextContent("002");
+  });
+
+  it("renders Claude strip as INPUT / OUTPUT / TOTAL", () => {
+    const requestShape = {
+      system_parts: 1,
+      system_chars: 10_000,
+      tools_count: 8,
+      tools_chars: 40_000,
+      messages_count: 8,
+      messages_chars: 53_781,
+      total_chars: 103_781,
+    };
+
+    renderExchangeList([
+      makeEntry({ id: "claude-pending", req: requestShape, res: null }),
+      makeEntry({
+        id: "claude-settled",
+        req: requestShape,
+        res: {
+          stop_reason: "end_turn",
+          input_tokens: 14_829,
+          output_tokens: 664,
+          cache_creation_input_tokens: 9_030,
+          cache_read_input_tokens: 13_495,
+          text_chars: 401,
+          tool_calls: 0,
+        },
+      }),
+    ]);
+
+    expect(screen.getByTestId("exchange-metrics-claude-pending")).toHaveTextContent(
+      "Exchange metrics: Input: —, Output: —, Total: —",
+    );
+    expect(screen.getByTestId("exchange-metrics-claude-pending")).not.toHaveTextContent("103,781");
+    expect(screen.getByTestId("exchange-metrics-claude-settled")).toHaveTextContent(
+      "Exchange metrics: Input: 14,829, Output: 664, Total: 37,354",
+    );
+  });
+
+  it("ticks the pending Claude elapsed counter every second", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-04-26T00:00:00.000Z"));
+    try {
+      renderExchangeList([
+        makeEntry({ id: "claude-pending-tick", ts: "2026-04-26T00:00:00.000Z", res: null }),
+      ]);
+
+      expect(screen.getByTestId("exchange-time-claude-pending-tick")).toHaveTextContent("0s");
+
+      act(() => {
+        vi.advanceTimersByTime(5_000);
+      });
+
+      expect(screen.getByTestId("exchange-time-claude-pending-tick")).toHaveTextContent("5s");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("renders exchange entries", () => {
@@ -287,15 +382,13 @@ describe("ExchangeList — row behavior", () => {
     );
 
     const row = screen.getByText("gpt-5-codex").closest("button");
-    expect(row).toHaveClass("min-h-[212px]");
+    expect(row).toHaveClass("min-h-[196px]");
     expect(row).toHaveTextContent("000");
     const metrics = screen.getByTestId("exchange-metrics-codex-1");
-    expect(metrics).toHaveTextContent("Exchange metrics: Tools: 2, Text: 321 chars, Frames: 0->3");
+    expect(metrics).toHaveTextContent(
+      "Exchange metrics: Input: 18,217, Output: 403, Total: 36,265",
+    );
     expect(metrics).not.toHaveTextContent("COMPLETE");
-    expect(screen.getByTestId("exchange-primary-metric-codex-1")).toHaveTextContent("36,265");
-    expect(screen.getByTestId("exchange-status-codex-1")).toHaveTextContent("COMPLETE");
-    expect(screen.getByText("321")).toBeInTheDocument();
-    expect(screen.getByText("2")).toBeInTheDocument();
   });
 
   it("renders an open Codex row from semantic turn state without response stats", () => {
@@ -332,9 +425,72 @@ describe("ExchangeList — row behavior", () => {
     expect(screen.queryByText("Calculating tokens...")).not.toBeInTheDocument();
     expect(screen.queryByText("awaiting transport")).not.toBeInTheDocument();
     expect(screen.getByTestId("exchange-metrics-codex-open")).toHaveTextContent(
-      "Exchange metrics: Tools: 1, Text: 12 chars, Frames: 9->10",
+      "Exchange metrics: Input: —, Output: —, Total: —",
     );
-    expect(screen.getByTestId("exchange-status-codex-open")).toHaveTextContent("WAITING");
+  });
+
+  it("renders HTTP provisional rows with waiting transport visuals", () => {
+    renderExchangeList([makeEntry({ id: "http-pending", res: null })]);
+
+    expectWaitingTransportVisual("http-pending");
+  });
+
+  it("renders Codex provisional rows with the same waiting transport visuals", () => {
+    renderExchangeList([
+      makeEntry({
+        id: "codex-pending",
+        provider: "codex",
+        model: "codex/gpt-5-codex",
+        res: null,
+      }),
+    ]);
+
+    expectWaitingTransportVisual("codex-pending");
+  });
+
+  it("keeps terminal Codex rows out of the res-null waiting fallback", () => {
+    renderExchangeList([
+      makeEntry({
+        id: "codex-completed-null-res",
+        provider: "codex",
+        model: "codex/gpt-5-codex",
+        res: null,
+        codex_turn: {
+          turn_index: 6,
+          message_range_start: 13,
+          message_range_end: 18,
+          status: "completed",
+          terminal_cause: "response_completed",
+          stop_reason: "completed",
+          text_chars: 98,
+          tool_calls: 0,
+        },
+      }),
+    ]);
+
+    expectSettledTransportVisual("codex-completed-null-res");
+  });
+
+  it("clears HTTP waiting visuals when the same exchange row receives response stats", () => {
+    const exchangeId = "http-transition";
+    const { rerender } = renderExchangeList([makeEntry({ id: exchangeId, res: null })]);
+
+    const pendingRow = expectWaitingTransportVisual(exchangeId);
+
+    rerender(
+      <ExchangeList
+        exchanges={[makeEntry({ id: exchangeId, res: legacyClaudeRes })]}
+        currentRunId="run-current"
+        includeHistory={false}
+        onIncludeHistoryChange={() => {}}
+        selectedId={null}
+        onSelect={() => {}}
+      />,
+    );
+
+    const settledRow = expectSettledTransportVisual(exchangeId);
+    expect(settledRow).toBe(pendingRow);
+    expect(screen.getByTestId(`exchange-row-${exchangeId}`)).toHaveTextContent("end_turn");
   });
 
   it("falls back to legacy stop_reason when Codex semantic summary is missing", () => {
@@ -365,10 +521,52 @@ describe("ExchangeList — row behavior", () => {
     );
 
     expect(screen.getByTestId("exchange-metrics-codex-legacy")).toHaveTextContent(
-      "Exchange metrics: Tools: 0, Text: 41 chars, Frames: ...",
+      "Exchange metrics: Input: 120, Output: 10, Total: 120",
     );
-    expect(screen.getByTestId("exchange-primary-metric-codex-legacy")).toHaveTextContent("120");
-    expect(screen.getByTestId("exchange-status-codex-legacy")).toHaveTextContent("COMPLETED");
     expect(screen.queryByText("000")).not.toBeInTheDocument();
+  });
+
+  it("renders Claude settled strip as INPUT / OUTPUT / TOTAL", () => {
+    renderExchangeList([
+      makeEntry({
+        id: "settled",
+        res: {
+          stop_reason: "end_turn",
+          input_tokens: 81,
+          output_tokens: 51,
+          cache_creation_input_tokens: 60_153,
+          cache_read_input_tokens: 16_985,
+          text_chars: 200,
+          tool_calls: 0,
+        },
+      }),
+    ]);
+    expect(screen.getByTestId("exchange-metrics-settled")).toHaveTextContent(
+      "Exchange metrics: Input: 81, Output: 51, Total: 77,219",
+    );
+  });
+
+  it("renders Claude pending strip as dashes", () => {
+    renderExchangeList([makeEntry({ id: "pending", res: null })]);
+    expect(screen.getByTestId("exchange-metrics-pending")).toHaveTextContent(
+      "Exchange metrics: Input: —, Output: —, Total: —",
+    );
+  });
+
+  it("renders prompt preview in settled middle row", () => {
+    renderExchangeList([
+      makeEntry({
+        id: "with-preview",
+        res: legacyClaudeRes,
+        user_prompt_preview: "write me a parser",
+      }),
+    ]);
+    expect(screen.getByTestId("exchange-row-with-preview")).toHaveTextContent("write me a parser");
+  });
+
+  it("pending card shows no prompt preview", () => {
+    renderExchangeList([makeEntry({ id: "pending-no-preview", res: null })]);
+    expect(screen.queryByText("write me")).not.toBeInTheDocument();
+    expect(screen.getByTestId("exchange-token-activity-pending-no-preview")).toBeInTheDocument();
   });
 });

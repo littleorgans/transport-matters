@@ -64,6 +64,7 @@ export interface IndexEntry {
   res: ResStats | null;
   codex_turn?: CodexTurnListSummary | null;
   mutated_manually: boolean;
+  user_prompt_preview?: string | null;
 }
 
 export interface ExchangeTrack {

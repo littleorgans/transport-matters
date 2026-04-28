@@ -25,8 +25,15 @@ from manicure.codex.transport import (
     record_codex_websocket_message,
 )
 from manicure.config import get_settings
-from manicure.counting import TokenCounter, _relevant_auth_headers, set_recent_auth
-from manicure.exchange_recorder import _persist_http_exchange
+from manicure.counting import (
+    TokenCountingClient,
+    _relevant_auth_headers,
+    set_recent_auth,
+)
+from manicure.exchange_recorder import (
+    _persist_http_exchange,
+    _persist_http_provisional_exchange,
+)
 from manicure.flow_state import (
     capture_request_flow_state,
     clear_request_flow_state,
@@ -53,7 +60,7 @@ def _should_skip_breakpoint(model: str) -> bool:
 
 async def handle_http_request(
     flow: http.HTTPFlow,
-    token_counter: TokenCounter | None,
+    token_counter: TokenCountingClient | None,
 ) -> None:
     if not flow.request.path.startswith("/v1/messages"):
         return
@@ -81,7 +88,7 @@ async def handle_http_request(
     curated_ir, audit, track_assignment = await run_pipeline(
         ir, flow.id, get_settings().run_id
     )
-    capture_request_flow_state(
+    request_state = capture_request_flow_state(
         flow,
         adapter=adapter,
         request_ir=ir,
@@ -90,6 +97,15 @@ async def handle_http_request(
         audit=audit,
         track_assignment=track_assignment,
     )
+    provisional_exchange_id = await _persist_http_provisional_exchange(
+        flow,
+        request_state,
+    )
+    if provisional_exchange_id is not None:
+        update_request_flow_state(
+            flow,
+            provisional_exchange_id=provisional_exchange_id,
+        )
 
     if _should_skip_breakpoint(ir.model):
         logger.info(
@@ -258,7 +274,7 @@ async def handle_codex_websocket_end(flow: http.HTTPFlow) -> None:
 
 async def handle_response(
     flow: http.HTTPFlow,
-    token_counter: TokenCounter | None,
+    token_counter: TokenCountingClient | None,
 ) -> None:
     if is_codex_websocket_flow(flow) and getattr(flow, "websocket", None) is None:
         await _persist_codex_handshake_failure(flow)

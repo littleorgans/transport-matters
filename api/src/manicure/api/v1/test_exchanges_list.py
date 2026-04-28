@@ -6,9 +6,18 @@ from typing import TYPE_CHECKING
 
 from httpx import ASGITransport, AsyncClient
 
-from manicure import config
+from manicure import addon_handlers, config
+from manicure import breakpoint as bp
+from manicure.flow_state import get_request_flow_state
 from manicure.main import create_app
 from manicure.storage import CodexTurnListSummary
+from manicure.test_http_provisional import (
+    _http_flow,
+    _patch_pipeline,
+    _response_body,
+    _set_response,
+)
+from manicure.track_manager import get_track_manager
 
 from .test_exchanges_support import make_index_entry
 
@@ -198,6 +207,65 @@ class TestListExchanges:
             "text_chars": 144,
             "tool_calls": 1,
         }
+
+    async def test_list_recovers_http_provisional_row_through_finalize(
+        self, client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("MANICURE_RUN_ID", "run-http")
+        config.get_settings.cache_clear()
+        bp.disarm()
+        bp._paused.clear()
+        get_track_manager()._runs.clear()
+        _patch_pipeline(monkeypatch)
+        flow = _http_flow("flow-http-index-recovery")
+
+        await addon_handlers.handle_http_request(flow, None)
+
+        state = get_request_flow_state(flow)
+        assert state is not None
+        exchange_id = state.provisional_exchange_id
+        assert exchange_id is not None
+
+        provisional_response = await client.get("/api/exchanges")
+        assert provisional_response.status_code == 200
+        provisional_rows = [
+            row for row in provisional_response.json() if row["id"] == exchange_id
+        ]
+        assert len(provisional_rows) == 1
+        provisional = provisional_rows[0]
+        assert provisional["res"] is None
+        assert provisional["req"]["messages_count"] == 1
+        assert provisional["pipeline"] == {
+            "overrides_applied": [],
+            "chars_before": 100,
+            "chars_after": 80,
+            "tokens_before": None,
+            "tokens_after": None,
+        }
+
+        mid_flow_response = await client.get("/api/exchanges")
+        assert mid_flow_response.status_code == 200
+        mid_flow_rows = [
+            row for row in mid_flow_response.json() if row["id"] == exchange_id
+        ]
+        assert len(mid_flow_rows) == 1
+        assert mid_flow_rows[0]["res"] is None
+        assert mid_flow_rows[0]["req"] == provisional["req"]
+
+        _set_response(flow, _response_body(text="index recovery final"))
+        await addon_handlers.handle_response(flow, None)
+
+        finalized_response = await client.get("/api/exchanges")
+        assert finalized_response.status_code == 200
+        finalized_rows = [
+            row for row in finalized_response.json() if row["id"] == exchange_id
+        ]
+        assert len(finalized_rows) == 1
+        finalized = finalized_rows[0]
+        assert finalized["res"] is not None
+        assert finalized["res"]["stop_reason"] == "end_turn"
+        assert finalized["res"]["text_chars"] == len("index recovery final")
+        assert finalized["req"] == provisional["req"]
 
 
 class TestListExchangesStorageFailure:
