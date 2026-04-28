@@ -14,7 +14,6 @@ from manicure.exchange_stats import (
     _parse_response_ir,
     build_pipeline_stats,
     build_req_stats,
-    extract_user_prompt_preview,
     stamp_pipeline_tokens,
 )
 from manicure.ir import InternalRequest, InternalResponse
@@ -248,7 +247,6 @@ async def _persist_http_exchange(
         pipeline=pipeline_stats,
         res=res_stats,
         mutated_manually=request_state.mutated_manually,
-        user_prompt_preview=extract_user_prompt_preview(curated_ir),
         **assignment_index_fields(track_assignment),
     )
     artifacts = ExchangeArtifacts(
@@ -313,7 +311,6 @@ async def _persist_http_provisional_exchange(
         req=req_stats,
         pipeline=pipeline_stats,
         mutated_manually=request_state.mutated_manually,
-        user_prompt_preview=extract_user_prompt_preview(curated_ir),
         **assignment_index_fields(track_assignment),
     )
     artifacts = ExchangeArtifacts(

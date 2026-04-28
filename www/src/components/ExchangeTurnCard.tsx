@@ -1,4 +1,5 @@
 import { type CSSProperties, useEffect, useState } from "react";
+import { useTurnContent } from "../hooks/useTurnContent";
 import { agentRailStyle } from "../lib/agentPalette";
 import { displayModel } from "../lib/formatting";
 import type { CodexTurnListSummary, IndexEntry } from "../types";
@@ -159,6 +160,49 @@ function PanelMetricValue({ metric }: { metric: PanelMetric }) {
   return <span className={isZero ? "text-txt-3" : "text-txt"}>{metric.value}</span>;
 }
 
+function TurnContentValue({
+  text,
+  stopReason,
+  isLoading,
+}: {
+  text?: string | null;
+  stopReason?: string | null;
+  isLoading: boolean;
+}) {
+  if (isLoading) {
+    return <span className="min-w-0 text-[13px] leading-snug text-txt-3">…</span>;
+  }
+  if (!text && stopReason) {
+    return (
+      <span className="min-w-0 text-[13px] leading-snug text-txt-3">
+        —<span className="ml-2 text-[11px] uppercase">· {stopReason}</span>
+      </span>
+    );
+  }
+  if (!text) {
+    return <span className="min-w-0 text-[13px] leading-snug text-txt-3">—</span>;
+  }
+  return <ExchangePreview text={text} stopReason={stopReason} />;
+}
+
+function SettledTurnContentPreview({ entryId }: { entryId: string }) {
+  const { data, isLoading } = useTurnContent(entryId);
+  return (
+    <span className="grid min-w-0 grid-cols-2 border-b border-edge">
+      <span className="min-w-0 border-r border-edge px-4 py-3">
+        <TurnContentValue text={data?.user_text} isLoading={isLoading} />
+      </span>
+      <span className="min-w-0 px-4 py-3">
+        <TurnContentValue
+          text={data?.response_text}
+          stopReason={data?.stop_reason}
+          isLoading={isLoading}
+        />
+      </span>
+    </span>
+  );
+}
+
 export function ExchangeTurnCard({
   entry,
   depth,
@@ -176,7 +220,6 @@ export function ExchangeTurnCard({
     (!entry.codex_turn && entry.res === null);
   const isClaudePending = !entry.codex_turn && entry.provider !== "codex" && entry.res === null;
   const isCodexPending = entry.codex_turn?.status === "open";
-  const stopReason = entry.codex_turn?.stop_reason ?? entry.res?.stop_reason;
   useElapsedTick(isClaudePending);
   const isSubagent = depth > 0;
   const metrics = panelMetrics(entry);
@@ -194,7 +237,7 @@ export function ExchangeTurnCard({
       data-index={index}
       data-depth={depth}
       onClick={() => onSelect(entry.id)}
-      className={`group absolute left-0 right-0 top-0 min-h-[196px] cursor-pointer text-left text-txt-2 ${
+      className={`group absolute left-0 right-0 top-0 min-h-[250px] cursor-pointer text-left text-txt-2 ${
         isSubagent ? "grid grid-cols-[1px_8px_52px_minmax(0,1fr)]" : ""
       }`}
       style={style}
@@ -202,20 +245,20 @@ export function ExchangeTurnCard({
       {isSubagent && <span aria-hidden />}
       {isSubagent && (
         <span
-          className="min-h-[196px] bg-[var(--agent-rail)] shadow-[0_0_22px_rgb(var(--agent-rail-rgb)/0.32)]"
+          className="min-h-[250px] bg-[var(--agent-rail)] shadow-[0_0_22px_rgb(var(--agent-rail-rgb)/0.32)]"
           aria-hidden
         />
       )}
       {isSubagent && (
         <span
           aria-hidden
-          className="flex min-h-[196px] items-start justify-center border-y border-r border-[rgb(var(--agent-rail-rgb)/0.25)] bg-[linear-gradient(180deg,#101112,#080909)] pt-[76px] shadow-[inset_0_1px_0_rgb(var(--highlight-rgb)/0.05)]"
+          className="flex min-h-[250px] items-start justify-center border-y border-r border-[rgb(var(--agent-rail-rgb)/0.25)] bg-[linear-gradient(180deg,#101112,#080909)] pt-[76px] shadow-[inset_0_1px_0_rgb(var(--highlight-rgb)/0.05)]"
         >
           <span className="label text-[11px] text-[var(--agent-rail)]">Sub</span>
         </span>
       )}
       <span
-        className={`relative grid min-h-[196px] min-w-0 grid-rows-[58px_minmax(86px,auto)_48px] overflow-hidden border bg-[linear-gradient(180deg,#101112,#070707)] shadow-[inset_0_1px_0_rgb(var(--highlight-rgb)/0.07),inset_0_-22px_45px_rgb(var(--shadow-rgb)/0.35)] transition-colors duration-150 ${borderClass} ${isSubagent ? "min-h-[196px]" : ""}`}
+        className={`relative grid min-h-[250px] min-w-0 grid-rows-[58px_140px_48px] overflow-hidden border bg-[linear-gradient(180deg,#101112,#070707)] shadow-[inset_0_1px_0_rgb(var(--highlight-rgb)/0.07),inset_0_-22px_45px_rgb(var(--shadow-rgb)/0.35)] transition-colors duration-150 ${borderClass} ${isSubagent ? "min-h-[250px]" : ""}`}
       >
         {isOpen && (
           <span className="absolute inset-x-0 top-0 h-px overflow-hidden bg-amber/20">
@@ -275,18 +318,7 @@ export function ExchangeTurnCard({
             )}
           </span>
         ) : (
-          <span className="flex min-w-0 items-start border-b border-edge px-4 py-3">
-            {entry.user_prompt_preview ? (
-              <ExchangePreview text={entry.user_prompt_preview} stopReason={stopReason} />
-            ) : (
-              <span className="min-w-0 text-[13px] leading-snug text-txt-3">
-                —
-                {stopReason && (
-                  <span className="ml-2 text-[11px] uppercase text-txt-3">· {stopReason}</span>
-                )}
-              </span>
-            )}
-          </span>
+          <SettledTurnContentPreview entryId={entry.id} />
         )}
 
         <span

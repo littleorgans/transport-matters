@@ -121,7 +121,6 @@ class IndexEntry(BaseModel):
     res: ResStats | None = None
     codex_turn: CodexTurnListSummary | None = None
     mutated_manually: bool = False
-    user_prompt_preview: str | None = None
     track_id: str | None = None
     parent_track_id: str | None = None
     track_display_name: str | None = None

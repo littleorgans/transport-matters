@@ -14,7 +14,7 @@ interface ClassifiedPreview {
   mono: boolean;
 }
 
-const MAX_LINES = 3;
+const MAX_LINES = 5;
 
 export function classifyPreview(raw: string): ClassifiedPreview {
   const text = raw.trim();
@@ -73,7 +73,7 @@ export function ExchangePreview({ text, stopReason }: ExchangePreviewProps) {
           {pill && <span className="chip shrink-0 px-2 py-0.5 text-[9px] text-txt-3">{pill}</span>}
           {stopReasonNode}
         </span>
-        <span className="block max-h-[60px] min-w-0 overflow-hidden whitespace-pre font-mono text-[11px] leading-snug text-txt-2">
+        <span className="block max-h-[100px] min-w-0 overflow-hidden whitespace-pre font-mono text-[11px] leading-snug text-txt-2">
           {body}
         </span>
       </span>
@@ -85,7 +85,7 @@ export function ExchangePreview({ text, stopReason }: ExchangePreviewProps) {
       {pill && (
         <span className="chip mt-0.5 shrink-0 px-2 py-0.5 text-[9px] text-txt-3">{pill}</span>
       )}
-      <span className="line-clamp-3 min-w-0 flex-1 text-[13px] leading-snug text-txt-2">
+      <span className="line-clamp-5 min-w-0 flex-1 text-[13px] leading-snug text-txt-2">
         {body}
         {stopReasonNode}
       </span>

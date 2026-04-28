@@ -41,6 +41,7 @@ describe("useExchangeStream SSE validation", () => {
 
   it("removes deleted exchanges from the live cache and clears selection", () => {
     const { qc, wrapper } = makeWrapper();
+    const removeSpy = vi.spyOn(qc, "removeQueries");
 
     renderHook(() => useExchangeStream(), { wrapper });
 
@@ -58,9 +59,13 @@ describe("useExchangeStream SSE validation", () => {
 
     expect(useUIStore.getState().selectedId).toBeNull();
     expect(qc.getQueryData(["exchanges", false])).toEqual([]);
+    expect(removeSpy).toHaveBeenCalledWith({
+      queryKey: ["turn-content", "exchange-live-1"],
+      exact: true,
+    });
   });
 
-  it("invalidates the matching exchange detail query when an exchange updates", () => {
+  it("invalidates the matching exchange detail and turn-content queries when an exchange updates", () => {
     const { qc, wrapper } = makeWrapper();
     const invalidateSpy = vi.spyOn(qc, "invalidateQueries");
 
@@ -77,6 +82,9 @@ describe("useExchangeStream SSE validation", () => {
 
     expect(invalidateSpy).toHaveBeenCalledWith({
       queryKey: ["exchange", "exchange-live-2"],
+    });
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: ["turn-content", "exchange-live-2"],
     });
   });
 

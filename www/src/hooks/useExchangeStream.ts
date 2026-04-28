@@ -250,6 +250,7 @@ export function useExchangeStream(): { connected: boolean } {
           // later finalizes needs an explicit refetch signal to pick up the
           // stored response artifacts and finalized stats.
           void queryClient.invalidateQueries({ queryKey: ["exchange", entry.id] });
+          void queryClient.invalidateQueries({ queryKey: ["turn-content", entry.id] });
 
           // Only clear the breakpoint editor if the completed exchange matches
           // the flow we're forwarding AND no new flow has paused in the meantime.
@@ -273,6 +274,7 @@ export function useExchangeStream(): { connected: boolean } {
             prev?.filter((entry) => entry.id !== data.id),
           );
           queryClient.removeQueries({ queryKey: ["exchange", data.id], exact: true });
+          queryClient.removeQueries({ queryKey: ["turn-content", data.id], exact: true });
           if (useUIStore.getState().selectedId === data.id) {
             setSelectedId(null);
           }

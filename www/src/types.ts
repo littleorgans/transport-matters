@@ -64,7 +64,12 @@ export interface IndexEntry {
   res: ResStats | null;
   codex_turn?: CodexTurnListSummary | null;
   mutated_manually: boolean;
-  user_prompt_preview?: string | null;
+}
+
+export interface TurnContent {
+  user_text: string | null;
+  response_text: string | null;
+  stop_reason: string | null;
 }
 
 export interface ExchangeTrack {

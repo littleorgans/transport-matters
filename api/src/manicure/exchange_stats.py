@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 from typing import Any
 
@@ -11,6 +12,7 @@ from manicure.ir import (
     InternalRequest,
     InternalResponse,
     TextBlock,
+    ThinkingBlock,
     ToolResultBlock,
     ToolUseBlock,
 )
@@ -19,23 +21,15 @@ from manicure.storage import PipelineStats, ReqStats, ResStats
 
 logger = logging.getLogger(__name__)
 
-_PREVIEW_MAX_CHARS = 1000
 
-
-def extract_user_prompt_preview(ir: InternalRequest) -> str | None:
-    """Raw preview text from the last user message; frontend renders type-aware."""
+def extract_user_prompt_text(ir: InternalRequest) -> str | None:
+    """Full text from the last user message for lazy per-card rendering."""
     for message in reversed(ir.messages):
         if message.role != "user":
             continue
         text = _flatten_user_text(message.content)
-        if not text:
-            return None
         stripped = text.strip()
-        if not stripped:
-            return None
-        if len(stripped) > _PREVIEW_MAX_CHARS:
-            return stripped[:_PREVIEW_MAX_CHARS] + "\u2026"
-        return stripped
+        return stripped or None
     return None
 
 
@@ -58,6 +52,27 @@ def _flatten_user_text(blocks: list[ContentBlock]) -> str:
             if parts:
                 return "\n".join(parts)
     return ""
+
+
+def extract_response_text(res: InternalResponse) -> str | None:
+    """Full assistant text for lazy per-card rendering."""
+    text_parts: list[str] = []
+    tool_use_input: str | None = None
+    thinking_text: str | None = None
+    for block in res.content:
+        if isinstance(block, TextBlock):
+            if block.text:
+                text_parts.append(block.text)
+        elif isinstance(block, ToolUseBlock):
+            if tool_use_input is None:
+                tool_use_input = json.dumps(block.input)
+        elif isinstance(block, ThinkingBlock) and thinking_text is None and block.text:
+            thinking_text = f"<thinking>{block.text}</thinking>"
+    if text_parts:
+        return "\n".join(text_parts)
+    if tool_use_input is not None:
+        return tool_use_input
+    return thinking_text
 
 
 def build_req_stats(ir: InternalRequest) -> ReqStats:

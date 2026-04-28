@@ -23,6 +23,7 @@ from manicure.codex.repair import (
 from manicure.config import get_settings
 from manicure.counting import count_before_after, get_counter, get_recent_auth
 from manicure.exceptions import NotFoundError
+from manicure.exchange_stats import extract_response_text, extract_user_prompt_text
 from manicure.ir import InternalRequest, InternalResponse
 from manicure.overrides import OverrideAudit
 from manicure.storage import StorageBackend, get_storage
@@ -192,6 +193,36 @@ class PipelineTokensResponse(BaseModel):
     # enough — but leaving the channel open lets future UI features
     # reason about why a row is stuck without adding a second endpoint.
     reason: str | None = None
+
+
+class TurnContentResponse(BaseModel):
+    user_text: str | None
+    response_text: str | None
+    stop_reason: str | None
+
+
+@router.get("/{exchange_id}/turn-content")
+async def get_turn_content(
+    exchange_id: str,
+    storage: StorageBackend = Depends(get_storage),
+) -> TurnContentResponse:
+    try:
+        artifacts = await storage.read_exchange(exchange_id)
+    except FileNotFoundError as exc:
+        raise NotFoundError(detail=f"Exchange {exchange_id} not found") from exc
+
+    if artifacts.response_ir is None:
+        response_text = None
+        stop_reason = None
+    else:
+        response_text = extract_response_text(artifacts.response_ir)
+        stop_reason = artifacts.response_ir.stop_reason
+
+    return TurnContentResponse(
+        user_text=extract_user_prompt_text(artifacts.request_ir),
+        response_text=response_text,
+        stop_reason=stop_reason,
+    )
 
 
 @router.get("/{exchange_id}/pipeline_tokens")

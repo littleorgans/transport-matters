@@ -1,9 +1,23 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { act } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { useTurnContent } from "../hooks/useTurnContent";
 import type { IndexEntry } from "../types";
 import { legacyClaudeRes, makeEntry } from "./__test-utils__/exchangeList";
 import { ExchangeList } from "./ExchangeList";
+
+const turnContentById = vi.hoisted(() => new Map<string, unknown>());
+
+vi.mock("../hooks/useTurnContent", () => ({
+  useTurnContent: vi.fn(
+    (id: string) => turnContentById.get(id) ?? { data: undefined, isLoading: false },
+  ),
+}));
+
+beforeEach(() => {
+  turnContentById.clear();
+  vi.mocked(useTurnContent).mockClear();
+});
 
 function renderExchangeList(exchanges: IndexEntry[]) {
   return render(
@@ -382,7 +396,7 @@ describe("ExchangeList — row behavior", () => {
     );
 
     const row = screen.getByText("gpt-5-codex").closest("button");
-    expect(row).toHaveClass("min-h-[196px]");
+    expect(row).toHaveClass("min-h-[250px]");
     expect(row).toHaveTextContent("000");
     const metrics = screen.getByTestId("exchange-metrics-codex-1");
     expect(metrics).toHaveTextContent(
@@ -476,6 +490,10 @@ describe("ExchangeList — row behavior", () => {
     const { rerender } = renderExchangeList([makeEntry({ id: exchangeId, res: null })]);
 
     const pendingRow = expectWaitingTransportVisual(exchangeId);
+    turnContentById.set(exchangeId, {
+      data: { user_text: "request", response_text: "response", stop_reason: "end_turn" },
+      isLoading: false,
+    });
 
     rerender(
       <ExchangeList
@@ -553,20 +571,76 @@ describe("ExchangeList — row behavior", () => {
     );
   });
 
-  it("renders prompt preview in settled middle row", () => {
+  it("renders lazy prompt and response columns in settled middle row", () => {
+    turnContentById.set("with-preview", {
+      data: {
+        user_text: "write me a parser",
+        response_text: "here is the parser",
+        stop_reason: "end_turn",
+      },
+      isLoading: false,
+    });
+
     renderExchangeList([
       makeEntry({
         id: "with-preview",
         res: legacyClaudeRes,
-        user_prompt_preview: "write me a parser",
       }),
     ]);
-    expect(screen.getByTestId("exchange-row-with-preview")).toHaveTextContent("write me a parser");
+    const row = screen.getByTestId("exchange-row-with-preview");
+    const previewGrid = row.querySelector(".grid-cols-2");
+    expect(useTurnContent).toHaveBeenCalledWith("with-preview");
+    expect(previewGrid).toBeInTheDocument();
+    expect(previewGrid?.firstElementChild).toHaveClass("border-r", "border-edge");
+    expect(previewGrid?.firstElementChild).toHaveTextContent("write me a parser");
+    expect(previewGrid?.firstElementChild).not.toHaveTextContent("end_turn");
+    expect(previewGrid?.lastElementChild).toHaveTextContent("here is the parser");
+    expect(previewGrid?.lastElementChild).toHaveTextContent("end_turn");
   });
 
-  it("pending card shows no prompt preview", () => {
+  it("renders lazy response stop reason when response text is absent", () => {
+    turnContentById.set("null-response-preview", {
+      data: {
+        user_text: "write me a parser",
+        response_text: null,
+        stop_reason: "end_turn",
+      },
+      isLoading: false,
+    });
+
+    renderExchangeList([
+      makeEntry({
+        id: "null-response-preview",
+        res: legacyClaudeRes,
+      }),
+    ]);
+
+    const row = screen.getByTestId("exchange-row-null-response-preview");
+    const previewGrid = row.querySelector(".grid-cols-2");
+    expect(previewGrid?.firstElementChild).toHaveTextContent("write me a parser");
+    expect(previewGrid?.firstElementChild).not.toHaveTextContent("end_turn");
+    expect(previewGrid?.lastElementChild).toHaveTextContent("—");
+    expect(previewGrid?.lastElementChild).toHaveTextContent("end_turn");
+  });
+
+  it("renders loading placeholders while lazy turn content is loading", () => {
+    turnContentById.set("loading-preview", { data: undefined, isLoading: true });
+
+    renderExchangeList([
+      makeEntry({
+        id: "loading-preview",
+        res: legacyClaudeRes,
+      }),
+    ]);
+
+    const row = screen.getByTestId("exchange-row-loading-preview");
+    expect(within(row).getAllByText("\u2026")).toHaveLength(2);
+  });
+
+  it("pending card shows no prompt preview and skips lazy content fetch", () => {
     renderExchangeList([makeEntry({ id: "pending-no-preview", res: null })]);
     expect(screen.queryByText("write me")).not.toBeInTheDocument();
     expect(screen.getByTestId("exchange-token-activity-pending-no-preview")).toBeInTheDocument();
+    expect(useTurnContent).not.toHaveBeenCalled();
   });
 });

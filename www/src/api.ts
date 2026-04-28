@@ -7,6 +7,7 @@ import type {
   OverrideAudit,
   OverrideScope,
   PausedFlow,
+  TurnContent,
 } from "./types";
 
 export const MAX_ENTRIES = 500;
@@ -48,6 +49,14 @@ export async function fetchExchange(id: string): Promise<ExchangeDetail> {
     throw new Error(`Failed to fetch exchange ${id}: ${res.status}`);
   }
   return (await res.json()) as ExchangeDetail;
+}
+
+export async function fetchTurnContent(id: string): Promise<TurnContent> {
+  const res = await fetch(`/api/exchanges/${encodeURIComponent(id)}/turn-content`);
+  if (!res.ok) {
+    throw new Error(`Failed to fetch turn content for ${id}: ${res.status}`);
+  }
+  return (await res.json()) as TurnContent;
 }
 
 export type PipelineTokensReason =

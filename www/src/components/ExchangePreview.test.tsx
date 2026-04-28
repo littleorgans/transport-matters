@@ -16,16 +16,16 @@ describe("classifyPreview", () => {
     expect(result.pill).toBe("JSON");
     expect(result.mono).toBe(true);
     expect(result.body).toContain('"status": "ok"');
-    expect(result.body.split("\n").length).toBeLessThanOrEqual(4);
+    expect(result.body.split("\n").length).toBeLessThanOrEqual(6);
   });
 
-  it("truncates JSON pretty-print to 3 lines plus ellipsis", () => {
+  it("truncates JSON pretty-print to 5 lines plus ellipsis", () => {
     const long = JSON.stringify({ a: 1, b: 2, c: 3, d: 4, e: 5, f: 6, g: 7, h: 8 }, null, 2);
     const result = classifyPreview(long);
     expect(result.kind).toBe("json");
     const lines = result.body.split("\n");
-    expect(lines.length).toBe(4);
-    expect(lines[3]).toBe("\u2026");
+    expect(lines.length).toBe(6);
+    expect(lines[5]).toBe("\u2026");
   });
 
   it("falls back to mono raw when JSON-like text fails to parse", () => {

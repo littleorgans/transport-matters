@@ -22,7 +22,7 @@ interface ExchangeListProps {
 // Fixed virtual rows keep long sessions cheap. Root and subagent turns
 // share the same instrument panel layout.
 const TRACK_ROW_HEIGHT = 92;
-const EXCHANGE_ROW_HEIGHT = 196;
+const EXCHANGE_ROW_HEIGHT = 250;
 const EMPTY_TRACK_IDS: string[] = [];
 const EMPTY_TRACK_STUBS: ExchangeTrackStub[] = [];
 
