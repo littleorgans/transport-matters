@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import json
 import os
 import shutil
 import tempfile
@@ -15,6 +16,7 @@ import typer
 from .launch_runtime import (
     build_launch_env,
     build_managed_child_env,
+    managed_child_shell_env_excludes,
     new_run_id,
     reject_passthrough_without_client,
     resolve_launch_ports,
@@ -168,6 +170,11 @@ def _build_proxy_only_codex_hint(
     )
 
 
+def _codex_shell_environment_policy_args() -> list[str]:
+    excluded = ",".join(json.dumps(key) for key in managed_child_shell_env_excludes())
+    return ["-c", f"shell_environment_policy.exclude=[{excluded}]"]
+
+
 def _build_codex_invocation(
     *,
     addon_path: Path,
@@ -220,7 +227,11 @@ def _build_codex_invocation(
             client = ManagedClient(
                 name="codex",
                 display_name="Codex",
-                argv=[codex_path, *codex_passthrough_user],
+                argv=[
+                    codex_path,
+                    *_codex_shell_environment_policy_args(),
+                    *codex_passthrough_user,
+                ],
                 env=client_env,
                 cwd=working_dir,
             )

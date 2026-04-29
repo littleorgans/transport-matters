@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import tomllib
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -47,7 +48,10 @@ def test_codex_print_command_uses_explicit_proxy_mode(
     lines = [line.strip() for line in result.stdout.splitlines() if line.strip()]
     assert any("--mode regular" in line for line in lines)
     assert any("--listen-port 9000" in line for line in lines)
-    assert any(line == "/bin/codex" for line in lines)
+    assert any(
+        line.startswith("/bin/codex -c shell_environment_policy.exclude=")
+        for line in lines
+    )
 
 
 def test_codex_sets_proxy_env_on_managed_child(
@@ -88,15 +92,80 @@ def test_codex_sets_proxy_env_on_managed_child(
     client = kwargs["client"]
     assert client is not None
     assert client.name == "codex"
-    assert client.argv == ["/bin/codex", "exec", "ping"]
+    assert client.argv[0] == "/bin/codex"
+    assert client.argv[1] == "-c"
+    assert client.argv[2].startswith("shell_environment_policy.exclude=")
+    assert client.argv[-2:] == ["exec", "ping"]
     assert client.env["HTTP_PROXY"] == "http://127.0.0.1:9000"
     assert client.env["HTTPS_PROXY"] == "http://127.0.0.1:9000"
     assert client.env["http_proxy"] == "http://127.0.0.1:9000"
     assert client.env["https_proxy"] == "http://127.0.0.1:9000"
+    assert client.env["CODEX_NETWORK_PROXY_ACTIVE"] == "1"
     assert client.env["CODEX_CA_CERTIFICATE"] == str(bundle_path)
     assert "localhost" in client.env["NO_PROXY"]
     assert "127.0.0.1" in client.env["NO_PROXY"]
     assert kwargs["mitmdump_argv"][:3] == ["/bin/mitmdump", "--mode", "regular"]
+
+
+def test_codex_excludes_manicure_proxy_env_from_shell_commands(
+    tmp_storage: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    spy_run_client_children: MagicMock,
+) -> None:
+    monkeypatch.setattr(
+        "manicure.cli.shutil.which",
+        _which_by_name({"mitmdump": "/bin/mitmdump", "codex": "/bin/codex"}),
+    )
+    monkeypatch.setattr("manicure.cli._port_in_use", lambda _: False)
+    bundle_path = tmp_path / "ca.pem"
+    bundle_path.write_text("bundle", encoding="utf-8")
+    monkeypatch.setattr(
+        "manicure.cli.resolve_codex_ca_certificate",
+        lambda *, env, bundle_dir: bundle_path,
+    )
+
+    result = runner.invoke(
+        main,
+        [
+            "codex",
+            ".",
+            "--proxy-port",
+            "9000",
+            "--web-port",
+            "9001",
+            "--",
+            "exec",
+            "ping",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+
+    client = spy_run_client_children.call_args.kwargs["client"]
+    assert client.env["HTTP_PROXY"] == "http://127.0.0.1:9000"
+    assert client.env["CODEX_CA_CERTIFICATE"] == str(bundle_path)
+    assert client.argv[-2:] == ["exec", "ping"]
+    policy_args = [
+        arg
+        for index, arg in enumerate(client.argv)
+        if index > 0
+        and client.argv[index - 1] == "-c"
+        and arg.startswith("shell_environment_policy.exclude=")
+    ]
+    assert len(policy_args) == 1
+    excluded = set(tomllib.loads(policy_args[0])["shell_environment_policy"]["exclude"])
+    assert {
+        "ALL_PROXY",
+        "HTTP_PROXY",
+        "HTTPS_PROXY",
+        "NO_PROXY",
+        "CODEX_CA_CERTIFICATE",
+        "CURL_CA_BUNDLE",
+        "NODE_EXTRA_CA_CERTS",
+        "REQUESTS_CA_BUNDLE",
+        "SSL_CERT_FILE",
+    }.issubset(excluded)
+    assert "CODEX_NETWORK_PROXY_ACTIVE" not in excluded
 
 
 def test_codex_sanitizes_managed_child_proxy_and_trust_env(
@@ -147,6 +216,7 @@ def test_codex_sanitizes_managed_child_proxy_and_trust_env(
     assert client_env["HTTP_PROXY"] == "http://127.0.0.1:9000"
     assert client_env["HTTPS_PROXY"] == "http://127.0.0.1:9000"
     assert client_env["ALL_PROXY"] == "http://127.0.0.1:9000"
+    assert client_env["CODEX_NETWORK_PROXY_ACTIVE"] == "1"
     assert client_env["WS_PROXY"] == "http://127.0.0.1:9000"
     assert client_env["WSS_PROXY"] == "http://127.0.0.1:9000"
     assert client_env["NO_PROXY"] == "127.0.0.1,localhost"
@@ -222,6 +292,7 @@ def test_codex_no_codex_skips_trust_bootstrap_failures(
         _which_by_name({"mitmdump": "/bin/mitmdump"}),
     )
     monkeypatch.setattr("manicure.cli._port_in_use", lambda _: False)
+    monkeypatch.delenv("CODEX_CA_CERTIFICATE", raising=False)
 
     def raise_error(*, env: dict[str, str], bundle_dir: Path | None) -> Path:
         raise MitmproxyCAMissingError(Path("/missing/mitmproxy-ca-cert.pem"))
@@ -274,6 +345,7 @@ def test_codex_cleans_generated_bundle_after_exit(
         _which_by_name({"mitmdump": "/bin/mitmdump", "codex": "/bin/codex"}),
     )
     monkeypatch.setattr("manicure.cli._port_in_use", lambda _: False)
+    monkeypatch.delenv("CODEX_CA_CERTIFICATE", raising=False)
     captured: dict[str, str] = {}
 
     def fake_resolve(*, env: dict[str, str], bundle_dir: Path | None) -> Path:

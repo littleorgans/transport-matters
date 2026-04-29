@@ -24,7 +24,7 @@ Prints the proxy URL, web UI URL, and resolved workspace CWD on launch.
 ## How it wires up
 
 - **Claude**: reverse proxy, `ANTHROPIC_BASE_URL` -> mitmproxy -> `api.anthropic.com`
-- **Codex**: explicit HTTPS proxy, `HTTPS_PROXY` + process scoped `CODEX_CA_CERTIFICATE` -> mitmproxy -> `chatgpt.com/backend-api/codex/responses`
+- **Codex**: explicit HTTPS proxy, `HTTPS_PROXY` + process scoped `CODEX_CA_CERTIFICATE` for Codex itself, plus Codex managed proxy marking and shell env filtering for Codex spawned commands -> mitmproxy -> `chatgpt.com/backend-api/codex/responses`
 
 ## Repo map
 

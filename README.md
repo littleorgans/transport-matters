@@ -51,8 +51,10 @@ manicure codex --no-codex
 - `HTTPS_PROXY`
 - `HTTP_PROXY`
 - a process scoped `CODEX_CA_CERTIFICATE`
+- `CODEX_NETWORK_PROXY_ACTIVE=1`, so Codex treats the proxy vars as managed and strips them from direct shell commands
+- a session scoped Codex shell environment policy that removes Manicure trust variables from commands Codex runs
 
-For Codex, Manicure validates any user supplied CA bundle path or else snapshots the active Python trust roots, appends `~/.mitmproxy/mitmproxy-ca-cert.pem`, and passes that merged bundle only to the managed Codex process. No system keychain changes are required.
+For Codex, Manicure validates any user supplied CA bundle path or else snapshots the active Python trust roots, appends `~/.mitmproxy/mitmproxy-ca-cert.pem`, and passes that merged bundle only to the managed Codex process. Commands started inside Codex use their normal trust chain and are not routed through the Manicure proxy, including direct shell commands. No system keychain changes are required.
 
 On launch, Manicure prints:
 - the proxy URL

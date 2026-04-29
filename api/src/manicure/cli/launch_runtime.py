@@ -27,6 +27,11 @@ _MANAGED_CHILD_PROXY_ENV_KEYS = frozenset(
     {
         "ALL_PROXY",
         "all_proxy",
+        "BUNDLE_HTTP_PROXY",
+        "BUNDLE_HTTPS_PROXY",
+        "BUNDLE_NO_PROXY",
+        "DOCKER_HTTP_PROXY",
+        "DOCKER_HTTPS_PROXY",
         "HTTP_PROXY",
         "http_proxy",
         "HTTPS_PROXY",
@@ -49,6 +54,18 @@ _MANAGED_CHILD_PROXY_ENV_KEYS = frozenset(
         "NPM_CONFIG_NOPROXY",
         "npm_config_no_proxy",
         "NPM_CONFIG_NO_PROXY",
+        "PIP_PROXY",
+        "YARN_HTTP_PROXY",
+        "YARN_HTTPS_PROXY",
+        "YARN_NO_PROXY",
+    }
+)
+
+_MANAGED_CHILD_PROXY_INTERNAL_ENV_KEYS = frozenset(
+    {
+        "CODEX_NETWORK_ALLOW_LOCAL_BINDING",
+        "CODEX_NETWORK_PROXY_ACTIVE",
+        "ELECTRON_GET_USE_PROXY",
     }
 )
 
@@ -177,6 +194,11 @@ def new_run_id() -> str:
     return str(uuid.uuid4())
 
 
+def managed_child_shell_env_excludes() -> tuple[str, ...]:
+    """Return managed env keys that nested tool shells should not inherit."""
+    return tuple(sorted(_MANAGED_CHILD_PROXY_ENV_KEYS | _MANAGED_CHILD_TRUST_ENV_KEYS))
+
+
 def build_launch_env(
     *,
     working_dir: Path,
@@ -204,10 +226,16 @@ def build_managed_child_env(
 ) -> dict[str, str]:
     """Return a deterministic child env that cannot bypass proxy or trust."""
     env = dict(base_env)
-    for key in _MANAGED_CHILD_PROXY_ENV_KEYS | _MANAGED_CHILD_TRUST_ENV_KEYS:
+    for key in (
+        _MANAGED_CHILD_PROXY_ENV_KEYS
+        | _MANAGED_CHILD_PROXY_INTERNAL_ENV_KEYS
+        | _MANAGED_CHILD_TRUST_ENV_KEYS
+    ):
         env.pop(key, None)
 
     if proxy_url is not None:
+        # Codex uses this marker to strip managed proxy vars from user commands.
+        env["CODEX_NETWORK_PROXY_ACTIVE"] = "1"
         env["HTTP_PROXY"] = proxy_url
         env["HTTPS_PROXY"] = proxy_url
         env["ALL_PROXY"] = proxy_url
