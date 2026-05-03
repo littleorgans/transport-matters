@@ -23,8 +23,8 @@ spike:
 
 # ------------- Build & Test -------------
 
-test:
-    uv run pytest
+test *args:
+    uv run pytest {{args}}
 
 coverage:
     uv run pytest --cov=manicure --cov-report=term-missing --cov-report=html

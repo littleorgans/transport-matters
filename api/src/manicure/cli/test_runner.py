@@ -24,8 +24,14 @@ import typer
 from manicure.cli import SIGNAL_EXIT, _run_children
 from manicure.cli.runner import (
     BindFailure,
+    LaunchBindFailureOutcome,
+    LaunchExitOutcome,
+    LaunchRetryExhaustedOutcome,
+    ManagedClient,
     _failing_ports_from_log,
+    _format_retry_exhaustion,
     _handle_bind_failure,
+    _run_client_children_until_outcome,
 )
 
 if TYPE_CHECKING:
@@ -167,6 +173,81 @@ def test_run_children_reports_proxy_failure_after_claude_exit(
         )
 
     assert exc_info.value.exit_code == 1
+    fake_sup.terminate_all.assert_called_once()
+
+
+def test_run_client_children_outcome_captures_proxy_failure_log(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake_sup = MagicMock()
+    fake_sup.received_signal = None
+    fake_sup.wait_any.return_value = ("claude", 0)
+    fake_sup.wait_one.return_value = ("mitmdump", 7)
+
+    monkeypatch.setattr("manicure.cli.runner.ProcessSupervisor", lambda: fake_sup)
+    monkeypatch.setattr(
+        "manicure.cli.runner._wait_for_port_ready", lambda *_a, **_k: True
+    )
+
+    outcome = _run_client_children_until_outcome(
+        mitmdump_argv=["/bin/mitmdump"],
+        mitmdump_env={},
+        storage_dir=tmp_path,
+        client=ManagedClient(
+            name="claude",
+            display_name="Claude",
+            argv=["/bin/claude"],
+            env={"ANTHROPIC_BASE_URL": "http://127.0.0.1:8787"},
+            cwd=tmp_path,
+        ),
+        proxy_port=8787,
+        web_port=8788,
+    )
+
+    assert outcome == LaunchExitOutcome(
+        exit_code=1,
+        error="mitmdump exited unexpectedly (rc=7).",
+        log_path=tmp_path / "logs" / "mitmdump.log",
+    )
+    fake_sup.terminate_all.assert_called_once()
+
+
+def test_run_client_children_outcome_captures_bind_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake_sup = MagicMock()
+    fake_sup.received_signal = None
+    log = tmp_path / "logs" / "mitmdump.log"
+
+    def _not_ready(*_args: object, **_kwargs: object) -> bool:
+        log.write_text("EADDRINUSE ('127.0.0.1', 8787)\n")
+        return False
+
+    monkeypatch.setattr("manicure.cli.runner.ProcessSupervisor", lambda: fake_sup)
+    monkeypatch.setattr("manicure.cli.runner._wait_for_port_ready", _not_ready)
+
+    outcome = _run_client_children_until_outcome(
+        mitmdump_argv=["/bin/mitmdump"],
+        mitmdump_env={},
+        storage_dir=tmp_path,
+        client=ManagedClient(
+            name="claude",
+            display_name="Claude",
+            argv=["/bin/claude"],
+            env={"ANTHROPIC_BASE_URL": "http://127.0.0.1:8787"},
+            cwd=tmp_path,
+        ),
+        proxy_port=8787,
+        web_port=8788,
+    )
+
+    assert isinstance(outcome, LaunchBindFailureOutcome)
+    assert outcome.failure.proxy_port == 8787
+    assert outcome.failure.web_port == 8788
+    assert outcome.failure.failing_ports == (8787,)
+    assert outcome.failure.log_path == log
     fake_sup.terminate_all.assert_called_once()
 
 
@@ -404,3 +485,21 @@ def test_handle_bind_failure_propagates_allocator_error(
             web_user_supplied=False,
         )
     assert exc_info.value.exit_code == 2
+
+
+def test_format_retry_exhaustion_highlights_pinned_ports() -> None:
+    outcome = LaunchRetryExhaustedOutcome(
+        attempted=((54321, 9001), (60001, 9001), (60003, 9001)),
+        proxy_port=60003,
+        web_port=9001,
+        proxy_user_supplied=False,
+        web_user_supplied=True,
+    )
+
+    message = "\n".join(_format_retry_exhaustion(outcome))
+
+    assert "could not bind ports after 3 attempts" in message
+    assert "Tried (proxy, web): (54321, 9001), (60001, 9001), (60003, 9001)." in message
+    assert "Pinned (held constant across all attempts): --web-port 9001." in message
+    assert "Free the pinned port" in message
+    assert "Pin specific values" not in message

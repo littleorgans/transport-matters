@@ -1,5 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it } from "vitest";
+import { dismissedPanelKey } from "../../stores/persistence";
 import { DismissablePanel } from "./DismissablePanel";
 
 beforeEach(() => {
@@ -19,7 +20,7 @@ describe("DismissablePanel", () => {
   });
 
   it("renders nothing when localStorage already marks the id dismissed", () => {
-    localStorage.setItem("manicure.panel.dismissed.t-2", "1");
+    localStorage.setItem(dismissedPanelKey("t-2"), "1");
 
     const { container } = render(
       <DismissablePanel id="t-2" tone="info" title="Hello">
@@ -41,7 +42,7 @@ describe("DismissablePanel", () => {
     fireEvent.click(btn);
 
     expect(screen.queryByText("Heads up")).toBeNull();
-    expect(localStorage.getItem("manicure.panel.dismissed.t-3")).toBe("1");
+    expect(localStorage.getItem(dismissedPanelKey("t-3"))).toBe("1");
   });
 
   it("dismissals are scoped per id — dismissing A leaves B visible", () => {
@@ -63,8 +64,8 @@ describe("DismissablePanel", () => {
     );
 
     expect(screen.getByText("B title")).toBeInTheDocument();
-    expect(localStorage.getItem("manicure.panel.dismissed.id-A")).toBe("1");
-    expect(localStorage.getItem("manicure.panel.dismissed.id-B")).toBeNull();
+    expect(localStorage.getItem(dismissedPanelKey("id-A"))).toBe("1");
+    expect(localStorage.getItem(dismissedPanelKey("id-B"))).toBeNull();
   });
 
   it("survives localStorage being unavailable at read time", () => {

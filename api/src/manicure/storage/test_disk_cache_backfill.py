@@ -182,6 +182,43 @@ class TestCacheCreationBackfill:
         assert reloaded.res is not None
         assert reloaded.res.cache_creation_input_tokens == 0
 
+    async def test_uses_layout_tmp_dir_policy_for_backfill_scan(
+        self,
+        storage: DiskStorageBackend,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        exchange_id = "aaaa0000-1111-2222-3333-444455556666"
+        entry = _make_index_entry(exchange_id).model_copy(
+            update={"res": ResStats(input_tokens=10, cache_creation_input_tokens=0)}
+        )
+        tmp_exchange_dir = tmp_path / "interrupted-aaaa0000"
+        tmp_exchange_dir.mkdir()
+        resp_ir = InternalResponse(
+            id=f"msg_{exchange_id}",
+            model="anthropic/claude-sonnet-4-20250514",
+            provider="anthropic",
+            stop_reason="end_turn",
+            usage=UsageStats(input_tokens=10, cache_creation_input_tokens=99),
+            content=[],
+        )
+        storage._layout.artifact_paths(tmp_exchange_dir).response_ir.write_text(
+            resp_ir.model_dump_json()
+        )
+        monkeypatch.setattr(
+            storage._layout,
+            "is_tmp_exchange_dir",
+            lambda exchange_dir: exchange_dir == tmp_exchange_dir,
+        )
+
+        entries = {exchange_id: entry}
+        corrected = await storage._backfill_cache_creation(entries)
+
+        assert corrected == 0
+        updated = entries[exchange_id]
+        assert updated.res is not None
+        assert updated.res.cache_creation_input_tokens == 0
+
 
 class TestSpawnAnchorRoundTrip:
     """Cache reload preserves the nested SpawnAnchor field on IndexEntry,

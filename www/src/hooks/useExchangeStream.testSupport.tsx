@@ -6,6 +6,7 @@ import { useUIStore } from "../stores/uiStore";
 import type { PausedFlow } from "../types";
 
 let mockSource: {
+  url: string;
   onopen: (() => void) | null;
   onerror: (() => void) | null;
   onmessage: ((event: MessageEvent) => void) | null;
@@ -21,7 +22,7 @@ beforeEach(() => {
       onerror: (() => void) | null = null;
       onmessage: ((event: MessageEvent) => void) | null = null;
       close = vi.fn();
-      constructor() {
+      constructor(readonly url: string) {
         mockSource = this;
       }
     },
@@ -81,6 +82,11 @@ export function fireSSE(data: Record<string, unknown>) {
   act(() => {
     mockSource?.onmessage?.(new MessageEvent("message", { data: JSON.stringify(data) }));
   });
+}
+
+export function getMockSource() {
+  if (!mockSource) throw new Error("EventSource has not been constructed");
+  return mockSource;
 }
 
 export function makeWrapper() {

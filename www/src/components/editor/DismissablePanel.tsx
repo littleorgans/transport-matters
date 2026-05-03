@@ -1,28 +1,5 @@
 import { type ReactNode, useState } from "react";
-
-// Namespace all dismissal keys so a future "clear UI preferences" action
-// can wipe them with a single prefix scan. Keep the prefix stable. A
-// rename would reset dismissals for returning users.
-const KEY_PREFIX = "manicure.panel.dismissed.";
-
-function hasDismissed(id: string): boolean {
-  try {
-    return localStorage.getItem(KEY_PREFIX + id) === "1";
-  } catch {
-    // localStorage blocked (privacy mode, disabled quota). Treat as
-    // "not dismissed" so the user sees the panel at least in-session.
-    return false;
-  }
-}
-
-function markDismissed(id: string): void {
-  try {
-    localStorage.setItem(KEY_PREFIX + id, "1");
-  } catch {
-    // Quota exhausted or disallowed. Silently give up. Worst case, the
-    // panel reappears next load; better than crashing the editor.
-  }
-}
+import { hasDismissedPanel, markPanelDismissed } from "../../stores/persistence";
 
 type Tone = "warn" | "info";
 
@@ -59,12 +36,12 @@ export function DismissablePanel({ id, tone, title, children }: DismissablePanel
   // Seed from localStorage on mount. No reactivity needed: dismissal
   // is a one-way transition, and cross-tab sync isn't worth the
   // listener complexity for a first-run notice.
-  const [dismissed, setDismissed] = useState(() => hasDismissed(id));
+  const [dismissed, setDismissed] = useState(() => hasDismissedPanel(id));
   if (dismissed) return null;
 
   const styles = TONES[tone];
   const handleDismiss = () => {
-    markDismissed(id);
+    markPanelDismissed(id);
     setDismissed(true);
   };
 

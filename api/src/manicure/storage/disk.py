@@ -11,8 +11,7 @@ import json
 import logging
 import shutil
 from concurrent.futures import Executor, ThreadPoolExecutor
-from datetime import UTC, datetime
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 from manicure.codex.derivation_codec import (
     serialize_codex_events_jsonl,
@@ -27,22 +26,22 @@ from manicure.storage.base import (
     StorageBackend,
     TransportArtifacts,
 )
-from manicure.storage.disk_helpers import (
-    ENTRY_FILENAME,
-    DiskStorageRecoveryMixin,
-)
+from manicure.storage.disk_helpers import DiskStorageRecoveryMixin
+from manicure.storage.disk_layout import DiskStorageLayout
 from manicure.transport_redaction import redact_transport_artifacts
 
 logger = logging.getLogger(__name__)
 
-_DEFAULT_ROOT = Path.home() / ".manicure" / "exchanges"
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 class DiskStorageBackend(DiskStorageRecoveryMixin, StorageBackend):
     """Append-only JSONL index with per-exchange artifact directories."""
 
     def __init__(self, root: str | Path | None = None) -> None:
-        self._root = Path(root) if root else _DEFAULT_ROOT
+        self._layout = DiskStorageLayout(root)
+        self._root = self._layout.root
         self._drop_legacy_flat_anchor_cache()
         self._root.mkdir(parents=True, exist_ok=True)
         self._index_lock = asyncio.Lock()
@@ -58,7 +57,7 @@ class DiskStorageBackend(DiskStorageRecoveryMixin, StorageBackend):
         return self._root
 
     def _drop_legacy_flat_anchor_cache(self) -> None:
-        index_path = self._root / "index.jsonl"
+        index_path = self._layout.index_path
         if not index_path.exists():
             return
         try:
@@ -97,7 +96,7 @@ class DiskStorageBackend(DiskStorageRecoveryMixin, StorageBackend):
         if self._index_cache is not None:
             return self._index_cache
         entries: dict[str, IndexEntry] = {}
-        index_path = self._root / "index.jsonl"
+        index_path = self._layout.index_path
         if index_path.exists():
             lines = await self._read_lines(index_path)
             for line in lines:
@@ -155,7 +154,7 @@ class DiskStorageBackend(DiskStorageRecoveryMixin, StorageBackend):
         dir_by_short: dict[str, Path] = {}
         if self._root.exists():
             for d in self._root.iterdir():
-                if d.is_dir() and not d.name.endswith(".tmp"):
+                if d.is_dir() and not self._layout.is_tmp_exchange_dir(d):
                     short = d.name.rsplit("-", 1)[-1]
                     dir_by_short[short] = d
 
@@ -166,7 +165,7 @@ class DiskStorageBackend(DiskStorageRecoveryMixin, StorageBackend):
             exchange_dir = dir_by_short.get(exchange_id[:8])
             if exchange_dir is None:
                 continue
-            resp_ir_path = exchange_dir / "response.ir.json"
+            resp_ir_path = self._layout.artifact_paths(exchange_dir).response_ir
             if not resp_ir_path.exists():
                 continue
             try:
@@ -195,14 +194,14 @@ class DiskStorageBackend(DiskStorageRecoveryMixin, StorageBackend):
         ``.tmp`` file and rename so a crashed rewrite leaves the original
         index intact.
         """
-        index_path = self._root / "index.jsonl"
-        tmp_path = index_path.with_name("index.jsonl.tmp")
+        index_path = self._layout.index_path
+        tmp_path = self._layout.index_tmp_path
         body = "".join(entry.model_dump_json() + "\n" for entry in entries.values())
         await self._write_text(tmp_path, body)
         tmp_path.rename(index_path)
 
     async def append_index(self, entry: IndexEntry) -> None:
-        index_path = self._root / "index.jsonl"
+        index_path = self._layout.index_path
         line = entry.model_dump_json() + "\n"
         async with self._index_lock:
             await self._write_text(index_path, line, mode="a")
@@ -210,7 +209,7 @@ class DiskStorageBackend(DiskStorageRecoveryMixin, StorageBackend):
                 self._index_cache[entry.id] = entry
 
     async def upsert_index(self, entry: IndexEntry) -> None:
-        index_path = self._root / "index.jsonl"
+        index_path = self._layout.index_path
         line = entry.model_dump_json() + "\n"
         async with self._index_lock:
             cache = await self._ensure_index_cache()
@@ -230,7 +229,9 @@ class DiskStorageBackend(DiskStorageRecoveryMixin, StorageBackend):
 
         try:
             await self._write_exchange_files(tmp_dir, artifacts)
-            await self._write_entry_json(tmp_dir / ENTRY_FILENAME, entry)
+            await self._write_entry_json(
+                self._layout.artifact_paths(tmp_dir).entry, entry
+            )
             backup_dir = await self._activate_exchange_dir(tmp_dir, final_dir)
             try:
                 async with self._index_lock:
@@ -369,56 +370,50 @@ class DiskStorageBackend(DiskStorageRecoveryMixin, StorageBackend):
 
     async def read_exchange(self, exchange_id: str) -> ExchangeArtifacts:
         exchange_dir = self._find_exchange_dir(exchange_id)
+        paths = self._layout.artifact_paths(exchange_dir)
 
-        request_raw = await self._read_bytes(exchange_dir / "request.raw")
+        request_raw = await self._read_bytes(paths.request_raw)
 
-        request_ir_json = await self._read_text(exchange_dir / "request.ir.json")
+        request_ir_json = await self._read_text(paths.request_ir)
         request_ir = InternalRequest.model_validate_json(request_ir_json)
 
         request_curated_raw: bytes | None = None
-        curated_raw_path = exchange_dir / "request.curated.raw"
-        if curated_raw_path.exists():
-            request_curated_raw = await self._read_bytes(curated_raw_path)
+        if paths.request_curated_raw.exists():
+            request_curated_raw = await self._read_bytes(paths.request_curated_raw)
 
-        curated_path = exchange_dir / "request.curated.ir.json"
         request_curated_ir: InternalRequest | None = None
-        if curated_path.exists():
-            curated_json = await self._read_text(curated_path)
+        if paths.request_curated_ir.exists():
+            curated_json = await self._read_text(paths.request_curated_ir)
             request_curated_ir = InternalRequest.model_validate_json(curated_json)
 
         request_audit = None
-        audit_path = exchange_dir / "request.audit.json"
-        if audit_path.exists():
-            audit_json = await self._read_text(audit_path)
+        if paths.request_audit.exists():
+            audit_json = await self._read_text(paths.request_audit)
             from manicure.overrides import OverrideAudit
 
             request_audit = OverrideAudit.model_validate_json(audit_json)
 
         response_raw: bytes | None = None
-        resp_raw_path = exchange_dir / "response.raw"
-        if resp_raw_path.exists():
-            response_raw = await self._read_bytes(resp_raw_path)
+        if paths.response_raw.exists():
+            response_raw = await self._read_bytes(paths.response_raw)
 
         response_ir: InternalResponse | None = None
-        resp_ir_path = exchange_dir / "response.ir.json"
-        if resp_ir_path.exists():
-            resp_ir_json = await self._read_text(resp_ir_path)
+        if paths.response_ir.exists():
+            resp_ir_json = await self._read_text(paths.response_ir)
             response_ir = InternalResponse.model_validate_json(resp_ir_json)
 
         transport: TransportArtifacts | None = None
-        transport_path = exchange_dir / "transport.json"
-        if transport_path.exists():
-            transport_json = await self._read_text(transport_path)
+        if paths.transport.exists():
+            transport_json = await self._read_text(paths.transport)
             transport = TransportArtifacts.model_validate_json(transport_json)
             transport, changed = redact_transport_artifacts(transport)
             if changed and transport is not None:
-                await self._rewrite_transport_json(transport_path, transport)
+                await self._rewrite_transport_json(paths.transport, transport)
 
         events: tuple[CodexSemanticEvent, ...] | None = None
-        events_path = exchange_dir / "events.jsonl"
-        if events_path.exists():
+        if paths.events.exists():
             try:
-                events = await self._read_events_jsonl(events_path)
+                events = await self._read_events_jsonl(paths.events)
             except Exception:
                 logger.warning(
                     "Failed to read Codex events sidecar for %s",
@@ -427,10 +422,9 @@ class DiskStorageBackend(DiskStorageRecoveryMixin, StorageBackend):
                 )
 
         turn: CodexTurnSummary | None = None
-        turn_path = exchange_dir / "turn.json"
-        if turn_path.exists():
+        if paths.turn.exists():
             try:
-                turn_json = await self._read_text(turn_path)
+                turn_json = await self._read_text(paths.turn)
                 turn = CodexTurnSummary.model_validate_json(turn_json)
             except Exception:
                 logger.warning(
@@ -456,16 +450,15 @@ class DiskStorageBackend(DiskStorageRecoveryMixin, StorageBackend):
         self, exchange_id: str
     ) -> CodexDerivedArtifactFiles:
         exchange_dir = self._find_exchange_dir(exchange_id)
+        paths = self._layout.artifact_paths(exchange_dir)
 
         events_jsonl: bytes | None = None
-        events_path = exchange_dir / "events.jsonl"
-        if events_path.exists():
-            events_jsonl = await self._read_bytes(events_path)
+        if paths.events.exists():
+            events_jsonl = await self._read_bytes(paths.events)
 
         turn_json: bytes | None = None
-        turn_path = exchange_dir / "turn.json"
-        if turn_path.exists():
-            turn_json = await self._read_bytes(turn_path)
+        if paths.turn.exists():
+            turn_json = await self._read_bytes(paths.turn)
 
         return CodexDerivedArtifactFiles(
             events_jsonl=events_jsonl,
@@ -481,12 +474,13 @@ class DiskStorageBackend(DiskStorageRecoveryMixin, StorageBackend):
             raise ValueError(msg)
 
         final_dir = self._find_exchange_dir(exchange_id)
-        tmp_dir = final_dir.parent / f"{final_dir.name}.tmp"
+        tmp_dir = self._layout.tmp_exchange_dir(final_dir)
         shutil.rmtree(tmp_dir, ignore_errors=True)
         try:
             await self._run_io(shutil.copytree, final_dir, tmp_dir)
-            await self._write_events_jsonl(tmp_dir / "events.jsonl", artifacts.events)
-            await self._write_turn_json(tmp_dir / "turn.json", artifacts.turn)
+            paths = self._layout.artifact_paths(tmp_dir)
+            await self._write_events_jsonl(paths.events, artifacts.events)
+            await self._write_turn_json(paths.turn, artifacts.turn)
             backup_dir = await self._activate_exchange_dir(tmp_dir, final_dir)
             await self._cleanup_exchange_backup(backup_dir)
         except BaseException:
@@ -497,9 +491,7 @@ class DiskStorageBackend(DiskStorageRecoveryMixin, StorageBackend):
 
     def _exchange_dir(self, exchange_id: str, artifacts: ExchangeArtifacts) -> Path:
         """Build the per-exchange directory path: ``{ts_slug}-{id[:8]}/``."""
-        ts = datetime.now(tz=UTC)
-        ts_slug = ts.strftime("%Y%m%dT%H%M%SZ")
-        return self._root / f"{ts_slug}-{exchange_id[:8]}"
+        return self._layout.new_exchange_dir(exchange_id)
 
     def _find_exchange_dir(self, exchange_id: str) -> Path:
         """Locate an exchange directory by its ID prefix."""
@@ -511,19 +503,13 @@ class DiskStorageBackend(DiskStorageRecoveryMixin, StorageBackend):
 
     def _find_exchange_dir_or_none(self, exchange_id: str) -> Path | None:
         """Locate an exchange directory by its ID prefix, or return None."""
-        short = exchange_id[:8]
-        for d in self._root.iterdir():
-            if d.is_dir() and d.name.endswith(f"-{short}"):
-                return d
-        return None
+        return self._layout.find_exchange_dir(exchange_id)
 
     def _prepare_exchange_write(
         self, exchange_id: str, artifacts: ExchangeArtifacts
     ) -> tuple[Path, Path]:
-        final_dir = self._find_exchange_dir_or_none(exchange_id) or self._exchange_dir(
-            exchange_id, artifacts
-        )
-        tmp_dir = final_dir.parent / f"{final_dir.name}.tmp"
+        final_dir = self._layout.exchange_dir_for_write(exchange_id)
+        tmp_dir = self._layout.tmp_exchange_dir(final_dir)
         shutil.rmtree(tmp_dir, ignore_errors=True)
         tmp_dir.mkdir(parents=True, exist_ok=True)
         return final_dir, tmp_dir
@@ -531,48 +517,49 @@ class DiskStorageBackend(DiskStorageRecoveryMixin, StorageBackend):
     async def _write_exchange_files(
         self, tmp_dir: Path, artifacts: ExchangeArtifacts
     ) -> None:
-        await self._write_bytes(tmp_dir / "request.raw", artifacts.request_raw)
+        paths = self._layout.artifact_paths(tmp_dir)
+        await self._write_bytes(paths.request_raw, artifacts.request_raw)
 
         ir_json = artifacts.request_ir.model_dump_json(indent=2)
-        await self._write_text(tmp_dir / "request.ir.json", ir_json)
+        await self._write_text(paths.request_ir, ir_json)
 
         if artifacts.request_curated_raw is not None:
             await self._write_bytes(
-                tmp_dir / "request.curated.raw",
+                paths.request_curated_raw,
                 artifacts.request_curated_raw,
             )
 
         if artifacts.request_curated_ir is not None:
             curated_json = artifacts.request_curated_ir.model_dump_json(indent=2)
             await self._write_text(
-                tmp_dir / "request.curated.ir.json",
+                paths.request_curated_ir,
                 curated_json,
             )
 
         if artifacts.request_audit is not None:
             audit_json = artifacts.request_audit.model_dump_json(indent=2)
-            await self._write_text(tmp_dir / "request.audit.json", audit_json)
+            await self._write_text(paths.request_audit, audit_json)
 
         if artifacts.response_raw is not None:
-            await self._write_bytes(tmp_dir / "response.raw", artifacts.response_raw)
+            await self._write_bytes(paths.response_raw, artifacts.response_raw)
 
         if artifacts.response_ir is not None:
             resp_json = artifacts.response_ir.model_dump_json(indent=2)
-            await self._write_text(tmp_dir / "response.ir.json", resp_json)
+            await self._write_text(paths.response_ir, resp_json)
 
         if artifacts.transport is not None:
             sanitized_transport, _ = redact_transport_artifacts(artifacts.transport)
             if sanitized_transport is not None:
                 await self._write_transport_json(
-                    tmp_dir / "transport.json",
+                    paths.transport,
                     sanitized_transport,
                 )
 
         if artifacts.events is not None:
-            await self._write_events_jsonl(tmp_dir / "events.jsonl", artifacts.events)
+            await self._write_events_jsonl(paths.events, artifacts.events)
 
         if artifacts.turn is not None:
-            await self._write_turn_json(tmp_dir / "turn.json", artifacts.turn)
+            await self._write_turn_json(paths.turn, artifacts.turn)
 
     async def _write_transport_json(
         self,

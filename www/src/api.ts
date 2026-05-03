@@ -12,6 +12,49 @@ import type {
 
 export const MAX_ENTRIES = 500;
 
+type ApiFetch = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+
+export interface ApiTransport {
+  request(path: string, init?: RequestInit): Promise<Response>;
+}
+
+export interface ApiTransportOptions {
+  baseUrl?: string;
+  fetcher?: ApiFetch;
+}
+
+function apiUrl(path: string, baseUrl?: string): string {
+  if (!baseUrl) {
+    return path;
+  }
+  return `${baseUrl.replace(/\/+$/, "")}${path}`;
+}
+
+const defaultApiFetch: ApiFetch = (input, init) =>
+  init === undefined ? globalThis.fetch(input) : globalThis.fetch(input, init);
+
+export function createApiTransport({
+  baseUrl,
+  fetcher = defaultApiFetch,
+}: ApiTransportOptions = {}): ApiTransport {
+  return {
+    request(path, init) {
+      const url = apiUrl(path, baseUrl);
+      return init === undefined ? fetcher(url) : fetcher(url, init);
+    },
+  };
+}
+
+let apiTransport = createApiTransport();
+
+export function setApiTransport(transport: ApiTransport): void {
+  apiTransport = transport;
+}
+
+export function resetApiTransport(): void {
+  apiTransport = createApiTransport();
+}
+
 async function throwWithDetail(res: Response, fallback: string): Promise<never> {
   let detail: string | null = null;
   try {
@@ -36,7 +79,7 @@ export async function fetchExchanges(
   if (includeHistory) {
     params.set("include_history", "true");
   }
-  const res = await fetch(`/api/exchanges?${params.toString()}`);
+  const res = await apiTransport.request(`/api/exchanges?${params.toString()}`);
   if (!res.ok) {
     throw new Error(`Failed to fetch exchanges: ${res.status}`);
   }
@@ -44,7 +87,7 @@ export async function fetchExchanges(
 }
 
 export async function fetchExchange(id: string): Promise<ExchangeDetail> {
-  const res = await fetch(`/api/exchanges/${encodeURIComponent(id)}`);
+  const res = await apiTransport.request(`/api/exchanges/${encodeURIComponent(id)}`);
   if (!res.ok) {
     throw new Error(`Failed to fetch exchange ${id}: ${res.status}`);
   }
@@ -52,7 +95,7 @@ export async function fetchExchange(id: string): Promise<ExchangeDetail> {
 }
 
 export async function fetchTurnContent(id: string): Promise<TurnContent> {
-  const res = await fetch(`/api/exchanges/${encodeURIComponent(id)}/turn-content`);
+  const res = await apiTransport.request(`/api/exchanges/${encodeURIComponent(id)}/turn-content`);
   if (!res.ok) {
     throw new Error(`Failed to fetch turn content for ${id}: ${res.status}`);
   }
@@ -88,7 +131,9 @@ export interface PipelineTokensResponse {
  * should keep displaying chars.
  */
 export async function fetchPipelineTokens(id: string): Promise<PipelineTokensResponse> {
-  const res = await fetch(`/api/exchanges/${encodeURIComponent(id)}/pipeline_tokens`);
+  const res = await apiTransport.request(
+    `/api/exchanges/${encodeURIComponent(id)}/pipeline_tokens`,
+  );
   if (!res.ok) {
     throw new Error(`Failed to fetch pipeline tokens for ${id}: ${res.status}`);
   }
@@ -124,7 +169,7 @@ function overrideScopeQuery(scope?: OverrideScope | null): string {
 }
 
 export async function fetchOverrides(scope?: OverrideScope | null): Promise<OverrideListResponse> {
-  const res = await fetch(`/api/overrides${overrideScopeQuery(scope)}`);
+  const res = await apiTransport.request(`/api/overrides${overrideScopeQuery(scope)}`);
   if (!res.ok) {
     throw new Error(`Failed to fetch overrides: ${res.status}`);
   }
@@ -135,7 +180,7 @@ export async function patchOverrides(
   overrides: Override[],
   scope?: OverrideScope | null,
 ): Promise<OverrideMutateResponse> {
-  const res = await fetch(`/api/overrides${overrideScopeQuery(scope)}`, {
+  const res = await apiTransport.request(`/api/overrides${overrideScopeQuery(scope)}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ overrides }),
@@ -147,14 +192,18 @@ export async function patchOverrides(
 }
 
 export async function clearOverrides(scope?: OverrideScope | null): Promise<void> {
-  const res = await fetch(`/api/overrides${overrideScopeQuery(scope)}`, { method: "DELETE" });
+  const res = await apiTransport.request(`/api/overrides${overrideScopeQuery(scope)}`, {
+    method: "DELETE",
+  });
   if (!res.ok) {
     throw new Error(`Failed to clear overrides: ${res.status}`);
   }
 }
 
 export async function toggleOverrides(scope?: OverrideScope | null): Promise<ToggleResponse> {
-  const res = await fetch(`/api/overrides/toggle${overrideScopeQuery(scope)}`, { method: "POST" });
+  const res = await apiTransport.request(`/api/overrides/toggle${overrideScopeQuery(scope)}`, {
+    method: "POST",
+  });
   if (!res.ok) {
     throw new Error(`Failed to toggle overrides: ${res.status}`);
   }
@@ -164,7 +213,7 @@ export async function toggleOverrides(scope?: OverrideScope | null): Promise<Tog
 // ── Breakpoint endpoints ──────────────────────────────────────────
 
 export async function fetchBreakpointStatus(): Promise<BreakpointStatusDetail> {
-  const res = await fetch("/api/breakpoint/status");
+  const res = await apiTransport.request("/api/breakpoint/status");
   if (!res.ok) {
     throw new Error(`Failed to fetch breakpoint status: ${res.status}`);
   }
@@ -172,21 +221,21 @@ export async function fetchBreakpointStatus(): Promise<BreakpointStatusDetail> {
 }
 
 export async function armBreakpoint(): Promise<void> {
-  const res = await fetch("/api/breakpoint/arm", { method: "POST" });
+  const res = await apiTransport.request("/api/breakpoint/arm", { method: "POST" });
   if (!res.ok) {
     throw new Error(`Failed to arm breakpoint: ${res.status}`);
   }
 }
 
 export async function disarmBreakpoint(): Promise<void> {
-  const res = await fetch("/api/breakpoint/disarm", { method: "POST" });
+  const res = await apiTransport.request("/api/breakpoint/disarm", { method: "POST" });
   if (!res.ok) {
     throw new Error(`Failed to disarm breakpoint: ${res.status}`);
   }
 }
 
 export async function releaseFlow(flowId: string, ir: InternalRequest): Promise<void> {
-  const res = await fetch(`/api/breakpoint/release/${encodeURIComponent(flowId)}`, {
+  const res = await apiTransport.request(`/api/breakpoint/release/${encodeURIComponent(flowId)}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(ir),
@@ -197,16 +246,19 @@ export async function releaseFlow(flowId: string, ir: InternalRequest): Promise<
 }
 
 export async function releaseFlowUnmodified(flowId: string): Promise<void> {
-  const res = await fetch(`/api/breakpoint/release-unmodified/${encodeURIComponent(flowId)}`, {
-    method: "POST",
-  });
+  const res = await apiTransport.request(
+    `/api/breakpoint/release-unmodified/${encodeURIComponent(flowId)}`,
+    {
+      method: "POST",
+    },
+  );
   if (!res.ok) {
     await throwWithDetail(res, `Failed to release flow ${flowId}: ${res.status}`);
   }
 }
 
 export async function dropFlow(flowId: string): Promise<void> {
-  const res = await fetch(`/api/breakpoint/drop/${encodeURIComponent(flowId)}`, {
+  const res = await apiTransport.request(`/api/breakpoint/drop/${encodeURIComponent(flowId)}`, {
     method: "POST",
   });
   if (!res.ok) {
@@ -221,7 +273,7 @@ export interface ReauditResponse {
 }
 
 export async function reauditFlow(flowId: string): Promise<ReauditResponse> {
-  const res = await fetch(`/api/breakpoint/re-audit/${encodeURIComponent(flowId)}`, {
+  const res = await apiTransport.request(`/api/breakpoint/re-audit/${encodeURIComponent(flowId)}`, {
     method: "POST",
   });
   if (!res.ok) {
@@ -231,7 +283,7 @@ export async function reauditFlow(flowId: string): Promise<ReauditResponse> {
 }
 
 export async function fetchPausedFlowDetail(flowId: string): Promise<PausedFlow> {
-  const res = await fetch(`/api/breakpoint/paused/${encodeURIComponent(flowId)}`);
+  const res = await apiTransport.request(`/api/breakpoint/paused/${encodeURIComponent(flowId)}`);
   if (!res.ok) {
     throw new Error(`Failed to fetch paused flow ${flowId}: ${res.status}`);
   }
@@ -255,7 +307,7 @@ export interface Meta {
  * pipeline will use to scope overlays; the UI does not read it today.
  */
 export async function fetchMeta(): Promise<Meta> {
-  const res = await fetch("/api/meta");
+  const res = await apiTransport.request("/api/meta");
   if (!res.ok) {
     throw new Error(`Failed to fetch meta: ${res.status}`);
   }

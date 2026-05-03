@@ -1,4 +1,5 @@
 import type { Page } from "@playwright/test";
+import { FRONTEND_STORAGE_KEYS } from "../../../src/stores/persistence";
 import type { IndexEntry } from "../../../src/types";
 import { mockExchangeDetails } from "./details";
 import { mockExchanges, mockVisualRunId } from "./exchanges";
@@ -41,35 +42,38 @@ export async function setupVisualTest(page: Page, opts: SetupOptions = {}): Prom
 
   await page.clock.install({ time: FROZEN_NOW });
 
-  await page.addInitScript((selectedId: string | undefined) => {
-    class FakeEventSource extends EventTarget {
-      static CONNECTING = 0;
-      static OPEN = 1;
-      static CLOSED = 2;
-      readyState = 1;
-      url: string;
-      withCredentials = false;
-      onopen: ((ev: Event) => void) | null = null;
-      onerror: ((ev: Event) => void) | null = null;
-      onmessage: ((ev: MessageEvent) => void) | null = null;
-      constructor(url: string) {
-        super();
-        this.url = url;
-        queueMicrotask(() => this.onopen?.(new Event("open")));
+  await page.addInitScript(
+    ({ selectedId, uiStoreKey }: { selectedId?: string; uiStoreKey: string }) => {
+      class FakeEventSource extends EventTarget {
+        static CONNECTING = 0;
+        static OPEN = 1;
+        static CLOSED = 2;
+        readyState = 1;
+        url: string;
+        withCredentials = false;
+        onopen: ((ev: Event) => void) | null = null;
+        onerror: ((ev: Event) => void) | null = null;
+        onmessage: ((ev: MessageEvent) => void) | null = null;
+        constructor(url: string) {
+          super();
+          this.url = url;
+          queueMicrotask(() => this.onopen?.(new Event("open")));
+        }
+        close() {
+          this.readyState = 2;
+        }
       }
-      close() {
-        this.readyState = 2;
-      }
-    }
-    // biome-ignore lint/suspicious/noExplicitAny: replacing a global
-    (window as any).EventSource = FakeEventSource;
+      // biome-ignore lint/suspicious/noExplicitAny: replacing a global
+      (window as any).EventSource = FakeEventSource;
 
-    // Pre-populate the persisted UI store so a given exchange is selected on
-    // first render; zustand's persist middleware reads this key at hydrate.
-    if (selectedId) {
-      localStorage.setItem("manicure-ui", JSON.stringify({ state: { selectedId }, version: 0 }));
-    }
-  }, selectedExchangeId);
+      // Pre-populate the persisted UI store so a given exchange is selected on
+      // first render; zustand's persist middleware reads this key at hydrate.
+      if (selectedId) {
+        localStorage.setItem(uiStoreKey, JSON.stringify({ state: { selectedId }, version: 0 }));
+      }
+    },
+    { selectedId: selectedExchangeId, uiStoreKey: FRONTEND_STORAGE_KEYS.uiStore },
+  );
 
   await page.route("**/api/**", async (route) => {
     const url = new URL(route.request().url());

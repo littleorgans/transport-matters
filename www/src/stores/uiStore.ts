@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { PausedFlow } from "../types";
+import { createFrontendPersistStorage, FRONTEND_STORAGE_KEYS } from "./persistence";
 
 /**
  * Four lenses on the same exchange stream.
@@ -84,7 +85,8 @@ export const useUIStore = create<UIState>()(
         }),
     }),
     {
-      name: "manicure-ui",
+      name: FRONTEND_STORAGE_KEYS.uiStore,
+      storage: createFrontendPersistStorage(),
       partialize: (state) => ({
         activeRoute: state.activeRoute,
         selectedId: state.selectedId,

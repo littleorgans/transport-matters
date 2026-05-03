@@ -33,6 +33,9 @@ if TYPE_CHECKING:
 
 __all__ = [
     "BindFailure",
+    "LaunchBindFailureOutcome",
+    "LaunchExitOutcome",
+    "LaunchRetryExhaustedOutcome",
     "_handle_bind_failure",
     "_run_client_children",
     "_run_client_with_retry",
@@ -121,6 +124,75 @@ class BindFailure(RuntimeError):
             f"mitmdump bind failed (proxy={proxy_port}, web={web_port}, "
             f"failing={failing_ports or 'unknown'})"
         )
+
+
+@dataclass(frozen=True)
+class LaunchExitOutcome:
+    """Structured child lifecycle result that maps to a process exit."""
+
+    exit_code: int
+    error: str | None = None
+    log_path: Path | None = None
+
+
+@dataclass(frozen=True)
+class LaunchBindFailureOutcome:
+    """Structured child lifecycle result for retryable bind failures."""
+
+    failure: BindFailure
+
+
+@dataclass(frozen=True)
+class LaunchRetryExhaustedOutcome:
+    """Structured retry loop result after all bind attempts fail."""
+
+    attempted: tuple[tuple[int, int], ...]
+    proxy_port: int
+    web_port: int
+    proxy_user_supplied: bool
+    web_user_supplied: bool
+
+
+LaunchOutcome = LaunchExitOutcome | LaunchBindFailureOutcome
+
+
+def _format_retry_exhaustion(outcome: LaunchRetryExhaustedOutcome) -> list[str]:
+    attempted_str = ", ".join(f"({p}, {w})" for p, w in outcome.attempted)
+    lines = [
+        f"error: could not bind ports after {_BIND_RETRY_ATTEMPTS} attempts.",
+        f"  Tried (proxy, web): {attempted_str}.",
+    ]
+
+    pinned_notes: list[str] = []
+    if outcome.proxy_user_supplied:
+        pinned_notes.append(f"--proxy-port {outcome.proxy_port}")
+    if outcome.web_user_supplied:
+        pinned_notes.append(f"--web-port {outcome.web_port}")
+
+    if pinned_notes:
+        lines.extend(
+            [
+                f"  Pinned (held constant across all attempts): "
+                f"{', '.join(pinned_notes)}.",
+                "Free the pinned port(s), or omit the flag to let manicure allocate\n"
+                "one. Check what is holding the conflicting ports "
+                "(e.g. `lsof -nP -iTCP -sTCP:LISTEN`).",
+            ]
+        )
+    else:
+        lines.append(
+            "Pin specific values with --proxy-port and --web-port, or check what is\n"
+            "holding the conflicting ports (e.g. `lsof -nP -iTCP -sTCP:LISTEN`)."
+        )
+    return lines
+
+
+def _raise_retry_exhausted(outcome: LaunchRetryExhaustedOutcome) -> None:
+    lines = _format_retry_exhaustion(outcome)
+    typer.secho(lines[0], fg=typer.colors.RED, err=True)
+    for line in lines[1:]:
+        typer.echo(line, err=True)
+    raise typer.Exit(1)
 
 
 def _failing_ports_from_log(
@@ -283,38 +355,15 @@ def _run_with_retry(
                 web_user_supplied=web_user_supplied,
             )
 
-    attempted_str = ", ".join(f"({p}, {w})" for p, w in attempted)
-    typer.secho(
-        f"error: could not bind ports after {_BIND_RETRY_ATTEMPTS} attempts.",
-        fg=typer.colors.RED,
-        err=True,
+    _raise_retry_exhausted(
+        LaunchRetryExhaustedOutcome(
+            attempted=tuple(attempted),
+            proxy_port=proxy_port,
+            web_port=web_port,
+            proxy_user_supplied=proxy_user_supplied,
+            web_user_supplied=web_user_supplied,
+        )
     )
-    typer.echo(f"  Tried (proxy, web): {attempted_str}.", err=True)
-
-    pinned_notes: list[str] = []
-    if proxy_user_supplied:
-        pinned_notes.append(f"--proxy-port {proxy_port}")
-    if web_user_supplied:
-        pinned_notes.append(f"--web-port {web_port}")
-
-    if pinned_notes:
-        typer.echo(
-            f"  Pinned (held constant across all attempts): {', '.join(pinned_notes)}.",
-            err=True,
-        )
-        typer.echo(
-            "Free the pinned port(s), or omit the flag to let manicure allocate\n"
-            "one. Check what is holding the conflicting ports "
-            "(e.g. `lsof -nP -iTCP -sTCP:LISTEN`).",
-            err=True,
-        )
-    else:
-        typer.echo(
-            "Pin specific values with --proxy-port and --web-port, or check what is\n"
-            "holding the conflicting ports (e.g. `lsof -nP -iTCP -sTCP:LISTEN`).",
-            err=True,
-        )
-    raise typer.Exit(1)
 
 
 def _run_client_with_retry(
@@ -379,43 +428,15 @@ def _run_client_with_retry(
                 web_user_supplied=web_user_supplied,
             )
 
-    attempted_str = ", ".join(f"({p}, {w})" for p, w in attempted)
-    typer.secho(
-        f"error: could not bind ports after {_BIND_RETRY_ATTEMPTS} attempts.",
-        fg=typer.colors.RED,
-        err=True,
+    _raise_retry_exhausted(
+        LaunchRetryExhaustedOutcome(
+            attempted=tuple(attempted),
+            proxy_port=proxy_port,
+            web_port=web_port,
+            proxy_user_supplied=proxy_user_supplied,
+            web_user_supplied=web_user_supplied,
+        )
     )
-    typer.echo(f"  Tried (proxy, web): {attempted_str}.", err=True)
-
-    # Pinned ports stay constant across the whole loop (the retry path
-    # only swaps unpinned slots), so the loop-final port values double
-    # as the "pinned" values to surface here. Highlight them so the
-    # user sees which constraint they imposed — telling them to "pin
-    # specific values" when they already did is the wrong nudge.
-    pinned_notes: list[str] = []
-    if proxy_user_supplied:
-        pinned_notes.append(f"--proxy-port {proxy_port}")
-    if web_user_supplied:
-        pinned_notes.append(f"--web-port {web_port}")
-
-    if pinned_notes:
-        typer.echo(
-            f"  Pinned (held constant across all attempts): {', '.join(pinned_notes)}.",
-            err=True,
-        )
-        typer.echo(
-            "Free the pinned port(s), or omit the flag to let manicure allocate\n"
-            "one. Check what is holding the conflicting ports "
-            "(e.g. `lsof -nP -iTCP -sTCP:LISTEN`).",
-            err=True,
-        )
-    else:
-        typer.echo(
-            "Pin specific values with --proxy-port and --web-port, or check what is\n"
-            "holding the conflicting ports (e.g. `lsof -nP -iTCP -sTCP:LISTEN`).",
-            err=True,
-        )
-    raise typer.Exit(1)
 
 
 def _run_children(
@@ -460,12 +481,43 @@ def _run_client_children(
     proxy_port: int,
     web_port: int,
 ) -> None:
+    """Run child processes and translate the structured outcome to CLI exit."""
+    outcome = _run_client_children_until_outcome(
+        mitmdump_argv=mitmdump_argv,
+        mitmdump_env=mitmdump_env,
+        storage_dir=storage_dir,
+        client=client,
+        proxy_port=proxy_port,
+        web_port=web_port,
+    )
+    _raise_launch_outcome(outcome)
+
+
+def _raise_launch_outcome(outcome: LaunchOutcome) -> None:
+    if isinstance(outcome, LaunchBindFailureOutcome):
+        raise outcome.failure
+    if outcome.error is not None:
+        typer.secho(f"error: {outcome.error}", fg=typer.colors.RED, err=True)
+    if outcome.log_path is not None:
+        typer.echo(f"  See {outcome.log_path} for details.", err=True)
+    raise typer.Exit(outcome.exit_code)
+
+
+def _run_client_children_until_outcome(
+    *,
+    mitmdump_argv: list[str],
+    mitmdump_env: dict[str, str],
+    storage_dir: Path,
+    client: ManagedClient | None,
+    proxy_port: int,
+    web_port: int,
+) -> LaunchOutcome:
     """Own both child processes end to end.
 
     Spawn order is fixed: mitmdump first (so the proxy port is live),
     then the interactive client (pointed at the proxy, if present). We
-    then wait for whichever child exits first and translate that into a
-    sensible top-level exit:
+    then wait for whichever child exits first and return a structured
+    result:
 
     - Ctrl+C (SIGINT): terminate both, exit 0.
     - client exits first: proxy stays up, user can review the web UI;
@@ -492,9 +544,9 @@ def _run_client_children(
             name, rc = sup.wait_one("mitmdump")
             if name == SIGNAL_EXIT:
                 sup.terminate_all()
-                raise typer.Exit(0)
+                return LaunchExitOutcome(0)
             # mitmdump exited on its own — propagate its code.
-            raise typer.Exit(rc)
+            return LaunchExitOutcome(rc)
 
         # Default path: mitmdump in background (logs to file), then claude.
         sup.spawn(
@@ -510,27 +562,27 @@ def _run_client_children(
             failing = _failing_ports_from_log(mitmdump_log, (proxy_port, web_port))
             if failing is not None:
                 sup.terminate_all()
-                raise BindFailure(
-                    proxy_port=proxy_port,
-                    web_port=web_port,
-                    failing_ports=failing,
-                    log_path=mitmdump_log,
+                return LaunchBindFailureOutcome(
+                    BindFailure(
+                        proxy_port=proxy_port,
+                        web_port=web_port,
+                        failing_ports=failing,
+                        log_path=mitmdump_log,
+                    )
                 )
-            typer.secho(
-                "error: mitmdump did not come up within 5s.",
-                fg=typer.colors.RED,
-                err=True,
-            )
-            typer.echo(f"  See {mitmdump_log} for details.", err=True)
             sup.terminate_all()
-            raise typer.Exit(1)
+            return LaunchExitOutcome(
+                exit_code=1,
+                error="mitmdump did not come up within 5s.",
+                log_path=mitmdump_log,
+            )
 
         # Ctrl+C during the readiness wait lands as a flag on the
         # supervisor. Bail out here rather than spawning claude just to
         # tear it down on the next line — cleaner exit, one less spawn.
         if sup.received_signal is not None:
             sup.terminate_all()
-            raise typer.Exit(0)
+            return LaunchExitOutcome(0)
 
         # Spawn the client attached to a real PTY. The supervisor falls
         # back to inherited stdio with a warning if our stdin isn't a
@@ -549,7 +601,7 @@ def _run_client_children(
         name, rc = sup.wait_any()
         if name == SIGNAL_EXIT:
             sup.terminate_all()
-            raise typer.Exit(0)
+            return LaunchExitOutcome(0)
 
         if name == client.name:
             typer.secho(
@@ -562,28 +614,24 @@ def _run_client_children(
             name, rc = sup.wait_one("mitmdump")
             if name == SIGNAL_EXIT:
                 sup.terminate_all()
-                raise typer.Exit(0)
+                return LaunchExitOutcome(0)
             if rc != 0:
-                typer.secho(
-                    f"error: mitmdump exited unexpectedly (rc={rc}).",
-                    fg=typer.colors.RED,
-                    err=True,
-                )
-                typer.echo(f"  See {mitmdump_log} for details.", err=True)
                 sup.terminate_all()
-                raise typer.Exit(1)
+                return LaunchExitOutcome(
+                    exit_code=1,
+                    error=f"mitmdump exited unexpectedly (rc={rc}).",
+                    log_path=mitmdump_log,
+                )
             sup.terminate_all()
-            raise typer.Exit(0)
+            return LaunchExitOutcome(0)
 
         # mitmdump died first. Surface the error with a pointer at the
         # log, tear down the client, and exit non-zero.
-        typer.secho(
-            f"error: mitmdump exited unexpectedly (rc={rc}).",
-            fg=typer.colors.RED,
-            err=True,
-        )
-        typer.echo(f"  See {mitmdump_log} for details.", err=True)
         sup.terminate_all()
-        raise typer.Exit(1)
+        return LaunchExitOutcome(
+            exit_code=1,
+            error=f"mitmdump exited unexpectedly (rc={rc}).",
+            log_path=mitmdump_log,
+        )
     finally:
         sup.restore_signal_handlers()

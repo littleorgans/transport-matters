@@ -4,7 +4,6 @@ import asyncio
 import logging
 import shutil
 import tempfile
-from datetime import UTC, datetime
 from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
@@ -25,16 +24,16 @@ from manicure.storage.base import (
 
 if TYPE_CHECKING:
     from concurrent.futures import Executor
+    from datetime import datetime
+
+    from manicure.storage.disk_layout import DiskStorageLayout
 
 logger = logging.getLogger(__name__)
-
-ENTRY_FILENAME = "entry.json"
-DELETE_SUFFIX = ".del"
-TS_SLUG_FORMAT = "%Y%m%dT%H%M%SZ"
 
 
 class DiskStorageFileOpsMixin:
     _root: Path
+    _layout: DiskStorageLayout
     _io_executor: Executor
 
     async def _write_entry_json(self, path: Path, entry: IndexEntry) -> None:
@@ -53,7 +52,7 @@ class DiskStorageFileOpsMixin:
     async def _activate_exchange_dir(
         self, tmp_dir: Path, final_dir: Path
     ) -> Path | None:
-        backup_dir = final_dir.parent / f"{final_dir.name}.bak"
+        backup_dir = self._layout.backup_exchange_dir(final_dir)
         if backup_dir.exists():
             if final_dir.exists():
                 await self._run_io(shutil.rmtree, backup_dir, True)
@@ -80,7 +79,7 @@ class DiskStorageFileOpsMixin:
         return backup_dir if had_existing else None
 
     async def _stage_exchange_delete(self, final_dir: Path) -> Path:
-        staged_dir = final_dir.parent / f"{final_dir.name}{DELETE_SUFFIX}"
+        staged_dir = self._layout.staged_delete_dir(final_dir)
         if staged_dir.exists():
             await self._run_io(shutil.rmtree, staged_dir, True)
         final_dir.rename(staged_dir)
@@ -118,12 +117,12 @@ class DiskStorageFileOpsMixin:
         if not self._root.exists():
             return
         for d in self._root.iterdir():
-            if d.is_dir() and d.name.endswith(".tmp"):
+            if self._layout.is_tmp_exchange_dir(d):
                 logger.warning("Cleaning up partial write: %s", d)
                 shutil.rmtree(d, ignore_errors=True)
                 continue
-            if d.is_dir() and d.name.endswith(".bak"):
-                final_dir = d.with_name(d.name.removesuffix(".bak"))
+            if self._layout.is_backup_exchange_dir(d):
+                final_dir = self._layout.live_dir_for_backup(d)
                 if final_dir.exists():
                     logger.warning("Cleaning up stale exchange backup: %s", d)
                     shutil.rmtree(d, ignore_errors=True)
@@ -208,10 +207,10 @@ class DiskStorageRecoveryMixin(DiskStorageFileOpsMixin):
     async def _reconcile_staged_deletes(self, entries: dict[str, IndexEntry]) -> int:
         reconciled = 0
         for d in self._root.iterdir():
-            if not d.is_dir() or not d.name.endswith(DELETE_SUFFIX):
+            if not self._layout.is_staged_delete_dir(d):
                 continue
-            live_name = d.name.removesuffix(DELETE_SUFFIX)
-            live_dir = d.with_name(live_name)
+            live_dir = self._layout.live_dir_for_staged_delete(d)
+            live_name = live_dir.name
             index_entry = await self._entry_for_exchange_dir(entries, d, live_name)
             if index_entry is None:
                 logger.warning("Finalizing interrupted exchange delete: %s", d)
@@ -235,7 +234,7 @@ class DiskStorageRecoveryMixin(DiskStorageFileOpsMixin):
         sidecar = await self._recover_index_entry(exchange_dir)
         if sidecar is not None:
             return entries.get(sidecar.id)
-        expected_path = f"exchanges/{live_dir_name}/"
+        expected_path = self._layout.exchange_index_path(live_dir_name)
         for entry in entries.values():
             if entry.path == expected_path:
                 return entry
@@ -247,12 +246,7 @@ class DiskStorageRecoveryMixin(DiskStorageFileOpsMixin):
     ) -> int:
         recovered = 0
         for exchange_dir in self._root.iterdir():
-            if (
-                not exchange_dir.is_dir()
-                or exchange_dir.name.endswith(".tmp")
-                or exchange_dir.name.endswith(".bak")
-                or exchange_dir.name.endswith(DELETE_SUFFIX)
-            ):
+            if not self._layout.should_recover_exchange_dir(exchange_dir):
                 continue
             entry = await self._recover_index_entry(exchange_dir)
             if entry is None or entry.id in entries:
@@ -262,11 +256,11 @@ class DiskStorageRecoveryMixin(DiskStorageFileOpsMixin):
         return recovered
 
     async def _recover_index_entry(self, exchange_dir: Path) -> IndexEntry | None:
-        sidecar_path = exchange_dir / ENTRY_FILENAME
-        if sidecar_path.exists():
+        paths = self._layout.artifact_paths(exchange_dir)
+        if paths.entry.exists():
             try:
                 return IndexEntry.model_validate_json(
-                    await self._read_text(sidecar_path)
+                    await self._read_text(paths.entry)
                 )
             except Exception:
                 logger.warning(
@@ -275,10 +269,10 @@ class DiskStorageRecoveryMixin(DiskStorageFileOpsMixin):
                     exc_info=True,
                 )
 
-        turn = await self._read_turn_or_none(exchange_dir / "turn.json")
+        turn = await self._read_turn_or_none(paths.turn)
         if turn is None:
             return None
-        if not exchange_dir.name.endswith(f"-{turn.exchange_id[:8]}"):
+        if not self._layout.matches_exchange_id(exchange_dir, turn.exchange_id):
             logger.warning(
                 "Skipping exchange dir %s with mismatched turn identity %s",
                 exchange_dir,
@@ -287,19 +281,15 @@ class DiskStorageRecoveryMixin(DiskStorageFileOpsMixin):
             return None
 
         request_ir = InternalRequest.model_validate_json(
-            await self._read_text(exchange_dir / "request.ir.json")
+            await self._read_text(paths.request_ir)
         )
         request_curated_ir = await self._read_request_curated_ir_or_none(
-            exchange_dir / "request.curated.ir.json"
+            paths.request_curated_ir
         )
-        request_audit = await self._read_request_audit_or_none(
-            exchange_dir / "request.audit.json"
-        )
-        response_ir = await self._read_response_ir_or_none(
-            exchange_dir / "response.ir.json"
-        )
+        request_audit = await self._read_request_audit_or_none(paths.request_audit)
+        response_ir = await self._read_response_ir_or_none(paths.response_ir)
         ts = self._exchange_timestamp(exchange_dir)
-        path = f"exchanges/{exchange_dir.name}/"
+        path = self._layout.exchange_index_path(exchange_dir.name)
         req_ir = request_curated_ir or request_ir
         return IndexEntry(
             id=turn.exchange_id,
@@ -344,13 +334,7 @@ class DiskStorageRecoveryMixin(DiskStorageFileOpsMixin):
         return InternalResponse.model_validate_json(await self._read_text(path))
 
     def _exchange_timestamp(self, exchange_dir: Path) -> datetime:
-        prefix, _, _ = exchange_dir.name.rpartition("-")
-        if prefix:
-            try:
-                return datetime.strptime(prefix, TS_SLUG_FORMAT).replace(tzinfo=UTC)
-            except ValueError:
-                pass
-        return datetime.fromtimestamp(exchange_dir.stat().st_mtime, tz=UTC)
+        return self._layout.exchange_timestamp(exchange_dir)
 
     def _req_stats(self, ir: InternalRequest) -> ReqStats:
         system_chars, tools_chars, messages_chars = count_chars_parts(ir)
