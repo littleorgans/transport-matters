@@ -89,7 +89,7 @@ For Codex, pass an explicit working directory such as `.` before `--` when the f
 
 ## What you get
 
-Every captured turn persists a workspace scoped artifact bundle under `~/.manicure/workspaces/{slug}/{hash}/...`.
+Every captured turn persists a workspace scoped artifact bundle under `~/.transport-matters/workspaces/{slug}/{hash}/...`.
 
 For Claude and Codex, Manicure captures:
 - the original outbound request

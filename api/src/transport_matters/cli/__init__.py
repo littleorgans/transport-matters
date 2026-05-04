@@ -236,7 +236,7 @@ def claude(
             envvar="TRANSPORT_MATTERS_STORAGE_DIR",
             help=(
                 "Directory for captured exchanges, rules, and the index. "
-                "Defaults to `~/.manicure`."
+                "Defaults to `~/.transport-matters`."
             ),
             file_okay=False,
             dir_okay=True,
@@ -366,7 +366,7 @@ def codex(
             envvar="TRANSPORT_MATTERS_STORAGE_DIR",
             help=(
                 "Directory for captured exchanges, rules, and the index. "
-                "Defaults to `~/.manicure`."
+                "Defaults to `~/.transport-matters`."
             ),
             file_okay=False,
             dir_okay=True,

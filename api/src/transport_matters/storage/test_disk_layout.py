@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from pathlib import Path
 
 from transport_matters.storage.disk_layout import DiskStorageLayout
 
-if TYPE_CHECKING:
-    from pathlib import Path
+
+def test_default_root_uses_transport_matters_storage_root() -> None:
+    layout = DiskStorageLayout()
+
+    assert layout.root == Path.home() / ".transport-matters"
 
 
 def test_exchange_dir_uses_existing_timestamp_and_short_id_format(

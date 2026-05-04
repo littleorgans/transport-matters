@@ -6,7 +6,9 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
-_DEFAULT_ROOT = Path.home() / ".manicure" / "exchanges"
+from transport_matters.storage_roots import default_storage_root
+
+_DEFAULT_ROOT = default_storage_root()
 _INDEX_FILENAME = "index.jsonl"
 _INDEX_TMP_FILENAME = "index.jsonl.tmp"
 _ENTRY_FILENAME = "entry.json"

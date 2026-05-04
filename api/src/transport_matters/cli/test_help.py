@@ -36,6 +36,7 @@ def test_root_help_includes_environment() -> None:
     old_prefix = "MANI" + "CURE_"
     assert "TRANSPORT_MATTERS_PROXY_PORT" in output
     assert "TRANSPORT_MATTERS_STORAGE_DIR" in output
+    assert "default ~/.transport-matters/" in output
     assert f"{old_prefix}PROXY_PORT" not in output
     assert f"{old_prefix}STORAGE_DIR" not in output
 

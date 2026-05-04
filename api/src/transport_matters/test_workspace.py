@@ -160,7 +160,7 @@ def test_workspace_root_composes_slug_and_hash() -> None:
     wid = workspace_id(cwd)
     assert (
         workspace_root(cwd)
-        == Path.home() / ".manicure" / "workspaces" / wid.slug / wid.hash
+        == Path.home() / ".transport-matters" / "workspaces" / wid.slug / wid.hash
     )
 
 

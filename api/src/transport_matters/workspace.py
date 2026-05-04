@@ -1,12 +1,12 @@
-"""Workspace identity for manicure multi-instance support.
+"""Workspace identity for Transport Matters multi-instance support.
 
 A *workspace* is a CWD (canonicalized via ``Path.resolve``) at which a
-``manicure start`` runs. Two terminals in the same workspace must collide
+``transport-matters claude`` runs. Two terminals in the same workspace must collide
 fast; different workspaces must coexist cleanly. Identity is derived
 purely from the resolved path: a human-readable slug plus a short stable
 hash.
 
-Layout: ``~/.manicure/workspaces/{slug}/{hash}/``
+Layout: ``~/.transport-matters/workspaces/{slug}/{hash}/``
 
 - ``slug``: human-readable identifier from the last path segments.
   Collisions across distinct paths are resolved by the ``{hash}/``
@@ -20,7 +20,12 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from hashlib import blake2b
-from pathlib import Path
+from typing import TYPE_CHECKING
+
+from transport_matters.storage_roots import default_workspaces_root
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 __all__ = ["WorkspaceId", "workspace_id", "workspace_root", "workspace_storage"]
 
@@ -39,7 +44,7 @@ class WorkspaceId:
     """Stable identity for a working directory.
 
     ``root`` is the fully resolved CWD path. ``slug`` + ``hash`` form the
-    on-disk workspace location under ``~/.manicure/workspaces/``.
+    on-disk workspace location under ``~/.transport-matters/workspaces/``.
     """
 
     slug: str
@@ -67,7 +72,7 @@ def workspace_root(cwd: Path) -> Path:
     should ``mkdir(parents=True, exist_ok=True)`` themselves.
     """
     wid = workspace_id(cwd)
-    return Path.home() / ".manicure" / "workspaces" / wid.slug / wid.hash
+    return default_workspaces_root() / wid.slug / wid.hash
 
 
 def workspace_storage(cwd: Path) -> Path:

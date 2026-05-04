@@ -1,7 +1,7 @@
 """Tests for ``manicure list``.
 
 The list body lives in ``cli/instances.py``. It scans
-``~/.manicure/workspaces/`` for manifests and probes each one's lock to
+``~/.transport-matters/workspaces/`` for manifests and probes each one's lock to
 distinguish live instances from stale manifests, transparently reaping
 the latter.
 """

@@ -3,6 +3,8 @@ from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from transport_matters.storage_roots import default_storage_root
+
 
 class Settings(BaseSettings):
     """Runtime configuration.
@@ -27,7 +29,7 @@ class Settings(BaseSettings):
 
     proxy_port: int = 8787
     web_port: int = 8788
-    storage_dir: Path = Path.home() / ".manicure"
+    storage_dir: Path = default_storage_root()
     # Per-launch session boundary created by ``transport-matters claude``.
     # This is Transport Matters run identity, distinct from any provider
     # metadata session id inside captured requests. ``None`` for direct-uvicorn

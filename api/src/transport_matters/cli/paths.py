@@ -9,7 +9,7 @@ Resolution order for the ``storage`` value:
 1. If the caller passes a selector, treat it as a path (when it
    contains a path separator or expands via ``~``) or a slug. Paths
    canonicalise via :func:`workspace_id`; slugs go through a manifest
-   scan under ``~/.manicure/workspaces/{slug}/``.
+   scan under ``~/.transport-matters/workspaces/{slug}/``.
 2. Otherwise prefer ``TRANSPORT_MATTERS_CWD`` from the environment — so
    ``transport-matters paths`` invoked from a Claude session launched by
    ``transport-matters claude`` targets the launching workspace even if the
@@ -34,6 +34,7 @@ import typer
 from transport_matters import __version__
 from transport_matters.lock import WorkspaceLock
 from transport_matters.manifest import Manifest, read
+from transport_matters.storage_roots import default_workspaces_root
 from transport_matters.workspace import workspace_root
 
 from .identity import CLI_COMMAND
@@ -41,12 +42,9 @@ from .identity import CLI_COMMAND
 __all__ = ["resolve_paths"]
 
 
-_WORKSPACES_DIRNAME = "workspaces"
-
-
 def _workspaces_root() -> Path:
-    """Return the shared `~/.manicure/workspaces/` directory."""
-    return Path.home() / ".manicure" / _WORKSPACES_DIRNAME
+    """Return the shared `~/.transport-matters/workspaces/` directory."""
+    return default_workspaces_root()
 
 
 def resolve_paths(*, workspace: str | None, as_json: bool) -> None:

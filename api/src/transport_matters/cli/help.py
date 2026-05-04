@@ -46,7 +46,7 @@ _ROOT_HELP = dedent(f"""\
     Environment
       TRANSPORT_MATTERS_PROXY_PORT       pin proxy port (default: kernel-allocated)
       TRANSPORT_MATTERS_WEB_PORT         pin web UI port (default: kernel-allocated)
-      TRANSPORT_MATTERS_STORAGE_DIR      data dir (default ~/.manicure/)
+      TRANSPORT_MATTERS_STORAGE_DIR      data dir (default ~/.transport-matters/)
       TRANSPORT_MATTERS_UPSTREAM_URL     upstream API (default https://api.anthropic.com)
 
     Options
@@ -70,7 +70,7 @@ _CLAUDE_HELP = dedent(f"""\
       -p, --proxy-port INT      Proxy listener port (default: kernel-allocated free port)
       -w, --web-port INT        Web UI port (default: kernel-allocated free port)
       -u, --upstream URL        Upstream provider URL (default https://api.anthropic.com)
-      -d, --storage-dir PATH    Data directory (default ~/.manicure/)
+      -d, --storage-dir PATH    Data directory (default ~/.transport-matters/)
           --claude-bin PATH     Path to Claude Code (default: `claude` on PATH)
           --no-claude           Run proxy only; skip spawning Claude Code
           --no-system-prompt    Skip the auto-injected Transport Matters system prompt
@@ -129,7 +129,7 @@ _CODEX_HELP = dedent(f"""\
     Options
       -p, --proxy-port INT      Proxy listener port (default: kernel-allocated free port)
       -w, --web-port INT        Web UI port (default: kernel-allocated free port)
-      -d, --storage-dir PATH    Data directory (default ~/.manicure/)
+      -d, --storage-dir PATH    Data directory (default ~/.transport-matters/)
           --codex-bin PATH      Path to Codex (default: `codex` on PATH)
           --no-codex            Run proxy only; skip spawning Codex
           --debug               Verbose mitmproxy output
@@ -184,7 +184,7 @@ _PATHS_HELP = dedent(f"""\
 
     The `storage` entry resolves per-workspace: the live manifest's
     storage_dir when an instance is running in the target CWD, and
-    the default ~/.manicure/workspaces/{{slug}}/{{hash}}/ root otherwise.
+    the default ~/.transport-matters/workspaces/{{slug}}/{{hash}}/ root otherwise.
 
     Options
           --workspace SLUG|DIR  Target a specific workspace (default: CWD)
@@ -210,7 +210,7 @@ _VERSION_HELP = dedent(f"""\
 _LIST_HELP = dedent(f"""\
     List live Transport Matters instances.
 
-    Scans ~/.manicure/workspaces/ for manifests and probes each one's
+    Scans ~/.transport-matters/workspaces/ for manifests and probes each one's
     lock file to discriminate live instances from stale manifests.
     Stale manifests are reaped transparently. The probe never blocks
     on the lock — safe to run with a live instance in the same CWD.

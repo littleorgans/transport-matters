@@ -10,20 +10,23 @@ from __future__ import annotations
 
 import contextlib
 import json
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import typer
 
 from transport_matters.lock import WorkspaceLock, WorkspaceLocked
 from transport_matters.manifest import Manifest, read, read_all
+from transport_matters.storage_roots import default_workspaces_root
 
 from .identity import PRODUCT_LABEL
 from .net import loopback_http_url
 
+if TYPE_CHECKING:
+    from pathlib import Path
+
 __all__ = ["_list_instances", "_print_contention_error"]
 
 
-_WORKSPACES_DIRNAME = "workspaces"
 _TABLE_HEADERS: tuple[str, ...] = (
     "WORKSPACE",
     "PID",
@@ -36,7 +39,7 @@ _TABLE_HEADERS: tuple[str, ...] = (
 
 def _workspaces_root() -> Path:
     """Return the workspaces directory under the user's home."""
-    return Path.home() / ".manicure" / _WORKSPACES_DIRNAME
+    return default_workspaces_root()
 
 
 def _print_contention_error(exc: WorkspaceLocked, working_dir: Path) -> None:
@@ -79,7 +82,7 @@ def _print_contention_error(exc: WorkspaceLocked, working_dir: Path) -> None:
 def _list_instances(*, as_json: bool) -> None:
     """Body of ``transport-matters list``.
 
-    Scans ``~/.manicure/workspaces/``, probes each manifest's lock via
+    Scans ``~/.transport-matters/workspaces/``, probes each manifest's lock via
     :meth:`WorkspaceLock.is_held`, reaps stale manifests, and prints
     the live ones as a table or JSON.
     """

@@ -72,7 +72,7 @@ def tmp_storage(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
     Overriding ``TRANSPORT_MATTERS_STORAGE_DIR`` sandboxes the captured-exchange
     disk. Overriding ``$HOME`` sandboxes the per-workspace lock +
-    manifest tree at ``~/.manicure/workspaces/`` so one test run does
+    manifest tree at ``~/.transport-matters/workspaces/`` so one test run does
     not leak artefacts into the developer's real home directory.
     """
     storage = tmp_path / "manicure-home"

@@ -1,6 +1,6 @@
 """Disk-backed storage backend.
 
-Persists exchange artifacts and index to ``~/.manicure/exchanges/``
+Persists exchange artifacts and index to ``~/.transport-matters/``
 (configurable).  Uses ``aiofiles`` for non-blocking file I/O.
 """
 

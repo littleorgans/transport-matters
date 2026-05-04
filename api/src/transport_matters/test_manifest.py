@@ -17,7 +17,7 @@ def _sample(pid: int = 1234, slug: str = "helioy-manicure-api") -> Manifest:
         pid=pid,
         proxy_port=8787,
         web_port=8788,
-        storage_dir="/Users/alphab/.manicure",
+        storage_dir="/Users/alphab/.transport-matters",
         run_id="run-001",
         started_at="2026-04-15T12:00:00+00:00",
         manicure_version="0.5.0",

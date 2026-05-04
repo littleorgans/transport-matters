@@ -1,4 +1,4 @@
-"""Manicure workspace manifest — advisory sidecar next to the lock.
+"""Transport Matters workspace manifest, advisory sidecar next to the lock.
 
 The manifest is *advisory*. Truth is the lock file's ``flock`` state.
 Callers must never treat a present manifest as proof that a process is
@@ -7,7 +7,7 @@ alive; they must probe the sibling ``lock`` with
 
 On-disk layout (per workspace)::
 
-    ~/.manicure/workspaces/{slug}/{hash}/
+    ~/.transport-matters/workspaces/{slug}/{hash}/
         lock                # fcntl.flock target (held by live instance)
         manifest.json       # this file — metadata about the live instance
 
