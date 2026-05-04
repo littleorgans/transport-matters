@@ -18,6 +18,7 @@
     "src/backendHealth.ts",
     "src/backendProcess.ts",
     "src/main.ts",
-    "src/preload.ts"
+    "src/preload.ts",
+    "src/window.ts"
   ]
 }

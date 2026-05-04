@@ -1,5 +1,4 @@
 import { app, BrowserWindow, dialog } from "electron";
-import type { BrowserWindowConstructorOptions } from "electron";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -11,13 +10,22 @@ import {
   type LaunchedBackendProcess,
 } from "./backendProcess.js";
 import { waitForBackendHealth } from "./backendHealth.js";
+import {
+  DEFAULT_WEB_PORT,
+  createHostedWindow,
+  rendererUrlForPort,
+} from "./window.js";
 
 const moduleDir = dirname(fileURLToPath(import.meta.url));
 
-export const APP_NAME = "Transport Matters";
 export const DEFAULT_PROXY_PORT = 8787;
-export const DEFAULT_WEB_PORT = 8788;
-export const DEFAULT_RENDERER_URL = rendererUrlForPort(DEFAULT_WEB_PORT);
+export {
+  APP_NAME,
+  DEFAULT_RENDERER_URL,
+  DEFAULT_WEB_PORT,
+  createWindowOptions,
+  rendererUrlForPort,
+} from "./window.js";
 
 export interface MainWindowOptions {
   preloadPath?: string;
@@ -48,40 +56,13 @@ export function resolvePreloadPath(): string {
   return join(moduleDir, "preload.js");
 }
 
-export function rendererUrlForPort(webPort: number): string {
-  return `http://127.0.0.1:${webPort}`;
-}
-
-export function createWindowOptions(
-  preloadPath = resolvePreloadPath(),
-): BrowserWindowConstructorOptions {
-  return {
-    height: 900,
-    minHeight: 600,
-    minWidth: 900,
-    show: false,
-    title: APP_NAME,
-    width: 1280,
-    webPreferences: {
-      contextIsolation: true,
-      nodeIntegration: false,
-      preload: preloadPath,
-      sandbox: true,
-    },
-  };
-}
-
 export function createMainWindow(
   options: MainWindowOptions = {},
 ): BrowserWindow {
-  const window = new BrowserWindow(createWindowOptions(options.preloadPath));
-
-  window.once("ready-to-show", () => {
-    window.show();
+  return createHostedWindow({
+    preloadPath: options.preloadPath ?? resolvePreloadPath(),
+    rendererUrl: options.rendererUrl,
   });
-  void window.loadURL(options.rendererUrl ?? DEFAULT_RENDERER_URL);
-
-  return window;
 }
 
 export function resolveBackendStartupOptions(

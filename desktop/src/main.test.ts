@@ -8,7 +8,9 @@ const browserWindowConstructor = vi.fn();
 const dialogShowErrorBox = vi.fn();
 const loadURL = vi.fn();
 const once = vi.fn();
+const setWindowOpenHandler = vi.fn();
 const show = vi.fn();
+const webContentsOn = vi.fn();
 
 function createBackendFixture(): LaunchedBackendProcess {
   const child = Object.assign(new EventEmitter(), {
@@ -36,7 +38,15 @@ vi.mock("electron", () => ({
     options: Record<string, unknown>,
   ) {
     browserWindowConstructor(options);
-    return { loadURL, once, show };
+    return {
+      loadURL,
+      once,
+      show,
+      webContents: {
+        on: webContentsOn,
+        setWindowOpenHandler,
+      },
+    };
   }),
   dialog: {
     showErrorBox: dialogShowErrorBox,
@@ -49,7 +59,9 @@ describe("desktop main process", () => {
     dialogShowErrorBox.mockClear();
     loadURL.mockClear();
     once.mockClear();
+    setWindowOpenHandler.mockClear();
     show.mockClear();
+    webContentsOn.mockClear();
   });
 
   it("creates a secure BrowserWindow for the hosted web app", async () => {
@@ -71,7 +83,7 @@ describe("desktop main process", () => {
         },
       }),
     );
-    expect(loadURL).toHaveBeenCalledWith("http://127.0.0.1:8788");
+    expect(loadURL).toHaveBeenCalledWith("http://127.0.0.1:8788/");
   });
 
   it("waits for backend health before loading the hosted web app", async () => {
@@ -116,7 +128,7 @@ describe("desktop main process", () => {
     expect(waitForHealth).toHaveBeenCalledWith(backend, 9901);
     expect(createWindow).toHaveBeenCalledWith({
       preloadPath: "/tmp/transport-matters/preload.js",
-      rendererUrl: "http://127.0.0.1:9901",
+      rendererUrl: "http://127.0.0.1:9901/",
     });
   });
 
