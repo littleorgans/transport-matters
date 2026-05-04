@@ -29,7 +29,7 @@ import {
  * originals-indexed targets and their applied state, so the client can
  * emit the exact mutation set without having to replay the server's
  * pop-cascade (``_apply_message_block_toggle`` and friends in
- * ``api/src/manicure/overrides.py``). That replay is what the old
+ * ``api/src/transport_matters/overrides.py``). That replay is what the old
  * structural differs tried — and got wrong for any row where a toggle
  * dropped a block, because every downstream block shifted left in the
  * curated array and the detector read the shift as a cascade of fake
@@ -38,7 +38,7 @@ import {
  * Structural diff remains as a fallback for rows that have no audit but
  * still diverge from the original (e.g. manual edits made in the
  * breakpoint textareas, which are index-safe and never drop blocks).
- * See ``.mdx/research/manicure-inspect-index-shift-2026-04-17.md`` for
+ * See the April 2026 inspect index shift research memo for
  * the full analysis.
  */
 export interface SystemPartMutation {

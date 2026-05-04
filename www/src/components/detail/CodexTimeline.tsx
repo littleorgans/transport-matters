@@ -83,7 +83,7 @@ function eventCopy(event: CodexSemanticEvent): EventCopy {
       };
     case "request_curated":
       return {
-        summary: "Manicure applied local request curation before upstream send.",
+        summary: "Transport Matters applied local request curation before upstream send.",
         detail: null,
       };
     case "breakpoint_paused":

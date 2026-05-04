@@ -7,7 +7,7 @@ import { mockPausedFlow } from "./pausedFlow";
 import { FROZEN_NOW } from "./time";
 
 const MOCK_META = {
-  cwd: "/Users/alphab/Dev/LLM/DEV/helioy/manicure-worktrees/nancy-ALP-1847",
+  cwd: "/Users/alphab/Dev/LLM/DEV/helioy/transport-matters-worktrees/nancy-ALP-1847",
   workspace_id: "helioy/nancy-ALP-1847",
   run_id: mockVisualRunId,
 };

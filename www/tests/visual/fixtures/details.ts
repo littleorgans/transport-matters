@@ -65,7 +65,7 @@ export const mockExchangeDetails: Record<string, ExchangeDetail> = {
         response_status_code: 101,
         response_headers: [
           { name: "sec-websocket-accept", value: "fixture" },
-          { name: "x-openai-proxy", value: "manicure" },
+          { name: "x-openai-proxy", value: "transport-matters" },
         ],
       },
       close: {
@@ -394,9 +394,9 @@ export const mockExchangeDetails: Record<string, ExchangeDetail> = {
         detail:
           "upgrade response status=502; content-type=text/plain; response body redacted (191 bytes; matched a proxy TLS trust failure signature)",
         operator_checks: [
-          "Verify the managed Codex process inherited HTTP_PROXY and HTTPS_PROXY for the Manicure proxy.",
+          "Verify the managed Codex process inherited HTTP_PROXY and HTTPS_PROXY for the Transport Matters proxy.",
           "Verify CODEX_CA_CERTIFICATE points at a readable bundle that includes ~/.mitmproxy/mitmproxy-ca-cert.pem.",
-          "Retry with `manicure codex --debug` and compare response.raw with the stored upgrade headers.",
+          "Retry with `transport-matters codex --debug` and compare response.raw with the stored upgrade headers.",
         ],
       },
     ],

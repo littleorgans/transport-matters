@@ -116,7 +116,7 @@ export interface PipelineTokensResponse {
    * Null on success (both sides real) or cached hit. One of four
    * known codes on a degraded path — see the docstring on the
    * Python-side `PipelineTokensResponse` model at
-   * `api/src/manicure/api/v1/exchanges.py` for what each means.
+   * `api/src/transport_matters/api/v1/exchanges.py` for what each means.
    * We don't render this today; the chars fallback is good enough.
    */
   reason: PipelineTokensReason | null;
@@ -300,7 +300,7 @@ export interface Meta {
 
 /**
  * Resolve the backend's cwd and workspace id. The cwd is fixed for the
- * lifetime of the process (set by `manicure start`), so the frontend
+ * lifetime of the process (set by `transport-matters start`), so the frontend
  * caches this with an infinite staleTime and prefetches at app mount.
  *
  * `workspaceId` is an opaque stable string the apply-at-intercept

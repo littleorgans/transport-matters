@@ -73,11 +73,14 @@ function projectTrack(
       }
     } else if (anchor != null) {
       if (import.meta.env.DEV) {
-        console.warn("Manicure ExchangeList: subagent anchor outside fetched exchange window", {
-          trackId: child.track_id,
-          missingAnchorId: anchor,
-          parentTrackId: track.track_id,
-        });
+        console.warn(
+          "Transport Matters ExchangeList: subagent anchor outside fetched exchange window",
+          {
+            trackId: child.track_id,
+            missingAnchorId: anchor,
+            parentTrackId: track.track_id,
+          },
+        );
       }
       missingAnchorChildren.push({
         track: child,

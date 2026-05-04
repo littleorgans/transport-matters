@@ -21,6 +21,9 @@ test:
 test-visual:
     pnpm test:visual
 
+test-e2e:
+    pnpm test:e2e
+
 test-visual-update:
     pnpm test:visual:update
     

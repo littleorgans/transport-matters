@@ -9,7 +9,9 @@ describe("displayCwd", () => {
   });
 
   it("drops a trailing slash before formatting", () => {
-    expect(displayCwd("/Users/alphab/Dev/LLM/DEV/helioy/manicure/")).toBe("helioy/manicure");
+    expect(displayCwd("/Users/alphab/Dev/LLM/DEV/helioy/transport-matters/")).toBe(
+      "helioy/transport-matters",
+    );
   });
 
   it("preserves a single segment path", () => {
