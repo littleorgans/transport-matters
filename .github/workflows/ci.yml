@@ -166,7 +166,7 @@ jobs:
         working-directory: api
         run: |
           python -m venv /tmp/smoke
-          /tmp/smoke/bin/pip install --quiet dist/manicure-*.whl
+          /tmp/smoke/bin/pip install --quiet dist/transport_matters-*.whl
           /tmp/smoke/bin/manicure --version
           /tmp/smoke/bin/manicure version
           /tmp/smoke/bin/manicure paths --json
@@ -177,7 +177,7 @@ jobs:
       - name: Confirm embedded www/ inside the wheel
         working-directory: api
         run: |
-          wheel=$(ls dist/manicure-*.whl | head -1)
+          wheel=$(ls dist/transport_matters-*.whl | head -1)
           if ! python -m zipfile -l "$wheel" | grep -q 'transport_matters/www/index.html'; then
             echo "::error::wheel $wheel does not contain transport_matters/www/index.html"
             python -m zipfile -l "$wheel"

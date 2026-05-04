@@ -929,7 +929,7 @@ wheels = [
 ]
 
 [[package]]
-name = "manicure"
+name = "transport-matters"
 source = { editable = "." }
 dependencies = [
     { name = "aiofiles" },

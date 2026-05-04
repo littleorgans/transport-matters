@@ -1,7 +1,7 @@
 #:schema https://json.schemastore.org/pyproject.json
 
 [project]
-name = "manicure"
+name = "transport-matters"
 dynamic = ["version"]
 description = "Provider-neutral context control plane for coding agents"
 readme = "README.md"
@@ -48,10 +48,10 @@ dependencies = [
 manicure = "transport_matters.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/srobinson/manicure"
-Repository = "https://github.com/srobinson/manicure"
-Issues = "https://github.com/srobinson/manicure/issues"
-Changelog = "https://github.com/srobinson/manicure/releases"
+Homepage = "https://github.com/srobinson/transport-matters"
+Repository = "https://github.com/srobinson/transport-matters"
+Issues = "https://github.com/srobinson/transport-matters/issues"
+Changelog = "https://github.com/srobinson/transport-matters/releases"
 
 [dependency-groups]
 dev = [

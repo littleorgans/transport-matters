@@ -14,7 +14,7 @@ except ImportError:  # pragma: no cover — exercised only on pristine checkouts
     try:
         from importlib.metadata import PackageNotFoundError, version
 
-        __version__ = version("manicure")
+        __version__ = version("transport-matters")
     except PackageNotFoundError:
         __version__ = "0.0.0+unknown"
 

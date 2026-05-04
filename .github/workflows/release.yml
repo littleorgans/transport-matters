@@ -19,7 +19,7 @@ name: Release
 #
 # PyPI trusted publishing must be configured at:
 #   https://pypi.org/manage/account/publishing/
-# with project=manicure, owner=srobinson, repo=manicure,
+# with project=transport-matters, owner=srobinson, repo=transport-matters,
 # workflow=release.yml, environment=pypi.
 
 on:
@@ -112,10 +112,10 @@ jobs:
         id: version
         working-directory: api
         run: |
-          wheel=$(ls dist/manicure-*.whl | head -1)
-          version=$(basename "$wheel" | sed -E 's/^manicure-([^-]+)-.*/\1/')
+          wheel=$(ls dist/transport_matters-*.whl | head -1)
+          version=$(basename "$wheel" | sed -E 's/^transport_matters-([^-]+)-.*/\1/')
           echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "Built manicure $version"
+          echo "Built transport-matters $version"
 
       - name: Verify tag matches built version
         if: startsWith(github.ref, 'refs/tags/v')
@@ -134,7 +134,7 @@ jobs:
         working-directory: api
         run: |
           python -m venv /tmp/smoke
-          /tmp/smoke/bin/pip install --quiet dist/manicure-*.whl
+          /tmp/smoke/bin/pip install --quiet dist/transport_matters-*.whl
           /tmp/smoke/bin/manicure --version
           /tmp/smoke/bin/manicure version
           /tmp/smoke/bin/manicure paths --json
@@ -145,7 +145,7 @@ jobs:
       - name: Confirm embedded www/ inside the wheel
         working-directory: api
         run: |
-          wheel=$(ls dist/manicure-*.whl | head -1)
+          wheel=$(ls dist/transport_matters-*.whl | head -1)
           if ! python -m zipfile -l "$wheel" | grep -q 'transport_matters/www/index.html'; then
             echo "::error::wheel $wheel does not contain transport_matters/www/index.html"
             python -m zipfile -l "$wheel"
@@ -172,7 +172,7 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v')
     environment:
       name: pypi
-      url: https://pypi.org/project/manicure/${{ needs.build.outputs.version }}/
+      url: https://pypi.org/project/transport-matters/${{ needs.build.outputs.version }}/
     permissions:
       id-token: write
     steps:
@@ -209,7 +209,7 @@ jobs:
 
       - name: Generate checksums
         working-directory: dist
-        run: sha256sum manicure-* > SHA256SUMS
+        run: sha256sum transport_matters-* > SHA256SUMS
 
       - name: Create release
         env:
@@ -222,7 +222,7 @@ jobs:
           gh release create "$TAG" \
             --title "manicure $VERSION" \
             --generate-notes \
-            dist/manicure-*.whl \
-            dist/manicure-*.tar.gz \
+            dist/transport_matters-*.whl \
+            dist/transport_matters-*.tar.gz \
             dist/SHA256SUMS \
             install.sh
