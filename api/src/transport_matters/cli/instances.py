@@ -120,7 +120,7 @@ def _manifest_to_dict(m: Manifest) -> dict[str, object]:
         "web_port": m.web_port,
         "storage_dir": m.storage_dir,
         "started_at": m.started_at,
-        "manicure_version": m.manicure_version,
+        "transport_matters_version": m.transport_matters_version,
     }
 
 

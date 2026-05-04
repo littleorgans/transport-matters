@@ -31,7 +31,7 @@ __all__ = ["Manifest", "read", "read_all", "write"]
 
 @dataclass(frozen=True, slots=True)
 class Manifest:
-    """Advisory metadata for a live manicure instance.
+    """Advisory metadata for a live Transport Matters instance.
 
     Fields mirror the JSON on disk. All values are primitive so
     ``dataclasses.asdict`` produces a JSON-serialisable dict.
@@ -44,7 +44,7 @@ class Manifest:
     storage_dir: str
     run_id: str
     started_at: str
-    manicure_version: str
+    transport_matters_version: str
     slug: str
     hash: str
 
@@ -56,7 +56,7 @@ def write(path: Path, manifest: Manifest) -> None:
     readers never observe a partial file.
     """
     path.parent.mkdir(parents=True, exist_ok=True)
-    # Scope the tempfile name with our PID — another manicure process
+    # Scope the tempfile name with our PID so another process
     # racing on a sibling workspace will not collide on the temp name.
     tmp = path.with_name(f".{path.name}.tmp.{os.getpid()}")
     tmp.write_text(json.dumps(asdict(manifest), indent=2), encoding="utf-8")
@@ -97,7 +97,7 @@ def read_all(root: Path) -> list[Manifest]:
 
     Scans ``root/*/*/manifest.json`` (the ``{slug}/{hash}/`` layout).
     Unreadable or malformed manifests are skipped silently — they'll be
-    reaped by the next ``manicure list`` that lands on their lock.
+    reaped by the next ``transport-matters list`` that lands on their lock.
     """
     if not root.is_dir():
         return []

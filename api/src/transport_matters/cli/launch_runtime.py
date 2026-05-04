@@ -284,7 +284,7 @@ def run_with_workspace_manifest(
                         storage_dir=str(storage_dir),
                         run_id=run_id,
                         started_at=datetime.now(UTC).isoformat(),
-                        manicure_version=__version__,
+                        transport_matters_version=__version__,
                         slug=wid.slug,
                         hash=wid.hash,
                     ),

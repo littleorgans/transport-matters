@@ -1,4 +1,4 @@
-"""Tests for ``manicure doctor``.
+"""Tests for ``transport-matters doctor``.
 
 The doctor body lives in ``cli/diagnose.py``. ``shutil.which`` resolves
 through ``transport_matters.cli.shutil.which`` (re-exported at package scope) so
@@ -8,6 +8,7 @@ existing patches keep working; ``_port_in_use`` is rebound by name in
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from typer.testing import CliRunner
@@ -17,8 +18,6 @@ from transport_matters.cli import WorkspaceLock, main, workspace_root
 from ._helpers import _plain, _which_all, _which_none
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
     import pytest
 
 runner = CliRunner()
@@ -38,6 +37,33 @@ def test_doctor_happy_path(
     assert "ok    mitmdump" in result.stdout
     assert "ok    addon" in result.stdout
     assert "ok    storage" in result.stdout
+
+
+def test_doctor_uses_transport_matters_storage_probe(
+    tmp_storage: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    writes: list[str] = []
+    original_write_text = Path.write_text
+
+    def capture_write_text(
+        self: Path,
+        data: str,
+        encoding: str | None = None,
+        errors: str | None = None,
+        newline: str | None = None,
+    ) -> int:
+        if data == "ok":
+            writes.append(self.name)
+        return original_write_text(self, data, encoding, errors, newline)
+
+    monkeypatch.setattr(Path, "write_text", capture_write_text)
+    monkeypatch.setattr("transport_matters.cli.shutil.which", _which_all())
+    monkeypatch.setattr("transport_matters.cli.diagnose._port_in_use", lambda _: False)
+
+    result = runner.invoke(main, ["doctor"])
+
+    assert result.exit_code == 0
+    assert writes == [".transport-matters-doctor-probe"]
 
 
 def test_doctor_prefers_same_environment_mitmdump(

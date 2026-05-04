@@ -111,7 +111,7 @@ def run_doctor() -> None:
     storage = Path(settings.storage_dir).expanduser()
     try:
         storage.mkdir(parents=True, exist_ok=True)
-        probe = storage / ".manicure-doctor-probe"
+        probe = storage / ".transport-matters-doctor-probe"
         probe.write_text("ok", encoding="utf-8")
         probe.unlink()
         _ok("storage", str(storage))

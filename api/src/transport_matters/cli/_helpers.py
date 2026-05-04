@@ -81,7 +81,7 @@ def _sample_manifest(
         storage_dir=str(storage),
         run_id="run-001",
         started_at="2026-04-15T12:00:00+00:00",
-        manicure_version="0.5.0",
+        transport_matters_version="0.5.0",
         slug=wid.slug,
         hash=wid.hash,
     )

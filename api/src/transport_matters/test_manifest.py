@@ -20,7 +20,7 @@ def _sample(pid: int = 1234, slug: str = "helioy-manicure-api") -> Manifest:
         storage_dir="/Users/alphab/.transport-matters",
         run_id="run-001",
         started_at="2026-04-15T12:00:00+00:00",
-        manicure_version="0.5.0",
+        transport_matters_version="0.5.0",
         slug=slug,
         hash="deadbeef",
     )
@@ -54,6 +54,8 @@ def test_write_is_json_formatted(tmp_path: Path) -> None:
     assert "\n" in raw
     payload = json.loads(raw)
     assert payload["pid"] == 1234
+    assert payload["transport_matters_version"] == "0.5.0"
+    assert "manicure" + "_version" not in payload
 
 
 # --------------------------------------------------------------------------- #
