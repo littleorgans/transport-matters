@@ -69,7 +69,7 @@ def test_start_explicit_storage_dir_overrides_workspace_root(
     assert kwargs["claude_env"]["TRANSPORT_MATTERS_STORAGE_DIR"] == str(override)
 
 
-def test_start_flows_working_dir_into_manicure_cwd_env(
+def test_start_flows_working_dir_into_transport_matters_cwd_env(
     tmp_storage: Path,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

@@ -1,4 +1,4 @@
-"""Tests for ``manicure paths``."""
+"""Tests for ``transport-matters paths``."""
 
 from __future__ import annotations
 
@@ -17,10 +17,10 @@ runner = CliRunner()
 
 
 @pytest.fixture(autouse=True)
-def _clear_manicure_cwd_env(monkeypatch: pytest.MonkeyPatch) -> None:
+def _clear_transport_matters_cwd_env(monkeypatch: pytest.MonkeyPatch) -> None:
     # Tests that rely on the Path.cwd() fallback must not inherit a
     # TRANSPORT_MATTERS_CWD from the shell running pytest (e.g. a Claude session
-    # launched by ``manicure start``). Clear unconditionally; tests that
+    # launched by ``transport-matters claude``). Clear unconditionally; tests that
     # want the env-set branch can set it themselves.
     monkeypatch.delenv("TRANSPORT_MATTERS_CWD", raising=False)
 
@@ -123,15 +123,15 @@ def test_paths_stale_manifest_ignored(
     assert Path(payload["storage"]) == ws_root
 
 
-def test_paths_respects_manicure_cwd_env_over_process_cwd(
+def test_paths_respects_transport_matters_cwd_env_over_process_cwd(
     tmp_storage: Path,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """``TRANSPORT_MATTERS_CWD`` overrides :meth:`Path.cwd` for the default selector.
 
-    Simulates running ``manicure paths`` from inside a Claude session
-    launched by ``manicure start <project>`` after the user ``cd``'d
+    Simulates running ``transport-matters paths`` from inside a Claude session
+    launched by ``transport-matters claude <project>`` after the user ``cd``'d
     into a subdirectory — resolution should still target the launching
     workspace, not the subdirectory.
     """

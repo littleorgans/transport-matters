@@ -52,13 +52,13 @@ class TestMeta:
         data = response.json()
         assert data["cwd"] == str(Path.cwd().resolve())
 
-    async def test_cwd_respects_manicure_cwd_env(
+    async def test_cwd_respects_transport_matters_cwd_env(
         self,
         client: AsyncClient,
         monkeypatch: pytest.MonkeyPatch,
         tmp_path: Path,
     ) -> None:
-        # Simulates ``manicure start`` having flowed TRANSPORT_MATTERS_CWD through.
+        # Simulates ``transport-matters claude`` flowing TRANSPORT_MATTERS_CWD through.
         # The meta endpoint must honour it instead of Path.cwd(),
         # otherwise a mitmdump inheriting a subdirectory (e.g. api/)
         # leaks that path into project-scoped overlays.

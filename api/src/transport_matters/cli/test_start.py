@@ -1,4 +1,4 @@
-"""Cross-cutting tests for ``manicure start``.
+"""Cross-cutting tests for ``transport-matters claude``.
 
 Focused section files cover print-command, pass-through handling,
 validation, child wiring, workspace locking, and storage propagation.
