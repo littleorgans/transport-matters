@@ -12,11 +12,11 @@ beforeEach(() => {
 });
 
 describe("frontend persistence", () => {
-  it("keeps the current Manicure storage keys stable", () => {
-    expect(FRONTEND_STORAGE_KEYS.uiStore).toBe("manicure-ui");
-    expect(FRONTEND_STORAGE_KEYS.overlaysStore).toBe("manicure-overlays");
-    expect(FRONTEND_STORAGE_KEYS.dismissedPanelPrefix).toBe("manicure.panel.dismissed.");
-    expect(dismissedPanelKey("intro")).toBe("manicure.panel.dismissed.intro");
+  it("keeps the Transport Matters storage keys stable", () => {
+    expect(FRONTEND_STORAGE_KEYS.uiStore).toBe("transport-matters-ui");
+    expect(FRONTEND_STORAGE_KEYS.overlaysStore).toBe("transport-matters-overlays");
+    expect(FRONTEND_STORAGE_KEYS.dismissedPanelPrefix).toBe("transport-matters.panel.dismissed.");
+    expect(dismissedPanelKey("intro")).toBe("transport-matters.panel.dismissed.intro");
   });
 
   it("reads and writes dismissed panel state through localStorage", () => {

@@ -1,9 +1,9 @@
 import { createJSONStorage, type PersistStorage, type StateStorage } from "zustand/middleware";
 
 export const FRONTEND_STORAGE_KEYS = {
-  uiStore: "manicure-ui",
-  overlaysStore: "manicure-overlays",
-  dismissedPanelPrefix: "manicure.panel.dismissed.",
+  uiStore: "transport-matters-ui",
+  overlaysStore: "transport-matters-overlays",
+  dismissedPanelPrefix: "transport-matters.panel.dismissed.",
 } as const;
 
 function getBrowserStorage(): StateStorage {
