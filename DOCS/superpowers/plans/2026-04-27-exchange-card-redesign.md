@@ -76,11 +76,11 @@ Settled rows append `· STOP_REASON` in muted text after the prompt preview, e.g
 ### Backend
 | File | Change |
 |---|---|
-| `api/src/manicure/storage/base.py` | Add `user_prompt_preview: str \| None = None` to `IndexEntry` |
-| `api/src/manicure/exchange_stats.py` | Add `extract_user_prompt_preview(ir) -> str \| None` |
-| `api/src/manicure/exchange_recorder.py` | Thread preview into both `IndexEntry(...)` calls (lines ~239, ~304) |
-| `api/src/manicure/codex/exchange.py` | Thread preview into 3 `IndexEntry(...)` calls (lines ~103, ~241, ~530) |
-| `api/src/manicure/storage/disk_helpers.py` | Thread preview into `IndexEntry(...)` call (line ~304) — reads from stored row, preview will be `None` for old rows |
+| `api/src/transport_matters/storage/base.py` | Add `user_prompt_preview: str \| None = None` to `IndexEntry` |
+| `api/src/transport_matters/exchange_stats.py` | Add `extract_user_prompt_preview(ir) -> str \| None` |
+| `api/src/transport_matters/exchange_recorder.py` | Thread preview into both `IndexEntry(...)` calls (lines ~239, ~304) |
+| `api/src/transport_matters/codex/exchange.py` | Thread preview into 3 `IndexEntry(...)` calls (lines ~103, ~241, ~530) |
+| `api/src/transport_matters/storage/disk_helpers.py` | Thread preview into `IndexEntry(...)` call (line ~304) — reads from stored row, preview will be `None` for old rows |
 
 ### Frontend
 | File | Change |
@@ -94,17 +94,17 @@ Settled rows append `· STOP_REASON` in muted text after the prompt preview, e.g
 ## Task 1: Backend — add `user_prompt_preview` to IndexEntry
 
 **Files:**
-- Modify: `api/src/manicure/storage/base.py`
-- Modify: `api/src/manicure/exchange_stats.py`
-- Test: `api/src/manicure/test_exchange_recorder_emit.py` (existing, update)
+- Modify: `api/src/transport_matters/storage/base.py`
+- Modify: `api/src/transport_matters/exchange_stats.py`
+- Test: `api/src/transport_matters/test_exchange_recorder_emit.py` (existing, update)
 
 - [ ] **Step 1: Write failing test for `extract_user_prompt_preview`**
 
-Add to `api/src/manicure/test_exchange_recorder_emit.py` (or create `api/src/manicure/test_exchange_stats.py`):
+Add to `api/src/transport_matters/test_exchange_recorder_emit.py` (or create `api/src/transport_matters/test_exchange_stats.py`):
 
 ```python
-from manicure.exchange_stats import extract_user_prompt_preview
-from manicure.ir import Message, TextBlock, ToolUseBlock, ToolResultBlock, InternalRequest
+from transport_matters.exchange_stats import extract_user_prompt_preview
+from transport_matters.ir import Message, TextBlock, ToolUseBlock, ToolResultBlock, InternalRequest
 # build a minimal InternalRequest using your existing fixture helpers
 
 def make_ir_with_last_user_text(text: str) -> InternalRequest:
@@ -136,13 +136,13 @@ def test_extract_preview_none_when_last_user_has_no_text_block():
 - [ ] **Step 2: Run to confirm failure**
 
 ```bash
-cd api && uv run pytest src/manicure/test_exchange_stats.py -v
+cd api && uv run pytest src/transport_matters/test_exchange_stats.py -v
 ```
 Expected: ImportError or AttributeError (function not yet defined).
 
 - [ ] **Step 3: Add field to IndexEntry**
 
-In `api/src/manicure/storage/base.py`, add to `IndexEntry`:
+In `api/src/transport_matters/storage/base.py`, add to `IndexEntry`:
 ```python
 user_prompt_preview: str | None = None
 ```
@@ -150,9 +150,9 @@ Place after `mutated_manually: bool = False`.
 
 - [ ] **Step 4: Implement `extract_user_prompt_preview`**
 
-In `api/src/manicure/exchange_stats.py`:
+In `api/src/transport_matters/exchange_stats.py`:
 ```python
-from manicure.ir import InternalRequest, TextBlock, ToolUseBlock
+from transport_matters.ir import InternalRequest, TextBlock, ToolUseBlock
 
 _PREVIEW_MAX_CHARS = 200
 
@@ -172,14 +172,14 @@ def extract_user_prompt_preview(ir: InternalRequest) -> str | None:
 - [ ] **Step 5: Run tests to confirm pass**
 
 ```bash
-cd api && uv run pytest src/manicure/test_exchange_stats.py -v
+cd api && uv run pytest src/transport_matters/test_exchange_stats.py -v
 ```
 Expected: all pass.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add api/src/manicure/storage/base.py api/src/manicure/exchange_stats.py api/src/manicure/test_exchange_stats.py
+git add api/src/transport_matters/storage/base.py api/src/transport_matters/exchange_stats.py api/src/transport_matters/test_exchange_stats.py
 git commit -m "nancy[ALP-2006]: add user_prompt_preview to IndexEntry"
 ```
 
@@ -188,9 +188,9 @@ git commit -m "nancy[ALP-2006]: add user_prompt_preview to IndexEntry"
 ## Task 2: Wire preview into all IndexEntry construction sites
 
 **Files:**
-- Modify: `api/src/manicure/exchange_recorder.py`
-- Modify: `api/src/manicure/codex/exchange.py`
-- Modify: `api/src/manicure/storage/disk_helpers.py`
+- Modify: `api/src/transport_matters/exchange_recorder.py`
+- Modify: `api/src/transport_matters/codex/exchange.py`
+- Modify: `api/src/transport_matters/storage/disk_helpers.py`
 
 For each `IndexEntry(...)` call, add:
 ```python
@@ -211,7 +211,7 @@ entry = IndexEntry(
 ```
 Use `curated_ir` (the pipeline-modified request, same as `req_stats` uses).
 
-Import at top: `from manicure.exchange_stats import ..., extract_user_prompt_preview`
+Import at top: `from transport_matters.exchange_stats import ..., extract_user_prompt_preview`
 
 - [ ] **Step 2: Wire `codex/exchange.py` (lines ~103, ~241, ~530)**
 
@@ -230,7 +230,7 @@ Expected: same pass/fail count as before (10 pre-existing failures, rest pass).
 - [ ] **Step 4: Commit**
 
 ```bash
-git add api/src/manicure/exchange_recorder.py api/src/manicure/codex/exchange.py api/src/manicure/storage/disk_helpers.py
+git add api/src/transport_matters/exchange_recorder.py api/src/transport_matters/codex/exchange.py api/src/transport_matters/storage/disk_helpers.py
 git commit -m "nancy[ALP-2006]: wire user_prompt_preview through all IndexEntry sites"
 ```
 

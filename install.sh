@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 #
-# manicure — one-shot installer
+# transport-matters — one-shot installer
 #
 # Usage:
-#   curl -fsSL https://github.com/srobinson/manicure/releases/latest/download/install.sh | bash
+#   curl -fsSL https://github.com/srobinson/transport-matters/releases/latest/download/install.sh | bash
 #
-# (A shorter manicure.sh alias will go live alongside the first release.)
+# (A shorter transport-matters.sh alias will go live alongside the first release.)
 #
 # What it does:
 #   1. Installs `uv` if it is not already on PATH (official astral installer).
-#   2. Runs `uv tool install manicure`, which pulls the latest wheel from
-#      PyPI and wires up the `manicure` console script.
+#   2. Runs `uv tool install transport-matters`, which pulls the latest wheel from
+#      PyPI and wires up the `transport-matters` console script.
 #   3. Prints next steps — where the binary lives and how to start it.
 #
 # Design goals (shamelessly stolen from attention-matters):
@@ -19,9 +19,9 @@
 #   - Safe to re-run. Idempotent by construction.
 #
 # Environment knobs:
-#   MANICURE_INSTALL_VERSION   Pin a specific version, e.g. `0.2.0`.
+#   TRANSPORT_MATTERS_INSTALL_VERSION   Pin a specific version, e.g. `0.2.0`.
 #                              Defaults to the latest on PyPI.
-#   MANICURE_SKIP_UV_INSTALL   Set to `1` to refuse auto-installing uv.
+#   TRANSPORT_MATTERS_SKIP_UV_INSTALL   Set to `1` to refuse auto-installing uv.
 #                              Useful on CI/hardened hosts.
 
 set -euo pipefail
@@ -61,15 +61,15 @@ die()  {
 # Preflight                                                                   #
 # --------------------------------------------------------------------------- #
 
-say "manicure installer"
+say "transport-matters installer"
 
 case "$(uname -s)" in
     Linux|Darwin) ;;
     *)
         die "unsupported platform: $(uname -s)" \
-            "manicure currently supports Linux and macOS." \
+            "transport-matters currently supports Linux and macOS." \
             "Windows is not yet tested. Track progress at:" \
-            "  https://github.com/srobinson/manicure/issues"
+            "  https://github.com/srobinson/transport-matters/issues"
         ;;
 esac
 
@@ -80,8 +80,8 @@ esac
 if command -v uv >/dev/null 2>&1; then
     ok "uv already installed ($(uv --version))"
 else
-    if [ "${MANICURE_SKIP_UV_INSTALL:-0}" = "1" ]; then
-        die "uv is not installed and MANICURE_SKIP_UV_INSTALL=1" \
+    if [ "${TRANSPORT_MATTERS_SKIP_UV_INSTALL:-0}" = "1" ]; then
+        die "uv is not installed and TRANSPORT_MATTERS_SKIP_UV_INSTALL=1" \
             "Install uv manually, then re-run this installer:" \
             "  curl -LsSf https://astral.sh/uv/install.sh | sh"
     fi
@@ -92,7 +92,7 @@ else
             "Try installing uv manually:" \
             "  curl -LsSf https://astral.sh/uv/install.sh | sh" \
             "Then re-run:" \
-            "  curl -fsSL https://github.com/srobinson/manicure/releases/latest/download/install.sh | bash"
+            "  curl -fsSL https://github.com/srobinson/transport-matters/releases/latest/download/install.sh | bash"
     fi
 
     # The official uv installer drops a binary at ~/.local/bin/uv on Linux
@@ -109,22 +109,22 @@ else
             "Add uv's bin directory to your shell rc, e.g.:" \
             "  echo 'export PATH=\"\$HOME/.local/bin:\$PATH\"' >> ~/.zshrc" \
             "Then re-open your terminal and re-run:" \
-            "  curl -fsSL https://github.com/srobinson/manicure/releases/latest/download/install.sh | bash"
+            "  curl -fsSL https://github.com/srobinson/transport-matters/releases/latest/download/install.sh | bash"
     fi
     ok "uv installed ($(uv --version))"
 fi
 
 # --------------------------------------------------------------------------- #
-# 2. Install manicure as a uv tool                                            #
+# 2. Install transport-matters as a uv tool                                            #
 # --------------------------------------------------------------------------- #
 
-pin="${MANICURE_INSTALL_VERSION:-}"
+pin="${TRANSPORT_MATTERS_INSTALL_VERSION:-}"
 if [ -n "$pin" ]; then
-    target="manicure==$pin"
+    target="transport-matters==$pin"
     say "installing $target"
 else
-    target="manicure"
-    say "installing manicure (latest)"
+    target="transport-matters"
+    say "installing transport-matters (latest)"
 fi
 
 if ! uv tool install --force "$target"; then
@@ -135,32 +135,32 @@ if ! uv tool install --force "$target"; then
         "Try a verbose manual install to see the full error:" \
         "  uv tool install --verbose $target" \
         "Open an issue with the output at:" \
-        "  https://github.com/srobinson/manicure/issues"
+        "  https://github.com/srobinson/transport-matters/issues"
 fi
 
 # --------------------------------------------------------------------------- #
 # 3. Verify and print next steps                                              #
 # --------------------------------------------------------------------------- #
 
-if ! command -v manicure >/dev/null 2>&1; then
-    warn "manicure installed but not yet on PATH"
+if ! command -v transport-matters >/dev/null 2>&1; then
+    warn "transport-matters installed but not yet on PATH"
     printf "       Ensure uv's tool bin directory is on PATH:\n"
     printf "       %suv tool update-shell%s\n\n" "$_bold" "$_reset"
     printf "       Then re-open your terminal.\n\n"
 fi
 
 version_line=""
-if command -v manicure >/dev/null 2>&1; then
-    version_line=$(manicure --version 2>/dev/null || true)
+if command -v transport-matters >/dev/null 2>&1; then
+    version_line=$(transport-matters --version 2>/dev/null || true)
 fi
 
-ok "manicure installed${version_line:+ — $version_line}"
+ok "transport-matters installed${version_line:+ — $version_line}"
 
 cat <<EOF
 
 ${_bold}Next steps${_reset}
 
-  ${_cyan}manicure start${_reset}                              ${_dim}# boot proxy + web UI${_reset}
+  ${_cyan}transport-matters claude${_reset}                             ${_dim}# boot proxy + web UI${_reset}
   ${_cyan}ANTHROPIC_BASE_URL=http://localhost:8787 claude${_reset}
 
 Then open ${_cyan}http://localhost:8788${_reset} for the live log, rules UI,
@@ -168,12 +168,12 @@ and breakpoint editor.
 
 ${_bold}Diagnose the install${_reset}
 
-  ${_cyan}manicure doctor${_reset}      ${_dim}# runs a checklist of things that can go wrong${_reset}
-  ${_cyan}manicure paths${_reset}       ${_dim}# show where captured exchanges and rules live${_reset}
+  ${_cyan}transport-matters doctor${_reset}      ${_dim}# runs a checklist of things that can go wrong${_reset}
+  ${_cyan}transport-matters paths${_reset}       ${_dim}# show where captured exchanges and rules live${_reset}
 
 ${_bold}Learn more${_reset}
 
-  ${_cyan}manicure --help${_reset}
-  Docs & source:  https://github.com/srobinson/manicure
-  Report issues:  https://github.com/srobinson/manicure/issues
+  ${_cyan}transport-matters --help${_reset}
+  Docs & source:  https://github.com/srobinson/transport-matters
+  Report issues:  https://github.com/srobinson/transport-matters/issues
 EOF

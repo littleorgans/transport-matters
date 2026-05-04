@@ -1,8 +1,8 @@
-# manicure
+# transport-matters
 
 > Care for the cargo your coding agent carries.
 
-Manicure is a context control plane for coding agents. It proxies live agent traffic, captures turn artifacts, shows the exchange in a web UI, and can pause the next outbound request so you can inspect or edit it before it goes upstream.
+Transport Matters is a context control plane for coding agents. It proxies live agent traffic, captures turn artifacts, shows the exchange in a web UI, and can pause the next outbound request so you can inspect or edit it before it goes upstream.
 
 Today it supports two launch paths:
 - Claude Code through a reverse proxy to `api.anthropic.com`
@@ -13,50 +13,50 @@ No system proxy toggle. No global certificate install. No sudo.
 ## Install
 
 ```bash
-curl -fsSL https://github.com/srobinson/manicure/releases/latest/download/install.sh | bash
+curl -fsSL https://github.com/srobinson/transport-matters/releases/latest/download/install.sh | bash
 
 # Or, if you already have uv:
-uv tool install manicure
+uv tool install transport-matters
 ```
 
 Verify the local environment:
 
 ```bash
-manicure doctor
+transport-matters doctor
 ```
 
 ## Quick start
 
 ```bash
 # Proxy + Claude Code in the current directory
-manicure claude
+transport-matters claude
 
 # Proxy + Claude Code in a specific working directory
-manicure claude ~/my-project
+transport-matters claude ~/my-project
 
 # Proxy + Codex in the current directory
-manicure codex
+transport-matters codex
 
 # Proxy + Codex in a specific working directory
-manicure codex ~/my-project
+transport-matters codex ~/my-project
 
 # Proxy only, bring your own client
-manicure claude --no-claude
-manicure codex --no-codex
+transport-matters claude --no-claude
+transport-matters codex --no-codex
 ```
 
-`manicure claude` launches a reverse proxy in front of Anthropic and points the managed Claude process at it with `ANTHROPIC_BASE_URL`.
+`transport-matters claude` launches a reverse proxy in front of Anthropic and points the managed Claude process at it with `ANTHROPIC_BASE_URL`.
 
-`manicure codex` launches an explicit HTTPS proxy and starts Codex with:
+`transport-matters codex` launches an explicit HTTPS proxy and starts Codex with:
 - `HTTPS_PROXY`
 - `HTTP_PROXY`
 - a process scoped `CODEX_CA_CERTIFICATE`
 - `CODEX_NETWORK_PROXY_ACTIVE=1`, so Codex treats the proxy vars as managed and strips them from direct shell commands
-- a session scoped Codex shell environment policy that removes Manicure trust variables from commands Codex runs
+- a session scoped Codex shell environment policy that removes Transport Matters trust variables from commands Codex runs
 
-For Codex, Manicure validates any user supplied CA bundle path or else snapshots the active Python trust roots, appends `~/.mitmproxy/mitmproxy-ca-cert.pem`, and passes that merged bundle only to the managed Codex process. Commands started inside Codex use their normal trust chain and are not routed through the Manicure proxy, including direct shell commands. No system keychain changes are required.
+For Codex, Transport Matters validates any user supplied CA bundle path or else snapshots the active Python trust roots, appends `~/.mitmproxy/mitmproxy-ca-cert.pem`, and passes that merged bundle only to the managed Codex process. Commands started inside Codex use their normal trust chain and are not routed through the Transport Matters proxy, including direct shell commands. No system keychain changes are required.
 
-On launch, Manicure prints:
+On launch, Transport Matters prints:
 - the proxy URL
 - the web UI URL
 - the resolved workspace CWD
@@ -65,33 +65,33 @@ Use those exact printed endpoints. Default ports are kernel allocated free ports
 
 ## Pass-through arguments
 
-`manicure claude` and `manicure codex` own the outer CLI. Everything after `--` is passed verbatim to the managed child process.
+`transport-matters claude` and `transport-matters codex` own the outer CLI. Everything after `--` is passed verbatim to the managed child process.
 
 Claude examples:
 
 ```bash
-manicure claude . -- --help
-manicure claude . -- --model sonnet --resume
-manicure claude ~/my-project -- -p "fix the failing test"
+transport-matters claude . -- --help
+transport-matters claude . -- --model sonnet --resume
+transport-matters claude ~/my-project -- -p "fix the failing test"
 ```
 
 Codex examples:
 
 ```bash
-manicure codex . -- exec "fix the failing test"
-manicure codex . -- review
-manicure codex . -- login
-manicure codex . -- mcp
-manicure codex . -- app-server
+transport-matters codex . -- exec "fix the failing test"
+transport-matters codex . -- review
+transport-matters codex . -- login
+transport-matters codex . -- mcp
+transport-matters codex . -- app-server
 ```
 
-For Codex, pass an explicit working directory such as `.` before `--` when the first pass-through token is a bare command like `exec`, `review`, or `login`. That keeps it from being parsed as the optional `[DIRECTORY]` argument on the outer `manicure codex` command.
+For Codex, pass an explicit working directory such as `.` before `--` when the first pass-through token is a bare command like `exec`, `review`, or `login`. That keeps it from being parsed as the optional `[DIRECTORY]` argument on the outer `transport-matters codex` command.
 
 ## What you get
 
 Every captured turn persists a workspace scoped artifact bundle under `~/.transport-matters/workspaces/{slug}/{hash}/...`.
 
-For Claude and Codex, Manicure captures:
+For Claude and Codex, Transport Matters captures:
 - the original outbound request
 - the parsed internal representation
 - the curated outbound request after rules and edits
@@ -108,7 +108,7 @@ In the UI you get:
 
 The normal operator flow is:
 
-1. Start `manicure claude` or `manicure codex`
+1. Start `transport-matters claude` or `transport-matters codex`
 2. Let the managed client run normally
 3. Arm the breakpoint in the web UI when you want to inspect the next outbound turn
 4. Review or edit the request
@@ -126,22 +126,22 @@ just install
 just tool-install-editable
 ```
 
-That gives you a global `manicure` command backed by this checkout, with `mitmdump` in the same tool environment.
+That gives you a global `transport-matters` command backed by this checkout, with `mitmdump` in the same tool environment.
 
 Then from any target project:
 
 ```bash
 cd ~/some/other/project
-manicure claude
-manicure codex
+transport-matters claude
+transport-matters codex
 ```
 
 If you do not want a tool install, run directly from source:
 
 ```bash
 cd ~/some/other/project
-uv run --project /absolute/path/to/manicure/api manicure claude
-uv run --project /absolute/path/to/manicure/api manicure codex
+uv run --project /absolute/path/to/transport-matters/api transport-matters claude
+uv run --project /absolute/path/to/transport-matters/api transport-matters codex
 ```
 
 From the repo root:
@@ -153,7 +153,7 @@ just start
 is a thin wrapper around:
 
 ```bash
-uv run --project api manicure claude
+uv run --project api transport-matters claude
 ```
 
 For split frontend and proxy development:
@@ -181,12 +181,12 @@ Claude Code
 ```text
 Codex
   -> HTTPS_PROXY=http://127.0.0.1:{proxy_port}
-  -> CODEX_CA_CERTIFICATE=/tmp/manicure-codex-ca.pem
+  -> CODEX_CA_CERTIFICATE=/tmp/transport-matters-codex-ca.pem
   -> mitmproxy explicit HTTPS proxy
   -> chatgpt.com/backend-api/codex/responses
 ```
 
-Inside the proxy path, Manicure:
+Inside the proxy path, Transport Matters:
 - parses provider traffic into internal request IR
 - runs deterministic curation rules
 - optionally pauses at a breakpoint for manual editing
@@ -197,12 +197,12 @@ Inside the proxy path, Manicure:
 ## Commands
 
 Primary commands:
-- `manicure claude`
-- `manicure codex`
-- `manicure doctor`
-- `manicure paths`
-- `manicure list`
-- `manicure version`
+- `transport-matters claude`
+- `transport-matters codex`
+- `transport-matters doctor`
+- `transport-matters paths`
+- `transport-matters list`
+- `transport-matters version`
 
 Useful flags:
 - `--proxy-port`

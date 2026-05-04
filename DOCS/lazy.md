@@ -49,7 +49,7 @@ For every session, the proxy maintains a set of activated tool names. On each up
 
 ## Module layout
 
-New module: `api/src/manicure/dynamic_tools.py`. Sits in the DAG between `rules` and `pipeline` (or alongside `pipeline` as a parallel stage — see \"Where it runs\" below).
+New module: `api/src/transport_matters/dynamic_tools.py`. Sits in the DAG between `rules` and `pipeline` (or alongside `pipeline` as a parallel stage — see \"Where it runs\" below).
 
 ```
 ir → adapters → rules → pipeline → dynamic_tools → breakpoint → server
@@ -62,13 +62,13 @@ No new dependency on anything except `ir` and a state store. Pure transformation
 ## Key types
 
 ```python
-# api/src/manicure/dynamic_tools.py
+# api/src/transport_matters/dynamic_tools.py
 
 from __future__ import annotations
 from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 
-from manicure.ir import (
+from transport_matters.ir import (
     InternalRequest,
     InternalResponse,
     SystemPart,
@@ -354,7 +354,7 @@ The workbench UI can still expose a \"Dynamic Tools: on/off\" toggle that maps t
 
 2. **Cold start latency**. The first time the model needs a tool, it pays one extra roundtrip. For a session that activates 3 tools across the first 5 turns, that's 3 extra roundtrips total, amortised across dozens of turns after. Worth measuring.
 
-3. **Claude Code does not cache system parts it did not send**. Manicure is inserting a new system part the client did not author. The cache_hint on that part will only work if the adapter emits it correctly in the Anthropic wire format. Worth verifying against the provider_data round-trip behaviour already in the adapter.
+3. **Claude Code does not cache system parts it did not send**. Transport Matters is inserting a new system part the client did not author. The cache_hint on that part will only work if the adapter emits it correctly in the Anthropic wire format. Worth verifying against the provider_data round-trip behaviour already in the adapter.
 
 4. **Streaming**. If the upstream response is streamed, the activation loop has to wait for the full response before it can detect `activate_tool` and loop. That means the client sees no tokens until all activations resolve. For fast activations this is imperceptible. For slow ones, it is noticeable. Consider: do you stream the final response only, or do you stream \"pass-through\" until you hit the first activate_tool block?
 

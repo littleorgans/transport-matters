@@ -2,10 +2,10 @@
 
 ## What's really in front of us
 
-The current `.github/workflows/ci.yml` was scaffolded from a Python-library template. It tests nothing about what Manicure actually *is*:
+The current `.github/workflows/ci.yml` was scaffolded from a Python-library template. It tests nothing about what Transport Matters actually *is*:
 
 - **www/ isn't built, tested, linted, or even checked out** in CI. The entire React side is invisible to the pipeline.
-- The `pytest tests/ --cov=app` line isn't a bug — it's a relic from before the package was named `manicure` and before unit tests were colocated under `src/`.
+- The `pytest tests/ --cov=app` line isn't a bug — it's a relic from before the package was named `transport-matters` and before unit tests were colocated under `src/`.
 - There's no release job, no artifact build, no version tagging.
 - The 80% coverage gate is aspirational, not grounded (we're actually at 83.54% locally — the gate *would* pass if CI could see the tests).
 
@@ -15,17 +15,17 @@ So \"fix the workflow\" is the wrong frame. The right frame is: **what does v1 r
 
 Before I write any YAML, I need you to pick on five things. Each one has a fork that changes the shape of CI.
 
-### 1. How do users actually install Manicure?
+### 1. How do users actually install Transport Matters?
 
 Three options, wildly different implications:
 
 | Option | Release artifact | CI's job |
 |---|---|---|
-| **PyPI** (`uvx manicure` / `pipx install manicure`) | A wheel that embeds the built www/ static assets | Build www, copy into package, build wheel, publish to PyPI, verify install in a clean env |
+| **PyPI** (`uvx transport-matters` / `pipx install transport-matters`) | A wheel that embeds the built www/ static assets | Build www, copy into package, build wheel, publish to PyPI, verify install in a clean env |
 | **GitHub release + curl-install script** (`curl … \\| bash`) | Tagged release with wheel or tarball attached | Same as PyPI but publish goes to GH Releases instead of PyPI |
 | **Homebrew tap / formula** | PyPI wheel + formula update | PyPI path plus a formula-bump step |
 
-My read: **PyPI is the right v1 target**. `uvx manicure` is one command and it's how Stuart already ships things. Homebrew is a v1.1 nice-to-have. Curl-install is a v0 hack that we should skip.
+My read: **PyPI is the right v1 target**. `uvx transport-matters` is one command and it's how Stuart already ships things. Homebrew is a v1.1 nice-to-have. Curl-install is a v0 hack that we should skip.
 
 Do you agree, or do you want curl-install as the primary path?
 
@@ -33,8 +33,8 @@ Do you agree, or do you want curl-install as the primary path?
 
 Two clean choices:
 
-- **Embed inside the Python wheel** — `pnpm build` runs at release time, output lands in `api/src/manicure/_www/`, the FastAPI server mounts it as `StaticFiles`. One artifact, one install, no network at first run. Matches how mitmproxy itself ships.
-- **Download at first run** — smaller wheel, but `manicure` now needs network to boot, versioning gets weird, and it adds a supply-chain surface.
+- **Embed inside the Python wheel** — `pnpm build` runs at release time, output lands in `api/src/transport_matters/_www/`, the FastAPI server mounts it as `StaticFiles`. One artifact, one install, no network at first run. Matches how mitmproxy itself ships.
+- **Download at first run** — smaller wheel, but `transport-matters` now needs network to boot, versioning gets weird, and it adds a supply-chain surface.
 
 Embed is the obvious call unless you have a reason I don't see.
 
@@ -59,7 +59,7 @@ A minimal-but-honest v1 gate:
 
 **Integration smoke (optional but cheap):**
 
-- After building www/, install the Python wheel in a throwaway venv and run `manicure --help` (or equivalent boot check) to prove the wheel isn't broken.
+- After building www/, install the Python wheel in a throwaway venv and run `transport-matters --help` (or equivalent boot check) to prove the wheel isn't broken.
 
 ### 4. What triggers a release?
 
@@ -99,17 +99,17 @@ Two workflows, not one:
 **`release.yml` jobs:**
 
 1. Re-run the full `ci.yml` gate (or depend on the latest green `ci.yml` for the same SHA)
-2. `pnpm build` → copy `www/dist/` into `api/src/manicure/_www/`
+2. `pnpm build` → copy `www/dist/` into `api/src/transport_matters/_www/`
 3. `uv build` (wheel + sdist)
-4. Sanity install in a clean venv, run `manicure --version`, grep the www assets are inside the wheel with `unzip -l dist/*.whl`
+4. Sanity install in a clean venv, run `transport-matters --version`, grep the www assets are inside the wheel with `unzip -l dist/*.whl`
 5. Publish to PyPI via **trusted publishing (OIDC)** — no API tokens, no secrets
 6. Attach artifacts to a GitHub Release
 
 ## The open questions I need answered before I can write this
 
-1. **PyPI package name + ownership**: Is `manicure` available on PyPI? Do you have an account with trusted publishing set up, or do we need to reserve the name first? (Name squatting happens fast.)
-2. **Entry point**: What's the CLI entry point — is `api/pyproject.toml` already set up with `[project.scripts] manicure = \"manicure.__main__:main\"`, or do we need to add it?
-3. **www/ embed path**: Am I right that the FastAPI server should serve `api/src/manicure/_www/` as static files? That changes how `main.py` is wired — currently it probably looks for a dev server URL. Need to check.
+1. **PyPI package name + ownership**: Is `transport-matters` available on PyPI? Do you have an account with trusted publishing set up, or do we need to reserve the name first? (Name squatting happens fast.)
+2. **Entry point**: What's the CLI entry point — is `api/pyproject.toml` already set up with `[project.scripts] transport-matters = \"transport_matters.cli:main\"`, or do we need to add it?
+3. **www/ embed path**: Am I right that the FastAPI server should serve `api/src/transport_matters/_www/` as static files? That changes how `main.py` is wired — currently it probably looks for a dev server URL. Need to check.
 4. **Version source of truth**: Is the version pinned in `api/pyproject.toml`, or do you want to tag-derive it (setuptools-scm / hatch-vcs)?
 5. **Curl-install or PyPI-first?** (Question #1 above.)
 6. **The 80% coverage gate**: kill it, or keep it at 83% (current real number) and let it only go up?

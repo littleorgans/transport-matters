@@ -1,4 +1,4 @@
-# manicure
+# transport-matters
 
 > **mani**fest + **cur**at**e**. Care for the cargo your coding agent carries.
 
@@ -9,25 +9,25 @@ No cert install. No system proxy settings. No sudo.
 ## Install
 
 ```bash
-uv tool install manicure     # recommended
-pipx install manicure        # alternative
+uv tool install transport-matters     # recommended
+pipx install transport-matters        # alternative
 ```
 
 Or via the bootstrap script (installs uv first if missing):
 
 ```bash
-curl -fsSL https://github.com/srobinson/manicure/releases/latest/download/install.sh | bash
+curl -fsSL https://github.com/srobinson/transport-matters/releases/latest/download/install.sh | bash
 ```
 
 ## Quick start
 
 ```bash
 # One command: starts the proxy + Claude Code together
-manicure claude               # in the current directory
-manicure claude ~/my-project  # in a specific working directory
+transport-matters claude               # in the current directory
+transport-matters claude ~/my-project  # in a specific working directory
 
 # Proxy-only (bring your own client)
-manicure claude --no-claude
+transport-matters claude --no-claude
 
 # then in another terminal
 ANTHROPIC_BASE_URL=http://localhost:8787 claude
@@ -45,14 +45,14 @@ just tool-install-editable
 Then from any project directory:
 
 ```bash
-manicure claude
+transport-matters claude
 ```
 
 If you want to run directly from source without installing a tool, run
 the API project explicitly:
 
 ```bash
-uv run --project api manicure claude
+uv run --project api transport-matters claude
 ```
 
 From the repo root, `just start` is equivalent and is the preferred
@@ -67,7 +67,7 @@ Open `http://localhost:8788` to see the live log, the rules UI, and the breakpoi
 
 Every `/v1/messages` request your agent sends gets:
 
-1. **Captured** — full request and response, logged to `~/.manicure/exchanges/`.
+1. **Captured** — full request and response, logged to `~/.transport-matters/workspaces/{slug}/{hash}/`.
 2. **Curated** — a deterministic pipeline applies your rules (strip tools, truncate system parts, rewrite descriptions, drop thinking blocks).
 3. **Paused** (optional) — arm the breakpoint to edit the next request in a schema-aware editor before it forwards upstream.
 
@@ -75,11 +75,11 @@ All visible in a web UI at `http://localhost:8788`.
 
 ## Why
 
-A single Claude Code session routinely sends 285 KB payloads: 147 tools, 3 system parts, 5 message turns. Tools alone account for 67% of that. Manicure gives you visibility into what's being sent, a pipeline to strip and rewrite it, and a breakpoint to intervene before it hits the API.
+A single Claude Code session routinely sends 285 KB payloads: 147 tools, 3 system parts, 5 message turns. Tools alone account for 67% of that. Transport Matters gives you visibility into what's being sent, a pipeline to strip and rewrite it, and a breakpoint to intervene before it hits the API.
 
 ## Documentation
 
-Full docs, architecture, and contributing guide: <https://github.com/srobinson/manicure>
+Full docs, architecture, and contributing guide: <https://github.com/srobinson/transport-matters>
 
 ## License
 

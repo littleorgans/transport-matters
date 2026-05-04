@@ -14,60 +14,60 @@
 
 Framework and patterns confirmed:
 
-- Backend framework: FastAPI routes under `api/src/manicure/api/v1/`.
-- Override engine: pure Pydantic IR transforms in `api/src/manicure/overrides.py`.
-- Override state: in process singleton from `api/src/manicure/override_state.py`, re-exported through `manicure.overrides`.
-- Track classifier: in process `TrackManager` in `api/src/manicure/track_manager.py`.
+- Backend framework: FastAPI routes under `api/src/transport_matters/api/v1/`.
+- Override engine: pure Pydantic IR transforms in `api/src/transport_matters/overrides.py`.
+- Override state: in process singleton from `api/src/transport_matters/override_state.py`, re-exported through `transport_matters.overrides`.
+- Track classifier: in process `TrackManager` in `api/src/transport_matters/track_manager.py`.
 - Runtime run id: `get_settings().run_id`; when absent, use the legacy root scope.
 - Frontend override control path: `BreakpointEditor` -> `useOverrides` -> `www/src/api.ts`.
 - Paused flow transport: backend `pause_session._paused_event_payload` -> SSE `useExchangeStream` -> `PausedFlow` in the UI store.
-- No manicure-specific design docs were found in `~/.mdx/design/`.
+- No Transport Matters specific design docs were found in `~/.mdx/design/`.
 
 ## File Map
 
 ### Backend
 
-- Modify `api/src/manicure/override_state.py`
+- Modify `api/src/transport_matters/override_state.py`
   - Add `OverrideScope = tuple[str, str]` and helper functions for legacy and root fallback.
   - Store overrides as `scope -> OrderedDict[(kind, target), Override]`.
   - Store `enabled` per scope, defaulting to `True`.
   - Preserve old no-arg calls for single-track workflows.
 
-- Modify `api/src/manicure/track_manager.py`
+- Modify `api/src/transport_matters/track_manager.py`
   - Add `classify_request(run_id, request)` for pre-response classification.
   - Keep `record_exchange` behavior by delegating to `classify_request` and then observing a response.
 
-- Modify `api/src/manicure/request_pipeline.py`
+- Modify `api/src/transport_matters/request_pipeline.py`
   - Accept `run_id`.
   - Classify inbound request before applying overrides.
   - Resolve override scope from `run_id` plus `TrackAssignment.track_id`, falling back to `(run_id, run_id)` for root and legacy requests.
   - Return `(curated_ir, audit, track_assignment)`.
 
-- Modify `api/src/manicure/flow_state.py`
+- Modify `api/src/transport_matters/flow_state.py`
   - Persist `TrackAssignment | None` in `RequestFlowState` and flow metadata.
 
-- Modify `api/src/manicure/addon_handlers.py`
+- Modify `api/src/transport_matters/addon_handlers.py`
   - Pass `get_settings().run_id` into `run_pipeline`.
   - Store returned track assignment in request flow state.
 
-- Modify `api/src/manicure/exchange_recorder.py` and `api/src/manicure/codex/exchange.py`
+- Modify `api/src/transport_matters/exchange_recorder.py` and `api/src/transport_matters/codex/exchange.py`
   - Use the stored track assignment from flow state.
   - Observe responses with that assignment instead of classifying the request a second time.
   - Fall back to existing `_assign_track` when there is no preclassified assignment.
 
-- Modify `api/src/manicure/breakpoint.py` and `api/src/manicure/pause_session.py`
+- Modify `api/src/transport_matters/breakpoint.py` and `api/src/transport_matters/pause_session.py`
   - Add scope fields to `PausedFlow`: `run_id`, `track_id`, `parent_track_id`, `track_display_name`, `track_role`.
   - Include those fields in paused SSE events.
   - Re-audit paused previews using the paused flow scope.
 
-- Modify `api/src/manicure/api/v1/overrides.py`
+- Modify `api/src/transport_matters/api/v1/overrides.py`
   - Add query params `run_id` and `track_id` to GET, PATCH, DELETE, and POST toggle.
   - Use scoped store calls and scoped paused preview updates.
   - Preserve no-query legacy behavior.
 
 - Test files
-  - Modify `api/src/manicure/test_override_state.py`.
-  - Modify `api/src/manicure/api/v1/test_overrides.py`.
+  - Modify `api/src/transport_matters/test_override_state.py`.
+  - Modify `api/src/transport_matters/api/v1/test_overrides.py`.
   - Add or modify request pipeline tests for track isolation.
 
 ### Frontend
@@ -147,7 +147,7 @@ No `Override.scope` field is added because current override kinds are request lo
 
 ### Task 1: Scoped store tests
 
-- [ ] Add tests to `api/src/manicure/test_override_state.py`:
+- [ ] Add tests to `api/src/transport_matters/test_override_state.py`:
 
 ```python
 def test_scopes_are_isolated(self) -> None:
@@ -171,19 +171,19 @@ def test_enabled_is_scoped(self) -> None:
     assert store.is_enabled(scope=("run-1", "agent-2")) is True
 ```
 
-- [ ] Run `cd api && uv run pytest src/manicure/test_override_state.py -q`.
+- [ ] Run `cd api && uv run pytest src/transport_matters/test_override_state.py -q`.
 - [ ] Confirm these tests fail because `scope`, `set_enabled`, and `is_enabled` do not exist.
 
 ### Task 2: Implement scoped store
 
 - [ ] Update `OverrideStore` with scoped maps, helpers, and no-arg compatibility.
-- [ ] Run `cd api && uv run pytest src/manicure/test_override_state.py -q` and confirm pass.
+- [ ] Run `cd api && uv run pytest src/transport_matters/test_override_state.py -q` and confirm pass.
 
 ### Task 3: Track classification without double request recording
 
 - [ ] Add `TrackManager.classify_request` and keep `record_exchange` equivalent.
 - [ ] Add a unit test showing `classify_request` plus `observe_response` produces the same parent spawn state as `record_exchange`.
-- [ ] Run `cd api && uv run pytest src/manicure/test_track_manager.py -q`.
+- [ ] Run `cd api && uv run pytest src/transport_matters/test_track_manager.py -q`.
 
 ### Task 4: Pipeline scoped override tests
 
@@ -206,7 +206,7 @@ def test_enabled_is_scoped(self) -> None:
 
 ### Task 6: API scope tests
 
-- [ ] Add API tests in `api/src/manicure/api/v1/test_overrides.py`:
+- [ ] Add API tests in `api/src/transport_matters/api/v1/test_overrides.py`:
   - GET returns only the requested scope.
   - PATCH to one scope does not affect another scope.
   - DELETE clears only the requested scope.
@@ -214,7 +214,7 @@ def test_enabled_is_scoped(self) -> None:
   - Paused preview updates only when paused flow scope matches request scope.
   - Existing no-query calls still work.
 
-- [ ] Run `cd api && uv run pytest src/manicure/api/v1/test_overrides.py -q` and confirm failure before implementation.
+- [ ] Run `cd api && uv run pytest src/transport_matters/api/v1/test_overrides.py -q` and confirm failure before implementation.
 
 ### Task 7: Implement API and paused scope
 

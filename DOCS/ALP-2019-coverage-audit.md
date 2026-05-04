@@ -4,9 +4,9 @@ Baseline: `e7dccaab9abd4115a6ceba2e391e8772ca7635a1`
 
 ## Scope
 
-- `api/src/manicure/test_track_manager_*.py`
-- `api/src/manicure/codex/test_transport_turn_*.py`
-- `api/src/manicure/codex/test_repair_*.py`
+- `api/src/transport_matters/test_track_manager_*.py`
+- `api/src/transport_matters/codex/test_transport_turn_*.py`
+- `api/src/transport_matters/codex/test_repair_*.py`
 - `www/src/components/editor/SamplingSection.*.test.tsx`
 - `www/src/hooks/useExchangeStream.*.test.tsx`
 - `www/src/components/ExchangeList*.test.tsx`

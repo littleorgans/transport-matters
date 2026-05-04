@@ -1,12 +1,12 @@
-# Manicure
+# Transport Matters
 
 > **mani**fest + **cur**at**e**. Care for the cargo your coding agent carries.
 
-Manicure is a provider-neutral context control plane for coding agents. It sits between your agent and the upstream provider, captures every turn, normalises payloads into an internal representation, runs them through a deterministic curation pipeline, and optionally pauses at a breakpoint so you can inspect or edit the next outbound request before it forwards upstream.
+Transport Matters is a provider-neutral context control plane for coding agents. It sits between your agent and the upstream provider, captures every turn, normalises payloads into an internal representation, runs them through a deterministic curation pipeline, and optionally pauses at a breakpoint so you can inspect or edit the next outbound request before it forwards upstream.
 
 ## What it is
 
-Coding agents ship large, opaque payloads on every turn. A single Claude Code session routinely sends 285 KB of context: 147 tool definitions, multiple system parts, message turns. Tools alone account for two thirds of that. Manicure makes those payloads visible, editable, and reproducible.
+Coding agents ship large, opaque payloads on every turn. A single Claude Code session routinely sends 285 KB of context: 147 tool definitions, multiple system parts, message turns. Tools alone account for two thirds of that. Transport Matters makes those payloads visible, editable, and reproducible.
 
 No system proxy toggle. No global certificate install. No sudo.
 
@@ -15,13 +15,13 @@ No system proxy toggle. No global certificate install. No sudo.
 - **Claude Code** via a reverse proxy in front of `api.anthropic.com` (`ANTHROPIC_BASE_URL` override)
 - **Codex** via an explicit HTTPS proxy for ChatGPT authenticated websocket traffic (`HTTPS_PROXY` + process scoped `CODEX_CA_CERTIFICATE`)
 
-For Codex, Manicure snapshots the active Python trust roots, appends `~/.mitmproxy/mitmproxy-ca-cert.pem`, and passes the merged CA bundle only to the managed Codex process. The system keychain is never touched.
+For Codex, Transport Matters snapshots the active Python trust roots, appends `~/.mitmproxy/mitmproxy-ca-cert.pem`, and passes the merged CA bundle only to the managed Codex process. The system keychain is never touched.
 
 ## Repository layout
 
 | Path | Purpose |
 | --- | --- |
-| `api/` | Python backend. FastAPI server, mitmproxy addons, curation pipeline, storage, breakpoint controller. Published as the `manicure` PyPI package. |
+| `api/` | Python backend. FastAPI server, mitmproxy addons, curation pipeline, storage, breakpoint controller. Published as the `transport-matters` PyPI package. |
 | `www/` | React 19 + Vite 8 + Tailwind v4 web UI. Intercept list, request editor, transport diagnostics. |
 | `DOCS/` | Internal design notes: cache, codex seam audit, transport artifacts, mitmproxy integration, release process. |
 | `scripts/` | Local dev orchestration (`local-dev-mode.sh`). |
@@ -46,7 +46,7 @@ Claude Code
 ```text
 Codex
   -> HTTPS_PROXY=http://127.0.0.1:{proxy_port}
-  -> CODEX_CA_CERTIFICATE=/tmp/manicure-codex-ca.pem
+  -> CODEX_CA_CERTIFICATE=/tmp/transport-matters-codex-ca.pem
   -> mitmproxy explicit HTTPS proxy
   -> chatgpt.com/backend-api/codex/responses
 ```
@@ -57,7 +57,7 @@ Codex
 2. Run deterministic curation rules (strip tools, truncate system parts, rewrite descriptions, drop thinking blocks)
 3. Optionally pause at a breakpoint for manual editing
 4. Serialize the curated request back to provider wire format
-5. Persist exchange artifacts and transport diagnostics under `~/.manicure/workspaces/{slug}/{hash}/...`
+5. Persist exchange artifacts and transport diagnostics under `~/.transport-matters/workspaces/{slug}/{hash}/...`
 6. Serve a local FastAPI API and React UI for inspection and control
 
 ### Backend import DAG
@@ -66,7 +66,7 @@ Codex
 ir -> adapters -> rules -> pipeline -> storage -> breakpoint -> server
 ```
 
-`ir.py` imports nothing from `manicure`. IR models are frozen; pipeline actions return new instances rather than mutating.
+`ir.py` imports nothing from `transport_matters`. IR models are frozen; pipeline actions return new instances rather than mutating.
 
 ## Captured artifacts
 
@@ -94,9 +94,9 @@ Served on a kernel allocated free port alongside the proxy. Provides:
 End user:
 
 ```bash
-curl -fsSL https://github.com/srobinson/manicure/releases/latest/download/install.sh | bash
+curl -fsSL https://github.com/srobinson/transport-matters/releases/latest/download/install.sh | bash
 # or
-uv tool install manicure
+uv tool install transport-matters
 ```
 
 Contributor (editable checkout as a global tool):
@@ -109,19 +109,19 @@ just tool-install-editable
 Verify:
 
 ```bash
-manicure doctor
+transport-matters doctor
 ```
 
 ## Commands
 
 Primary:
 
-- `manicure claude [DIRECTORY] [-- passthrough...]`
-- `manicure codex  [DIRECTORY] [-- passthrough...]`
-- `manicure doctor`
-- `manicure paths`
-- `manicure list`
-- `manicure version`
+- `transport-matters claude [DIRECTORY] [-- passthrough...]`
+- `transport-matters codex  [DIRECTORY] [-- passthrough...]`
+- `transport-matters doctor`
+- `transport-matters paths`
+- `transport-matters list`
+- `transport-matters version`
 
 Everything after `--` is forwarded verbatim to the managed child process.
 
@@ -132,7 +132,7 @@ Useful flags: `--proxy-port`, `--web-port`, `--storage-dir`, `--print-command`, 
 From the repo root:
 
 ```bash
-just start                          # uv run --project api manicure start
+just start                          # uv run --project api transport-matters claude
 just dev claude /path/to/workspace  # split proxy + www via Procfile
 just test                           # www + api
 just check                          # lint/type across both

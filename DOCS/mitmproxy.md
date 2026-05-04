@@ -2,21 +2,21 @@
 
 ## The one-sentence model
 
-Manicure runs the FastAPI web UI **inside mitmproxy's own asyncio event loop**. A single `asyncio.ensure_future(server.serve())` call in the addon's `load()` hook schedules uvicorn as a coroutine on mitmproxy's loop without blocking. Everything else — proxy traffic, API routes, SSE — is multiplexed on that one loop.
+Transport Matters runs the FastAPI web UI **inside mitmproxy's own asyncio event loop**. A single `asyncio.ensure_future(server.serve())` call in the addon's `load()` hook schedules uvicorn as a coroutine on mitmproxy's loop without blocking. Everything else — proxy traffic, API routes, SSE — is multiplexed on that one loop.
 
 ## Literal dev-mode command
 
 `api/justfile:18`:
 
 ```
-uv run mitmdump --mode reverse:https://api.anthropic.com --listen-port 8787 -s src/manicure/addon.py
+uv run mitmdump --mode reverse:https://api.anthropic.com --listen-port 8787 -s src/transport_matters/addon.py
 ```
 
 Three flags do all the work:
 
 - `--mode reverse:https://api.anthropic.com` — reverse-proxy mode, upstream pinned
 - `--listen-port 8787` — client-facing port
-- `-s src/manicure/addon.py` — loads the addon
+- `-s src/transport_matters/addon.py` — loads the addon
 
 ## The asyncio loop sharing trick — `addon.py:338-346`
 
@@ -37,7 +37,7 @@ Why this works:
 
 Shutdown caveat: there's no explicit uvicorn cleanup on mitmproxy shutdown. mitmproxy's `SIGINT` stops the loop, cancelling all tasks including `server.serve()`. The addon's `done()` hook calls `bp.clear_all()` so any paused breakpoints get released. Good enough but worth testing under \"Ctrl+C mid-pause.\"
 
-## Addon lifecycle (`api/src/manicure/addon.py`)
+## Addon lifecycle (`api/src/transport_matters/addon.py`)
 
 | Hook | Sync/Async | What it does |
 |---|---|---|
@@ -71,7 +71,7 @@ All API calls in `www/src/api.ts` are **relative paths** (`/api/exchanges`, `/ap
 
 - `pyproject.toml:13`: `mitmproxy>=12.0` (loose)
 - `uv.lock`: actual version **12.2.1**
-- API usage is tiny: `http.HTTPFlow` type, `flow.request.get_text/set_text`, `flow.metadata`, `flow.response = MitmResponse.make(...)`, and the module-level `addons = [ManicureAddon()]` export
+- API usage is tiny: `http.HTTPFlow` type, `flow.request.get_text/set_text`, `flow.metadata`, `flow.response = MitmResponse.make(...)`, and the module-level addon export
 - **Recommendation**: tighten to `mitmproxy>=12.2,<13` at release time. A major-version bump to 13.x could break addon hook signatures or flow.metadata — we want to opt in consciously.
 
 ## What this means for the CLI — decisions clarified
@@ -83,19 +83,19 @@ Earlier I waffled between \"shell out to mitmdump\" and \"embed DumpMaster progr
 
    ```python
    from importlib.resources import files
-   addon_path = files(\"manicure\") / \"addon.py\"
+   addon_path = files(\"transport_matters\") / \"addon.py\"
    ```
 
-   This works whether `manicure` is installed as a wheel, an editable install, or a zipapp. Clean.
-3. **Signals and debugging just work** — Ctrl+C hits `mitmdump`, mitmdump handles it, parent `manicure` process exits with mitmdump's exit code. If anything weirds out, the user can literally copy the `mitmdump ...` command out of `manicure start --print-command` and run it themselves.
+   This works whether `transport-matters` is installed as a wheel, an editable install, or a zipapp. Clean.
+3. **Signals and debugging just work** — Ctrl+C hits `mitmdump`, mitmdump handles it, parent `transport-matters` process exits with mitmdump's exit code. If anything weirds out, the user can literally copy the `mitmdump ...` command out of `transport-matters claude --print-command` and run it themselves.
 
-### What `manicure start` actually has to do
+### What `transport-matters claude` actually has to do
 
 ```python
 # pseudocode
 def start(proxy_port=8787, web_port=8788, upstream=\"https://api.anthropic.com\",
-          storage_dir=\"~/.manicure\", debug=False):
-    addon_path = files(\"manicure\") / \"addon.py\"
+          storage_dir=\"~/.transport-matters\", debug=False):
+    addon_path = files(\"transport_matters\") / \"addon.py\"
     env = {**os.environ,
            \"WEB_PORT\": str(web_port),
            \"STORAGE_DIR\": str(storage_dir),
@@ -109,7 +109,7 @@ def start(proxy_port=8787, web_port=8788, upstream=\"https://api.anthropic.com\"
 
 A couple of refinements worth making:
 
-- **`os.execvpe` over `subprocess.run`** so `manicure` doesn't sit as a parent wrapper eating its own process slot. Ctrl+C goes straight to mitmdump, PID is mitmdump's, process list is cleaner.
+- **`os.execvpe` over `subprocess.run`** so `transport-matters` doesn't sit as a parent wrapper eating its own process slot. Ctrl+C goes straight to mitmdump, PID is mitmdump's, process list is cleaner.
 - **`--print-command`** as a debug flag so users can extract the raw command (for bug reports, for piping to their own systemd unit, for testing).
 - **Exposing `--upstream`** from day one even though V1 only ships the Anthropic adapter. It's free, it future-proofs the CLI for Codex/custom upstreams, and it gives testers a way to point at a local mock server.
 
@@ -128,13 +128,13 @@ A couple of refinements worth making:
 
 Given this map, my earlier four-commit plan still holds, but I can be more concrete about commit C:
 
-- **Commit C — the CLI entry point**, ~80 lines, new file `api/src/manicure/cli.py`. Uses `typer` (adds ~500KB of deps but gives us `--help`, subcommands, shell completion, type-safe options for free) or argparse if you want zero new deps. Exposes:
-  - `manicure start` — the main command, `exec`s mitmdump with addon loaded
-  - `manicure start --print-command` — debug helper
-  - `manicure start --proxy-port / --web-port / --upstream / --storage-dir / --debug`
-  - `manicure version` — prints `__version__` from the wheel
-  - (Future) `manicure certs` — sanity-check mitmproxy cert dir, not needed in v1 because reverse proxy mode sidesteps certs
+- **Commit C — the CLI entry point**, ~80 lines, new file `api/src/transport_matters/cli.py`. Uses `typer` (adds ~500KB of deps but gives us `--help`, subcommands, shell completion, type-safe options for free) or argparse if you want zero new deps. Exposes:
+  - `transport-matters claude` — the main Claude command, `exec`s mitmdump with addon loaded
+  - `transport-matters claude --print-command` — debug helper
+  - `transport-matters claude --proxy-port / --web-port / --upstream / --storage-dir / --debug`
+  - `transport-matters version` — prints `__version__` from the wheel
+  - (Future) `transport-matters certs` — sanity-check mitmproxy cert dir, not needed in v1 because reverse proxy mode sidesteps certs
 
-  Then `[project.scripts] manicure = \"manicure.cli:app\"` (if typer) or `\"manicure.cli:main\"` (if argparse) in `pyproject.toml`.
+  Then `[project.scripts] transport-matters = \"transport_matters.cli:main\"` in `pyproject.toml`.
 
 Want me to write Commit A (the `ci.yml` fix) first so main goes green today, then move to B + C + D in order? Or would you rather I sequence differently?

@@ -40,9 +40,9 @@ This is why **adding at the tail did not extend the cache in entry 8**: the byte
 
 ## The architectural insight this unlocks
 
-Stuart, this is the piece that makes Manicure genuinely interesting in a way I did not see an hour ago. **Cache breakpoint placement is a policy decision, and Claude Code's policy is not the only one.**
+Stuart, this is the piece that makes Transport Matters genuinely interesting in a way I did not see an hour ago. **Cache breakpoint placement is a policy decision, and Claude Code's policy is not the only one.**
 
-Manicure sits in the request path. Manicure can *rewrite the cache_control markers* on the way to Anthropic. The Anthropic API allows up to 4 breakpoints per request; Claude Code uses 3; there is a free slot. Manicure could add a 4th marker at the end of the tools block, creating a tools-independent cache segment. Suddenly:
+Transport Matters sits in the request path. Transport Matters can *rewrite the cache_control markers* on the way to Anthropic. The Anthropic API allows up to 4 breakpoints per request; Claude Code uses 3; there is a free slot. Transport Matters could add a 4th marker at the end of the tools block, creating a tools-independent cache segment. Suddenly:
 
 - System blocks cache independently.
 - Tools block caches independently.
@@ -54,15 +54,15 @@ This means:
 
 **Capability 2 (per-request pruning)** is doubly dead under the current Claude Code marker layout. Not only does it lose the attention-quality argument to quality-preserving baselines, it incurs a full cache miss every single time we intervene. It is experimentation theater.
 
-**Capability 3 (JIT tool and context delivery)**, under the rewritten-marker policy, is cache-aligned *and* attention-improving. Manicure adds tools as the agent earns them, and each addition extends the tools-block cache instead of busting it. The 1h TTL means realistic sessions can span the full idle window without cold-starts.
+**Capability 3 (JIT tool and context delivery)**, under the rewritten-marker policy, is cache-aligned *and* attention-improving. Transport Matters adds tools as the agent earns them, and each addition extends the tools-block cache instead of busting it. The 1h TTL means realistic sessions can span the full idle window without cold-starts.
 
-And there is a second-order benefit. Manicure already intermediates the request. If Manicure takes ownership of cache_control placement, it becomes a dedicated optimization surface — users can write rules like \"always place a marker on the tools block\" or \"put the system prompt in its own 1h block\" without having to patch their client. **Cache policy becomes a Manicure feature**, not a client concern.
+And there is a second-order benefit. Transport Matters already intermediates the request. If Transport Matters takes ownership of cache_control placement, it becomes a dedicated optimization surface — users can write rules like \"always place a marker on the tools block\" or \"put the system prompt in its own 1h block\" without having to patch their client. **Cache policy becomes a Transport Matters feature**, not a client concern.
 
 ## What the test did not yet answer
 
-Stuart's test kept Claude Code's existing markers untouched. We have not yet confirmed that *adding a Manicure-controlled marker on the tools block* actually produces the append-extends-cache behavior in practice. That is the next spike, and it is small:
+Stuart's test kept Claude Code's existing markers untouched. We have not yet confirmed that *adding a Transport Matters-controlled marker on the tools block* actually produces the append-extends-cache behavior in practice. That is the next spike, and it is small:
 
-1. Capture a real request via Manicure.
+1. Capture a real request via Transport Matters.
 2. Add a 4th `cache_control: ephemeral 1h` marker on the last tool in the tools array.
 3. Fire the request. Observe `cache_creation_input_tokens` split across `ephemeral_5m` and `ephemeral_1h`.
 4. Fire a second request that adds one tool at the end.
@@ -72,9 +72,9 @@ This is maybe 30 minutes of work and it is the single test that determines wheth
 
 ## My read on where you are
 
-You have just moved the question from \"does pruning save tokens\" to \"does JIT extend cache\" — the latter is a much better framing because the answer directly sells capability 3 and directly justifies Manicure owning the cache_control policy layer.
+You have just moved the question from \"does pruning save tokens\" to \"does JIT extend cache\" — the latter is a much better framing because the answer directly sells capability 3 and directly justifies Transport Matters owning the cache_control policy layer.
 
 Two things before we build the next spike:
 
-1. **Are you on board with the reframe that Manicure should own cache_control placement**? This is a meaningful positioning shift: Manicure goes from \"intercept for curation\" to \"intercept for curation *and* cache shaping.\" I want to make sure that lands before we design around it.
+1. **Are you on board with the reframe that Transport Matters should own cache_control placement**? This is a meaningful positioning shift: Transport Matters goes from \"intercept for curation\" to \"intercept for curation *and* cache shaping.\" I want to make sure that lands before we design around it.
 2. **Do you want me to save the cache semantics we just learned to context-matters**? The findings from this spike (Claude Code's marker placement, the empirical no-partial-hit behavior, the 1h TTL) are the kind of thing that will matter across sessions and should not live only in this conversation.

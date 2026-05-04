@@ -1,6 +1,6 @@
 # Codex Fixture Corpus
 
-These fixtures pin the Codex transport contract Manicure currently
+These fixtures pin the Codex transport contract Transport Matters currently
 supports.
 
 - `codex_response_create.json`

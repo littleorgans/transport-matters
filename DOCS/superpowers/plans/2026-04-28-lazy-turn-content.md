@@ -4,7 +4,7 @@
 
 **Goal:** Replace the denormalized `user_prompt_preview` field on `IndexEntry` with a lazy-fetched per-card endpoint that returns full last-user-message text and full assistant-response text, enabling side-by-side request/response rendering on the Exchange card.
 
-**Architecture:** Add a thin `GET /api/exchanges/{id}/turn-content` endpoint that reuses the already-parsed IR objects from `storage.read_exchange()`. New extractor `extract_response_text(res_ir)` mirrors the existing user-side extractor: prefer `TextBlock`, fall back to `ToolUseBlock` (JSON of input) and `ThinkingBlock` (XML-tagged). Frontend gets a React Query hook keyed on `["turn-content", id]`; `ExchangeTurnCard` renders two `ExchangePreview` columns fed by this hook. The legacy preview field, extractor, and constant are removed; manicure has no users so the storage cache is nuked on schema change rather than migrated.
+**Architecture:** Add a thin `GET /api/exchanges/{id}/turn-content` endpoint that reuses the already-parsed IR objects from `storage.read_exchange()`. New extractor `extract_response_text(res_ir)` mirrors the existing user-side extractor: prefer `TextBlock`, fall back to `ToolUseBlock` (JSON of input) and `ThinkingBlock` (XML-tagged). Frontend gets a React Query hook keyed on `["turn-content", id]`; `ExchangeTurnCard` renders two `ExchangePreview` columns fed by this hook. The legacy preview field, extractor, and constant are removed; Transport Matters has no users so the storage cache is nuked on schema change rather than migrated.
 
 **Tech Stack:** Python 3.13 / FastAPI / Pydantic v2 (frozen IR), React 18 / TypeScript / `@tanstack/react-query` v5, Vitest, Playwright.
 
@@ -13,13 +13,13 @@
 ## File Structure
 
 **Backend (Python):**
-- Modify `api/src/manicure/exchange_stats.py` — add `extract_response_text`, add cap-free `extract_user_prompt_text`, drop `extract_user_prompt_preview` and `_PREVIEW_MAX_CHARS` after switchover
-- Modify `api/src/manicure/test_exchange_stats.py` — add tests for new extractors, drop tests for removed function
-- Modify `api/src/manicure/api/v1/exchanges.py` — add `TurnContentResponse` model and `GET /{exchange_id}/turn-content` route
-- Create `api/src/manicure/api/v1/test_exchanges_turn_content.py` — integration test for the new route
-- Modify `api/src/manicure/storage/base.py` — drop `user_prompt_preview` field from `IndexEntry`
-- Modify `api/src/manicure/exchange_recorder.py` — drop `user_prompt_preview=` kwargs and import
-- Modify `api/src/manicure/codex/exchange.py` — drop `user_prompt_preview=` kwargs and import
+- Modify `api/src/transport_matters/exchange_stats.py` — add `extract_response_text`, add cap-free `extract_user_prompt_text`, drop `extract_user_prompt_preview` and `_PREVIEW_MAX_CHARS` after switchover
+- Modify `api/src/transport_matters/test_exchange_stats.py` — add tests for new extractors, drop tests for removed function
+- Modify `api/src/transport_matters/api/v1/exchanges.py` — add `TurnContentResponse` model and `GET /{exchange_id}/turn-content` route
+- Create `api/src/transport_matters/api/v1/test_exchanges_turn_content.py` — integration test for the new route
+- Modify `api/src/transport_matters/storage/base.py` — drop `user_prompt_preview` field from `IndexEntry`
+- Modify `api/src/transport_matters/exchange_recorder.py` — drop `user_prompt_preview=` kwargs and import
+- Modify `api/src/transport_matters/codex/exchange.py` — drop `user_prompt_preview=` kwargs and import
 
 **Frontend (TypeScript):**
 - Modify `www/src/api.ts` — add `fetchTurnContent` and `TurnContent` type
@@ -36,16 +36,16 @@
 ## Task 1: Backend extractor for response text
 
 **Files:**
-- Modify: `api/src/manicure/exchange_stats.py`
-- Test: `api/src/manicure/test_exchange_stats.py`
+- Modify: `api/src/transport_matters/exchange_stats.py`
+- Test: `api/src/transport_matters/test_exchange_stats.py`
 
 - [ ] **Step 1: Write failing tests for `extract_response_text`**
 
-Append to `api/src/manicure/test_exchange_stats.py`:
+Append to `api/src/transport_matters/test_exchange_stats.py`:
 
 ```python
-from manicure.exchange_stats import extract_response_text
-from manicure.ir import (
+from transport_matters.exchange_stats import extract_response_text
+from transport_matters.ir import (
     InternalResponse,
     ThinkingBlock,
     ToolUseBlock,
@@ -97,7 +97,7 @@ def test_extract_response_text_returns_none_when_empty() -> None:
 
 
 def test_extract_response_text_returns_none_when_only_unknown() -> None:
-    from manicure.ir import UnknownBlock
+    from transport_matters.ir import UnknownBlock
 
     res = _make_res([UnknownBlock(type="weird", raw={"foo": "bar"})])
     assert extract_response_text(res) is None
@@ -106,19 +106,19 @@ def test_extract_response_text_returns_none_when_only_unknown() -> None:
 - [ ] **Step 2: Run tests to verify failure**
 
 ```bash
-cd api && uv run pytest src/manicure/test_exchange_stats.py -k extract_response_text -v
+cd api && uv run pytest src/transport_matters/test_exchange_stats.py -k extract_response_text -v
 ```
 
 Expected: 6 failures with `ImportError: cannot import name 'extract_response_text'`.
 
 - [ ] **Step 3: Implement `extract_response_text`**
 
-Add to `api/src/manicure/exchange_stats.py` (after `_flatten_user_text`, before `build_req_stats`):
+Add to `api/src/transport_matters/exchange_stats.py` (after `_flatten_user_text`, before `build_req_stats`):
 
 ```python
 import json
 
-from manicure.ir import (
+from transport_matters.ir import (
     ContentBlock,
     InternalRequest,
     InternalResponse,
@@ -152,7 +152,7 @@ def extract_response_text(res: InternalResponse) -> str | None:
 - [ ] **Step 4: Run tests to verify pass**
 
 ```bash
-cd api && uv run pytest src/manicure/test_exchange_stats.py -k extract_response_text -v
+cd api && uv run pytest src/transport_matters/test_exchange_stats.py -k extract_response_text -v
 ```
 
 Expected: 6 pass.
@@ -160,7 +160,7 @@ Expected: 6 pass.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add api/src/manicure/exchange_stats.py api/src/manicure/test_exchange_stats.py
+git add api/src/transport_matters/exchange_stats.py api/src/transport_matters/test_exchange_stats.py
 git commit -m "nancy[ALP-2006]: add extract_response_text helper"
 ```
 
@@ -169,15 +169,15 @@ git commit -m "nancy[ALP-2006]: add extract_response_text helper"
 ## Task 2: Backend extractor for full user prompt text (no cap)
 
 **Files:**
-- Modify: `api/src/manicure/exchange_stats.py`
-- Test: `api/src/manicure/test_exchange_stats.py`
+- Modify: `api/src/transport_matters/exchange_stats.py`
+- Test: `api/src/transport_matters/test_exchange_stats.py`
 
 - [ ] **Step 1: Write failing test for `extract_user_prompt_text`**
 
 Append to `test_exchange_stats.py`:
 
 ```python
-from manicure.exchange_stats import extract_user_prompt_text
+from transport_matters.exchange_stats import extract_user_prompt_text
 
 
 def test_extract_user_prompt_text_returns_full_text_uncapped() -> None:
@@ -208,7 +208,7 @@ def test_extract_user_prompt_text_falls_back_to_tool_result() -> None:
 - [ ] **Step 2: Run tests to verify failure**
 
 ```bash
-cd api && uv run pytest src/manicure/test_exchange_stats.py -k extract_user_prompt_text -v
+cd api && uv run pytest src/transport_matters/test_exchange_stats.py -k extract_user_prompt_text -v
 ```
 
 Expected: 4 import failures.
@@ -232,7 +232,7 @@ def extract_user_prompt_text(ir: InternalRequest) -> str | None:
 - [ ] **Step 4: Run tests to verify pass**
 
 ```bash
-cd api && uv run pytest src/manicure/test_exchange_stats.py -k extract_user_prompt_text -v
+cd api && uv run pytest src/transport_matters/test_exchange_stats.py -k extract_user_prompt_text -v
 ```
 
 Expected: 4 pass.
@@ -240,7 +240,7 @@ Expected: 4 pass.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add api/src/manicure/exchange_stats.py api/src/manicure/test_exchange_stats.py
+git add api/src/transport_matters/exchange_stats.py api/src/transport_matters/test_exchange_stats.py
 git commit -m "nancy[ALP-2006]: add extract_user_prompt_text uncapped helper"
 ```
 
@@ -249,12 +249,12 @@ git commit -m "nancy[ALP-2006]: add extract_user_prompt_text uncapped helper"
 ## Task 3: Backend turn-content endpoint
 
 **Files:**
-- Modify: `api/src/manicure/api/v1/exchanges.py`
-- Create: `api/src/manicure/api/v1/test_exchanges_turn_content.py`
+- Modify: `api/src/transport_matters/api/v1/exchanges.py`
+- Create: `api/src/transport_matters/api/v1/test_exchanges_turn_content.py`
 
 - [ ] **Step 1: Write failing route test**
 
-Create `api/src/manicure/api/v1/test_exchanges_turn_content.py`:
+Create `api/src/transport_matters/api/v1/test_exchanges_turn_content.py`:
 
 ```python
 """Tests for GET /api/exchanges/{id}/turn-content."""
@@ -263,12 +263,12 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from manicure.ir import (
+from transport_matters.ir import (
     InternalResponse,
     TextBlock,
     UsageStats,
 )
-from manicure.storage.base import ExchangeArtifacts
+from transport_matters.storage.base import ExchangeArtifacts
 
 from .test_exchanges_support import make_index_entry, make_ir
 
@@ -277,7 +277,7 @@ if TYPE_CHECKING:
 
 
 async def _seed_complete(exchange_id: str = "ex-001") -> None:
-    from manicure.storage import get_storage
+    from transport_matters.storage import get_storage
 
     storage = await get_storage()
     entry = make_index_entry(exchange_id)
@@ -313,7 +313,7 @@ async def test_turn_content_returns_404_for_missing(client: "AsyncClient") -> No
 
 
 async def test_turn_content_null_response_when_in_flight(client: "AsyncClient") -> None:
-    from manicure.storage import get_storage
+    from transport_matters.storage import get_storage
 
     storage = await get_storage()
     entry = make_index_entry("ex-pending")
@@ -332,19 +332,19 @@ async def test_turn_content_null_response_when_in_flight(client: "AsyncClient") 
     assert body["stop_reason"] is None
 ```
 
-The `client` fixture and storage isolation come from `api/src/manicure/api/v1/conftest.py` automatically.
+The `client` fixture and storage isolation come from `api/src/transport_matters/api/v1/conftest.py` automatically.
 
 - [ ] **Step 2: Run test to verify failure**
 
 ```bash
-cd api && uv run pytest src/manicure/api/v1/test_exchanges_turn_content.py -v
+cd api && uv run pytest src/transport_matters/api/v1/test_exchanges_turn_content.py -v
 ```
 
 Expected: tests fail with 404 (route not registered).
 
 - [ ] **Step 3: Implement endpoint**
 
-Add to `api/src/manicure/api/v1/exchanges.py` (after `PipelineTokensResponse` class definition, near line 178):
+Add to `api/src/transport_matters/api/v1/exchanges.py` (after `PipelineTokensResponse` class definition, near line 178):
 
 ```python
 class TurnContentResponse(BaseModel):
@@ -384,13 +384,13 @@ async def get_turn_content(
 Add imports at the top of the file:
 
 ```python
-from manicure.exchange_stats import extract_response_text, extract_user_prompt_text
+from transport_matters.exchange_stats import extract_response_text, extract_user_prompt_text
 ```
 
 - [ ] **Step 4: Run test to verify pass**
 
 ```bash
-cd api && uv run pytest src/manicure/api/v1/test_exchanges_turn_content.py -v
+cd api && uv run pytest src/transport_matters/api/v1/test_exchanges_turn_content.py -v
 ```
 
 Expected: 3 pass.
@@ -406,7 +406,7 @@ Expected: all pass.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add api/src/manicure/api/v1/exchanges.py api/src/manicure/api/v1/test_exchanges_turn_content.py
+git add api/src/transport_matters/api/v1/exchanges.py api/src/transport_matters/api/v1/test_exchanges_turn_content.py
 git commit -m "nancy[ALP-2006]: add turn-content endpoint"
 ```
 
@@ -772,16 +772,16 @@ git commit -m "nancy[ALP-2006]: side-by-side prompt/response on exchange card"
 ## Task 8: Drop legacy `user_prompt_preview` field and extractor
 
 **Files:**
-- Modify: `api/src/manicure/storage/base.py`
-- Modify: `api/src/manicure/exchange_stats.py`
-- Modify: `api/src/manicure/test_exchange_stats.py`
-- Modify: `api/src/manicure/exchange_recorder.py`
-- Modify: `api/src/manicure/codex/exchange.py`
+- Modify: `api/src/transport_matters/storage/base.py`
+- Modify: `api/src/transport_matters/exchange_stats.py`
+- Modify: `api/src/transport_matters/test_exchange_stats.py`
+- Modify: `api/src/transport_matters/exchange_recorder.py`
+- Modify: `api/src/transport_matters/codex/exchange.py`
 - Modify: `www/src/types.ts`
 
 - [ ] **Step 1: Remove field from `IndexEntry`**
 
-In `api/src/manicure/storage/base.py` line 124, delete:
+In `api/src/transport_matters/storage/base.py` line 124, delete:
 
 ```python
     user_prompt_preview: str | None = None
@@ -789,23 +789,23 @@ In `api/src/manicure/storage/base.py` line 124, delete:
 
 - [ ] **Step 2: Remove backend call sites**
 
-In `api/src/manicure/exchange_recorder.py`:
+In `api/src/transport_matters/exchange_recorder.py`:
 - Line 17: drop `extract_user_prompt_preview` from the import list (keep other imports)
 - Lines 251 and 316: delete the entire `user_prompt_preview=extract_user_prompt_preview(curated_ir),` line
 
-In `api/src/manicure/codex/exchange.py`:
+In `api/src/transport_matters/codex/exchange.py`:
 - Line 37: drop `extract_user_prompt_preview` from the import list
 - Lines 119, 259, 542: delete each `user_prompt_preview=extract_user_prompt_preview(...)` line
 
 - [ ] **Step 3: Remove extractor function and constant**
 
-In `api/src/manicure/exchange_stats.py`:
+In `api/src/transport_matters/exchange_stats.py`:
 
 Delete `_PREVIEW_MAX_CHARS = 1000` (line 22) and the entire `extract_user_prompt_preview` function definition (lines 25-39).
 
 - [ ] **Step 4: Remove extractor tests**
 
-In `api/src/manicure/test_exchange_stats.py`, delete the import of `extract_user_prompt_preview` and every test starting `test_extract_preview_*` (the full original test set, not the new `extract_user_prompt_text` tests).
+In `api/src/transport_matters/test_exchange_stats.py`, delete the import of `extract_user_prompt_preview` and every test starting `test_extract_preview_*` (the full original test set, not the new `extract_user_prompt_text` tests).
 
 - [ ] **Step 5: Remove frontend type field**
 
@@ -818,7 +818,7 @@ In `www/src/types.ts` line 67, delete:
 - [ ] **Step 6: Search for stragglers**
 
 ```bash
-cd /Users/alphab/Dev/LLM/DEV/helioy/manicure-worktrees/nancy-ALP-2006
+cd /Users/alphab/Dev/LLM/DEV/helioy/transport-matters-worktrees/nancy-ALP-2006
 grep -rn "user_prompt_preview\|extract_user_prompt_preview\|_PREVIEW_MAX_CHARS" api/ www/ --include="*.py" --include="*.ts" --include="*.tsx"
 ```
 
@@ -836,7 +836,7 @@ Expected: all pass.
 - [ ] **Step 8: Nuke local cache (no backcompat — schema changed)**
 
 ```bash
-rm -rf ~/.manicure/exchanges
+rm -rf ~/.transport-matters/workspaces
 ```
 
 - [ ] **Step 9: Commit**
@@ -855,7 +855,7 @@ git commit -m "nancy[ALP-2006]: drop user_prompt_preview field and extractor"
 - [ ] **Step 1: Backend typecheck**
 
 ```bash
-cd api && uv run mypy src/manicure
+cd api && uv run mypy src/transport_matters
 ```
 
 Expected: clean.
@@ -894,7 +894,7 @@ Expected: snapshots updated where the card visually changed; review diffs and co
 
 - [ ] **Step 6: Manual end-to-end smoke**
 
-Start the manicure proxy + dev frontend, send one Anthropic request through, observe a card render with side-by-side preview columns:
+Start the transport-matters proxy + dev frontend, send one Anthropic request through, observe a card render with side-by-side preview columns:
 
 ```bash
 just dev

@@ -1,6 +1,6 @@
 # Codex Transport Artifacts
 
-Codex websocket exchanges use the same per exchange directory as HTTP traffic under the Manicure storage root. The directory name stays timestamp plus exchange id prefix:
+Codex websocket exchanges use the same per exchange directory as HTTP traffic under the Transport Matters storage root. The directory name stays timestamp plus exchange id prefix:
 
 `{storage_root}/{YYYYMMDDTHHMMSSZ}-{exchange_id[:8]}/`
 
@@ -15,7 +15,7 @@ Always present:
 - `request.ir.json`
   - The normalized `InternalRequest` derived from `request.raw`.
 
-Present when Manicure changed or reserialized the outbound request:
+Present when Transport Matters changed or reserialized the outbound request:
 
 - `request.curated.raw`
   - The exact bytes forwarded upstream after pipeline changes and any breakpoint edits.
@@ -43,7 +43,7 @@ Present for Codex websocket exchanges:
 ## Notes
 
 - Codex exchanges currently persist response stream transport artifacts instead of a parsed `response.ir.json`. The detail API exposes `transport` for inspection, and the index row carries a lightweight `ResStats` summary derived from the captured server frames.
-- `request.curated.raw` is intentionally explicit. It records the exact payload Manicure forwarded, which can differ from `request.raw` even when the logical IR did not change because the adapter reserialized the frame.
+- `request.curated.raw` is intentionally explicit. It records the exact payload Transport Matters forwarded, which can differ from `request.raw` even when the logical IR did not change because the adapter reserialized the frame.
 - Failed websocket upgrades now persist a diagnostic Codex exchange even when no websocket session was established. Those rows use `model=codex/transport-handshake`, store the HTTP failure body in `response.raw`, and keep the upgrade metadata in `transport.json`.
 - Legacy `transport.json` rows written before header redaction are sanitized lazily on first read and rewritten in place. That keeps historical exchanges inspectable without returning raw auth material through the API.
 
