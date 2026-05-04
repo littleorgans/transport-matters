@@ -1,4 +1,4 @@
-"""The `manicure paths` resolution logic.
+"""The `transport-matters paths` resolution logic.
 
 Split out from ``cli/__init__.py`` so the package entry point stays
 under the 700-LOC invariant and this module can own the workspace
@@ -10,9 +10,9 @@ Resolution order for the ``storage`` value:
    contains a path separator or expands via ``~``) or a slug. Paths
    canonicalise via :func:`workspace_id`; slugs go through a manifest
    scan under ``~/.manicure/workspaces/{slug}/``.
-2. Otherwise prefer ``MANICURE_CWD`` from the environment — so
-   ``manicure paths`` invoked from a Claude session launched by
-   ``manicure start`` targets the launching workspace even if the
+2. Otherwise prefer ``TRANSPORT_MATTERS_CWD`` from the environment — so
+   ``transport-matters paths`` invoked from a Claude session launched by
+   ``transport-matters claude`` targets the launching workspace even if the
    user has ``cd``'d into a subdirectory. Fall back to ``Path.cwd()``
    when the env var is absent (bare CLI invocation).
 3. Once a target CWD or slug is known, prefer a live manifest's
@@ -36,6 +36,8 @@ from transport_matters.lock import WorkspaceLock
 from transport_matters.manifest import Manifest, read
 from transport_matters.workspace import workspace_root
 
+from .identity import CLI_COMMAND
+
 __all__ = ["resolve_paths"]
 
 
@@ -48,7 +50,7 @@ def _workspaces_root() -> Path:
 
 
 def resolve_paths(*, workspace: str | None, as_json: bool) -> None:
-    """Body of ``manicure paths``.
+    """Body of ``transport-matters paths``.
 
     Resolves the storage root per ``workspace`` (see module docstring),
     then renders the standard set of path entries as either JSON or an
@@ -85,11 +87,11 @@ def _resolve_storage(selector: str | None) -> Path:
     See the module docstring for the full resolution order.
     """
     if selector is None:
-        # MANICURE_CWD wins over Path.cwd() so a paths lookup from a
-        # Claude session spawned by ``manicure start`` resolves to the
+        # TRANSPORT_MATTERS_CWD wins over Path.cwd() so a paths lookup from a
+        # Claude session spawned by ``transport-matters claude`` resolves to the
         # launching workspace even if the user has since ``cd``'d into
         # a subdirectory. Empty string is treated as unset.
-        env_cwd = os.environ.get("MANICURE_CWD") or None
+        env_cwd = os.environ.get("TRANSPORT_MATTERS_CWD") or None
         return _storage_for_cwd(Path(env_cwd) if env_cwd else Path.cwd())
 
     # A path-shaped selector goes through CWD resolution; a bare token
@@ -142,7 +144,8 @@ def _storage_for_slug(slug: str) -> Path:
             err=True,
         )
         typer.echo(
-            "Run `manicure list` to see live workspaces, or pass a directory path.",
+            f"Run `{CLI_COMMAND} list` to see live workspaces, "
+            "or pass a directory path.",
             err=True,
         )
         raise typer.Exit(2)
@@ -168,7 +171,7 @@ def _live_manifest(ws_root: Path) -> Manifest | None:
     Returns ``None`` when the manifest is missing, malformed, or the
     sibling lock is not currently held (i.e. stale manifest from a
     crashed instance). ``paths`` is read-only, so we never reap stale
-    manifests here — ``manicure list`` handles that.
+    manifests here; ``transport-matters list`` handles that.
     """
     m = read(ws_root / "manifest.json")
     if m is None:

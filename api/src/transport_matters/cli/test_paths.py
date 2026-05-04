@@ -19,10 +19,10 @@ runner = CliRunner()
 @pytest.fixture(autouse=True)
 def _clear_manicure_cwd_env(monkeypatch: pytest.MonkeyPatch) -> None:
     # Tests that rely on the Path.cwd() fallback must not inherit a
-    # MANICURE_CWD from the shell running pytest (e.g. a Claude session
+    # TRANSPORT_MATTERS_CWD from the shell running pytest (e.g. a Claude session
     # launched by ``manicure start``). Clear unconditionally; tests that
     # want the env-set branch can set it themselves.
-    monkeypatch.delenv("MANICURE_CWD", raising=False)
+    monkeypatch.delenv("TRANSPORT_MATTERS_CWD", raising=False)
 
 
 def test_paths_text_output_lists_expected_keys(tmp_storage: Path) -> None:
@@ -128,7 +128,7 @@ def test_paths_respects_manicure_cwd_env_over_process_cwd(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """``MANICURE_CWD`` overrides :meth:`Path.cwd` for the default selector.
+    """``TRANSPORT_MATTERS_CWD`` overrides :meth:`Path.cwd` for the default selector.
 
     Simulates running ``manicure paths`` from inside a Claude session
     launched by ``manicure start <project>`` after the user ``cd``'d
@@ -140,7 +140,7 @@ def test_paths_respects_manicure_cwd_env_over_process_cwd(
     subdir = launch_dir / "api"
     subdir.mkdir()
     monkeypatch.chdir(subdir)
-    monkeypatch.setenv("MANICURE_CWD", str(launch_dir))
+    monkeypatch.setenv("TRANSPORT_MATTERS_CWD", str(launch_dir))
 
     result = runner.invoke(main, ["paths", "--json"])
     assert result.exit_code == 0, result.output

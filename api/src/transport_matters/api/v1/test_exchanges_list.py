@@ -31,7 +31,7 @@ class TestListExchanges:
     ) -> None:
         from transport_matters.storage import get_storage
 
-        monkeypatch.setenv("MANICURE_RUN_ID", "run-current")
+        monkeypatch.setenv("TRANSPORT_MATTERS_RUN_ID", "run-current")
         config.get_settings.cache_clear()
         storage = await get_storage()
         entry = make_index_entry(run_id="run-current")
@@ -48,7 +48,7 @@ class TestListExchanges:
     ) -> None:
         from transport_matters.storage import get_storage
 
-        monkeypatch.setenv("MANICURE_RUN_ID", "run-current")
+        monkeypatch.setenv("TRANSPORT_MATTERS_RUN_ID", "run-current")
         config.get_settings.cache_clear()
         storage = await get_storage()
         await storage.append_index(make_index_entry("ex-old", run_id="run-old"))
@@ -64,7 +64,7 @@ class TestListExchanges:
     ) -> None:
         from transport_matters.storage import get_storage
 
-        monkeypatch.setenv("MANICURE_RUN_ID", "run-current")
+        monkeypatch.setenv("TRANSPORT_MATTERS_RUN_ID", "run-current")
         config.get_settings.cache_clear()
         storage = await get_storage()
         await storage.append_index(make_index_entry("ex-old", run_id="run-old"))
@@ -80,7 +80,7 @@ class TestListExchanges:
     ) -> None:
         from transport_matters.storage import get_storage
 
-        monkeypatch.setenv("MANICURE_RUN_ID", "run-current")
+        monkeypatch.setenv("TRANSPORT_MATTERS_RUN_ID", "run-current")
         config.get_settings.cache_clear()
         storage = await get_storage()
         await storage.append_index(
@@ -122,7 +122,7 @@ class TestListExchanges:
     ) -> None:
         from transport_matters.storage import get_storage
 
-        monkeypatch.setenv("MANICURE_RUN_ID", "run-current")
+        monkeypatch.setenv("TRANSPORT_MATTERS_RUN_ID", "run-current")
         config.get_settings.cache_clear()
         storage = await get_storage()
         await storage.append_index(make_index_entry("anth-old", run_id="run-old"))
@@ -171,7 +171,7 @@ class TestListExchanges:
     ) -> None:
         from transport_matters.storage import get_storage
 
-        monkeypatch.setenv("MANICURE_RUN_ID", "run-current")
+        monkeypatch.setenv("TRANSPORT_MATTERS_RUN_ID", "run-current")
         config.get_settings.cache_clear()
         storage = await get_storage()
         await storage.append_index(
@@ -211,7 +211,7 @@ class TestListExchanges:
     async def test_list_recovers_http_provisional_row_through_finalize(
         self, client: AsyncClient, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setenv("MANICURE_RUN_ID", "run-http")
+        monkeypatch.setenv("TRANSPORT_MATTERS_RUN_ID", "run-http")
         config.get_settings.cache_clear()
         bp.disarm()
         bp._paused.clear()

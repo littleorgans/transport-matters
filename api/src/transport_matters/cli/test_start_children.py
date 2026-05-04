@@ -34,7 +34,7 @@ def test_start_calls_run_children_with_claude_env(
     workdir.mkdir()
     result = runner.invoke(
         main,
-        ["start", str(workdir), "--no-system-prompt", "--proxy-port", "9900"],
+        ["claude", str(workdir), "--no-system-prompt", "--proxy-port", "9900"],
     )
     assert result.exit_code == 0, result.output
     spy_run_children.assert_called_once()
@@ -43,7 +43,7 @@ def test_start_calls_run_children_with_claude_env(
     assert kwargs["claude_env"]["ANTHROPIC_BASE_URL"] == "http://127.0.0.1:9900"
     assert kwargs["claude_cwd"] == workdir
     assert kwargs["proxy_port"] == 9900
-    assert f"MANICURE_CWD={workdir}" in result.output
+    assert f"TRANSPORT_MATTERS_CWD={workdir}" in result.output
     assert kwargs["mitmdump_argv"][0] == "/bin/mitmdump"
     assert "reverse:https://api.anthropic.com" in kwargs["mitmdump_argv"]
 
@@ -72,7 +72,7 @@ def test_start_sanitizes_managed_claude_env(
     workdir.mkdir()
     result = runner.invoke(
         main,
-        ["start", str(workdir), "--no-system-prompt", "--proxy-port", "9900"],
+        ["claude", str(workdir), "--no-system-prompt", "--proxy-port", "9900"],
     )
     assert result.exit_code == 0, result.output
 
@@ -100,7 +100,7 @@ def test_start_no_claude_passes_none_claude_argv(
     monkeypatch.setattr("transport_matters.cli.shutil.which", _which_all())
     monkeypatch.setattr("transport_matters.cli._port_in_use", lambda _: False)
 
-    result = runner.invoke(main, ["start", "--no-claude"])
+    result = runner.invoke(main, ["claude", "--no-claude"])
     assert result.exit_code == 0, result.output
     kwargs = spy_run_children.call_args.kwargs
     assert kwargs["claude_argv"] is None

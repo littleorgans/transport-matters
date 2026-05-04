@@ -1,4 +1,4 @@
-"""Body of the ``manicure doctor`` subcommand.
+"""Body of the ``transport-matters doctor`` subcommand.
 
 Split out from :mod:`transport_matters.cli` so the package entry point stays
 under the 700-LOC invariant. The typer command itself stays in
@@ -22,13 +22,14 @@ import typer
 from transport_matters import __version__
 from transport_matters.config import get_settings
 
+from .identity import CLI_COMMAND, PRODUCT_LABEL
 from .net import _port_in_use
 
 __all__ = ["run_doctor"]
 
 
 def _resolve_mitmdump() -> str | None:
-    """Prefer the console script from the active manicure environment."""
+    """Prefer the console script from the active Transport Matters environment."""
     scripts_dir = sysconfig.get_path("scripts")
     if scripts_dir:
         resolved = shutil.which("mitmdump", path=scripts_dir)
@@ -55,7 +56,7 @@ def run_doctor() -> None:
         for line in hint.splitlines():
             typer.echo(f"        {line}", err=True)
 
-    typer.echo("manicure doctor")
+    typer.echo(f"{PRODUCT_LABEL} doctor")
     typer.echo(f"  version: {__version__}")
     typer.echo("")
 
@@ -66,7 +67,7 @@ def run_doctor() -> None:
     else:
         _fail(
             "python",
-            f"manicure requires Python >= 3.12, found {py.major}.{py.minor}.\n"
+            f"{PRODUCT_LABEL} requires Python >= 3.12, found {py.major}.{py.minor}.\n"
             "Install a newer Python via https://docs.astral.sh/uv/ or pyenv.",
         )
 
@@ -77,8 +78,8 @@ def run_doctor() -> None:
     else:
         _fail(
             "mitmdump",
-            "`mitmdump` was not found on PATH. Reinstall manicure:\n"
-            "  uv tool install --force manicure",
+            f"`mitmdump` was not found on PATH. Reinstall {PRODUCT_LABEL}:\n"
+            f"  uv tool install --force {CLI_COMMAND}",
         )
 
     # Packaged addon
@@ -88,8 +89,8 @@ def run_doctor() -> None:
     else:
         _fail(
             "addon",
-            "The packaged mitmproxy addon is missing. Reinstall manicure:\n"
-            "  uv tool install --force manicure",
+            f"The packaged mitmproxy addon is missing. Reinstall {PRODUCT_LABEL}:\n"
+            f"  uv tool install --force {CLI_COMMAND}",
         )
 
     # Packaged web bundle (optional — source installs may not have one)
@@ -118,12 +119,12 @@ def run_doctor() -> None:
         _fail(
             "storage",
             f"Cannot write to {storage}: {exc}.\n"
-            "Fix permissions or set `MANICURE_STORAGE_DIR` to a writable path.",
+            "Fix permissions or set `TRANSPORT_MATTERS_STORAGE_DIR` to a writable path.",
         )
 
     # Configured ports — uses the *defaults* from Settings, so the user
     # learns whether their preferred ports are free even though
-    # `manicure start` itself now allocates dynamically.
+    # `transport-matters claude` itself now allocates dynamically.
     for label, port in (
         ("proxy port", settings.proxy_port),
         ("web port", settings.web_port),

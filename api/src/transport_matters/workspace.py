@@ -81,7 +81,7 @@ def workspace_storage(cwd: Path) -> Path:
     the time the addon's :class:`DiskStorageBackend` opens it.
 
     Deliberately bypasses :func:`transport_matters.config.get_settings` — that
-    helper is ``@lru_cache``'d and reads ``MANICURE_STORAGE_DIR`` from
+    helper is ``@lru_cache``'d and reads ``TRANSPORT_MATTERS_STORAGE_DIR`` from
     the environment, which would either (a) lock in a stale path from a
     previous call or (b) feed its own output back to itself once the CLI
     sets the env var for the child process.

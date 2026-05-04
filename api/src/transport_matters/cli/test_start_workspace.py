@@ -46,7 +46,7 @@ def test_start_fails_fast_when_workspace_locked(
     )
 
     with WorkspaceLock(ws_root):
-        result = runner.invoke(main, ["start", str(workdir)])
+        result = runner.invoke(main, ["claude", str(workdir)])
 
     assert result.exit_code == 2
     assert "already live" in result.output
@@ -71,7 +71,7 @@ def test_start_contention_message_falls_back_when_manifest_missing(
     ws_root = workspace_root(workdir)
 
     with WorkspaceLock(ws_root):
-        result = runner.invoke(main, ["start", str(workdir)])
+        result = runner.invoke(main, ["claude", str(workdir)])
 
     assert result.exit_code == 2
     assert "lock" in result.output.lower()
@@ -102,7 +102,7 @@ def test_start_writes_manifest_visible_to_children(
     workdir = tmp_path / "project"
     workdir.mkdir()
     result = runner.invoke(
-        main, ["start", str(workdir), "--proxy-port", "9123", "--web-port", "9124"]
+        main, ["claude", str(workdir), "--proxy-port", "9123", "--web-port", "9124"]
     )
     assert result.exit_code == 0, result.output
     assert captured["exists_mid_run"] is True
@@ -129,12 +129,12 @@ def test_start_releases_lock_on_normal_exit(
 
     workdir = tmp_path / "project"
     workdir.mkdir()
-    result_a = runner.invoke(main, ["start", str(workdir)])
+    result_a = runner.invoke(main, ["claude", str(workdir)])
     assert result_a.exit_code == 0, result_a.output
     assert not (workspace_root(workdir) / "manifest.json").exists()
     with WorkspaceLock(workspace_root(workdir)):
         pass
-    result_b = runner.invoke(main, ["start", str(workdir)])
+    result_b = runner.invoke(main, ["claude", str(workdir)])
     assert result_b.exit_code == 0, result_b.output
     assert spy_run_children.call_count == 2
 
@@ -155,5 +155,5 @@ def test_start_different_cwds_coexist(
     dir_b.mkdir()
 
     with WorkspaceLock(workspace_root(dir_a)):
-        result = runner.invoke(main, ["start", str(dir_b)])
+        result = runner.invoke(main, ["claude", str(dir_b)])
     assert result.exit_code == 0, result.output

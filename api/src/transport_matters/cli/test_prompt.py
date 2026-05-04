@@ -17,7 +17,7 @@ from transport_matters.cli.prompt import (
 
 def test_build_system_prompt_includes_both_urls() -> None:
     msg = build_system_prompt(proxy_port=9000, web_port=9001)
-    assert "running inside manicure" in msg
+    assert "running inside Transport Matters" in msg
     assert "http://127.0.0.1:9000" in msg
     assert "http://127.0.0.1:9001" in msg
 

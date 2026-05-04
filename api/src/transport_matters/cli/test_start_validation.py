@@ -29,7 +29,7 @@ def test_start_refuses_when_proxy_port_is_busy(
     result = runner.invoke(
         main,
         [
-            "start",
+            "claude",
             "--proxy-port",
             str(busy_port),
             "--web-port",
@@ -49,10 +49,10 @@ def test_start_refuses_when_mitmdump_missing(
 ) -> None:
     monkeypatch.setattr("transport_matters.cli.shutil.which", _which_none())
 
-    result = runner.invoke(main, ["start", "--print-command"])
+    result = runner.invoke(main, ["claude", "--print-command"])
     assert result.exit_code == 2
     assert "`mitmdump` was not found" in result.output
-    assert "uv tool install --force manicure" in result.output
+    assert "uv tool install --force transport-matters" in result.output
     spy_run_children.assert_not_called()
 
 
@@ -68,7 +68,7 @@ def test_start_refuses_when_claude_missing(
     )
     monkeypatch.setattr("transport_matters.cli._port_in_use", lambda _: False)
 
-    result = runner.invoke(main, ["start", "--print-command"])
+    result = runner.invoke(main, ["claude", "--print-command"])
     assert result.exit_code == 2
     assert "`claude` was not found" in result.output
     assert "npm install -g @anthropic-ai/claude-code" in result.output
@@ -88,7 +88,7 @@ def test_start_no_claude_works_when_claude_absent(
     )
     monkeypatch.setattr("transport_matters.cli._port_in_use", lambda _: False)
 
-    result = runner.invoke(main, ["start", "--no-claude", "--print-command"])
+    result = runner.invoke(main, ["claude", "--no-claude", "--print-command"])
     assert result.exit_code == 0
 
 
@@ -103,7 +103,7 @@ def test_start_rejects_malformed_upstream_url(
 
     result = runner.invoke(
         main,
-        ["start", "--upstream", "not-a-url", "--print-command"],
+        ["claude", "--upstream", "not-a-url", "--print-command"],
     )
     assert result.exit_code == 2
     assert "invalid upstream URL" in result.output
@@ -120,7 +120,7 @@ def test_start_rejects_upstream_without_scheme(
 
     result = runner.invoke(
         main,
-        ["start", "--upstream", "api.anthropic.com", "--print-command"],
+        ["claude", "--upstream", "api.anthropic.com", "--print-command"],
     )
     assert result.exit_code == 2
     assert "invalid upstream URL" in result.output
@@ -138,7 +138,7 @@ def test_start_rejects_missing_directory(
     monkeypatch.setattr("transport_matters.cli._port_in_use", lambda _: False)
 
     missing = tmp_path / "does-not-exist"
-    result = runner.invoke(main, ["start", str(missing), "--print-command"])
+    result = runner.invoke(main, ["claude", str(missing), "--print-command"])
     assert result.exit_code == 2
     assert (
         "does not exist" in result.output.lower() or "does-not-exist" in result.output

@@ -226,11 +226,11 @@ def test_workspace_storage_skips_get_settings(
 ) -> None:
     """Derived purely from ``workspace_id`` + ``Path.home``.
 
-    The @lru_cache on ``get_settings`` and the MANICURE_STORAGE_DIR env
+    The @lru_cache on ``get_settings`` and the TRANSPORT_MATTERS_STORAGE_DIR env
     var must not influence the returned path.
     """
     monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.setenv("MANICURE_STORAGE_DIR", str(tmp_path / "unused"))
+    monkeypatch.setenv("TRANSPORT_MATTERS_STORAGE_DIR", str(tmp_path / "unused"))
     cwd = tmp_path / "project"
     cwd.mkdir()
     assert workspace_storage(cwd) == workspace_root(cwd)

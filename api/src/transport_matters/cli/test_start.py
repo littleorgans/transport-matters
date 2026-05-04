@@ -38,7 +38,7 @@ def test_start_accepts_directory_argument(
 
     workdir = tmp_path / "project"
     workdir.mkdir()
-    result = runner.invoke(main, ["start", str(workdir), "--print-command"])
+    result = runner.invoke(main, ["claude", str(workdir), "--print-command"])
     assert result.exit_code == 0
 
 
@@ -52,13 +52,13 @@ def test_start_does_not_pollute_os_environ(
         "transport_matters.cli.shutil.which", lambda name, path=None: f"/bin/{name}"
     )
     monkeypatch.setattr("transport_matters.cli._port_in_use", lambda _: False)
-    monkeypatch.delenv("MANICURE_WEB_PORT", raising=False)
-    monkeypatch.delenv("MANICURE_PROXY_PORT", raising=False)
+    monkeypatch.delenv("TRANSPORT_MATTERS_WEB_PORT", raising=False)
+    monkeypatch.delenv("TRANSPORT_MATTERS_PROXY_PORT", raising=False)
 
     result = runner.invoke(
         main,
         [
-            "start",
+            "claude",
             "--proxy-port",
             "9500",
             "--web-port",
@@ -67,8 +67,8 @@ def test_start_does_not_pollute_os_environ(
         ],
     )
     assert result.exit_code == 0
-    assert os.environ.get("MANICURE_WEB_PORT") != "9501"
-    assert os.environ.get("MANICURE_PROXY_PORT") != "9500"
+    assert os.environ.get("TRANSPORT_MATTERS_WEB_PORT") != "9501"
+    assert os.environ.get("TRANSPORT_MATTERS_PROXY_PORT") != "9500"
 
 
 def test_start_fails_when_addon_missing(
@@ -86,7 +86,7 @@ def test_start_fails_when_addon_missing(
 
     monkeypatch.setattr("transport_matters.cli.files", _fake_files)
 
-    result = runner.invoke(main, ["start", "--print-command"])
+    result = runner.invoke(main, ["claude", "--print-command"])
     assert result.exit_code == 2
-    assert "could not locate the manicure mitmproxy addon" in result.output
+    assert "could not locate the Transport Matters mitmproxy addon" in result.output
     spy_run_children.assert_not_called()

@@ -26,7 +26,7 @@ runner = CliRunner()
 def test_list_empty_prints_friendly_message(tmp_storage: Path) -> None:
     result = runner.invoke(main, ["list"])
     assert result.exit_code == 0
-    assert "no live manicure instances" in result.output.lower()
+    assert "no live Transport Matters instances" in result.output
 
 
 def test_list_shows_live_instance(tmp_storage: Path, tmp_path: Path) -> None:
@@ -65,7 +65,7 @@ def test_list_reaps_stale_manifest(tmp_storage: Path, tmp_path: Path) -> None:
     result = runner.invoke(main, ["list"])
     assert result.exit_code == 0
     assert "22222" not in result.output
-    assert "no live manicure instances" in result.output.lower()
+    assert "no live Transport Matters instances" in result.output
     assert not manifest_path.exists()
 
 
@@ -140,5 +140,5 @@ def test_list_help_is_plain_text() -> None:
     result = runner.invoke(main, ["list", "--help"])
     assert result.exit_code == 0
     output = _plain(result.output)
-    assert "List live manicure instances" in output
+    assert "List live Transport Matters instances" in output
     assert "--json" in output

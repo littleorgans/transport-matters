@@ -45,7 +45,7 @@ dependencies = [
 ]
 
 [project.scripts]
-manicure = "transport_matters.cli:main"
+transport-matters = "transport_matters.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/srobinson/transport-matters"

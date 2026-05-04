@@ -1,4 +1,4 @@
-"""Free-port allocation for `manicure start`.
+"""Free-port allocation for Transport Matters launches.
 
 Exposes :func:`allocate_port_pair`, used by ``start`` when the user
 omits ``--proxy-port`` / ``--web-port``. The kernel picks two distinct
@@ -13,7 +13,7 @@ Two intentional non-features:
   of the chosen ports. Spec accepts that race; mitmdump will exit and
   the user can retry or pass ``--proxy-port``.
 
-- We do not coordinate across concurrent ``manicure start`` calls. Two
+- We do not coordinate across concurrent launches. Two
   callers in the same millisecond may both ask the kernel "give me a
   free port" and get the same answer; the loser of the eventual bind
   race retries.

@@ -68,7 +68,7 @@ def test_doctor_reports_missing_mitmdump(
     result = runner.invoke(main, ["doctor"])
     assert result.exit_code == 1
     assert "fail  mitmdump" in result.output
-    assert "uv tool install --force manicure" in result.output
+    assert "uv tool install --force transport-matters" in result.output
     assert "check(s) failed" in result.output
 
 
@@ -91,7 +91,7 @@ def test_doctor_fails_when_storage_unwritable(
     # creating parents but the write probe will fail with OSError.
     blocker = tmp_path / "blocker"
     blocker.write_text("i am a file, not a dir")
-    monkeypatch.setenv("MANICURE_STORAGE_DIR", str(blocker))
+    monkeypatch.setenv("TRANSPORT_MATTERS_STORAGE_DIR", str(blocker))
     monkeypatch.setattr("transport_matters.cli.shutil.which", _which_all())
     monkeypatch.setattr("transport_matters.cli.diagnose._port_in_use", lambda _: False)
     from transport_matters import config

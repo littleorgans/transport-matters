@@ -1,6 +1,6 @@
 """Enable `python -m transport_matters.cli` as a dev convenience.
 
-The installed `manicure` script (via `[project.scripts]`) uses
+The installed `transport-matters` script (via `[project.scripts]`) uses
 `transport_matters.cli:main` directly and does not go through this module.
 """
 

@@ -1,4 +1,4 @@
-# Manicure — root justfile
+# Transport Matters root justfile
 # Proxies to api/ and www/
 
 dev_target_dir := invocation_directory()
@@ -44,7 +44,7 @@ tool-install-editable:
 
 [no-exit-message]
 start *args:
-    uv run --project api manicure start {{args}}
+    uv run --project api transport-matters claude {{args}}
 
 # Cut a release: annotated tag vX.Y.Z -> push -> CI publishes to PyPI.
 # Pass --dry-run to just preview, or --yes to skip the confirm.

@@ -26,7 +26,7 @@ def test_start_print_command_does_not_spawn(
     monkeypatch.setattr("transport_matters.cli.shutil.which", _which_all())
     monkeypatch.setattr("transport_matters.cli._port_in_use", lambda _: False)
 
-    result = runner.invoke(main, ["start", "--print-command"])
+    result = runner.invoke(main, ["claude", "--print-command"])
     assert result.exit_code == 0
     assert "mitmdump" in result.stdout
     assert "reverse:https://api.anthropic.com" in result.stdout
@@ -56,7 +56,7 @@ def test_start_prefers_same_environment_mitmdump(
     monkeypatch.setattr("transport_matters.cli.shutil.which", fake_which)
     monkeypatch.setattr("transport_matters.cli._port_in_use", lambda _: False)
 
-    result = runner.invoke(main, ["start", "--no-system-prompt", "--print-command"])
+    result = runner.invoke(main, ["claude", "--no-system-prompt", "--print-command"])
     assert result.exit_code == 0
     assert "/tool/bin/mitmdump" in result.stdout
     assert "/usr/local/bin/mitmdump" not in result.stdout
@@ -75,7 +75,7 @@ def test_start_print_command_includes_claude_invocation(
     )
     monkeypatch.setattr("transport_matters.cli._port_in_use", lambda _: False)
 
-    result = runner.invoke(main, ["start", "--no-system-prompt", "--print-command"])
+    result = runner.invoke(main, ["claude", "--no-system-prompt", "--print-command"])
     assert result.exit_code == 0
     lines = [line for line in result.stdout.splitlines() if line.strip()]
     assert any("/bin/mitmdump" in line for line in lines)
@@ -94,7 +94,7 @@ def test_start_print_command_no_claude_omits_claude(
     )
     monkeypatch.setattr("transport_matters.cli._port_in_use", lambda _: False)
 
-    result = runner.invoke(main, ["start", "--no-claude", "--print-command"])
+    result = runner.invoke(main, ["claude", "--no-claude", "--print-command"])
     assert result.exit_code == 0
     lines = [line for line in result.stdout.splitlines() if line.strip()]
     assert any("mitmdump" in line for line in lines)
@@ -113,7 +113,7 @@ def test_start_print_command_respects_port_and_upstream(
     result = runner.invoke(
         main,
         [
-            "start",
+            "claude",
             "--proxy-port",
             "9000",
             "--web-port",
@@ -147,7 +147,7 @@ def test_start_uses_claude_bin_override(
 
     result = runner.invoke(
         main,
-        ["start", "--claude-bin", str(fake_claude), "--print-command"],
+        ["claude", "--claude-bin", str(fake_claude), "--print-command"],
     )
     assert result.exit_code == 0
     assert str(fake_claude) in result.stdout

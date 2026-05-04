@@ -19,7 +19,7 @@ if TYPE_CHECKING:
 @pytest.fixture(autouse=True)
 def _clear_settings_cache() -> None:
     # ``get_settings`` is lru_cached; clear before each test so
-    # MANICURE_* env changes take effect.
+    # TRANSPORT_MATTERS_* env changes take effect.
     config.get_settings.cache_clear()
 
 
@@ -44,9 +44,9 @@ class TestMeta:
     async def test_cwd_falls_back_to_process_cwd_when_env_unset(
         self, client: AsyncClient, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        # Direct uvicorn / test runs have no MANICURE_CWD — the endpoint
+        # Direct uvicorn / test runs have no TRANSPORT_MATTERS_CWD — the endpoint
         # should fall back to ``Path.cwd().resolve()`` rather than 500.
-        monkeypatch.delenv("MANICURE_CWD", raising=False)
+        monkeypatch.delenv("TRANSPORT_MATTERS_CWD", raising=False)
         config.get_settings.cache_clear()
         response = await client.get("/api/meta")
         data = response.json()
@@ -58,11 +58,11 @@ class TestMeta:
         monkeypatch: pytest.MonkeyPatch,
         tmp_path: Path,
     ) -> None:
-        # Simulates ``manicure start`` having flowed MANICURE_CWD through.
+        # Simulates ``manicure start`` having flowed TRANSPORT_MATTERS_CWD through.
         # The meta endpoint must honour it instead of Path.cwd(),
         # otherwise a mitmdump inheriting a subdirectory (e.g. api/)
         # leaks that path into project-scoped overlays.
-        monkeypatch.setenv("MANICURE_CWD", str(tmp_path))
+        monkeypatch.setenv("TRANSPORT_MATTERS_CWD", str(tmp_path))
         config.get_settings.cache_clear()
         response = await client.get("/api/meta")
         data = response.json()
@@ -77,7 +77,7 @@ class TestMeta:
     async def test_run_id_respects_env(
         self, client: AsyncClient, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setenv("MANICURE_RUN_ID", "run-123")
+        monkeypatch.setenv("TRANSPORT_MATTERS_RUN_ID", "run-123")
         config.get_settings.cache_clear()
         response = await client.get("/api/meta")
         data = response.json()

@@ -163,7 +163,7 @@ For split frontend and proxy development:
 just dev /absolute/path/to/the/project/you-want-to-run-in
 ```
 
-`just dev` starts the local backend and frontend development stack. The repo root `justfile` exports `MANICURE_CWD` so the proxy and API report the real target workspace rather than the checkout directory.
+`just dev` starts the local backend and frontend development stack. The repo root `justfile` exports `TRANSPORT_MATTERS_CWD` so the proxy and API report the real target workspace rather than the checkout directory.
 
 ## Architecture
 

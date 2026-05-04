@@ -1,4 +1,4 @@
-"""Tests for ``manicure version`` and ``manicure --version``."""
+"""Tests for ``transport-matters version`` and ``transport-matters --version``."""
 
 from __future__ import annotations
 
@@ -19,10 +19,12 @@ def test_version_command_prints_version() -> None:
 def test_version_flag_on_root_prints_version() -> None:
     result = runner.invoke(main, ["--version"])
     assert result.exit_code == 0
+    assert result.stdout.startswith("transport-matters ")
     assert __version__ in result.stdout
 
 
 def test_version_short_flag_prints_version() -> None:
     result = runner.invoke(main, ["-V"])
     assert result.exit_code == 0
+    assert result.stdout.startswith("transport-matters ")
     assert __version__ in result.stdout

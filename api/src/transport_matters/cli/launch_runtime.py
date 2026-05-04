@@ -17,6 +17,7 @@ from transport_matters.manifest import Manifest
 from transport_matters.manifest import write as manifest_write
 from transport_matters.workspace import workspace_id, workspace_root, workspace_storage
 
+from .identity import CLI_COMMAND, PRODUCT_LABEL
 from .ports import PortAllocationError
 
 if TYPE_CHECKING:
@@ -149,7 +150,8 @@ def resolve_launch_ports(
             )
             typer.echo(
                 "Another process is already bound to this port. Either stop it,\n"
-                f"or pick a different port (omit {flag} to let manicure allocate one).",
+                f"or pick a different port (omit {flag} to let "
+                f"{PRODUCT_LABEL} allocate one).",
                 err=True,
             )
             raise typer.Exit(2)
@@ -177,13 +179,13 @@ def resolve_mitmdump_or_exit(
         err=True,
     )
     typer.echo(
-        "mitmproxy ships as a runtime dependency of manicure, so this\n"
+        f"mitmproxy ships as a runtime dependency of {PRODUCT_LABEL}, so this\n"
         "usually means the install did not link the console scripts.\n"
         "\n"
         "Try one of:\n"
-        "  uv tool install --force manicure     # reinstall as a tool\n"
-        "  pipx reinstall manicure              # if you used pipx\n"
-        "  pip install --force-reinstall manicure",
+        f"  uv tool install --force {CLI_COMMAND}     # reinstall as a tool\n"
+        f"  pipx reinstall {CLI_COMMAND}              # if you used pipx\n"
+        f"  pip install --force-reinstall {CLI_COMMAND}",
         err=True,
     )
     raise typer.Exit(2)
@@ -209,11 +211,11 @@ def build_launch_env(
 ) -> dict[str, str]:
     """Return the shared runtime environment for a launch attempt."""
     env = os.environ.copy()
-    env["MANICURE_STORAGE_DIR"] = str(storage_dir)
-    env["MANICURE_WEB_PORT"] = str(web_port)
-    env["MANICURE_PROXY_PORT"] = str(proxy_port)
-    env["MANICURE_RUN_ID"] = run_id
-    env["MANICURE_CWD"] = str(working_dir)
+    env["TRANSPORT_MATTERS_STORAGE_DIR"] = str(storage_dir)
+    env["TRANSPORT_MATTERS_WEB_PORT"] = str(web_port)
+    env["TRANSPORT_MATTERS_PROXY_PORT"] = str(proxy_port)
+    env["TRANSPORT_MATTERS_RUN_ID"] = run_id
+    env["TRANSPORT_MATTERS_CWD"] = str(working_dir)
     return env
 
 

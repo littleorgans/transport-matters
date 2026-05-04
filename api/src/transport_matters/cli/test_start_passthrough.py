@@ -31,7 +31,7 @@ def test_start_print_command_includes_passthrough(
 
     result = runner.invoke(
         main,
-        ["start", "--print-command", "--", "--model", "sonnet", "--resume"],
+        ["claude", "--print-command", "--", "--model", "sonnet", "--resume"],
     )
     assert result.exit_code == 0, result.output
     claude_line = next(
@@ -52,7 +52,7 @@ def test_start_no_claude_plus_passthrough_fails(
     monkeypatch.setattr("transport_matters.cli.shutil.which", _which_all())
     monkeypatch.setattr("transport_matters.cli._port_in_use", lambda _: False)
 
-    result = runner.invoke(main, ["start", "--no-claude", "--", "--model", "sonnet"])
+    result = runner.invoke(main, ["claude", "--no-claude", "--", "--model", "sonnet"])
     assert result.exit_code == 2
     assert "--no-claude" in result.output
     spy_run_children.assert_not_called()
@@ -70,7 +70,7 @@ def test_start_empty_double_dash_is_noop(
     )
     monkeypatch.setattr("transport_matters.cli._port_in_use", lambda _: False)
 
-    result = runner.invoke(main, ["start", "--no-system-prompt", "--"])
+    result = runner.invoke(main, ["claude", "--no-system-prompt", "--"])
     assert result.exit_code == 0, result.output
     spy_run_children.assert_called_once()
     assert spy_run_children.call_args.kwargs["claude_argv"] == ["/bin/claude"]
@@ -93,7 +93,7 @@ def test_start_dir_plus_passthrough(
     workdir.mkdir()
     result = runner.invoke(
         main,
-        ["start", str(workdir), "--print-command", "--", "--model", "sonnet"],
+        ["claude", str(workdir), "--print-command", "--", "--model", "sonnet"],
     )
     assert result.exit_code == 0, result.output
     claude_line = next(
@@ -116,7 +116,7 @@ def test_start_passthrough_forwards_to_run_children(
     monkeypatch.setattr("transport_matters.cli._port_in_use", lambda _: False)
 
     result = runner.invoke(
-        main, ["start", "--no-system-prompt", "--", "-p", "hello world"]
+        main, ["claude", "--no-system-prompt", "--", "-p", "hello world"]
     )
     assert result.exit_code == 0, result.output
     kwargs = spy_run_children.call_args.kwargs

@@ -1,4 +1,4 @@
-"""Implementation of the `manicure start` command."""
+"""Implementation of the `transport-matters claude` command."""
 
 from __future__ import annotations
 
@@ -10,6 +10,7 @@ from urllib.parse import urlparse
 
 import typer
 
+from .identity import CLI_COMMAND
 from .launch_runtime import (
     build_launch_env,
     new_run_id,
@@ -49,9 +50,9 @@ def _resolve_claude_path(
         "Install Claude Code, or point at an existing install:\n"
         "  npm install -g @anthropic-ai/claude-code\n"
         "  # or\n"
-        "  manicure start --claude-bin /path/to/claude\n"
+        f"  {CLI_COMMAND} claude --claude-bin /path/to/claude\n"
         "  # or run proxy-only:\n"
-        "  manicure start --no-claude",
+        f"  {CLI_COMMAND} claude --no-claude",
         err=True,
     )
     raise typer.Exit(2)
@@ -92,7 +93,7 @@ def _build_start_invocation(
     inject_system_prompt: Callable[..., list[str]],
     user_supplied_system_prompt: Callable[[list[str]], bool],
 ) -> Callable[[int, int], tuple[list[str], dict[str, str], list[str] | None]]:
-    """Build the retry-safe invocation factory for `manicure start`."""
+    """Build the retry-safe invocation factory for `transport-matters claude`."""
 
     def build_invocation(
         proxy_port: int,
@@ -161,7 +162,7 @@ def run_start(
     run_with_retry: Callable[..., None],
     print_contention_error: Callable[..., None],
 ) -> None:
-    """Execute the `start` launch lifecycle."""
+    """Execute the `claude` launch lifecycle."""
     reject_passthrough_without_client(
         disabled=no_claude,
         passthrough=claude_passthrough,

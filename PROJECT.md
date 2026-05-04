@@ -139,7 +139,7 @@ just check                          # lint/type across both
 just build                          # www + api
 ```
 
-The root `justfile` exports `MANICURE_CWD` for split dev so the proxy and API report the real target workspace rather than the checkout.
+The root `justfile` exports `TRANSPORT_MATTERS_CWD` for split dev so the proxy and API report the real target workspace rather than the checkout.
 
 ### Backend conventions (see `api/CLAUDE.md`)
 

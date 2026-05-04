@@ -24,7 +24,7 @@ def validate_port_option(value: int | None) -> int | None:
     passes 0 to mitmdump and into the injected system-prompt URL,
     yielding ``http://127.0.0.1:0`` — a URL the model can't use).
 
-    Omitting the flag (``value is None``) means "let manicure
+    Omitting the flag (``value is None``) means "let Transport Matters
     allocate"; we let that through unchanged.
     """
     if value is None:
@@ -32,7 +32,7 @@ def validate_port_option(value: int | None) -> int | None:
     if value < 1 or value > 65535:
         raise typer.BadParameter(
             f"port must be in 1..65535, got {value}. "
-            "Omit the flag to let manicure allocate a free port."
+            "Omit the flag to let Transport Matters allocate a free port."
         )
     return value
 

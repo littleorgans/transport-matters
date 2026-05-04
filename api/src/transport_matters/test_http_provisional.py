@@ -62,7 +62,7 @@ def _reset_runtime(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Generator
     store.clear()
     store.enabled = True
     get_track_manager()._runs.clear()
-    monkeypatch.setenv("MANICURE_RUN_ID", "run-http")
+    monkeypatch.setenv("TRANSPORT_MATTERS_RUN_ID", "run-http")
     get_settings.cache_clear()
     yield
     broadcast._subscribers.clear()

@@ -16,7 +16,7 @@ def test_python_distribution_metadata_uses_transport_matters() -> None:
         "Issues": "https://github.com/srobinson/transport-matters/issues",
         "Changelog": "https://github.com/srobinson/transport-matters/releases",
     }
-    assert project["scripts"]["manicure"] == "transport_matters.cli:main"
+    assert project["scripts"] == {"transport-matters": "transport_matters.cli:main"}
 
 
 def test_transport_matters_version_fallback_uses_distribution_name() -> None:

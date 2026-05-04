@@ -70,15 +70,15 @@ def recently_closed_port() -> Iterator[int]:
 def tmp_storage(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """Redirect both the default storage directory and ``$HOME`` to a temp path.
 
-    Overriding ``MANICURE_STORAGE_DIR`` sandboxes the captured-exchange
+    Overriding ``TRANSPORT_MATTERS_STORAGE_DIR`` sandboxes the captured-exchange
     disk. Overriding ``$HOME`` sandboxes the per-workspace lock +
     manifest tree at ``~/.manicure/workspaces/`` so one test run does
     not leak artefacts into the developer's real home directory.
     """
     storage = tmp_path / "manicure-home"
-    monkeypatch.setenv("MANICURE_STORAGE_DIR", str(storage))
+    monkeypatch.setenv("TRANSPORT_MATTERS_STORAGE_DIR", str(storage))
     monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.delenv("MANICURE_DEBUG", raising=False)
+    monkeypatch.delenv("TRANSPORT_MATTERS_DEBUG", raising=False)
     # Bust the cached settings so the override actually takes effect.
     from transport_matters import config
 

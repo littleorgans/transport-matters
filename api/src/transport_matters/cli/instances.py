@@ -1,4 +1,4 @@
-"""Workspace instance helpers — the `manicure list` body + contention UX.
+"""Workspace instance helpers for list output and contention UX.
 
 Split out from ``cli/__init__.py`` so the package entry point stays
 under the 700-LOC invariant. Callers in ``__init__`` re-export the
@@ -17,6 +17,7 @@ import typer
 from transport_matters.lock import WorkspaceLock, WorkspaceLocked
 from transport_matters.manifest import Manifest, read, read_all
 
+from .identity import PRODUCT_LABEL
 from .net import loopback_http_url
 
 __all__ = ["_list_instances", "_print_contention_error"]
@@ -39,7 +40,7 @@ def _workspaces_root() -> Path:
 
 
 def _print_contention_error(exc: WorkspaceLocked, working_dir: Path) -> None:
-    """Render a human-readable error for ``manicure start`` on a live workspace.
+    """Render a human-readable error for a live workspace.
 
     Reads the sibling manifest via :func:`transport_matters.manifest.read` so
     the error surfaces the live PID + ports. Missing/malformed manifests
@@ -47,7 +48,7 @@ def _print_contention_error(exc: WorkspaceLocked, working_dir: Path) -> None:
     """
     existing = read(exc.manifest_path)
     typer.secho(
-        "error: another manicure instance is already live in this workspace.",
+        f"error: another {PRODUCT_LABEL} instance is already live in this workspace.",
         fg=typer.colors.RED,
         err=True,
     )
@@ -69,14 +70,14 @@ def _print_contention_error(exc: WorkspaceLocked, working_dir: Path) -> None:
     typer.echo("", err=True)
     typer.echo(
         "If that process is no longer running, the lock releases on its own.\n"
-        "Otherwise stop the running instance, or start manicure from a\n"
+        f"Otherwise stop the running instance, or start {PRODUCT_LABEL} from a\n"
         "different directory.",
         err=True,
     )
 
 
 def _list_instances(*, as_json: bool) -> None:
-    """Body of ``manicure list``.
+    """Body of ``transport-matters list``.
 
     Scans ``~/.manicure/workspaces/``, probes each manifest's lock via
     :meth:`WorkspaceLock.is_held`, reaps stale manifests, and prints
@@ -99,7 +100,7 @@ def _list_instances(*, as_json: bool) -> None:
         return
 
     if not live:
-        typer.echo("no live manicure instances")
+        typer.echo(f"no live {PRODUCT_LABEL} instances")
         return
 
     _print_table(live)
@@ -123,7 +124,7 @@ def _manifest_to_dict(m: Manifest) -> dict[str, object]:
 def _reap(ws_dir: Path) -> None:
     """Remove the stale manifest for a dead workspace.
 
-    Silent by design: best-effort cleanup during ``manicure list``.
+    Silent by design: best-effort cleanup during ``transport-matters list``.
 
     Only the manifest is unlinked — the ``lock`` file stays in place.
     Unlinking the lock would race with a concurrent ``start`` that has

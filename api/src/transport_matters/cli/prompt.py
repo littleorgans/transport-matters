@@ -1,13 +1,13 @@
 """System-prompt injection for the spawned ``claude`` subprocess.
 
-`manicure start` prepends a small ``--append-system-prompt`` argument
+`transport-matters claude` prepends a small ``--append-system-prompt`` argument
 to the claude pass-through so the model knows it's running inside
-manicure and which URLs to point a user at. The injection is suppressed
+Transport Matters and which URLs to point a user at. The injection is suppressed
 when:
 
 - The user passed ``--system-prompt`` or ``--append-system-prompt`` in
   their own pass-through (we don't override an explicit choice).
-- The user passed ``--no-system-prompt`` to ``manicure start``.
+- The user passed ``--no-system-prompt`` to ``transport-matters claude``.
 
 Detection is a prefix match on each pass-through token. That covers
 both ``--append-system-prompt VALUE`` (two tokens) and
@@ -17,6 +17,7 @@ claude's exact argv parser.
 
 from __future__ import annotations
 
+from .identity import PRODUCT_LABEL
 from .net import loopback_http_url
 
 __all__ = [
@@ -30,9 +31,9 @@ _PROMPT_FLAGS: tuple[str, ...] = ("--system-prompt", "--append-system-prompt")
 
 
 def build_system_prompt(*, proxy_port: int, web_port: int) -> str:
-    """Render the manicure-awareness system prompt for a given port pair."""
+    """Render the Transport Matters system prompt for a given port pair."""
     return (
-        "You are running inside manicure. "
+        f"You are running inside {PRODUCT_LABEL}. "
         f"Proxy URL: {loopback_http_url(proxy_port)}. "
         f"Inspector UI: {loopback_http_url(web_port)}."
     )

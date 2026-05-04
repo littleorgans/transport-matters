@@ -74,7 +74,7 @@ def test_start_dynamic_ports_appear_in_print_command(
         "transport_matters.cli.allocate_port_pair", lambda *_a, **_k: (54321, 54322)
     )
 
-    result = runner.invoke(main, ["start", "--print-command"])
+    result = runner.invoke(main, ["claude", "--print-command"])
     assert result.exit_code == 0, result.output
     # Proxy port lands on the mitmdump line as --listen-port.
     assert "54321" in result.stdout
@@ -102,7 +102,7 @@ def test_start_explicit_proxy_port_overrides_allocation(
 
     result = runner.invoke(
         main,
-        ["start", "--proxy-port", "9000", "--print-command"],
+        ["claude", "--proxy-port", "9000", "--print-command"],
     )
     assert result.exit_code == 0, result.output
     # The user's port is honoured for the proxy listener.
@@ -128,7 +128,7 @@ def test_start_port_allocation_error_surfaces_actionable_message(
     monkeypatch.setattr("transport_matters.cli.shutil.which", _which_all())
     monkeypatch.setattr("transport_matters.cli.allocate_port_pair", _raise)
 
-    result = runner.invoke(main, ["start", "--no-claude", "--print-command"])
+    result = runner.invoke(main, ["claude", "--no-claude", "--print-command"])
     assert result.exit_code == 2
     assert "kernel said no" in result.output
     spy_run_children.assert_not_called()
@@ -146,7 +146,7 @@ def test_start_rejects_out_of_range_port_values(
     parse time, click exits with code 2 and a "Invalid value" frame."""
     monkeypatch.setattr("transport_matters.cli.shutil.which", _which_all())
     result = runner.invoke(
-        main, ["start", "--proxy-port", bad_port, "--no-claude", "--print-command"]
+        main, ["claude", "--proxy-port", bad_port, "--no-claude", "--print-command"]
     )
     assert result.exit_code == 2
     # Click prints "Invalid value for '--proxy-port' / '-p': port must be in 1..65535, got <bad_port>."
@@ -175,7 +175,7 @@ def test_start_injects_system_prompt_by_default(
     monkeypatch.setattr("transport_matters.cli._port_in_use", lambda _: False)
 
     result = runner.invoke(
-        main, ["start", "--proxy-port", "9000", "--web-port", "9001"]
+        main, ["claude", "--proxy-port", "9000", "--web-port", "9001"]
     )
     assert result.exit_code == 0, result.output
     argv = spy_run_children.call_args.kwargs["claude_argv"]
@@ -201,7 +201,7 @@ def test_start_no_system_prompt_skips_injection(
     )
     monkeypatch.setattr("transport_matters.cli._port_in_use", lambda _: False)
 
-    result = runner.invoke(main, ["start", "--no-system-prompt"])
+    result = runner.invoke(main, ["claude", "--no-system-prompt"])
     assert result.exit_code == 0, result.output
     argv = spy_run_children.call_args.kwargs["claude_argv"]
     assert "--append-system-prompt" not in argv
@@ -222,7 +222,7 @@ def test_start_user_supplied_system_prompt_wins(
     )
     monkeypatch.setattr("transport_matters.cli._port_in_use", lambda _: False)
 
-    result = runner.invoke(main, ["start", "--", "--system-prompt", "you are X"])
+    result = runner.invoke(main, ["claude", "--", "--system-prompt", "you are X"])
     assert result.exit_code == 0, result.output
     argv = spy_run_children.call_args.kwargs["claude_argv"]
     # Exactly one --system-prompt (the user's) and zero
@@ -248,7 +248,7 @@ def test_start_user_supplied_append_system_prompt_wins(
 
     result = runner.invoke(
         main,
-        ["start", "--proxy-port", "9000", "--", "--append-system-prompt", "extra"],
+        ["claude", "--proxy-port", "9000", "--", "--append-system-prompt", "extra"],
     )
     assert result.exit_code == 0, result.output
     argv = spy_run_children.call_args.kwargs["claude_argv"]
@@ -301,7 +301,7 @@ def test_start_retries_after_bind_failure_then_succeeds(
 
     spy_run_children.side_effect = _side_effect
 
-    result = runner.invoke(main, ["start"])
+    result = runner.invoke(main, ["claude"])
     assert result.exit_code == 0, result.output
     # Both pairs drawn: initial allocation + retry-time re-allocation.
     assert drawn == [(54321, 54322), (60001, 60002)]
@@ -343,7 +343,7 @@ def test_start_exhausts_retry_budget_with_actionable_message(
 
     spy_run_children.side_effect = _side_effect
 
-    result = runner.invoke(main, ["start"])
+    result = runner.invoke(main, ["claude"])
     assert result.exit_code == 1
     # Three attempts exactly; no fourth allocator call (the loop bails
     # before re-allocating on the final iteration).
@@ -397,7 +397,7 @@ def test_start_exhaustion_message_highlights_pinned_flag(
 
     spy_run_children.side_effect = _side_effect
 
-    result = runner.invoke(main, ["start", "--web-port", "9001"])
+    result = runner.invoke(main, ["claude", "--web-port", "9001"])
     assert result.exit_code == 1
     assert spy_run_children.call_count == 3
     # Allocator drew once initially (web=9001 ignored from that pair)
@@ -454,7 +454,7 @@ def test_start_does_not_retry_when_pinned_port_is_in_use(
 
     spy_run_children.side_effect = _side_effect
 
-    result = runner.invoke(main, ["start", "--proxy-port", "9000"])
+    result = runner.invoke(main, ["claude", "--proxy-port", "9000"])
     assert result.exit_code == 2
     # Exactly one spawn attempt: no retry on a pinned-port conflict.
     assert spy_run_children.call_count == 1

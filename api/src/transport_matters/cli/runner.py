@@ -1,4 +1,4 @@
-"""Supervisor-driven lifecycle for `manicure start`.
+"""Supervisor-driven lifecycle for `transport-matters claude`.
 
 Owns both child processes end to end: spawn mitmdump, wait for readiness,
 spawn claude, then translate whichever child exits first into a sensible
@@ -7,7 +7,7 @@ decision matrix.
 
 The startup window also detects ``EADDRINUSE``-shaped failures and
 surfaces them as :class:`BindFailure` rather than ``typer.Exit(1)`` —
-the caller (``cli.start``) catches that to drive the spec's bounded
+the caller catches that to drive the spec's bounded
 allocate-→-spawn retry loop. Other startup failures still raise
 ``typer.Exit(1)`` with the message printed inline, so a broken config
 keeps failing fast rather than burning retry budget.
@@ -174,7 +174,7 @@ def _format_retry_exhaustion(outcome: LaunchRetryExhaustedOutcome) -> list[str]:
             [
                 f"  Pinned (held constant across all attempts): "
                 f"{', '.join(pinned_notes)}.",
-                "Free the pinned port(s), or omit the flag to let manicure allocate\n"
+                "Free the pinned port(s), or omit the flag to let Transport Matters allocate\n"
                 "one. Check what is holding the conflicting ports "
                 "(e.g. `lsof -nP -iTCP -sTCP:LISTEN`).",
             ]
@@ -278,7 +278,7 @@ def _handle_bind_failure(
             err=True,
         )
         typer.echo(
-            "Free the port, or omit the flag to let manicure allocate one.",
+            "Free the port, or omit the flag to let Transport Matters allocate one.",
             err=True,
         )
         raise typer.Exit(2) from exc
@@ -529,7 +529,7 @@ def _run_client_children_until_outcome(
     """
     # The log path is only needed in the default (background-mitmdump)
     # path; `--no-claude` keeps mitmdump in the foreground. We still
-    # create the directory up front so a later `manicure start` without
+    # create the directory up front so a later launch without
     # `--no-claude` doesn't race on it.
     logs_dir = storage_dir / "logs"
     logs_dir.mkdir(parents=True, exist_ok=True)

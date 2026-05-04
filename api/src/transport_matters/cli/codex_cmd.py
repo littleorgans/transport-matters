@@ -1,4 +1,4 @@
-"""Implementation of the `manicure codex` command."""
+"""Implementation of the `transport-matters codex` command."""
 
 from __future__ import annotations
 
@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING
 
 import typer
 
+from .identity import CLI_COMMAND, PRODUCT_LABEL
 from .launch_runtime import (
     build_launch_env,
     build_managed_child_env,
@@ -60,9 +61,9 @@ def _resolve_codex_path(
     )
     typer.echo(
         "Install Codex, or point at an existing binary:\n"
-        "  manicure codex --codex-bin /path/to/codex\n"
+        f"  {CLI_COMMAND} codex --codex-bin /path/to/codex\n"
         "  # or run proxy-only:\n"
-        "  manicure codex --no-codex",
+        f"  {CLI_COMMAND} codex --no-codex",
         err=True,
     )
     raise typer.Exit(2)
@@ -82,7 +83,7 @@ def _resolve_codex_ca_certificate_or_exit(
     if not os.environ.get("CODEX_CA_CERTIFICATE"):
         bundle_dir = Path(
             stack.enter_context(
-                tempfile.TemporaryDirectory(prefix="manicure-codex-ca-")
+                tempfile.TemporaryDirectory(prefix="transport-matters-codex-ca-")
             )
         )
     try:
@@ -100,7 +101,7 @@ def _resolve_codex_ca_certificate_or_exit(
         )
         typer.echo(f"  Expected an existing PEM bundle at {exc.path}.", err=True)
         typer.echo(
-            "  Unset CODEX_CA_CERTIFICATE to let manicure generate one,\n"
+            f"  Unset CODEX_CA_CERTIFICATE to let {PRODUCT_LABEL} generate one,\n"
             "  or point it at a readable CA bundle file.",
             err=True,
         )
@@ -187,7 +188,7 @@ def _build_codex_invocation(
     codex_ca_certificate: str | None,
     debug: bool,
 ) -> Callable[[int, int], tuple[list[str], dict[str, str], ManagedClient | None]]:
-    """Build the retry-safe invocation factory for `manicure codex`."""
+    """Build the retry-safe invocation factory for `transport-matters codex`."""
 
     def build_invocation(
         proxy_port: int,
@@ -257,7 +258,7 @@ def _run_codex_launch(
     run_client_with_retry: Callable[..., None],
     write_manifest_for: Callable[[int, int], None],
 ) -> None:
-    """Drive the workspace-scoped retry loop for `manicure codex`."""
+    """Drive the workspace-scoped retry loop for `transport-matters codex`."""
 
     def print_banner_for(current_proxy_port: int, current_web_port: int) -> None:
         proxy_hint = None

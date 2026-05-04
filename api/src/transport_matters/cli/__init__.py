@@ -1,17 +1,17 @@
-"""Manicure command-line interface.
+"""Transport Matters command-line interface.
 
 This package is the `[project.scripts]` entry point installed by `pip` /
 `uv tool install` / the `install.sh` bootstrap. It exposes two launch
-commands (`claude`, `codex`), a hidden compatibility alias (`start`),
-plus three support commands (`doctor`, `paths`, `version`).
+commands (`claude`, `codex`) plus support commands (`doctor`, `paths`,
+`list`, `version`).
 
 Module layout:
   help.py         — all static help text + plain-text renderers
   net.py          — port probing helpers
   banner.py       — startup banner
   runner.py       — supervisor-driven child lifecycles
-  start_cmd.py    — `manicure claude` implementation
-  codex_cmd.py    — `manicure codex` implementation
+  start_cmd.py    — `transport-matters claude` implementation
+  codex_cmd.py    — `transport-matters codex` implementation
   launch_runtime.py — shared launch plumbing
   __init__.py     — typer app, command registration, and re-exports
 
@@ -46,6 +46,7 @@ from .banner import _print_banner, _print_client_banner
 from .codex_cmd import run_codex
 from .diagnose import run_doctor
 from .help import _PlainCommand, _PlainGroup
+from .identity import CLI_COMMAND
 from .instances import _list_instances, _print_contention_error
 from .net import _port_in_use, _wait_for_port_ready, validate_port_option
 from .paths import resolve_paths
@@ -83,7 +84,7 @@ __all__ = [
 
 
 main = typer.Typer(
-    name="manicure",
+    name=CLI_COMMAND,
     cls=_PlainGroup,
     no_args_is_help=True,
     add_completion=False,
@@ -93,7 +94,7 @@ main = typer.Typer(
 
 
 def _resolve_mitmdump() -> str | None:
-    """Prefer the console script from the active manicure environment."""
+    """Prefer the console script from the active Transport Matters environment."""
     scripts_dir = sysconfig.get_path("scripts")
     if scripts_dir:
         resolved = shutil.which("mitmdump", path=scripts_dir)
@@ -121,13 +122,13 @@ def _require_addon() -> Traversable:
     addon_traversable = files("transport_matters") / "addon.py"
     if not addon_traversable.is_file():
         typer.secho(
-            "error: could not locate the manicure mitmproxy addon.",
+            "error: could not locate the Transport Matters mitmproxy addon.",
             fg=typer.colors.RED,
             err=True,
         )
         typer.echo(
             "The package may be corrupted. Try reinstalling:\n"
-            "  uv tool install --force manicure",
+            f"  uv tool install --force {CLI_COMMAND}",
             err=True,
         )
         raise typer.Exit(2)
@@ -149,7 +150,7 @@ def _merge_no_proxy(current: str | None, hosts: Iterable[str]) -> str:
 
 def _version_callback(value: bool) -> None:
     if value:
-        typer.echo(f"manicure {__version__}")
+        typer.echo(f"{CLI_COMMAND} {__version__}")
         raise typer.Exit()
 
 
@@ -196,7 +197,7 @@ def claude(
         typer.Option(
             "--proxy-port",
             "-p",
-            envvar="MANICURE_PROXY_PORT",
+            envvar="TRANSPORT_MATTERS_PROXY_PORT",
             help=(
                 "Port for the reverse-proxy listener "
                 "(default: kernel-allocated free port)."
@@ -210,7 +211,7 @@ def claude(
         typer.Option(
             "--web-port",
             "-w",
-            envvar="MANICURE_WEB_PORT",
+            envvar="TRANSPORT_MATTERS_WEB_PORT",
             help=(
                 "Port for the embedded web UI (default: kernel-allocated free port)."
             ),
@@ -223,7 +224,7 @@ def claude(
         typer.Option(
             "--upstream",
             "-u",
-            envvar="MANICURE_UPSTREAM_URL",
+            envvar="TRANSPORT_MATTERS_UPSTREAM_URL",
             help="Upstream provider base URL (reverse proxy target).",
         ),
     ] = "https://api.anthropic.com",
@@ -232,7 +233,7 @@ def claude(
         typer.Option(
             "--storage-dir",
             "-d",
-            envvar="MANICURE_STORAGE_DIR",
+            envvar="TRANSPORT_MATTERS_STORAGE_DIR",
             help=(
                 "Directory for captured exchanges, rules, and the index. "
                 "Defaults to `~/.manicure`."
@@ -264,10 +265,7 @@ def claude(
         bool,
         typer.Option(
             "--no-system-prompt",
-            help=(
-                "Skip the auto-injected manicure system prompt "
-                "(URLs to the proxy + inspector). On by default."
-            ),
+            help="Skip the auto-injected Transport Matters system prompt.",
         ),
     ] = False,
     debug: Annotated[
@@ -285,7 +283,7 @@ def claude(
         ),
     ] = False,
 ) -> None:
-    """Start the manicure workbench: proxy + Claude Code."""
+    """Start the Transport Matters workbench: proxy + Claude Code."""
     directory, claude_passthrough = _split_passthrough(ctx, directory)
     run_start(
         directory=directory,
@@ -310,19 +308,6 @@ def claude(
         run_with_retry=_run_with_retry,
         print_contention_error=_print_contention_error,
     )
-
-
-main.command(
-    name="start",
-    cls=_PlainCommand,
-    no_args_is_help=False,
-    context_settings={
-        "help_option_names": ["-h", "--help"],
-        "allow_extra_args": True,
-        "ignore_unknown_options": True,
-    },
-    hidden=True,
-)(claude)
 
 
 @main.command(
@@ -351,7 +336,7 @@ def codex(
         typer.Option(
             "--proxy-port",
             "-p",
-            envvar="MANICURE_PROXY_PORT",
+            envvar="TRANSPORT_MATTERS_PROXY_PORT",
             help=(
                 "Port for the explicit-proxy listener "
                 "(default: kernel-allocated free port)."
@@ -365,7 +350,7 @@ def codex(
         typer.Option(
             "--web-port",
             "-w",
-            envvar="MANICURE_WEB_PORT",
+            envvar="TRANSPORT_MATTERS_WEB_PORT",
             help=(
                 "Port for the embedded web UI (default: kernel-allocated free port)."
             ),
@@ -378,7 +363,7 @@ def codex(
         typer.Option(
             "--storage-dir",
             "-d",
-            envvar="MANICURE_STORAGE_DIR",
+            envvar="TRANSPORT_MATTERS_STORAGE_DIR",
             help=(
                 "Directory for captured exchanges, rules, and the index. "
                 "Defaults to `~/.manicure`."
@@ -421,7 +406,7 @@ def codex(
         ),
     ] = False,
 ) -> None:
-    """Start the manicure workbench: proxy + Codex."""
+    """Start the Transport Matters workbench: proxy + Codex."""
     directory, codex_passthrough = _split_passthrough(ctx, directory)
     run_codex(
         directory=directory,
@@ -465,7 +450,7 @@ def paths(
             "--workspace",
             help=(
                 "Resolve paths for a specific workspace — either a slug from "
-                "`manicure list` or a directory to canonicalise as a CWD. "
+                f"`{CLI_COMMAND} list` or a directory to canonicalise as a CWD. "
                 "Defaults to the current working directory."
             ),
             show_default=False,
@@ -476,7 +461,7 @@ def paths(
         typer.Option("--json", help="Emit JSON instead of aligned text."),
     ] = False,
 ) -> None:
-    """Show where manicure stores things and where the package lives."""
+    """Show where Transport Matters stores things and where the package lives."""
     resolve_paths(workspace=workspace, as_json=as_json)
 
 
@@ -491,7 +476,7 @@ def list_instances(
         typer.Option("--json", help="Emit JSON instead of aligned text."),
     ] = False,
 ) -> None:
-    """List live manicure instances."""
+    """List live Transport Matters instances."""
     _list_instances(as_json=as_json)
 
 
@@ -500,5 +485,5 @@ def list_instances(
     context_settings={"help_option_names": ["-h", "--help"]},
 )
 def version() -> None:
-    """Print the installed manicure version and exit."""
+    """Print the installed Transport Matters version and exit."""
     typer.echo(__version__)

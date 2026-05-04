@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 import typer
 
+from .identity import PRODUCT_LABEL
 from .net import loopback_http_url
 
 if TYPE_CHECKING:
@@ -23,7 +24,7 @@ def _print_client_banner(
     proxy_hint: Sequence[str] | None = None,
 ) -> None:
     """Render the launch banner for a managed client or proxy-only mode."""
-    typer.secho("manicure starting", fg=typer.colors.CYAN, bold=True)
+    typer.secho(f"{PRODUCT_LABEL} starting", fg=typer.colors.CYAN, bold=True)
     typer.echo(f"  proxy    {loopback_http_url(proxy_port)}  →  {proxy_target}")
     typer.echo(f"  web UI   {loopback_http_url(web_port)}")
     if proxy_hint is not None:
@@ -32,7 +33,7 @@ def _print_client_banner(
         for line in proxy_hint:
             typer.echo(f"    {line}")
     else:
-        typer.echo(f"  {client_label:<7} MANICURE_CWD={working_dir}")
+        typer.echo(f"  {client_label:<7} TRANSPORT_MATTERS_CWD={working_dir}")
     typer.echo("")
 
 
