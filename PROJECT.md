@@ -1,6 +1,6 @@
 # Transport Matters
 
-> **mani**fest + **cur**at**e**. Care for the cargo your coding agent carries.
+> Care for the cargo your coding agent carries.
 
 Transport Matters is a provider-neutral context control plane for coding agents. It sits between your agent and the upstream provider, captures every turn, normalises payloads into an internal representation, runs them through a deterministic curation pipeline, and optionally pauses at a breakpoint so you can inspect or edit the next outbound request before it forwards upstream.
 

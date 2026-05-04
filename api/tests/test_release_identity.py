@@ -26,6 +26,10 @@ LOCAL_DEVELOPER_SURFACES = [
     "scripts/local-dev-mode.sh",
     "api/CLAUDE.md",
 ]
+DOCS_IDENTITY_SURFACES = [
+    "PROJECT.md",
+    "api/README.md",
+]
 
 
 def read_surface(path: str) -> str:
@@ -70,6 +74,21 @@ def test_local_developer_surfaces_use_transport_matters_identity() -> None:
 
     assert "transport-matters" in combined
     assert "transport_matters" in combined
+
+
+def test_active_docs_do_not_encode_old_brand_etymology() -> None:
+    combined = "\n".join(read_surface(path) for path in DOCS_IDENTITY_SURFACES)
+
+    for old_identity in (
+        "**mani**",
+        "**cur**",
+        "manifest + curate",
+        "manifest + curat",
+    ):
+        assert old_identity.lower() not in combined.lower()
+
+    assert "Transport Matters" in combined
+    assert "transport-matters" in combined
 
 
 def test_ci_and_release_smoke_the_public_transport_matters_command() -> None:

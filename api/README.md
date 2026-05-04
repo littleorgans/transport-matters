@@ -1,6 +1,6 @@
 # transport-matters
 
-> **mani**fest + **cur**at**e**. Care for the cargo your coding agent carries.
+> Care for the cargo your coding agent carries.
 
 A provider-neutral context control plane for coding agents. Sits as a reverse proxy in front of Claude, captures every `/v1/messages` exchange, normalises payloads into an internal representation, runs them through a deterministic curation pipeline, and optionally pauses for manual editing in a schema-aware editor.
 
