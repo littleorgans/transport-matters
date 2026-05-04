@@ -7,7 +7,7 @@ from typing import Any
 from mitmproxy import websocket
 from wsproto.frame_protocol import Opcode
 
-from transport_matters.addon import ManicureAddon
+from transport_matters.addon import TransportMattersAddon
 from transport_matters.codex.test_transport_support import _codex_flow
 from transport_matters.storage import get_storage
 
@@ -15,7 +15,7 @@ pytest_plugins = ("transport_matters.codex.test_transport_support",)
 
 
 async def test_addon_websocket_end_keeps_turn_artifacts_separated() -> None:
-    addon = ManicureAddon()
+    addon = TransportMattersAddon()
     flow = _codex_flow()
     assert flow.websocket is not None
 
@@ -117,7 +117,7 @@ async def test_addon_websocket_end_keeps_turn_artifacts_separated() -> None:
 async def test_addon_websocket_end_persists_interrupted_turn_after_prior_finalize() -> (
     None
 ):
-    addon = ManicureAddon()
+    addon = TransportMattersAddon()
     flow = _codex_flow()
     assert flow.websocket is not None
 

@@ -9,7 +9,7 @@ from mitmproxy import websocket
 from wsproto.frame_protocol import Opcode
 
 from transport_matters import breakpoint as bp
-from transport_matters.addon import ManicureAddon
+from transport_matters.addon import TransportMattersAddon
 from transport_matters.codex.test_transport_support import _codex_flow, _wait_for_pause
 from transport_matters.codex.transport import ensure_codex_transport_state
 from transport_matters.flow_state import get_request_flow_state
@@ -19,7 +19,7 @@ pytest_plugins = ("transport_matters.codex.test_transport_support",)
 
 
 async def test_addon_websocket_message_can_pause_second_response_create_turn() -> None:
-    addon = ManicureAddon()
+    addon = TransportMattersAddon()
     flow = _codex_flow()
     assert flow.websocket is not None
 
@@ -82,7 +82,7 @@ async def test_addon_websocket_message_can_pause_second_response_create_turn() -
 
 
 async def test_addon_websocket_message_clears_stale_request_state() -> None:
-    addon = ManicureAddon()
+    addon = TransportMattersAddon()
     flow = _codex_flow()
     assert flow.websocket is not None
 

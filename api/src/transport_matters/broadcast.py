@@ -3,7 +3,7 @@
 Subscribers get an asyncio.Queue; the addon calls ``emit()`` to push
 events to all connected queues.
 
-This module imports nothing from ``manicure``.
+This module imports no internal Transport Matters modules.
 """
 
 import asyncio

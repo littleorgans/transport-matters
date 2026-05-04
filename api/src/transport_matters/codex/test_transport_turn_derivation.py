@@ -10,7 +10,7 @@ from unittest.mock import patch
 from mitmproxy import websocket
 from wsproto.frame_protocol import Opcode
 
-from transport_matters.addon import ManicureAddon
+from transport_matters.addon import TransportMattersAddon
 from transport_matters.codex.test_transport_support import _codex_flow
 from transport_matters.codex.transport import ensure_codex_transport_state
 from transport_matters.storage import get_storage
@@ -24,7 +24,7 @@ if TYPE_CHECKING:
 async def test_addon_websocket_message_preserves_open_sidecars_when_derivation_fails(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    addon = ManicureAddon()
+    addon = TransportMattersAddon()
     flow = _codex_flow()
     assert flow.websocket is not None
 
@@ -109,7 +109,7 @@ async def test_addon_websocket_message_preserves_open_sidecars_when_derivation_f
 
 
 async def test_addon_websocket_message_derives_tool_result_only_turn() -> None:
-    addon = ManicureAddon()
+    addon = TransportMattersAddon()
     flow = _codex_flow()
     assert flow.websocket is not None
 
@@ -158,7 +158,7 @@ async def test_addon_websocket_message_derives_tool_result_only_turn() -> None:
 
 
 async def test_addon_websocket_message_persists_tool_search_output_turn() -> None:
-    addon = ManicureAddon()
+    addon = TransportMattersAddon()
     flow = _codex_flow()
     assert flow.websocket is not None
 

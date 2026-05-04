@@ -48,7 +48,7 @@ class DiskStorageBackend(DiskStorageRecoveryMixin, StorageBackend):
         self._index_cache: dict[str, IndexEntry] | None = None
         self._io_executor: Executor = ThreadPoolExecutor(
             max_workers=4,
-            thread_name_prefix="manicure-storage",
+            thread_name_prefix="transport-matters-storage",
         )
         self._cleanup_partial_writes()
 
@@ -82,7 +82,7 @@ class DiskStorageBackend(DiskStorageRecoveryMixin, StorageBackend):
         else:
             return
         logger.info(
-            "Dropping legacy Manicure storage cache with flat spawn anchor fields"
+            "Dropping legacy Transport Matters storage cache with flat spawn anchor fields"
         )
         shutil.rmtree(self._root, ignore_errors=True)
 

@@ -2,9 +2,9 @@
 
 The endpoint is free and tier-rate-limited, and it is the only reliable
 way to know how many tokens a given /v1/messages payload will cost.
-Manicure uses it to replace the old chars/4 guess for pipeline compression
-figures and breakpoint previews with a real answer from the same tokenizer
-the model itself uses.
+Transport Matters uses it to replace the old chars/4 guess for pipeline
+compression figures and breakpoint previews with a real answer from the same
+tokenizer the model itself uses.
 
 Failures (network, rate limit, malformed response, schema drift) degrade
 to None so the UI can render an em dash instead of crashing the flow.

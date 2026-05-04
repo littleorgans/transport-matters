@@ -1,4 +1,4 @@
-"""mitmproxy addon for Manicure.
+"""mitmproxy addon for Transport Matters.
 
 Captures /v1/messages exchanges, applies pipeline rules, stores
 artifacts, and emits SSE events.
@@ -36,7 +36,7 @@ from transport_matters.pause_session import (
 )
 
 __all__ = [
-    "ManicureAddon",
+    "TransportMattersAddon",
     "build_pipeline_stats",
     "build_req_stats",
     "build_res_stats",
@@ -50,7 +50,7 @@ __all__ = [
 # ── Addon ───────────────────────────────────────────────────────────
 
 
-class ManicureAddon:
+class TransportMattersAddon:
     def __init__(self) -> None:
         self._runtime: AddonRuntime | None = None
 
@@ -91,4 +91,4 @@ class ManicureAddon:
         await _delete_http_provisional_exchange(flow, request_state)
 
 
-addons = [ManicureAddon()]
+addons = [TransportMattersAddon()]

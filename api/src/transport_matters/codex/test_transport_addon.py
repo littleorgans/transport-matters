@@ -12,7 +12,7 @@ from wsproto.frame_protocol import Opcode
 
 from transport_matters import breakpoint as bp
 from transport_matters import broadcast
-from transport_matters.addon import ManicureAddon
+from transport_matters.addon import TransportMattersAddon
 from transport_matters.codex.test_transport_support import _codex_flow, _wait_for_pause
 from transport_matters.overrides import Override, get_store
 from transport_matters.storage import get_storage
@@ -21,7 +21,7 @@ pytest_plugins = ("transport_matters.codex.test_transport_support",)
 
 
 async def test_addon_websocket_message_applies_pipeline_to_initial_frame() -> None:
-    addon = ManicureAddon()
+    addon = TransportMattersAddon()
     flow = _codex_flow()
     assert flow.websocket is not None
     store = get_store()
@@ -40,14 +40,14 @@ async def test_addon_websocket_message_applies_pipeline_to_initial_frame() -> No
     payload = json.loads(flow.websocket.messages[-1].content.decode())
     assert payload["instructions"] == "patched"
     assert flow.websocket.messages[-1].dropped is False
-    ir = flow.metadata.get("manicure_ir")
+    ir = flow.metadata.get("transport_matters_ir")
     assert ir is not None
     assert ir.provider == "codex"
     assert ir.model == "codex/gpt-5-codex"
 
 
 async def test_addon_websocket_message_pauses_and_rewrites_on_release() -> None:
-    addon = ManicureAddon()
+    addon = TransportMattersAddon()
     flow = _codex_flow()
     assert flow.websocket is not None
     bp.arm()
@@ -95,7 +95,7 @@ async def test_addon_websocket_message_pauses_and_rewrites_on_release() -> None:
     assert flow.websocket.messages[-1].dropped is False
     payload = json.loads(flow.websocket.messages[-1].content.decode())
     assert payload["instructions"] == "edited"
-    assert flow.metadata["manicure_curated_ir"].system[0].text == "edited"
+    assert flow.metadata["transport_matters_curated_ir"].system[0].text == "edited"
     assert await bp.get_paused() == {}
 
     storage = await get_storage()
@@ -117,7 +117,7 @@ async def test_addon_websocket_message_pauses_and_rewrites_on_release() -> None:
 
 
 async def test_addon_websocket_message_persists_provisional_codex_exchange() -> None:
-    addon = ManicureAddon()
+    addon = TransportMattersAddon()
     flow = _codex_flow()
     assert flow.websocket is not None
 
@@ -158,7 +158,7 @@ async def test_addon_websocket_message_persists_provisional_codex_exchange() -> 
 async def test_addon_websocket_message_derives_session_from_codex_turn_metadata() -> (
     None
 ):
-    addon = ManicureAddon()
+    addon = TransportMattersAddon()
     flow = _codex_flow()
     assert flow.websocket is not None
     del flow.request.headers["x-codex-session"]
@@ -203,7 +203,7 @@ async def test_addon_websocket_message_derives_session_from_codex_turn_metadata(
 async def test_addon_websocket_message_advances_provisional_codex_exchange_on_server_frames() -> (
     None
 ):
-    addon = ManicureAddon()
+    addon = TransportMattersAddon()
     flow = _codex_flow()
     assert flow.websocket is not None
 
@@ -273,7 +273,7 @@ async def test_addon_websocket_message_advances_provisional_codex_exchange_on_se
 async def test_addon_websocket_message_projects_open_tool_activity_into_list_summary() -> (
     None
 ):
-    addon = ManicureAddon()
+    addon = TransportMattersAddon()
     flow = _codex_flow()
     assert flow.websocket is not None
 
@@ -353,7 +353,7 @@ async def test_addon_websocket_message_projects_open_tool_activity_into_list_sum
 async def test_addon_websocket_message_keeps_provisional_exchange_visible_while_paused() -> (
     None
 ):
-    addon = ManicureAddon()
+    addon = TransportMattersAddon()
     flow = _codex_flow()
     assert flow.websocket is not None
     bp.arm()
@@ -383,7 +383,7 @@ async def test_addon_websocket_message_keeps_provisional_exchange_visible_while_
 
 
 async def test_addon_websocket_message_drops_initial_frame_when_user_drops() -> None:
-    addon = ManicureAddon()
+    addon = TransportMattersAddon()
     flow = _codex_flow()
     assert flow.websocket is not None
     bp.arm()
@@ -410,7 +410,7 @@ async def test_addon_websocket_message_drops_initial_frame_when_user_drops() -> 
 
 
 async def test_addon_websocket_message_still_drops_when_cleanup_fails() -> None:
-    addon = ManicureAddon()
+    addon = TransportMattersAddon()
     flow = _codex_flow()
     assert flow.websocket is not None
     bp.arm()

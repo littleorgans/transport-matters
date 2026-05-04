@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, cast
 from transport_matters import addon as addon_module
 from transport_matters import addon_handlers
 from transport_matters import breakpoint as bp
-from transport_matters.addon import ManicureAddon
+from transport_matters.addon import TransportMattersAddon
 from transport_matters.codex.transport import CODEX_CHATGPT_HOST, CODEX_RESPONSES_PATH
 from transport_matters.flow_state import (
     RequestFlowState,
@@ -238,7 +238,7 @@ async def test_addon_error_deletes_http_provisional_exchange(
 
     monkeypatch.setattr(addon_module, "_delete_http_provisional_exchange", fake_delete)
 
-    await ManicureAddon().error(flow)
+    await TransportMattersAddon().error(flow)
 
     assert calls == [(flow, state)]
 
@@ -262,7 +262,7 @@ async def test_addon_error_skips_codex_websocket_flow(
 
     monkeypatch.setattr(addon_module, "_delete_http_provisional_exchange", fail_delete)
 
-    await ManicureAddon().error(flow)
+    await TransportMattersAddon().error(flow)
 
 
 async def test_addon_error_skips_when_request_state_missing(
@@ -276,7 +276,7 @@ async def test_addon_error_skips_when_request_state_missing(
 
     monkeypatch.setattr(addon_module, "_delete_http_provisional_exchange", fail_delete)
 
-    await ManicureAddon().error(flow)
+    await TransportMattersAddon().error(flow)
 
 
 async def test_addon_error_skips_when_provisional_exchange_id_missing(
@@ -293,4 +293,4 @@ async def test_addon_error_skips_when_provisional_exchange_id_missing(
 
     monkeypatch.setattr(addon_module, "_delete_http_provisional_exchange", fail_delete)
 
-    await ManicureAddon().error(flow)
+    await TransportMattersAddon().error(flow)

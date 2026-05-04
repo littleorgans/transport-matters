@@ -560,7 +560,7 @@ class TestResolvePausedFlow:
     def test_pass_through_returns_live_pf_audit(self) -> None:
         """Regression: audit-refresh bug.
 
-        The addon used to snapshot ``manicure_audit`` from ``_run_pipeline``
+        The addon used to snapshot ``transport_matters_audit`` from ``_run_pipeline``
         at request ingress and never refresh it, even after the user edited
         overrides during the pause. ``_update_paused_preview`` re-runs
         ``apply_overrides`` and mutates ``pf.audit`` in place, so the

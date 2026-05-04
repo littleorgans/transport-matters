@@ -46,8 +46,10 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-_CODEX_BREAKPOINT_PAUSED_AT_MS_KEY = "manicure_codex_breakpoint_paused_at_ms"
-_CODEX_BREAKPOINT_RELEASED_AT_MS_KEY = "manicure_codex_breakpoint_released_at_ms"
+_CODEX_BREAKPOINT_PAUSED_AT_MS_KEY = "transport_matters_codex_breakpoint_paused_at_ms"
+_CODEX_BREAKPOINT_RELEASED_AT_MS_KEY = (
+    "transport_matters_codex_breakpoint_released_at_ms"
+)
 
 
 def _clear_codex_breakpoint_lifecycle(flow: http.HTTPFlow) -> None:

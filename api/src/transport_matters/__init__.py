@@ -1,4 +1,4 @@
-"""Manicure — provider-neutral context control plane for coding agents."""
+"""Transport Matters, a provider-neutral context control plane for coding agents."""
 
 from __future__ import annotations
 

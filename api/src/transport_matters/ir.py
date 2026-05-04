@@ -4,7 +4,7 @@ These models are the canonical interchange format between adapters,
 pipeline rules, storage, and the breakpoint editor. All IR models are
 frozen (immutable); pipeline stages produce new instances.
 
-This module imports nothing from ``manicure``.
+This module imports no internal Transport Matters modules.
 """
 
 from __future__ import annotations

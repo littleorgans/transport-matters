@@ -58,12 +58,12 @@ def test_capture_request_flow_state_sets_defaults() -> None:
     assert state.mutated_manually is False
     assert state.provisional_exchange_id is None
     assert state.dropped is False
-    assert flow.metadata["manicure_curated_ir"] == request_ir
+    assert flow.metadata["transport_matters_curated_ir"] == request_ir
 
 
 def test_get_request_flow_state_returns_none_when_incomplete() -> None:
     flow = cast("http.HTTPFlow", _Flow())
-    flow.metadata["manicure_ir"] = _make_ir()
+    flow.metadata["transport_matters_ir"] = _make_ir()
 
     assert get_request_flow_state(flow) is None
 
@@ -93,7 +93,7 @@ def test_update_request_flow_state_rewrites_mutable_fields() -> None:
     assert state.curated_request_ir == curated_ir
     assert state.audit == audit
     assert state.mutated_manually is True
-    assert flow.metadata["manicure_mutated_manually"] is True
+    assert flow.metadata["transport_matters_mutated_manually"] is True
 
 
 def test_update_request_flow_state_sets_provisional_id_without_clobbering_state() -> (
@@ -133,7 +133,10 @@ def test_update_request_flow_state_sets_provisional_id_without_clobbering_state(
     assert state.mutated_manually is True
     assert state.dropped is False
     assert state.provisional_exchange_id == "exchange-provisional"
-    assert flow.metadata["manicure_provisional_exchange_id"] == "exchange-provisional"
+    assert (
+        flow.metadata["transport_matters_provisional_exchange_id"]
+        == "exchange-provisional"
+    )
 
 
 def test_update_request_flow_state_sets_dropped_without_clobbering_provisional_id() -> (
@@ -157,7 +160,7 @@ def test_update_request_flow_state_sets_dropped_without_clobbering_provisional_i
     assert state.audit is None
     assert state.provisional_exchange_id == "exchange-provisional"
     assert state.dropped is True
-    assert flow.metadata["manicure_dropped"] is True
+    assert flow.metadata["transport_matters_dropped"] is True
 
 
 def test_update_request_flow_state_can_clear_provisional_id() -> None:
@@ -176,4 +179,4 @@ def test_update_request_flow_state_can_clear_provisional_id() -> None:
 
     assert state is not None
     assert state.provisional_exchange_id is None
-    assert flow.metadata["manicure_provisional_exchange_id"] is None
+    assert flow.metadata["transport_matters_provisional_exchange_id"] is None

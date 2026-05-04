@@ -3,7 +3,7 @@
 Supports arming the proxy so the next request pauses mid-flight,
 allowing the user to inspect and edit the IR before forwarding.
 
-Runtime imports: nothing from ``manicure``.
+Runtime imports: no internal Transport Matters modules.
 TYPE_CHECKING-only: ``transport_matters.ir.InternalRequest``, ``transport_matters.overrides.OverrideAudit``.
 """
 

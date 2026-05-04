@@ -1,4 +1,4 @@
-"""Private override store state for the Manicure pipeline."""
+"""Private override store state for the Transport Matters pipeline."""
 
 from __future__ import annotations
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 from mitmproxy import websocket
 from wsproto.frame_protocol import Opcode
 
-from transport_matters.addon import ManicureAddon
+from transport_matters.addon import TransportMattersAddon
 from transport_matters.codex.test_transport_support import _codex_flow
 from transport_matters.codex.transport import ensure_codex_transport_state
 from transport_matters.storage import get_storage
@@ -14,7 +14,7 @@ pytest_plugins = ("transport_matters.codex.test_transport_support",)
 
 
 async def test_addon_websocket_message_finalizes_turn_on_server_completion() -> None:
-    addon = ManicureAddon()
+    addon = TransportMattersAddon()
     flow = _codex_flow()
     assert flow.websocket is not None
 
@@ -129,7 +129,7 @@ async def test_addon_websocket_message_finalizes_turn_on_server_completion() -> 
 
 
 async def test_addon_websocket_message_finalizes_turn_from_output_items() -> None:
-    addon = ManicureAddon()
+    addon = TransportMattersAddon()
     flow = _codex_flow()
     assert flow.websocket is not None
 
@@ -186,7 +186,7 @@ async def test_addon_websocket_message_finalizes_turn_from_output_items() -> Non
 
 
 async def test_addon_websocket_message_finalizes_failed_turn() -> None:
-    addon = ManicureAddon()
+    addon = TransportMattersAddon()
     flow = _codex_flow()
     assert flow.websocket is not None
 

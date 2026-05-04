@@ -22,7 +22,7 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    app_name: str = "manicure"
+    app_name: str = "Transport Matters"
     debug: bool = False
 
     log_json: bool = False

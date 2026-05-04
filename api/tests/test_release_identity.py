@@ -13,6 +13,14 @@ RELEASE_SURFACES = [
     "www/package.json",
     "www/vite.config.ts",
 ]
+ACTIVE_BACKEND_SURFACES = [
+    "api/.env.example",
+    *[
+        str(path.relative_to(REPO_ROOT))
+        for path in sorted((REPO_ROOT / "api/src/transport_matters").rglob("*.py"))
+        if not path.name.startswith("test_") and path.name != "conftest.py"
+    ],
+]
 
 
 def read_surface(path: str) -> str:
@@ -29,6 +37,24 @@ def test_release_surfaces_use_transport_matters_identity() -> None:
     assert "TRANSPORT_MATTERS_VERSION" in combined
     assert "TRANSPORT_MATTERS_INSTALL_VERSION" in combined
     assert "TRANSPORT_MATTERS_SKIP_UV_INSTALL" in combined
+
+
+def test_active_backend_surfaces_use_transport_matters_identity() -> None:
+    combined = "\n".join(read_surface(path) for path in ACTIVE_BACKEND_SURFACES)
+
+    old_identities = (
+        "mani" + "cure",
+        "Mani" + "cure",
+        "MANI" + "CURE",
+        "mani" + "cure_version",
+        ".mani" + "cure-doctor-probe",
+    )
+    for old_identity in old_identities:
+        assert old_identity not in combined
+
+    assert "transport-matters" in combined
+    assert "Transport Matters" in combined
+    assert "TRANSPORT_MATTERS_" in combined
 
 
 def test_ci_and_release_smoke_the_public_transport_matters_command() -> None:

@@ -41,6 +41,12 @@ def test_settings_default_storage_root_uses_transport_matters(
     assert settings.storage_dir == Path.home() / ".transport-matters"
 
 
+def test_settings_default_app_name_uses_transport_matters() -> None:
+    settings = get_settings()
+
+    assert settings.app_name == "Transport Matters"
+
+
 def test_settings_ignore_old_manicure_env_prefix(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

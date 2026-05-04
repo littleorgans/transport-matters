@@ -1,6 +1,6 @@
-"""Process supervisor for the manicure CLI.
+"""Process supervisor for the transport-matters CLI.
 
-Owns the lifecycle of child processes spawned by `manicure start`:
+Owns the lifecycle of child processes spawned by `transport-matters start`:
 mitmdump (the reverse proxy) and optionally Claude Code. One child
 inherits the terminal (the *foreground* child); others run in the
 background with their stdio redirected to a log file.

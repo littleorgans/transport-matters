@@ -1,4 +1,4 @@
-"""Codex response.create request serialization from Manicure IR."""
+"""Codex response.create request serialization from Transport Matters IR."""
 
 from __future__ import annotations
 

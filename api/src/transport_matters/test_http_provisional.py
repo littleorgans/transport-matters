@@ -10,7 +10,7 @@ from mitmproxy.test import tflow
 
 from transport_matters import addon_handlers, broadcast
 from transport_matters import breakpoint as bp
-from transport_matters.addon import ManicureAddon
+from transport_matters.addon import TransportMattersAddon
 from transport_matters.config import get_settings
 from transport_matters.flow_state import (
     get_request_flow_state,
@@ -438,7 +438,7 @@ async def test_http_error_hook_deletes_provisional_exchange(
     queue = broadcast.subscribe()
     _state, exchange_id, _ = await _request_pending(flow, monkeypatch, queue=queue)
 
-    await ManicureAddon().error(flow)
+    await TransportMattersAddon().error(flow)
 
     storage = await get_storage()
     assert await storage.read_index_entry(exchange_id) is None

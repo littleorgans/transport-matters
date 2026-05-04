@@ -14,7 +14,7 @@ from wsproto.frame_protocol import Opcode
 
 from transport_matters import breakpoint as bp
 from transport_matters import broadcast
-from transport_matters.addon import ManicureAddon
+from transport_matters.addon import TransportMattersAddon
 from transport_matters.codex.diagnostics import build_codex_transport_diagnostics
 from transport_matters.codex.test_transport_support import (
     _codex_flow,
@@ -28,7 +28,7 @@ pytest_plugins = ("transport_matters.codex.test_transport_support",)
 
 
 async def test_addon_websocket_end_skips_persisting_dropped_codex_exchange() -> None:
-    addon = ManicureAddon()
+    addon = TransportMattersAddon()
     flow = _codex_flow()
     assert flow.websocket is not None
     bp.arm()
@@ -63,7 +63,7 @@ async def test_addon_websocket_end_skips_persisting_dropped_codex_exchange() -> 
 
 
 async def test_addon_websocket_end_logs_abnormal_server_close(caplog: Any) -> None:
-    addon = ManicureAddon()
+    addon = TransportMattersAddon()
     flow = _codex_flow()
     assert flow.websocket is not None
 
@@ -83,7 +83,7 @@ async def test_addon_websocket_end_logs_abnormal_server_close(caplog: Any) -> No
 
 
 async def test_addon_websocket_end_persists_codex_exchange() -> None:
-    addon = ManicureAddon()
+    addon = TransportMattersAddon()
     flow = _codex_flow()
     assert flow.websocket is not None
 
@@ -155,7 +155,7 @@ async def test_addon_websocket_end_persists_codex_exchange() -> None:
 
 
 async def test_addon_websocket_end_survives_default_executor_shutdown() -> None:
-    addon = ManicureAddon()
+    addon = TransportMattersAddon()
     flow = _codex_flow()
     assert flow.websocket is not None
 
@@ -227,7 +227,7 @@ async def test_addon_websocket_end_survives_default_executor_shutdown() -> None:
 
 
 async def test_addon_websocket_end_cancellation_restores_provisional_exchange() -> None:
-    addon = ManicureAddon()
+    addon = TransportMattersAddon()
     flow = _codex_flow()
     assert flow.websocket is not None
 
@@ -278,7 +278,7 @@ async def test_addon_websocket_end_cancellation_restores_provisional_exchange() 
 
 
 async def test_addon_websocket_end_tolerates_nested_non_string_type_fields() -> None:
-    addon = ManicureAddon()
+    addon = TransportMattersAddon()
     flow = _codex_flow()
     assert flow.websocket is not None
 
@@ -326,7 +326,7 @@ async def test_addon_websocket_end_tolerates_nested_non_string_type_fields() -> 
 
 
 async def test_addon_response_persists_codex_handshake_failure() -> None:
-    addon = ManicureAddon()
+    addon = TransportMattersAddon()
     flow = _codex_handshake_failure_flow()
 
     await addon.response(flow)
@@ -349,7 +349,7 @@ async def test_addon_response_persists_codex_handshake_failure() -> None:
 
 
 async def test_addon_response_preserves_raw_handshake_failure_bytes() -> None:
-    addon = ManicureAddon()
+    addon = TransportMattersAddon()
     raw_body = (
         b"TLS error: invalid peer certificate: UnknownIssuer\xff"
         b"\xfe while upgrading websocket"

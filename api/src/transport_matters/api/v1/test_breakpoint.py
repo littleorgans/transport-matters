@@ -230,7 +230,7 @@ class TestGetPausedFlow:
         event = asyncio.Event()
         flow = MagicMock()
         flow.metadata = {
-            "manicure_codex_transport": CodexTransportState(
+            "transport_matters_codex_transport": CodexTransportState(
                 upgrade=CodexUpgradeMetadata(
                     scheme="wss",
                     host="chatgpt.com",

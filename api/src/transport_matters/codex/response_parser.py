@@ -1,4 +1,4 @@
-"""Codex websocket response parsing into Manicure IR."""
+"""Codex websocket response parsing into Transport Matters IR."""
 
 from __future__ import annotations
 

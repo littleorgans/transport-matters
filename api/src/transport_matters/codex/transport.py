@@ -41,7 +41,7 @@ from transport_matters.transport_redaction import redact_transport_artifacts
 
 CODEX_CHATGPT_HOST = "chatgpt.com"
 CODEX_RESPONSES_PATH = "/backend-api/codex/responses"
-CODEX_TRANSPORT_METADATA_KEY = "manicure_codex_transport"
+CODEX_TRANSPORT_METADATA_KEY = "transport_matters_codex_transport"
 
 
 @dataclass(slots=True)

@@ -45,9 +45,9 @@ def build_codex_transport_diagnostics(
                         body_reason="matched a proxy TLS trust failure signature",
                     ),
                     operator_checks=[
-                        "Verify the managed Codex process inherited HTTP_PROXY and HTTPS_PROXY for the Manicure proxy.",
+                        "Verify the managed Codex process inherited HTTP_PROXY and HTTPS_PROXY for the Transport Matters proxy.",
                         "Verify CODEX_CA_CERTIFICATE points at a readable bundle that includes ~/.mitmproxy/mitmproxy-ca-cert.pem.",
-                        "Retry with `manicure codex --debug` and compare response.raw with the stored upgrade headers.",
+                        "Retry with `transport-matters codex --debug` and compare response.raw with the stored upgrade headers.",
                     ],
                 )
             )
@@ -64,7 +64,7 @@ def build_codex_transport_diagnostics(
                         body_reason="status indicates an upstream auth challenge",
                     ),
                     operator_checks=[
-                        "Confirm Codex is authenticated with ChatGPT in the environment Manicure launched.",
+                        "Confirm Codex is authenticated with ChatGPT in the environment Transport Matters launched.",
                         "Reproduce with the ChatGPT transport path rather than the API key harness when validating product behavior.",
                         "Inspect response.raw and the upgrade response headers for any upstream auth challenge details.",
                     ],
@@ -80,7 +80,7 @@ def build_codex_transport_diagnostics(
                     operator_checks=[
                         "Inspect response.raw for proxy or upstream error text.",
                         "Verify the target path is chatgpt.com/backend-api/codex/responses and the proxy is in explicit mode.",
-                        "Retry with `manicure codex --debug` if the stored headers are insufficient.",
+                        "Retry with `transport-matters codex --debug` if the stored headers are insufficient.",
                     ],
                 )
             )
@@ -113,11 +113,11 @@ def build_codex_transport_diagnostics(
                     code="initial_frame_missing",
                     summary="No initial response.create frame was captured for this Codex session.",
                     detail=(
-                        "Manicure never saw the first client websocket frame, so there is no request IR "
+                        "Transport Matters never saw the first client websocket frame, so there is no request IR "
                         "to normalize or edit."
                     ),
                     operator_checks=[
-                        "Verify the client actually routed through the Manicure proxy for this run.",
+                        "Verify the client actually routed through the Transport Matters proxy for this run.",
                         "If the upgrade failed, inspect the handshake diagnostics before touching adapter code.",
                         "If the upgrade succeeded, inspect proxy logs for websocket framing errors or reconnect loops.",
                     ],
@@ -133,7 +133,7 @@ def build_codex_transport_diagnostics(
                 operator_checks=[
                     "Verify the client sent a response.create frame after the upgrade completed.",
                     "Check for an early reconnect or client exit before the first frame.",
-                    "Use `manicure codex --debug` if this reproduces consistently.",
+                    "Use `transport-matters codex --debug` if this reproduces consistently.",
                 ],
             )
         )

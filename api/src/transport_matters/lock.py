@@ -1,6 +1,6 @@
-"""Workspace lock — advisory mutex for manicure multi-instance support.
+"""Workspace lock for Transport Matters multi-instance support.
 
-Enforces "one live manicure instance per workspace" via ``fcntl.flock``
+Enforces "one live Transport Matters instance per workspace" via ``fcntl.flock``
 on a file under the workspace directory. The lock is kernel-held, so it
 auto-releases when the owning process dies — no staleness handling
 needed on our side.
@@ -105,7 +105,7 @@ class WorkspaceLock:
         """Return ``True`` if another process currently holds *root*'s lock.
 
         Read-only probe — never creates the lock file. Used by
-        ``manicure list`` to discriminate live instances from stale
+        ``transport-matters list`` to discriminate live instances from stale
         manifests without taking the lock itself.
         """
         lock_path = root / _LOCK_FILENAME

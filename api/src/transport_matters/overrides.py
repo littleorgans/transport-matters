@@ -1,4 +1,4 @@
-"""Override model, store, and apply logic for the Manicure pipeline.
+"""Override model, store, and apply logic for the Transport Matters pipeline.
 
 Replaces the rules engine with a direct override model. Users edit
 request content in the breakpoint editor; edits produce typed overrides

@@ -14,15 +14,15 @@ if TYPE_CHECKING:
     from transport_matters.overrides import OverrideAudit
 
 
-_ADAPTER_KEY = "manicure_adapter"
-_REQUEST_IR_KEY = "manicure_ir"
-_RAW_REQUEST_KEY = "manicure_raw_req"
-_CURATED_REQUEST_IR_KEY = "manicure_curated_ir"
-_AUDIT_KEY = "manicure_audit"
-_MUTATED_MANUALLY_KEY = "manicure_mutated_manually"
-_TRACK_ASSIGNMENT_KEY = "manicure_track_assignment"
-_PROVISIONAL_EXCHANGE_ID_KEY = "manicure_provisional_exchange_id"
-_DROPPED_KEY = "manicure_dropped"
+_ADAPTER_KEY = "transport_matters_adapter"
+_REQUEST_IR_KEY = "transport_matters_ir"
+_RAW_REQUEST_KEY = "transport_matters_raw_req"
+_CURATED_REQUEST_IR_KEY = "transport_matters_curated_ir"
+_AUDIT_KEY = "transport_matters_audit"
+_MUTATED_MANUALLY_KEY = "transport_matters_mutated_manually"
+_TRACK_ASSIGNMENT_KEY = "transport_matters_track_assignment"
+_PROVISIONAL_EXCHANGE_ID_KEY = "transport_matters_provisional_exchange_id"
+_DROPPED_KEY = "transport_matters_dropped"
 _UNSET = object()
 
 
