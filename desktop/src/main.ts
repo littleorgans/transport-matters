@@ -84,6 +84,7 @@ export function resolveBackendStartupOptions(
 ): BackendStartupOptions {
   return {
     client: resolveBackendClient(env.TRANSPORT_MATTERS_DESKTOP_CLIENT),
+    env: { ...env },
     proxyPort: resolvePort(env.TRANSPORT_MATTERS_PROXY_PORT, DEFAULT_PROXY_PORT),
     webPort: resolvePort(env.TRANSPORT_MATTERS_WEB_PORT, DEFAULT_WEB_PORT),
     workspaceDir: cwd,
@@ -113,12 +114,16 @@ export async function startBackendAndCreateWindow(
   const stopBackend = dependencies.stopBackend ?? stopBackendProcess;
   const waitForHealth = dependencies.waitForHealth ?? waitForLaunchedBackend;
   const createWindow = dependencies.createWindow ?? createMainWindow;
-  const backend = launchBackend({
+  const backendLaunchOptions: BackendLaunchOptions = {
     client: options.client,
     proxyPort: options.proxyPort,
     webPort: options.webPort,
     workspaceDir: options.workspaceDir,
-  });
+  };
+  if (options.env !== undefined) {
+    backendLaunchOptions.env = options.env;
+  }
+  const backend = launchBackend(backendLaunchOptions);
 
   try {
     await waitForHealth(backend, options.webPort);

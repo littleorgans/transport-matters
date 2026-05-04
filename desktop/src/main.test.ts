@@ -132,6 +132,49 @@ describe("desktop main process", () => {
     });
   });
 
+  it("preserves inherited environment for the backend startup path", async () => {
+    const backend = createBackendFixture();
+    const createWindow = vi.fn(
+      () => ({ loadURL, once, show }) as unknown as BrowserWindow,
+    );
+    const launchBackend = vi.fn(() => backend);
+    const waitForHealth = vi.fn(async () => undefined);
+
+    const { resolveBackendStartupOptions, startBackendAndCreateWindow } =
+      await import("./main.js");
+
+    const startupOptions = resolveBackendStartupOptions(
+      {
+        CLAUDE_CONFIG_DIR: "/tmp/claude",
+        PATH: "/usr/local/bin:/usr/bin",
+        TRANSPORT_MATTERS_DESKTOP_CLIENT: "claude",
+        TRANSPORT_MATTERS_PROXY_PORT: "9900",
+        TRANSPORT_MATTERS_WEB_PORT: "9901",
+      },
+      "/tmp/workspace",
+    );
+
+    await startBackendAndCreateWindow(startupOptions, {
+      createWindow,
+      launchBackend,
+      waitForHealth,
+    });
+
+    expect(launchBackend).toHaveBeenCalledWith({
+      client: "claude",
+      env: {
+        CLAUDE_CONFIG_DIR: "/tmp/claude",
+        PATH: "/usr/local/bin:/usr/bin",
+        TRANSPORT_MATTERS_DESKTOP_CLIENT: "claude",
+        TRANSPORT_MATTERS_PROXY_PORT: "9900",
+        TRANSPORT_MATTERS_WEB_PORT: "9901",
+      },
+      proxyPort: 9900,
+      webPort: 9901,
+      workspaceDir: "/tmp/workspace",
+    });
+  });
+
   it("shows a clear startup error when backend readiness fails", async () => {
     const backend = createBackendFixture();
     const appQuit = vi.fn();
