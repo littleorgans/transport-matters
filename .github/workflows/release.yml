@@ -8,8 +8,8 @@ name: Release
 #
 # Steps:
 #   1. Build the www/ bundle with pnpm + vite. Vite's build outDir points
-#      at `api/src/manicure/www/` so the wheel picks it up through hatch's
-#      `artifacts = ["src/manicure/www/**"]` glob.
+#      at `api/src/transport_matters/www/` so the wheel picks it up through
+#      hatch's `artifacts = ["src/transport_matters/www/**"]` glob.
 #   2. Run `uv build` to produce the wheel and sdist. hatch-vcs reads the
 #      git tag, so the version string in the wheel filename matches the tag.
 #   3. Smoke the wheel in a clean venv: install, run `manicure --version`,
@@ -75,17 +75,17 @@ jobs:
           pnpm typecheck
           pnpm test
 
-      - name: Build www/ bundle into api/src/manicure/www
+      - name: Build www/ bundle into api/src/transport_matters/www
         working-directory: www
         run: pnpm build
 
       - name: Verify www/ landed inside the Python package
         run: |
-          if [ ! -f api/src/manicure/www/index.html ]; then
-            echo "::error::vite build did not produce api/src/manicure/www/index.html"
+          if [ ! -f api/src/transport_matters/www/index.html ]; then
+            echo "::error::vite build did not produce api/src/transport_matters/www/index.html"
             exit 1
           fi
-          ls -lh api/src/manicure/www/
+          ls -lh api/src/transport_matters/www/
 
       - name: Install uv
         uses: astral-sh/setup-uv@v7
@@ -102,7 +102,7 @@ jobs:
           uv run ruff check src/
           uv run ruff format --check src/
           uv run mypy src/
-          uv run pytest --cov=manicure --cov-report=term
+          uv run pytest --cov=transport_matters --cov-report=term
 
       - name: Build wheel + sdist
         working-directory: api
@@ -146,8 +146,8 @@ jobs:
         working-directory: api
         run: |
           wheel=$(ls dist/manicure-*.whl | head -1)
-          if ! python -m zipfile -l "$wheel" | grep -q 'manicure/www/index.html'; then
-            echo "::error::wheel $wheel does not contain manicure/www/index.html"
+          if ! python -m zipfile -l "$wheel" | grep -q 'transport_matters/www/index.html'; then
+            echo "::error::wheel $wheel does not contain transport_matters/www/index.html"
             python -m zipfile -l "$wheel"
             exit 1
           fi

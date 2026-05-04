@@ -25,10 +25,10 @@ node_modules/
 .fmm.db-wal
 
 # Vite build output (served by the Python addon)
-api/src/manicure/www/
+api/src/transport_matters/www/
 
 # hatch-vcs generated version file
-api/src/manicure/_version.py
+api/src/transport_matters/_version.py
 
 # Testing
 .pytest_cache/

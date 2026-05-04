@@ -11,11 +11,11 @@ install:
 
 # ------------- Dev -------------
 dev:
-    uv run python -m manicure
+    uv run python -m transport_matters
 
 [no-exit-message]
 proxy:
-    uv run mitmdump --mode reverse:https://api.anthropic.com --listen-port 8787 -s src/manicure/addon.py
+    uv run mitmdump --mode reverse:https://api.anthropic.com --listen-port 8787 -s src/transport_matters/addon.py
 
 [no-exit-message]
 spike:
@@ -27,11 +27,11 @@ test *args:
     uv run pytest {{args}}
 
 coverage:
-    uv run pytest --cov=manicure --cov-report=term-missing --cov-report=html
+    uv run pytest --cov=transport_matters --cov-report=term-missing --cov-report=html
 
 # Build wheel + sdist into api/dist/. Run `cd ../www && pnpm build` first
 # if you want the frontend bundle inside the wheel — vite writes it to
-# src/manicure/www/ which hatch includes via the artifacts glob.
+# src/transport_matters/www/ which hatch includes via the artifacts glob.
 build:
     rm -rf dist/
     uv build
@@ -39,7 +39,7 @@ build:
     @echo "Built artifacts:"
     @ls -lh dist/
     @echo ""
-    @if unzip -l dist/manicure-*.whl | grep -q 'manicure/www/index.html'; then \
+    @if unzip -l dist/manicure-*.whl | grep -q 'transport_matters/www/index.html'; then \
         echo "  ✓ www/ bundle embedded in wheel"; \
     else \
         echo "  ! www/ bundle NOT in wheel — run 'cd ../www && pnpm build' first"; \

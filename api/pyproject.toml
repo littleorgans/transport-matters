@@ -45,7 +45,7 @@ dependencies = [
 ]
 
 [project.scripts]
-manicure = "manicure.cli:main"
+manicure = "transport_matters.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/srobinson/manicure"
@@ -85,16 +85,16 @@ source = "vcs"
 raw-options = { root = "..", version_scheme = "no-guess-dev" }
 
 [tool.hatch.build.hooks.vcs]
-version-file = "src/manicure/_version.py"
+version-file = "src/transport_matters/_version.py"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/manicure"]
+packages = ["src/transport_matters"]
 exclude = ["**/test_*.py"]
-artifacts = ["src/manicure/_version.py", "src/manicure/www/**"]
+artifacts = ["src/transport_matters/_version.py", "src/transport_matters/www/**"]
 
 [tool.hatch.build.targets.sdist]
-only-include = ["src/manicure", "tests", "README.md", "LICENSE"]
-artifacts = ["src/manicure/_version.py"]
+only-include = ["src/transport_matters", "tests", "README.md", "LICENSE"]
+artifacts = ["src/transport_matters/_version.py"]
 
 # ---- Ruff ----
 [tool.ruff]
@@ -126,7 +126,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.isort]
-known-first-party = ["manicure"]
+known-first-party = ["transport_matters"]
 
 [tool.ruff.lint.flake8-type-checking]
 runtime-evaluated-base-classes = ["pydantic.BaseModel"]
@@ -152,7 +152,7 @@ addopts = "-v --tb=short"
 
 # ---- coverage ----
 [tool.coverage.run]
-source = ["manicure"]
+source = ["transport_matters"]
 omit = ["*/test_*"]
 
 [tool.coverage.report]

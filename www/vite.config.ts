@@ -40,7 +40,7 @@ export default defineConfig({
     },
   },
   build: {
-    outDir: "../api/src/manicure/www",
+    outDir: "../api/src/transport_matters/www",
     emptyOutDir: true,
   },
   test: {

@@ -8,8 +8,8 @@ from collections.abc import AsyncGenerator  # noqa: E402
 import pytest  # noqa: E402
 from httpx import ASGITransport, AsyncClient  # noqa: E402
 
-from manicure.config import get_settings  # noqa: E402
-from manicure.main import create_app  # noqa: E402
+from transport_matters.config import get_settings  # noqa: E402
+from transport_matters.main import create_app  # noqa: E402
 
 
 @pytest.fixture(autouse=True)

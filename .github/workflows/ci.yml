@@ -60,7 +60,7 @@ jobs:
         run: uv sync --locked --dev
 
       - name: Run tests with coverage
-        run: uv run pytest --cov=manicure --cov-report=term
+        run: uv run pytest --cov=transport_matters --cov-report=term
 
   frontend:
     name: frontend
@@ -104,7 +104,7 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: www-bundle
-          path: api/src/manicure/www/
+          path: api/src/transport_matters/www/
           if-no-files-found: error
           retention-days: 1
 
@@ -133,25 +133,25 @@ jobs:
 
       - name: Stage www bundle into the package
         run: |
-          mkdir -p api/src/manicure/www
+          mkdir -p api/src/transport_matters/www
           # upload-artifact@v4 preserves the LCA of the uploaded paths.
           # Handle both possible layouts: flat (index.html at artifact
           # root) or nested (www/index.html at artifact root). Either
           # gives us the same result after staging.
           if [ -f /tmp/www-bundle/index.html ]; then
-            cp -r /tmp/www-bundle/. api/src/manicure/www/
+            cp -r /tmp/www-bundle/. api/src/transport_matters/www/
           elif [ -f /tmp/www-bundle/www/index.html ]; then
-            cp -r /tmp/www-bundle/www/. api/src/manicure/www/
+            cp -r /tmp/www-bundle/www/. api/src/transport_matters/www/
           else
             echo "::error::www bundle artifact has unexpected structure"
             find /tmp/www-bundle -type f
             exit 1
           fi
-          if [ ! -f api/src/manicure/www/index.html ]; then
-            echo "::error::staging did not produce api/src/manicure/www/index.html"
+          if [ ! -f api/src/transport_matters/www/index.html ]; then
+            echo "::error::staging did not produce api/src/transport_matters/www/index.html"
             exit 1
           fi
-          ls -lh api/src/manicure/www/
+          ls -lh api/src/transport_matters/www/
 
       - name: Install uv
         uses: astral-sh/setup-uv@v7
@@ -178,8 +178,8 @@ jobs:
         working-directory: api
         run: |
           wheel=$(ls dist/manicure-*.whl | head -1)
-          if ! python -m zipfile -l "$wheel" | grep -q 'manicure/www/index.html'; then
-            echo "::error::wheel $wheel does not contain manicure/www/index.html"
+          if ! python -m zipfile -l "$wheel" | grep -q 'transport_matters/www/index.html'; then
+            echo "::error::wheel $wheel does not contain transport_matters/www/index.html"
             python -m zipfile -l "$wheel"
             exit 1
           fi
