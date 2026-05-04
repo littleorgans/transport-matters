@@ -23,7 +23,7 @@ export interface ApiTransportOptions {
   fetcher?: ApiFetch;
 }
 
-function apiUrl(path: string, baseUrl?: string): string {
+export function apiUrl(path: string, baseUrl?: string): string {
   if (!baseUrl) {
     return path;
   }
