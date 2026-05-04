@@ -2,6 +2,7 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+OLD_IDENTITIES = ("manicure", "Manicure", "MANICURE")
 RELEASE_SURFACES = [
     ".github/workflows/ci.yml",
     ".github/workflows/release.yml",
@@ -21,6 +22,10 @@ ACTIVE_BACKEND_SURFACES = [
         if not path.name.startswith("test_") and path.name != "conftest.py"
     ],
 ]
+LOCAL_DEVELOPER_SURFACES = [
+    "scripts/local-dev-mode.sh",
+    "api/CLAUDE.md",
+]
 
 
 def read_surface(path: str) -> str:
@@ -30,7 +35,7 @@ def read_surface(path: str) -> str:
 def test_release_surfaces_use_transport_matters_identity() -> None:
     combined = "\n".join(read_surface(path) for path in RELEASE_SURFACES)
 
-    for old_identity in ("manicure", "Manicure", "MANICURE"):
+    for old_identity in OLD_IDENTITIES:
         assert old_identity not in combined
 
     assert "transport-matters" in combined
@@ -55,6 +60,16 @@ def test_active_backend_surfaces_use_transport_matters_identity() -> None:
     assert "transport-matters" in combined
     assert "Transport Matters" in combined
     assert "TRANSPORT_MATTERS_" in combined
+
+
+def test_local_developer_surfaces_use_transport_matters_identity() -> None:
+    combined = "\n".join(read_surface(path) for path in LOCAL_DEVELOPER_SURFACES)
+
+    for old_identity in OLD_IDENTITIES:
+        assert old_identity not in combined
+
+    assert "transport-matters" in combined
+    assert "transport_matters" in combined
 
 
 def test_ci_and_release_smoke_the_public_transport_matters_command() -> None:

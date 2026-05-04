@@ -18,7 +18,7 @@ target_path="${1:-$PWD}"
 target_path="$(cd "$target_path" && pwd)"
 
 [[ -n "${TMUX:-}" ]] || { echo "error: not inside tmux" >&2; exit 2; }
-command -v manicure >/dev/null || { echo "error: manicure not on PATH" >&2; exit 2; }
+command -v transport-matters >/dev/null || { echo "error: transport-matters not on PATH" >&2; exit 2; }
 command -v pnpm >/dev/null || { echo "error: pnpm not on PATH" >&2; exit 2; }
 
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
@@ -32,8 +32,8 @@ for port in 8787 8788; do
     fi
 done
 
-window_name="manicure-$client"
-api_cmd="cd '$repo_root' && manicure $client --debug --proxy-port 8787 --web-port 8788 '$target_path'"
+window_name="transport-matters-$client"
+api_cmd="cd '$repo_root' && transport-matters $client --debug --proxy-port 8787 --web-port 8788 '$target_path'"
 www_cmd="cd '$www_dir' && pnpm dev"
 
 tmux new-window -n "$window_name" -c "$repo_root" "$api_cmd"

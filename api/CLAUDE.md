@@ -29,10 +29,10 @@ No cycles. Dependency order:
 ir → adapters → rules → pipeline → storage → breakpoint → server
 ```
 
-`ir.py` imports nothing from `manicure`.
+`ir.py` imports nothing from `transport_matters`.
 
 ## Tests
-- Unit tests are colocated: `src/manicure/foo/test_bar.py` lives next to `bar.py`
+- Unit tests are colocated: `src/transport_matters/foo/test_bar.py` lives next to `bar.py`
 - Integration tests live in `tests/integration/`
 
 ## Errors
