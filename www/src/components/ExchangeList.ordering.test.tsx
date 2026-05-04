@@ -259,7 +259,7 @@ describe("ExchangeList — anchored ordering", () => {
     ]);
   });
 
-  it("collapsing an anchored child hides its exchanges and descendant tracks", () => {
+  it("hides a collapsed anchored child and its descendant tracks from shell state", () => {
     render(
       <ExchangeList
         exchanges={[
@@ -304,10 +304,10 @@ describe("ExchangeList — anchored ordering", () => {
         onIncludeHistoryChange={() => {}}
         selectedId={null}
         onSelect={() => {}}
+        collapsedTrackIds={["agent-child"]}
+        onToggleCollapsedTrack={() => {}}
       />,
     );
-
-    fireEvent.click(screen.getByRole("button", { name: "Collapse track agent-child" }));
 
     expect(screen.queryByTestId("exchange-row-child-1")).not.toBeInTheDocument();
     expect(screen.queryByTestId("exchange-row-grand-1")).not.toBeInTheDocument();

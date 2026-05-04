@@ -1,4 +1,5 @@
 import { useEffect, useMemo } from "react";
+import { exchangeListSessionKey } from "./components/ExchangeList";
 import { useBreakpoint } from "./hooks/useBreakpoint";
 import { useExchangeStream } from "./hooks/useExchangeStream";
 import { useExchanges } from "./hooks/useExchanges";
@@ -7,6 +8,8 @@ import { useRouteHotkeys } from "./hooks/useRouteHotkeys";
 import { RouteLayout } from "./routeLayout";
 import { useUIStore } from "./stores/uiStore";
 import type { ExchangeTrackStub, PausedFlow } from "./types";
+
+const EMPTY_COLLAPSED_TRACK_IDS: string[] = [];
 
 function pendingTrackStubsForPausedFlow(pausedFlow: PausedFlow | null): ExchangeTrackStub[] {
   if (
@@ -34,12 +37,18 @@ export function BrowserAppShell() {
   const setIncludeHistory = useUIStore((s) => s.setIncludeHistory);
   const pausedFlow = useUIStore((s) => s.pausedFlow);
   const activeRoute = useUIStore((s) => s.activeRoute);
+  const setActiveRoute = useUIStore((s) => s.setActiveRoute);
   const selectedId = useUIStore((s) => s.selectedId);
   const setSelectedId = useUIStore((s) => s.setSelectedId);
   const clearPausedFlow = useUIStore((s) => s.clearPausedFlow);
   const pendingTrackStubs = useMemo(() => pendingTrackStubsForPausedFlow(pausedFlow), [pausedFlow]);
   const { exchanges, trackTree, isLoading } = useExchanges(includeHistory, true, pendingTrackStubs);
   const { meta } = useMeta();
+  const collapseSessionKey = exchangeListSessionKey(meta?.runId ?? null, exchanges);
+  const collapsedTrackIds = useUIStore(
+    (s) => s.collapsedTrackIdsBySession[collapseSessionKey] ?? EMPTY_COLLAPSED_TRACK_IDS,
+  );
+  const toggleCollapsedTrack = useUIStore((s) => s.toggleCollapsedTrack);
   const { connected } = useExchangeStream();
   const { mode, arm, disarm, error: breakpointError } = useBreakpoint();
 
@@ -94,6 +103,9 @@ export function BrowserAppShell() {
       pausedFlow={pausedFlow}
       onPausedFlowResolved={clearPausedFlow}
       activeRoute={activeRoute}
+      onActiveRouteChange={setActiveRoute}
+      collapsedTrackIds={collapsedTrackIds}
+      onToggleCollapsedTrack={(trackId) => toggleCollapsedTrack(collapseSessionKey, trackId)}
       selectedExchangeHiddenByFilter={selectedExchangeHiddenByFilter}
     />
   );

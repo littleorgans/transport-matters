@@ -1,7 +1,6 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useMemo, useRef, useState } from "react";
 import { buildExchangeTrackTree } from "../hooks/useExchanges";
-import { useUIStore } from "../stores/uiStore";
 import type { ExchangeTrack, ExchangeTrackStub, IndexEntry } from "../types";
 import { ExchangeTurnCard } from "./ExchangeTurnCard";
 import { projectAnchoredRows } from "./exchangeListRows";
@@ -17,6 +16,8 @@ interface ExchangeListProps {
   onIncludeHistoryChange: (next: boolean) => void;
   selectedId: string | null;
   onSelect: (id: string) => void;
+  collapsedTrackIds?: readonly string[];
+  onToggleCollapsedTrack?: (trackId: string) => void;
 }
 
 // Fixed virtual rows keep long sessions cheap. Root and subagent turns
@@ -25,6 +26,7 @@ const TRACK_ROW_HEIGHT = 92;
 const EXCHANGE_ROW_HEIGHT = 250;
 const EMPTY_TRACK_IDS: string[] = [];
 const EMPTY_TRACK_STUBS: ExchangeTrackStub[] = [];
+const IGNORE_COLLAPSED_TRACK_TOGGLE = () => {};
 
 function findTrack(tracks: ExchangeTrack[], trackId: string): ExchangeTrack | null {
   for (const track of tracks) {
@@ -57,7 +59,10 @@ function focusEntryForTrack(tracks: ExchangeTrack[], trackId: string): IndexEntr
   return track.exchanges.at(-1) ?? null;
 }
 
-function sessionKey(currentRunId: string | null, exchanges: IndexEntry[]): string {
+export function exchangeListSessionKey(
+  currentRunId: string | null,
+  exchanges: IndexEntry[],
+): string {
   return currentRunId ?? exchanges[0]?.run_id ?? "history";
 }
 
@@ -140,14 +145,11 @@ export function ExchangeList({
   onIncludeHistoryChange,
   selectedId,
   onSelect,
+  collapsedTrackIds = EMPTY_TRACK_IDS,
+  onToggleCollapsedTrack = IGNORE_COLLAPSED_TRACK_TOGGLE,
 }: ExchangeListProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [previewWaiting, setPreviewWaiting] = useState(false);
-  const collapseSessionKey = sessionKey(currentRunId, exchanges);
-  const collapsedTrackIds = useUIStore(
-    (s) => s.collapsedTrackIdsBySession[collapseSessionKey] ?? EMPTY_TRACK_IDS,
-  );
-  const toggleCollapsedTrack = useUIStore((s) => s.toggleCollapsedTrack);
   const historyCount = currentRunId
     ? exchanges.filter((entry) => entry.run_id !== currentRunId).length
     : 0;
@@ -209,7 +211,7 @@ export function ExchangeList({
                     offsetTop={vRow.start}
                     anchorMeta={row.meta}
                     isCollapsed={isCollapsed}
-                    onToggle={(trackId) => toggleCollapsedTrack(collapseSessionKey, trackId)}
+                    onToggle={onToggleCollapsedTrack}
                     onFocusParent={focusTrack}
                   />
                 );

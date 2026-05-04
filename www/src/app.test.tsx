@@ -5,6 +5,8 @@ import { App } from "./app";
 import { useUIStore } from "./stores/uiStore";
 import type { IndexEntry, PausedFlow } from "./types";
 
+let eventSourceUrls: string[];
+
 function renderWithProviders(ui: React.ReactElement) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(<QueryClientProvider client={qc}>{ui}</QueryClientProvider>);
@@ -42,6 +44,7 @@ function makeEntry(id: string, runId: string, overrides: Partial<IndexEntry> = {
 }
 
 beforeEach(() => {
+  eventSourceUrls = [];
   vi.stubGlobal(
     "EventSource",
     class MockEventSource {
@@ -49,6 +52,10 @@ beforeEach(() => {
       onerror: (() => void) | null = null;
       onmessage: ((event: MessageEvent) => void) | null = null;
       close = vi.fn();
+
+      constructor(url: string | URL) {
+        eventSourceUrls.push(String(url));
+      }
     },
   );
   vi.stubGlobal(
@@ -121,6 +128,12 @@ describe("App", () => {
   it("shows entry page when no exchanges", () => {
     renderWithProviders(<App />);
     expect(screen.getByText("Waiting for exchanges")).toBeInTheDocument();
+  });
+
+  it("opens the browser stream from the browser shell", () => {
+    renderWithProviders(<App />);
+
+    expect(eventSourceUrls).toEqual(["/api/stream"]);
   });
 
   it("surfaces prior-run history from the waiting screen", async () => {

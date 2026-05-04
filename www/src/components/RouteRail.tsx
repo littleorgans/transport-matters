@@ -1,5 +1,4 @@
 import type { Route } from "../stores/uiStore";
-import { useUIStore } from "../stores/uiStore";
 
 /**
  * Top-level route rail: INTERCEPT / OVERLAYS / TRACE / RECALL.
@@ -30,10 +29,12 @@ const ROUTES: readonly RouteDef[] = [
   { id: "recall", label: "Recall", available: false, soonClass: "text-sky" },
 ] as const;
 
-export function RouteRail() {
-  const activeRoute = useUIStore((s) => s.activeRoute);
-  const setActiveRoute = useUIStore((s) => s.setActiveRoute);
+interface RouteRailProps {
+  activeRoute: Route;
+  onActiveRouteChange: (route: Route) => void;
+}
 
+export function RouteRail({ activeRoute, onActiveRouteChange }: RouteRailProps) {
   return (
     <div className="flex border-b border-edge">
       {ROUTES.map((route, idx) => {
@@ -42,7 +43,7 @@ export function RouteRail() {
           <button
             key={route.id}
             type="button"
-            onClick={() => setActiveRoute(route.id)}
+            onClick={() => onActiveRouteChange(route.id)}
             aria-current={isActive ? "page" : undefined}
             className={[
               "group relative flex items-center gap-2.5 px-6 py-3 cursor-pointer",

@@ -130,6 +130,9 @@ export interface RouteLayoutProps {
   pausedFlow: PausedFlow | null;
   onPausedFlowResolved: () => void;
   activeRoute: Route;
+  onActiveRouteChange: (route: Route) => void;
+  collapsedTrackIds: readonly string[];
+  onToggleCollapsedTrack: (trackId: string) => void;
   selectedExchangeHiddenByFilter?: boolean;
 }
 
@@ -141,6 +144,8 @@ function InterceptRoute({
   onIncludeHistoryChange,
   selectedId,
   onSelectExchange,
+  collapsedTrackIds,
+  onToggleCollapsedTrack,
   pausedFlow,
   onPausedFlowResolved,
   selectedExchangeHiddenByFilter,
@@ -153,6 +158,8 @@ function InterceptRoute({
   | "onIncludeHistoryChange"
   | "selectedId"
   | "onSelectExchange"
+  | "collapsedTrackIds"
+  | "onToggleCollapsedTrack"
   | "pausedFlow"
   | "onPausedFlowResolved"
   | "selectedExchangeHiddenByFilter"
@@ -171,6 +178,8 @@ function InterceptRoute({
           onIncludeHistoryChange={onIncludeHistoryChange}
           selectedId={selectedId}
           onSelect={onSelectExchange}
+          collapsedTrackIds={collapsedTrackIds}
+          onToggleCollapsedTrack={onToggleCollapsedTrack}
         />
       </aside>
 
@@ -237,7 +246,10 @@ export function RouteLayout(props: RouteLayoutProps) {
           includeHistory={props.includeHistory}
         />
 
-        <RouteRail />
+        <RouteRail
+          activeRoute={props.activeRoute}
+          onActiveRouteChange={props.onActiveRouteChange}
+        />
 
         {props.activeRoute === "intercept" ? (
           <InterceptRoute {...props} />

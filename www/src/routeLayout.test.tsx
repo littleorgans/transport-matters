@@ -17,6 +17,9 @@ const baseProps: RouteLayoutProps = {
   pausedFlow: null,
   onPausedFlowResolved: vi.fn(),
   activeRoute: "intercept",
+  onActiveRouteChange: vi.fn(),
+  collapsedTrackIds: [],
+  onToggleCollapsedTrack: vi.fn(),
 };
 
 function renderLayout(overrides: Partial<RouteLayoutProps> = {}) {

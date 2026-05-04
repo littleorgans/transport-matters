@@ -1,6 +1,7 @@
 import { fireEvent, render, renderHook, screen } from "@testing-library/react";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useRouteHotkeys } from "../hooks/useRouteHotkeys";
+import type { Route } from "../stores/uiStore";
 import { useUIStore } from "../stores/uiStore";
 import { RouteRail } from "./RouteRail";
 
@@ -8,9 +9,13 @@ beforeEach(() => {
   useUIStore.setState({ activeRoute: "intercept" });
 });
 
+function renderRouteRail(activeRoute: Route = "intercept", onActiveRouteChange = () => {}) {
+  return render(<RouteRail activeRoute={activeRoute} onActiveRouteChange={onActiveRouteChange} />);
+}
+
 describe("RouteRail", () => {
   it("renders all four routes", () => {
-    render(<RouteRail />);
+    renderRouteRail();
     expect(screen.getByRole("button", { name: /Intercept/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Overlays/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Trace/ })).toBeInTheDocument();
@@ -18,21 +23,22 @@ describe("RouteRail", () => {
   });
 
   it("marks the active route with aria-current='page'", () => {
-    render(<RouteRail />);
+    renderRouteRail();
     const intercept = screen.getByRole("button", { name: /Intercept/ });
     expect(intercept).toHaveAttribute("aria-current", "page");
     const trace = screen.getByRole("button", { name: /Trace/ });
     expect(trace).not.toHaveAttribute("aria-current");
   });
 
-  it("clicking a route updates the store", () => {
-    render(<RouteRail />);
+  it("clicking a route reports the next route", () => {
+    const onActiveRouteChange = vi.fn();
+    renderRouteRail("intercept", onActiveRouteChange);
     fireEvent.click(screen.getByRole("button", { name: /Overlays/ }));
-    expect(useUIStore.getState().activeRoute).toBe("overlays");
+    expect(onActiveRouteChange).toHaveBeenCalledWith("overlays");
   });
 
   it("shows SOON marker on unavailable routes only", () => {
-    render(<RouteRail />);
+    renderRouteRail();
     // Intercept and Overlays are functional; Trace and Recall still wear SOON.
     const soonMarkers = screen.getAllByText("SOON");
     expect(soonMarkers).toHaveLength(2);

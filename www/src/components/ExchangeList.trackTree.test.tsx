@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import type { ComponentProps } from "react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { makeEntry } from "./__test-utils__/exchangeList";
 import { ExchangeList } from "./ExchangeList";
 
@@ -233,7 +233,8 @@ describe("ExchangeList — track tree", () => {
     expect(screen.getByTestId("exchange-row-child-1").querySelector(".row-selected")).toBeTruthy();
   });
 
-  it("persists collapsed subagent tracks for the same session", () => {
+  it("renders collapsed subagent tracks from shell state", () => {
+    const onToggleCollapsedTrack = vi.fn();
     const props = {
       exchanges: [
         makeEntry({
@@ -259,15 +260,18 @@ describe("ExchangeList — track tree", () => {
       onSelect: () => {},
     } satisfies ComponentProps<typeof ExchangeList>;
 
-    const { unmount } = render(<ExchangeList {...props} />);
-
-    fireEvent.click(screen.getByRole("button", { name: "Collapse track toolu_child" }));
-    expect(screen.queryByText("claude-opus-4-7")).not.toBeInTheDocument();
-
-    unmount();
-    render(<ExchangeList {...props} />);
+    render(
+      <ExchangeList
+        {...props}
+        collapsedTrackIds={["toolu_child"]}
+        onToggleCollapsedTrack={onToggleCollapsedTrack}
+      />,
+    );
 
     expect(screen.getByRole("button", { name: "Expand track toolu_child" })).toBeInTheDocument();
     expect(screen.queryByText("claude-opus-4-7")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Expand track toolu_child" }));
+    expect(onToggleCollapsedTrack).toHaveBeenCalledWith("toolu_child");
   });
 });
