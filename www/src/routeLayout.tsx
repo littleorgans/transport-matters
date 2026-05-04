@@ -2,11 +2,11 @@ import { ArmToggle } from "./components/ArmToggle";
 import { ExchangeDetail } from "./components/ExchangeDetail";
 import { ExchangeList } from "./components/ExchangeList";
 import { BreakpointEditor } from "./components/editor/BreakpointEditor";
-import { ManicureIcon } from "./components/ManicureIcon";
 import { RouteRail } from "./components/RouteRail";
 import { OverlaysView } from "./components/routes/OverlaysView";
 import { RecallView } from "./components/routes/RecallView";
 import { TraceView } from "./components/routes/TraceView";
+import { TransportMattersIcon } from "./components/TransportMattersIcon";
 import type { Route } from "./stores/uiStore";
 import type { ExchangeTrack, IndexEntry, PausedFlow } from "./types";
 
@@ -44,13 +44,13 @@ function AppBar({
     <>
       <div className="top-highlight relative overflow-hidden flex items-center justify-between gap-4 bg-surface px-6 py-3">
         <div className="flex items-center gap-3 min-w-0">
-          <ManicureIcon className="h-[22px] w-[22px] text-txt shrink-0" />
+          <TransportMattersIcon className="h-[22px] w-[22px] text-txt shrink-0" />
           <h1 className="text-[14px] font-semibold tracking-[0.22em] text-txt uppercase whitespace-nowrap">
-            Manicure
+            Transport Matters
           </h1>
           <span className="text-edge-strong hidden sm:inline">&middot;</span>
           <span className="text-[11px] text-txt-3 tracking-[0.14em] tabular-nums hidden sm:inline">
-            v{__MANICURE_VERSION__}
+            v{__TRANSPORT_MATTERS_VERSION__}
           </span>
         </div>
 
@@ -89,13 +89,13 @@ function WaitingScreen({
   return (
     <div className="h-screen bg-canvas text-txt relative overflow-hidden">
       <div className="absolute inset-0 flex items-center justify-center text-edge-subtle opacity-30 pointer-events-none">
-        <ManicureIcon className="spin-gentle h-[90vh] w-[90vh]" />
+        <TransportMattersIcon className="spin-gentle h-[90vh] w-[90vh]" />
       </div>
       <div className="absolute inset-0 flex flex-col items-center justify-center gap-6">
         <div className="flex flex-col items-center gap-3">
-          <ManicureIcon className="h-[64px] w-[64px] text-txt shrink-0" />
+          <TransportMattersIcon className="h-[64px] w-[64px] text-txt shrink-0" />
           <h1 className="text-[14px] font-semibold tracking-[0.18em] text-txt uppercase">
-            Manicure
+            Transport Matters
           </h1>
           <span className="label">Waiting for exchanges</span>
         </div>

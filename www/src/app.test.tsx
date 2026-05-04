@@ -115,7 +115,7 @@ beforeEach(() => {
 describe("App", () => {
   it("renders the app title", () => {
     renderWithProviders(<App />);
-    expect(screen.getByRole("heading", { name: "Manicure" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Transport Matters" })).toBeInTheDocument();
   });
 
   it("shows entry page when no exchanges", () => {

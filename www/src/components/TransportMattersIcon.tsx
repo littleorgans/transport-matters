@@ -1,4 +1,4 @@
-export function ManicureIcon({ className }: { className?: string }) {
+export function TransportMattersIcon({ className }: { className?: string }) {
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"
@@ -6,9 +6,9 @@ export function ManicureIcon({ className }: { className?: string }) {
       fill="none"
       className={className}
       role="img"
-      aria-label="Manicure"
+      aria-label="Transport Matters"
     >
-      <title>Manicure</title>
+      <title>Transport Matters</title>
       <path
         d="m 143.6,4.91 v 89.76 c 10.42,-2.66 20.25,-7.65 27.44,-13.28 7.88,11.73 11.52,25.96 11.52,41.99 0,27.07 -12.04,54.52 -38.74,69.24 v 51.13 c 55.93,-7.43 101.9,-52.57 101.9,-124.1 0,-63.21 -39.08,-108.4 -102.1,-114.7 z"
         fill="currentColor"

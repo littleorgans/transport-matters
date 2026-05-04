@@ -27,6 +27,8 @@ describe("RouteLayout", () => {
   it("renders the waiting screen from prepared shell state", () => {
     renderLayout();
 
+    expect(screen.getByRole("heading", { name: "Transport Matters" })).toBeInTheDocument();
+    expect(screen.getAllByRole("img", { name: "Transport Matters" })).toHaveLength(2);
     expect(screen.getByText("Waiting for exchanges")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Show history" })).toBeInTheDocument();
   });

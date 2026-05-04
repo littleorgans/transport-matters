@@ -1,9 +1,9 @@
-import { ManicureIcon } from "../ManicureIcon";
+import { TransportMattersIcon } from "../TransportMattersIcon";
 
 /**
  * RECALL — project session browser.
  *
- * Placeholder. Mirrors the entry-page atmosphere: a giant faded Manicure
+ * Placeholder. Mirrors the entry-page atmosphere: a giant faded Transport Matters
  * silhouette ticking in the background, centered foreground copy. The
  * route reads as "waiting for the next version", in the same visual voice
  * as "waiting for exchanges" on the entry page. Accent: sky.
@@ -18,13 +18,13 @@ export function RecallView() {
         aria-hidden
         className="absolute inset-0 flex items-center justify-center text-edge-subtle opacity-30 pointer-events-none"
       >
-        <ManicureIcon className="spin-gentle h-[90vh] w-[90vh]" />
+        <TransportMattersIcon className="spin-gentle h-[90vh] w-[90vh]" />
       </div>
 
       {/* Centered foreground stack */}
       <div className="absolute inset-0 flex flex-col items-center justify-center gap-7 px-8 text-center">
         <div className="flex flex-col items-center gap-4">
-          <ManicureIcon className="h-[64px] w-[64px] text-txt shrink-0" />
+          <TransportMattersIcon className="h-[64px] w-[64px] text-txt shrink-0" />
           <h2 className="text-[18px] font-semibold tracking-[0.22em] text-txt uppercase">Recall</h2>
           <span className="label text-[12px]">Session browser</span>
         </div>

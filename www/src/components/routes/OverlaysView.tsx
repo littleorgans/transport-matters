@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useMeta } from "../../hooks/useMeta";
 import { type Overlay, UNKNOWN_CWD, useOverlaysStore } from "../../stores/overlaysStore";
 import type { Override, OverrideKind } from "../../types";
-import { ManicureIcon } from "../ManicureIcon";
+import { TransportMattersIcon } from "../TransportMattersIcon";
 
 const RESOLVING_CWD_LABEL = "resolving workspace\u2026";
 
@@ -94,7 +94,7 @@ function Atmosphere() {
       aria-hidden
       className="absolute inset-0 flex items-center justify-center text-edge-subtle opacity-30 pointer-events-none"
     >
-      <ManicureIcon className="spin-gentle h-[90vh] w-[90vh]" />
+      <TransportMattersIcon className="spin-gentle h-[90vh] w-[90vh]" />
     </div>
   );
 }
@@ -105,7 +105,7 @@ function EmptyState() {
       <Atmosphere />
       <div className="absolute inset-0 flex flex-col items-center justify-center gap-7 px-8 text-center">
         <div className="flex flex-col items-center gap-4">
-          <ManicureIcon className="h-[64px] w-[64px] text-txt shrink-0" />
+          <TransportMattersIcon className="h-[64px] w-[64px] text-txt shrink-0" />
           <h2 className="text-[18px] font-semibold tracking-[0.22em] text-txt uppercase">
             Overlays
           </h2>

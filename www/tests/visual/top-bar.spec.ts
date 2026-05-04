@@ -7,7 +7,7 @@ test.describe("app top bar — arm states", () => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await setupVisualTest(page, { armed: true, paused: false });
     await page.goto("/");
-    await page.getByRole("heading", { name: "Manicure" }).waitFor();
+    await page.getByRole("heading", { name: "Transport Matters" }).waitFor();
 
     await expect(page).toHaveScreenshot("topbar-armed.png", {
       animations: "disabled",
@@ -19,7 +19,7 @@ test.describe("app top bar — arm states", () => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await setupVisualTest(page, { armed: false, paused: false });
     await page.goto("/");
-    await page.getByRole("heading", { name: "Manicure" }).waitFor();
+    await page.getByRole("heading", { name: "Transport Matters" }).waitFor();
 
     await expect(page).toHaveScreenshot("topbar-disarmed.png", {
       animations: "disabled",
