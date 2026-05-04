@@ -1,17 +1,15 @@
 #!/usr/bin/env bash
 #
-# transport-matters — one-shot installer
+# Transport Matters one-shot installer
 #
 # Usage:
 #   curl -fsSL https://github.com/srobinson/transport-matters/releases/latest/download/install.sh | bash
-#
-# (A shorter transport-matters.sh alias will go live alongside the first release.)
 #
 # What it does:
 #   1. Installs `uv` if it is not already on PATH (official astral installer).
 #   2. Runs `uv tool install transport-matters`, which pulls the latest wheel from
 #      PyPI and wires up the `transport-matters` console script.
-#   3. Prints next steps — where the binary lives and how to start it.
+#   3. Prints next steps: where the binary lives and how to start it.
 #
 # Design goals (shamelessly stolen from attention-matters):
 #   - Every failure path prints a specific, actionable next step.
@@ -154,7 +152,7 @@ if command -v transport-matters >/dev/null 2>&1; then
     version_line=$(transport-matters --version 2>/dev/null || true)
 fi
 
-ok "transport-matters installed${version_line:+ — $version_line}"
+ok "transport-matters installed${version_line:+ - $version_line}"
 
 cat <<EOF
 

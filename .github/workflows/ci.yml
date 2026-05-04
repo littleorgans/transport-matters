@@ -112,7 +112,7 @@ jobs:
   # Prove the release chain on every push: build the wheel, install it #
   # in a clean venv, run the CLI, assert the www/ bundle is embedded.  #
   # Without this job there is a gap between "CI green" and "tag push   #
-  # will release cleanly" — with it, `git push --tags` is mechanical.  #
+  # will release cleanly". With it, `git push --tags` is mechanical.   #
   # ------------------------------------------------------------------- #
   package:
     name: backend · package
@@ -167,12 +167,12 @@ jobs:
         run: |
           python -m venv /tmp/smoke
           /tmp/smoke/bin/pip install --quiet dist/transport_matters-*.whl
-          /tmp/smoke/bin/manicure --version
-          /tmp/smoke/bin/manicure version
-          /tmp/smoke/bin/manicure paths --json
-          /tmp/smoke/bin/manicure --help > /dev/null
-          /tmp/smoke/bin/manicure claude --help > /dev/null
-          /tmp/smoke/bin/manicure doctor --help > /dev/null
+          /tmp/smoke/bin/transport-matters --version
+          /tmp/smoke/bin/transport-matters version
+          /tmp/smoke/bin/transport-matters paths --json
+          /tmp/smoke/bin/transport-matters --help > /dev/null
+          /tmp/smoke/bin/transport-matters claude --help > /dev/null
+          /tmp/smoke/bin/transport-matters doctor --help > /dev/null
 
       - name: Confirm embedded www/ inside the wheel
         working-directory: api

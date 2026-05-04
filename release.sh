@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 #
-# Cut a manicure release.
+# Cut a Transport Matters release.
 #
 # Pushing an annotated vX.Y.Z tag triggers .github/workflows/release.yml
 # which builds the wheel (version stamped from the tag by hatch-vcs and
-# the www bundle stamped via MANICURE_VERSION), publishes to PyPI via
+# the www bundle stamped via TRANSPORT_MATTERS_VERSION), publishes to PyPI via
 # trusted publishing, and creates a GitHub Release with auto-notes.
 #
 # Usage:
@@ -59,7 +59,7 @@ TAG="v$VERSION"
 
 cd "$(git rev-parse --show-toplevel)"
 
-echo "manicure release -> $TAG"
+echo "Transport Matters release -> $TAG"
 echo
 
 # --- guards ------------------------------------------------------------
@@ -103,7 +103,7 @@ LAST_TAG=$(git describe --tags --abbrev=0 --match='v[0-9]*.[0-9]*.[0-9]*' 2>/dev
 echo "  from:    ${LAST_TAG:-<none>}"
 echo "  to:      $TAG"
 echo "  commit:  $LOCAL"
-echo "  message: manicure $VERSION"
+echo "  message: Transport Matters $VERSION"
 echo
 echo "Commits since ${LAST_TAG:-<start>}:"
 if [[ -n "$LAST_TAG" ]]; then
@@ -128,14 +128,14 @@ fi
 
 # --- cut & push --------------------------------------------------------
 
-git tag -a "$TAG" -m "manicure $VERSION"
+git tag -a "$TAG" -m "Transport Matters $VERSION"
 echo "[tag] created annotated $TAG"
 
 git push origin "$TAG"
 echo "[push] pushed $TAG to origin"
 
 echo
-echo "Release workflow: https://github.com/srobinson/manicure/actions/workflows/release.yml"
+echo "Release workflow: https://github.com/srobinson/transport-matters/actions/workflows/release.yml"
 if command -v gh >/dev/null 2>&1; then
   echo "Tail with:  gh run watch \$(gh run list --workflow=release.yml --limit 1 --json databaseId --jq '.[0].databaseId') --exit-status"
 fi

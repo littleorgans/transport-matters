@@ -2,7 +2,7 @@ name: Release
 
 # Cuts a release when a `vX.Y.Z` tag is pushed. The CI workflow already
 # builds the wheel, smoke-tests it in a clean venv, and asserts the www/
-# bundle is embedded on every push (`package` job) — so "CI green on
+# bundle is embedded on every push (`package` job), so "CI green on
 # main" means "this tag will ship." No manual dry-run, no dispatch dance:
 # tag, push, done.
 #
@@ -12,9 +12,9 @@ name: Release
 #      hatch's `artifacts = ["src/transport_matters/www/**"]` glob.
 #   2. Run `uv build` to produce the wheel and sdist. hatch-vcs reads the
 #      git tag, so the version string in the wheel filename matches the tag.
-#   3. Smoke the wheel in a clean venv: install, run `manicure --version`,
-#      run `manicure doctor --help`, and assert the embedded www/ ships.
-#   4. Publish to PyPI via trusted publishing (OIDC) — no tokens.
+#   3. Smoke the wheel in a clean venv: install, run `transport-matters --version`,
+#      run `transport-matters doctor --help`, and assert the embedded www/ ships.
+#   4. Publish to PyPI via trusted publishing (OIDC), no tokens.
 #   5. Create a GitHub Release and attach the wheel, sdist, and install.sh.
 #
 # PyPI trusted publishing must be configured at:
@@ -135,12 +135,12 @@ jobs:
         run: |
           python -m venv /tmp/smoke
           /tmp/smoke/bin/pip install --quiet dist/transport_matters-*.whl
-          /tmp/smoke/bin/manicure --version
-          /tmp/smoke/bin/manicure version
-          /tmp/smoke/bin/manicure paths --json
-          /tmp/smoke/bin/manicure --help > /dev/null
-          /tmp/smoke/bin/manicure claude --help > /dev/null
-          /tmp/smoke/bin/manicure doctor --help > /dev/null
+          /tmp/smoke/bin/transport-matters --version
+          /tmp/smoke/bin/transport-matters version
+          /tmp/smoke/bin/transport-matters paths --json
+          /tmp/smoke/bin/transport-matters --help > /dev/null
+          /tmp/smoke/bin/transport-matters claude --help > /dev/null
+          /tmp/smoke/bin/transport-matters doctor --help > /dev/null
 
       - name: Confirm embedded www/ inside the wheel
         working-directory: api
@@ -218,9 +218,9 @@ jobs:
           VERSION: ${{ needs.build.outputs.version }}
         run: |
           # Include install.sh in the release so a specific version is
-          # always reachable at the tag URL even if manicure.sh goes down.
+          # always reachable at the tag URL.
           gh release create "$TAG" \
-            --title "manicure $VERSION" \
+            --title "Transport Matters $VERSION" \
             --generate-notes \
             dist/transport_matters-*.whl \
             dist/transport_matters-*.tar.gz \
