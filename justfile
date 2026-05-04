@@ -16,13 +16,20 @@ api *args:
 www *args:
     cd www && just {{args}}
 
+# --- Desktop ---
+
+desktop *args:
+    cd desktop && just {{args}}
+
 # --- Combined ---
 
 test:
+    cd desktop && just test
     cd www && just test
     cd api && just test
 
 check:
+    cd desktop && just check
     cd www && just check
     cd api && just check
 
@@ -31,11 +38,13 @@ dev client directory=dev_target_dir:
     ./scripts/local-dev-mode.sh {{client}} {{directory}}
 
 build:
+    cd desktop && just build
     cd www && just build
     cd api && just build
 
 install:
     cd api && just install
+    cd desktop && pnpm install
     cd www && pnpm install
 
 [no-exit-message]
