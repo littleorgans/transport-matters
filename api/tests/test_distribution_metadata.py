@@ -11,10 +11,10 @@ def test_python_distribution_metadata_uses_transport_matters() -> None:
     project = pyproject["project"]
     assert project["name"] == "transport-matters"
     assert project["urls"] == {
-        "Homepage": "https://github.com/srobinson/transport-matters",
-        "Repository": "https://github.com/srobinson/transport-matters",
-        "Issues": "https://github.com/srobinson/transport-matters/issues",
-        "Changelog": "https://github.com/srobinson/transport-matters/releases",
+        "Homepage": "https://github.com/littleorgans/transport-matters",
+        "Repository": "https://github.com/littleorgans/transport-matters",
+        "Issues": "https://github.com/littleorgans/transport-matters/issues",
+        "Changelog": "https://github.com/littleorgans/transport-matters/releases",
     }
     assert project["scripts"] == {"transport-matters": "transport_matters.cli:main"}
 

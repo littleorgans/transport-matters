@@ -53,7 +53,7 @@ _ROOT_HELP = dedent(f"""\
       -V, --version             Show version and exit
       -h, --help                Show this message and exit
 
-    https://github.com/srobinson/transport-matters
+    https://github.com/littleorgans/transport-matters
 """)
 
 _CLAUDE_HELP = dedent(f"""\

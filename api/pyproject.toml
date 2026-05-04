@@ -48,10 +48,10 @@ dependencies = [
 transport-matters = "transport_matters.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/srobinson/transport-matters"
-Repository = "https://github.com/srobinson/transport-matters"
-Issues = "https://github.com/srobinson/transport-matters/issues"
-Changelog = "https://github.com/srobinson/transport-matters/releases"
+Homepage = "https://github.com/littleorgans/transport-matters"
+Repository = "https://github.com/littleorgans/transport-matters"
+Issues = "https://github.com/littleorgans/transport-matters/issues"
+Changelog = "https://github.com/littleorgans/transport-matters/releases"
 
 [dependency-groups]
 dev = [

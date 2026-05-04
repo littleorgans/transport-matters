@@ -3,7 +3,7 @@
 # Transport Matters one-shot installer
 #
 # Usage:
-#   curl -fsSL https://github.com/srobinson/transport-matters/releases/latest/download/install.sh | bash
+#   curl -fsSL https://github.com/littleorgans/transport-matters/releases/latest/download/install.sh | bash
 #
 # What it does:
 #   1. Installs `uv` if it is not already on PATH (official astral installer).
@@ -67,7 +67,7 @@ case "$(uname -s)" in
         die "unsupported platform: $(uname -s)" \
             "transport-matters currently supports Linux and macOS." \
             "Windows is not yet tested. Track progress at:" \
-            "  https://github.com/srobinson/transport-matters/issues"
+            "  https://github.com/littleorgans/transport-matters/issues"
         ;;
 esac
 
@@ -90,7 +90,7 @@ else
             "Try installing uv manually:" \
             "  curl -LsSf https://astral.sh/uv/install.sh | sh" \
             "Then re-run:" \
-            "  curl -fsSL https://github.com/srobinson/transport-matters/releases/latest/download/install.sh | bash"
+            "  curl -fsSL https://github.com/littleorgans/transport-matters/releases/latest/download/install.sh | bash"
     fi
 
     # The official uv installer drops a binary at ~/.local/bin/uv on Linux
@@ -107,7 +107,7 @@ else
             "Add uv's bin directory to your shell rc, e.g.:" \
             "  echo 'export PATH=\"\$HOME/.local/bin:\$PATH\"' >> ~/.zshrc" \
             "Then re-open your terminal and re-run:" \
-            "  curl -fsSL https://github.com/srobinson/transport-matters/releases/latest/download/install.sh | bash"
+            "  curl -fsSL https://github.com/littleorgans/transport-matters/releases/latest/download/install.sh | bash"
     fi
     ok "uv installed ($(uv --version))"
 fi
@@ -133,7 +133,7 @@ if ! uv tool install --force "$target"; then
         "Try a verbose manual install to see the full error:" \
         "  uv tool install --verbose $target" \
         "Open an issue with the output at:" \
-        "  https://github.com/srobinson/transport-matters/issues"
+        "  https://github.com/littleorgans/transport-matters/issues"
 fi
 
 # --------------------------------------------------------------------------- #
@@ -172,6 +172,6 @@ ${_bold}Diagnose the install${_reset}
 ${_bold}Learn more${_reset}
 
   ${_cyan}transport-matters --help${_reset}
-  Docs & source:  https://github.com/srobinson/transport-matters
-  Report issues:  https://github.com/srobinson/transport-matters/issues
+  Docs & source:  https://github.com/littleorgans/transport-matters
+  Report issues:  https://github.com/littleorgans/transport-matters/issues
 EOF

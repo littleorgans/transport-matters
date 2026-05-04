@@ -135,7 +135,7 @@ git push origin "$TAG"
 echo "[push] pushed $TAG to origin"
 
 echo
-echo "Release workflow: https://github.com/srobinson/transport-matters/actions/workflows/release.yml"
+echo "Release workflow: https://github.com/littleorgans/transport-matters/actions/workflows/release.yml"
 if command -v gh >/dev/null 2>&1; then
   echo "Tail with:  gh run watch \$(gh run list --workflow=release.yml --limit 1 --json databaseId --jq '.[0].databaseId') --exit-status"
 fi

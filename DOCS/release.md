@@ -9,7 +9,7 @@ creates a GitHub Release with the wheel, sdist, checksums, and `install.sh`.
 
 - `main` is green in CI.
 - PyPI trusted publishing is configured for project `transport-matters`,
-  owner `srobinson`, repo `transport-matters`, workflow `release.yml`, and
+  owner `littleorgans`, repo `transport-matters`, workflow `release.yml`, and
   environment `pypi`.
 - The release tag is a semantic version in `vX.Y.Z` form.
 

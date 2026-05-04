@@ -16,7 +16,7 @@ pipx install transport-matters        # alternative
 Or via the bootstrap script (installs uv first if missing):
 
 ```bash
-curl -fsSL https://github.com/srobinson/transport-matters/releases/latest/download/install.sh | bash
+curl -fsSL https://github.com/littleorgans/transport-matters/releases/latest/download/install.sh | bash
 ```
 
 ## Quick start
@@ -79,7 +79,7 @@ A single Claude Code session routinely sends 285 KB payloads: 147 tools, 3 syste
 
 ## Documentation
 
-Full docs, architecture, and contributing guide: <https://github.com/srobinson/transport-matters>
+Full docs, architecture, and contributing guide: <https://github.com/littleorgans/transport-matters>
 
 ## License
 

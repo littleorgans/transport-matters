@@ -13,7 +13,7 @@ No system proxy toggle. No global certificate install. No sudo.
 ## Install
 
 ```bash
-curl -fsSL https://github.com/srobinson/transport-matters/releases/latest/download/install.sh | bash
+curl -fsSL https://github.com/littleorgans/transport-matters/releases/latest/download/install.sh | bash
 
 # Or, if you already have uv:
 uv tool install transport-matters

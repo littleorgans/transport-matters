@@ -94,7 +94,7 @@ Served on a kernel allocated free port alongside the proxy. Provides:
 End user:
 
 ```bash
-curl -fsSL https://github.com/srobinson/transport-matters/releases/latest/download/install.sh | bash
+curl -fsSL https://github.com/littleorgans/transport-matters/releases/latest/download/install.sh | bash
 # or
 uv tool install transport-matters
 ```
