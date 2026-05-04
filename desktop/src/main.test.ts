@@ -191,4 +191,34 @@ describe("desktop main process", () => {
     expect(on).toHaveBeenCalledWith("before-quit", expect.any(Function));
     expect(stopBackend).toHaveBeenCalledWith(backend);
   });
+
+  it("records package smoke readiness after creating the main window", async () => {
+    const createWindow = vi.fn(
+      () => ({ loadURL, once, show }) as unknown as BrowserWindow,
+    );
+    const quit = vi.fn();
+    const whenReady = vi.fn(async () => undefined);
+    const writeFile = vi.fn();
+
+    const { registerDesktopPackageSmoke } = await import("./main.js");
+
+    registerDesktopPackageSmoke({
+      appSource: { quit, whenReady },
+      createWindow,
+      env: {
+        TRANSPORT_MATTERS_DESKTOP_SMOKE_FILE: "/tmp/desktop-smoke.json",
+      },
+      writeFile,
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+
+    expect(createWindow).toHaveBeenCalledWith({
+      rendererUrl: "http://127.0.0.1:8788/",
+    });
+    expect(writeFile).toHaveBeenCalledWith(
+      "/tmp/desktop-smoke.json",
+      expect.stringContaining('"status": "main-window-created"'),
+    );
+    expect(quit).toHaveBeenCalled();
+  });
 });

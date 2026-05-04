@@ -11,6 +11,12 @@ typecheck:
 build:
     pnpm build
 
+dev:
+    pnpm dev
+
+package-smoke:
+    pnpm package:smoke
+
 check: typecheck test
 
 clean:

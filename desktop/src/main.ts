@@ -1,4 +1,5 @@
 import { app, BrowserWindow, dialog } from "electron";
+import { writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -50,6 +51,18 @@ export interface BackendStartupDependencies {
 
 export interface AppQuitSource {
   on(event: "before-quit", listener: () => void): void;
+}
+
+export interface AppReadySource {
+  quit(): void;
+  whenReady(): Promise<void>;
+}
+
+export interface DesktopPackageSmokeOptions {
+  appSource?: AppReadySource;
+  createWindow?: (options: MainWindowOptions) => BrowserWindow;
+  env?: NodeJS.ProcessEnv;
+  writeFile?: (path: string, data: string) => void;
 }
 
 export function resolvePreloadPath(): string {
@@ -172,7 +185,48 @@ export function registerAppLifecycle(): void {
   });
 }
 
-registerAppLifecycle();
+export function registerDesktopPackageSmoke(
+  options: DesktopPackageSmokeOptions = {},
+): void {
+  const appSource = options.appSource ?? app;
+  const createWindow = options.createWindow ?? createMainWindow;
+  const env = options.env ?? process.env;
+  const writeFile = options.writeFile ?? writeFileSync;
+
+  void appSource.whenReady().then(() => {
+    const rendererUrl = rendererUrlForPort(DEFAULT_WEB_PORT);
+    createWindow({ rendererUrl });
+
+    if (env.TRANSPORT_MATTERS_DESKTOP_SMOKE_FILE !== undefined) {
+      writeFile(
+        env.TRANSPORT_MATTERS_DESKTOP_SMOKE_FILE,
+        JSON.stringify(
+          {
+            rendererUrl,
+            status: "main-window-created",
+          },
+          null,
+          2,
+        ),
+      );
+    }
+
+    appSource.quit();
+  });
+}
+
+export function registerDesktopLifecycleFromEnv(
+  env: NodeJS.ProcessEnv = process.env,
+): void {
+  if (env.TRANSPORT_MATTERS_DESKTOP_PACKAGE_SMOKE === "1") {
+    registerDesktopPackageSmoke({ env });
+    return;
+  }
+
+  registerAppLifecycle();
+}
+
+registerDesktopLifecycleFromEnv();
 
 function resolveBackendClient(value: string | undefined): BackendClient {
   if (value === undefined || value === "claude") {
