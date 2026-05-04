@@ -14,5 +14,10 @@
     "types": ["node", "vitest/globals"],
     "verbatimModuleSyntax": true
   },
-  "include": ["src/main.ts", "src/preload.ts"]
+  "include": [
+    "src/backendHealth.ts",
+    "src/backendProcess.ts",
+    "src/main.ts",
+    "src/preload.ts"
+  ]
 }
