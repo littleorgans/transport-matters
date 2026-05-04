@@ -43,6 +43,11 @@ The release workflow verifies:
 - Embedded web bundle at `transport_matters/www/index.html`.
 - GitHub Release checksums for `transport_matters-*` artifacts.
 
+## Desktop Artifacts
+
+Phase 2 verifies the Electron desktop package smoke locally, but it does not
+ship signed or notarized desktop artifacts without human direction.
+
 ## Installer
 
 The release attaches `install.sh`. It installs the PyPI package

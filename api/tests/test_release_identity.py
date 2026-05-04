@@ -67,3 +67,15 @@ def test_release_surfaces_do_not_advertise_deferred_migration_work() -> None:
         "workspace migration",
     ):
         assert deferred_term not in combined.lower()
+
+
+def test_release_notes_keep_unsigned_desktop_artifacts_human_gated() -> None:
+    release_notes = read_surface("DOCS/release.md").lower()
+    normalized_release_notes = " ".join(release_notes.split())
+
+    assert "electron desktop package smoke" in release_notes
+    assert (
+        "does not ship signed or notarized desktop artifacts"
+        in normalized_release_notes
+    )
+    assert "without human direction" in normalized_release_notes
