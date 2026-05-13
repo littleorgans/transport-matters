@@ -26,6 +26,52 @@ from transport_matters.ir import (
 )
 
 
+def parse_codex_response_sse(
+    raw_body: bytes,
+    *,
+    default_model: str | None = None,
+    default_stop_reason: str | None = None,
+) -> InternalResponse | None:
+    """Build an InternalResponse from a Codex HTTPS Responses SSE stream.
+
+    The Codex HTTP fallback transport returns SSE events whose `data:`
+    payloads share the same shape as the WebSocket frame payloads. The
+    SSE envelope is the only difference; once payloads are extracted,
+    the existing WS payload-to-IR builder produces the same result.
+    """
+    payloads = _parse_sse_event_payloads(raw_body)
+    return parse_codex_response_payloads(
+        payloads,
+        default_model=default_model,
+        default_stop_reason=default_stop_reason,
+    )
+
+
+def _parse_sse_event_payloads(raw_body: bytes) -> list[dict[str, Any]]:
+    """Extract JSON event payloads from a Codex SSE byte stream.
+
+    Each `data:` line is a single JSON object; multi-line `data:`
+    continuations have not been observed on this transport. `[DONE]`
+    sentinels, empty data lines, and undecodable JSON are skipped so
+    a partial or noisy stream still yields whatever events parsed
+    successfully.
+    """
+    payloads: list[dict[str, Any]] = []
+    for line in raw_body.decode(errors="replace").splitlines():
+        if not line.startswith("data:"):
+            continue
+        body = line[5:].strip()
+        if body in ("", "[DONE]"):
+            continue
+        try:
+            payload: Any = json.loads(body)  # Any: untyped SSE JSON
+        except json.JSONDecodeError:
+            continue
+        if isinstance(payload, dict):
+            payloads.append(payload)
+    return payloads
+
+
 def parse_codex_response_payloads(
     payloads: list[dict[str, Any]],
     *,

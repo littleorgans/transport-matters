@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any
 from transport_matters.adapters.base import ProviderAdapter
 from transport_matters.codex.request_parser import parse_codex_request
 from transport_matters.codex.request_serializer import serialize_codex_request
+from transport_matters.codex.response_parser import parse_codex_response_sse
 from transport_matters.codex.transport import (
     is_codex_http_responses_flow,
     is_codex_websocket_flow,
@@ -31,4 +32,14 @@ class CodexAdapter(ProviderAdapter):
         return serialize_codex_request(ir)
 
     def inbound_response(self, raw_body: bytes, content_type: str) -> InternalResponse:
-        raise NotImplementedError("Codex response parsing belongs to a later slice")
+        if "event-stream" not in content_type:
+            raise NotImplementedError(
+                "Codex adapter only handles SSE responses on the HTTP "
+                f"transport; got content-type {content_type!r}"
+            )
+        response = parse_codex_response_sse(raw_body)
+        if response is None:
+            raise ValueError(
+                "Codex SSE stream contained no parseable response payloads"
+            )
+        return response

@@ -573,7 +573,11 @@ class TestReleaseValidation:
             sampling=SamplingParams(max_tokens=1024),
             metadata=RequestMetadata(),
             stream=False,
-            provider_extras={},
+            # `type` survives the parser → IR round trip for WS-captured Codex
+            # requests; the serializer only re-emits the envelope when it was
+            # present on the inbound body. HTTPS fallback requests carry no
+            # `type` and serialize to the bare ResponsesApiRequest.
+            provider_extras={"type": "response.create"},
         )
         pf = bp.PausedFlow(
             flow=None,  # type: ignore[arg-type]
