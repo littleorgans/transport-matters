@@ -35,7 +35,13 @@ def serialize_codex_request(ir: InternalRequest) -> bytes:
     preserved_input = parse_preserved_input_item_raw(extras.pop("input_item_raw", []))
 
     data: dict[str, Any] = dict(extras)
-    data["type"] = str(data.get("type", "response.create"))
+    # Only emit the WS envelope `type: "response.create"` field if the inbound
+    # request had one. Codex's HTTPS Responses fallback transport uses the raw
+    # `ResponsesApiRequest` shape with no top-level `type`; the upstream rejects
+    # the field with `Unsupported parameter: type`. WS bodies carry the field
+    # through via `provider_extras`, so round-trip parity is preserved.
+    if "type" in data:
+        data["type"] = str(data["type"])
     data["model"] = _denormalise_model(ir.model)
 
     instructions, input_items = _serialize_input(
