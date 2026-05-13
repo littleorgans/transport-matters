@@ -7,7 +7,10 @@ from typing import TYPE_CHECKING, Any
 from transport_matters.adapters.base import ProviderAdapter
 from transport_matters.codex.request_parser import parse_codex_request
 from transport_matters.codex.request_serializer import serialize_codex_request
-from transport_matters.codex.transport import is_codex_websocket_flow
+from transport_matters.codex.transport import (
+    is_codex_http_responses_flow,
+    is_codex_websocket_flow,
+)
 
 if TYPE_CHECKING:
     from transport_matters.ir import InternalRequest, InternalResponse
@@ -17,7 +20,9 @@ class CodexAdapter(ProviderAdapter):
     name = "codex"
 
     def matches(self, flow: Any) -> bool:
-        return hasattr(flow, "request") and is_codex_websocket_flow(flow)
+        return hasattr(flow, "request") and (
+            is_codex_websocket_flow(flow) or is_codex_http_responses_flow(flow)
+        )
 
     def inbound_request(self, raw_body: bytes) -> InternalRequest:
         return parse_codex_request(raw_body)

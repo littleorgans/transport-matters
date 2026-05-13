@@ -98,6 +98,23 @@ def is_codex_websocket_flow(flow: http.HTTPFlow) -> bool:
     )
 
 
+def is_codex_http_responses_flow(flow: http.HTTPFlow) -> bool:
+    """Return True for Codex flows on the HTTPS Responses fallback transport.
+
+    Discriminates against the WebSocket upgrade GET by requiring POST and
+    the absence of an `Upgrade: websocket` header. Both transports share
+    the same host and path, so the method + header signature is the
+    cheapest reliable check.
+    """
+    if not is_codex_websocket_flow(flow):
+        return False
+    request = flow.request
+    if getattr(request, "method", "") != "POST":
+        return False
+    upgrade = str(request.headers.get("Upgrade", "")).lower()
+    return upgrade != "websocket"
+
+
 def get_codex_transport_state(flow: http.HTTPFlow) -> CodexTransportState | None:
     state = flow.metadata.get(CODEX_TRANSPORT_METADATA_KEY)
     if isinstance(state, CodexTransportState):
