@@ -32,14 +32,14 @@ class CodexAdapter(ProviderAdapter):
         return serialize_codex_request(ir)
 
     def inbound_response(self, raw_body: bytes, content_type: str) -> InternalResponse:
-        if "event-stream" not in content_type:
-            raise NotImplementedError(
-                "Codex adapter only handles SSE responses on the HTTP "
-                f"transport; got content-type {content_type!r}"
-            )
+        # The Codex HTTPS Responses endpoint streams SSE on success
+        # (`response.created` → `response.completed`) and returns a JSON
+        # error body on 4xx. mitmproxy strips Content-Type from some
+        # streamed bodies, so dispatch by body shape rather than header.
         response = parse_codex_response_sse(raw_body)
         if response is None:
             raise ValueError(
-                "Codex SSE stream contained no parseable response payloads"
+                "Codex response contained no parseable SSE payloads "
+                f"(content-type={content_type!r}, {len(raw_body)} bytes)"
             )
         return response
