@@ -179,6 +179,7 @@ def _codex_shell_environment_policy_args() -> list[str]:
 def _build_codex_invocation(
     *,
     addon_path: Path,
+    force_http_fallback_addon_path: Path | None,
     mitmdump: str,
     working_dir: Path,
     resolved_storage: Path,
@@ -215,6 +216,8 @@ def _build_codex_invocation(
             "-s",
             str(addon_path),
         ]
+        if force_http_fallback_addon_path is not None:
+            argv.extend(["-s", str(force_http_fallback_addon_path)])
         if not debug:
             argv.extend(["--set", "termlog_verbosity=warn"])
 
@@ -298,8 +301,10 @@ def run_codex(
     codex_bin: Path | None,
     no_codex: bool,
     debug: bool,
+    force_http_fallback: bool,
     print_command: bool,
     require_addon: Callable[[], Traversable],
+    require_force_http_fallback_addon: Callable[[], Traversable],
     resolve_mitmdump: Callable[[], str | None],
     which: Callable[[str], str | None] = shutil.which,
     port_in_use: Callable[[int], bool],
@@ -338,6 +343,12 @@ def run_codex(
     codex_passthrough_user = list(codex_passthrough)
 
     with as_file(addon_traversable) as addon_path, contextlib.ExitStack() as stack:
+        force_http_fallback_addon_path: Path | None = None
+        if force_http_fallback:
+            force_http_fallback_traversable = require_force_http_fallback_addon()
+            force_http_fallback_addon_path = Path(
+                stack.enter_context(as_file(force_http_fallback_traversable))
+            )
         codex_ca_certificate = None
         if codex_path is not None:
             codex_ca_certificate = _resolve_codex_ca_certificate_or_exit(
@@ -349,6 +360,7 @@ def run_codex(
             codex_ca_certificate = _resolve_proxy_only_codex_ca_hint(env=os.environ)
         build_invocation = _build_codex_invocation(
             addon_path=addon_path,
+            force_http_fallback_addon_path=force_http_fallback_addon_path,
             mitmdump=mitmdump,
             working_dir=working_dir,
             resolved_storage=resolved_storage,

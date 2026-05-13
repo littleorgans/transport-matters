@@ -133,6 +133,8 @@ _CODEX_HELP = dedent(f"""\
           --codex-bin PATH      Path to Codex (default: `codex` on PATH)
           --no-codex            Run proxy only; skip spawning Codex
           --debug               Verbose mitmproxy output
+          --force-http-fallback Test mode: short-circuit Codex's WebSocket upgrade
+                                with HTTP 426 to force the HTTPS Responses path
           --print-command       Print the child invocations and exit
       -h, --help                Show this message and exit
 
