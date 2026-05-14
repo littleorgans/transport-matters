@@ -5,9 +5,16 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 import pytest
+from mitmproxy import websocket
+from wsproto.frame_protocol import Opcode
 
 from transport_matters.codex.continuity import get_codex_continuity_allocator
 from transport_matters.codex.http_derivation import derive_codex_http_turn
+from transport_matters.codex.test_transport_support import _codex_flow
+from transport_matters.codex.transport import (
+    ensure_codex_transport_state,
+    record_codex_websocket_message,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -47,6 +54,24 @@ def _response_stream() -> bytes:
     return b"".join(f"data: {json.dumps(event)}\n\n".encode() for event in events)
 
 
+def _codex_headers(
+    *,
+    session_id: str,
+    thread_id: str,
+    turn_id: str | None,
+    extra: dict[str, str] | None = None,
+) -> dict[str, str]:
+    headers = {
+        "session-id": session_id,
+        "thread-id": thread_id,
+    }
+    if turn_id is not None:
+        headers["x-codex-turn-metadata"] = json.dumps({"turn_id": turn_id})
+    if extra:
+        headers.update(extra)
+    return headers
+
+
 def _capture_contexts(
     monkeypatch: pytest.MonkeyPatch,
 ) -> list[CodexTurnDerivationContext]:
@@ -77,6 +102,27 @@ def _derive(
     )
 
 
+def _record_websocket_turn(
+    *,
+    session_id: str,
+    thread_id: str,
+    turn_id: str | None,
+) -> None:
+    flow = _codex_flow()
+    flow.request.headers.update(
+        _codex_headers(session_id=session_id, thread_id=thread_id, turn_id=turn_id)
+    )
+    assert flow.websocket is not None
+    ensure_codex_transport_state(flow)
+    flow.websocket.messages.append(
+        websocket.WebSocketMessage(Opcode.TEXT, True, b'{"type":"response.create"}')
+    )
+
+    update = record_codex_websocket_message(flow)
+
+    assert update is not None
+
+
 def test_http_derivation_uses_current_codex_identity_headers(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -95,6 +141,135 @@ def test_http_derivation_uses_current_codex_identity_headers(
     assert contexts[0].session_id == "session-real"
     assert contexts[0].turn_id == "turn-real"
     assert contexts[0].turn_index == 0
+
+
+def test_http_retry_reuses_prior_websocket_turn_identity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    contexts = _capture_contexts(monkeypatch)
+
+    _record_websocket_turn(
+        session_id="session-1",
+        thread_id="thread-1",
+        turn_id="turn-1",
+    )
+    _derive(
+        "exchange-http-retry",
+        request_headers=_codex_headers(
+            session_id="session-1",
+            thread_id="thread-1",
+            turn_id="turn-1",
+        ),
+    )
+
+    assert contexts[0].session_id == "session-1"
+    assert contexts[0].turn_id == "turn-1"
+    assert contexts[0].turn_index == 0
+
+
+def test_http_next_turn_after_websocket_receives_monotonic_index(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    contexts = _capture_contexts(monkeypatch)
+
+    _record_websocket_turn(
+        session_id="session-1",
+        thread_id="thread-1",
+        turn_id="turn-1",
+    )
+    _derive(
+        "exchange-http-next",
+        request_headers=_codex_headers(
+            session_id="session-1",
+            thread_id="thread-1",
+            turn_id="turn-2",
+        ),
+    )
+
+    assert contexts[0].session_id == "session-1"
+    assert contexts[0].turn_id == "turn-2"
+    assert contexts[0].turn_index == 1
+
+
+def test_http_fallback_keeps_separate_thread_counters_after_websocket(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    contexts = _capture_contexts(monkeypatch)
+
+    _record_websocket_turn(
+        session_id="session-1",
+        thread_id="thread-1",
+        turn_id="turn-1",
+    )
+    _derive(
+        "exchange-separate-session",
+        request_headers=_codex_headers(
+            session_id="session-2",
+            thread_id="thread-2",
+            turn_id="turn-1",
+        ),
+    )
+
+    assert contexts[0].session_id == "session-2"
+    assert contexts[0].turn_id == "turn-1"
+    assert contexts[0].turn_index == 0
+
+
+def test_http_subagent_thread_diverges_from_parent_session_counter(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    contexts = _capture_contexts(monkeypatch)
+
+    _record_websocket_turn(
+        session_id="parent-session",
+        thread_id="parent-thread",
+        turn_id="parent-turn-1",
+    )
+    _record_websocket_turn(
+        session_id="parent-session",
+        thread_id="parent-thread",
+        turn_id="parent-turn-2",
+    )
+    _derive(
+        "exchange-subagent",
+        request_headers=_codex_headers(
+            session_id="parent-session",
+            thread_id="child-thread",
+            turn_id="child-turn-1",
+            extra={
+                "x-openai-subagent": "review",
+                "x-codex-parent-thread-id": "parent-thread",
+            },
+        ),
+    )
+
+    assert contexts[0].session_id == "parent-session"
+    assert contexts[0].turn_id == "child-turn-1"
+    assert contexts[0].turn_index == 0
+
+
+def test_http_missing_turn_metadata_after_websocket_is_lossy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    contexts = _capture_contexts(monkeypatch)
+
+    _record_websocket_turn(
+        session_id="session-1",
+        thread_id="thread-1",
+        turn_id="turn-1",
+    )
+    _derive(
+        "exchange-lossy-http",
+        request_headers=_codex_headers(
+            session_id="session-1",
+            thread_id="thread-1",
+            turn_id=None,
+        ),
+    )
+
+    assert contexts[0].session_id == "session-1"
+    assert contexts[0].turn_id == "exchange-lossy-http"
+    assert contexts[0].turn_index == 1
 
 
 def test_http_derivation_returns_full_derived_artifacts() -> None:
