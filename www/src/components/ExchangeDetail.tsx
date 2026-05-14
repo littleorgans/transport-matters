@@ -39,13 +39,14 @@ function codexHeaderTelemetry(detail: ExchangeDetailPayload): HeaderTelemetryChi
   if (detail.turn == null) {
     return [];
   }
+  const transportUnit = detail.transport?.protocol === "http" ? "events" : "frames";
   const chips: HeaderTelemetryChip[] = [
     {
       text: `turn ${detail.turn.turn_index} ${detail.turn.status}`,
       tone: codexTurnTone(detail.turn.status),
     },
     {
-      text: `frames ${detail.turn.message_range_start} to ${detail.turn.message_range_end}`,
+      text: `${transportUnit} ${detail.turn.message_range_start} to ${detail.turn.message_range_end}`,
     },
     {
       text: `${detail.turn.text_chars.toLocaleString()} chars`,
@@ -101,9 +102,10 @@ function tabReadout(t: DetailTab, detail: ExchangeDetailPayload): string | null 
   }
 
   if (t === "transport") {
-    const frames = transport?.messages.length ?? 0;
-    if (frames === 0) return null;
-    return `${frames.toLocaleString()} ${frames === 1 ? "frame" : "frames"}`;
+    const messageCount = transport?.messages.length ?? 0;
+    if (messageCount === 0) return null;
+    const unit = transport?.protocol === "http" ? "event" : "frame";
+    return `${messageCount.toLocaleString()} ${messageCount === 1 ? unit : `${unit}s`}`;
   }
 
   // response — em dash when there's no payload, so the dimmed tab reads

@@ -331,6 +331,19 @@ export interface TransportUpgradeArtifacts {
   response_headers: TransportHeader[];
 }
 
+export interface TransportHttpRequestArtifacts {
+  method: string | null;
+  scheme: string;
+  host: string;
+  path: string;
+  headers: TransportHeader[];
+}
+
+export interface TransportHttpResponseArtifacts {
+  status_code: number | null;
+  headers: TransportHeader[];
+}
+
 export interface TransportCloseArtifacts {
   ts?: string | null;
   close_code: number | null;
@@ -353,13 +366,24 @@ export interface TransportMessageArtifact {
   payload_base64: string | null;
 }
 
-export interface TransportArtifacts {
+interface TransportArtifactsBase {
   provider: string;
+  messages: TransportMessageArtifact[];
+}
+
+export interface TransportWebSocketArtifacts extends TransportArtifactsBase {
   protocol: "websocket";
   upgrade: TransportUpgradeArtifacts;
   close: TransportCloseArtifacts | null;
-  messages: TransportMessageArtifact[];
 }
+
+export interface TransportHttpArtifacts extends TransportArtifactsBase {
+  protocol: "http";
+  request: TransportHttpRequestArtifacts | null;
+  response: TransportHttpResponseArtifacts | null;
+}
+
+export type TransportArtifacts = TransportWebSocketArtifacts | TransportHttpArtifacts;
 
 export interface TransportDiagnostic {
   severity: "info" | "warning" | "error";
