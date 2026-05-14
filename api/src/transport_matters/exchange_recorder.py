@@ -212,6 +212,17 @@ async def _persist_http_exchange(
     res_ir, res_stats = _parse_response_ir(adapter, raw_res, content_type, exchange_id)
     if res_stats is None:
         res_stats = _http_error_response_stats(flow, raw_res)
+    codex_turn_summary: CodexTurnListSummary | None = None
+    if ir.provider == "codex":
+        from transport_matters.codex.http_derivation import derive_codex_http_turn
+
+        codex_turn_summary = derive_codex_http_turn(
+            exchange_id=exchange_id,
+            raw_request=raw_req,
+            raw_response=raw_res,
+            model=ir.model,
+            ts=ts,
+        )
     req_stats = build_req_stats(curated_ir)
     pipeline_stats = build_pipeline_stats(audit)
     if pipeline_stats is not None and token_counter is not None:
@@ -246,6 +257,7 @@ async def _persist_http_exchange(
         req=req_stats,
         pipeline=pipeline_stats,
         res=res_stats,
+        codex_turn=codex_turn_summary,
         mutated_manually=request_state.mutated_manually,
         **assignment_index_fields(track_assignment),
     )
