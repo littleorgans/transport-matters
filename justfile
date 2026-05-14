@@ -42,6 +42,11 @@ build:
     cd www && just build
     cd api && just build
 
+clean:
+    cd desktop && just clean
+    cd www && just clean
+    cd api && just clean
+
 install:
     cd api && just install
     cd desktop && pnpm install
