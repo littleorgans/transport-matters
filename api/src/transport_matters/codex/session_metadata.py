@@ -38,12 +38,22 @@ def codex_session_id_from_provider_metadata(
 def codex_session_id_from_header_lookup(
     get_header: Callable[[str], object | None],
 ) -> str | None:
-    for name in ("x-codex-session", "session_id"):
-        value = _usable_string(get_header(name))
-        if value is not None:
-            return value
+    session_id = _usable_string(get_header("session-id"))
+    if session_id is not None:
+        return session_id
+    return codex_thread_id_from_header_lookup(get_header)
 
-    return _session_id_from_turn_metadata(get_header("x-codex-turn-metadata"))
+
+def codex_thread_id_from_header_lookup(
+    get_header: Callable[[str], object | None],
+) -> str | None:
+    return _usable_string(get_header("thread-id"))
+
+
+def codex_turn_id_from_header_lookup(
+    get_header: Callable[[str], object | None],
+) -> str | None:
+    return _turn_id_from_turn_metadata(get_header("x-codex-turn-metadata"))
 
 
 def _session_id_from_turn_metadata(raw: object) -> str | None:
@@ -51,6 +61,13 @@ def _session_id_from_turn_metadata(raw: object) -> str | None:
     if payload is None:
         return None
     return _string_value(payload, "session_id", "sessionId")
+
+
+def _turn_id_from_turn_metadata(raw: object) -> str | None:
+    payload = _turn_metadata_payload(raw)
+    if payload is None:
+        return None
+    return _string_value(payload, "turn_id", "turnId")
 
 
 def _turn_metadata_payload(raw: object) -> dict[str, Any] | None:
@@ -85,4 +102,6 @@ __all__ = [
     "codex_session_id_from_header_lookup",
     "codex_session_id_from_provider_metadata",
     "codex_session_id_from_request_metadata",
+    "codex_thread_id_from_header_lookup",
+    "codex_turn_id_from_header_lookup",
 ]

@@ -190,12 +190,16 @@ async def test_repair_rebuilds_missing_codex_sidecars_from_transport_turn_metada
         ),
         request_headers=[
             {
-                "name": "x-codex-session",
-                "value": "[redacted]",
+                "name": "session-id",
+                "value": "ws_from_header",
+            },
+            {
+                "name": "thread-id",
+                "value": "thread_from_header",
             },
             {
                 "name": "x-codex-turn-metadata",
-                "value": _payload_json({"session_id": "ws_from_header"}),
+                "value": _payload_json({"turn_id": "turn_from_header"}),
             },
         ],
     )

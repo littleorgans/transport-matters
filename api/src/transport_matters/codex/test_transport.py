@@ -41,7 +41,8 @@ def test_ensure_codex_transport_state_captures_upgrade_metadata() -> None:
     assert state.upgrade.host == "chatgpt.com"
     assert state.upgrade.path == "/backend-api/codex/responses?client=cli"
     assert state.upgrade.response_status_code == 101
-    assert ("x-codex-session", "sess-123") in state.upgrade.request_headers
+    assert ("session-id", "sess-123") in state.upgrade.request_headers
+    assert ("thread-id", "thread-123") in state.upgrade.request_headers
     assert ("x-upstream", "chatgpt") in state.upgrade.response_headers
 
 
@@ -140,7 +141,8 @@ def test_build_codex_transport_artifacts_redacts_sensitive_upgrade_headers() -> 
     }
     assert request_headers["authorization"] == "Bearer [redacted]"
     assert request_headers["cookie"] == "[redacted]"
-    assert request_headers["x-codex-session"] == "[redacted]"
+    assert request_headers["session-id"] == "sess-123"
+    assert request_headers["thread-id"] == "thread-123"
     assert response_headers["set-cookie"] == "[redacted]"
     assert response_headers["x-upstream"] == "chatgpt"
 

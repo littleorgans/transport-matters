@@ -155,16 +155,16 @@ async def test_addon_websocket_message_persists_provisional_codex_exchange() -> 
     assert artifacts.turn.started_at == artifacts.transport.messages[0].ts
 
 
-async def test_addon_websocket_message_derives_session_from_codex_turn_metadata() -> (
+async def test_addon_websocket_message_derives_session_from_current_codex_headers() -> (
     None
 ):
     addon = TransportMattersAddon()
     flow = _codex_flow()
     assert flow.websocket is not None
-    del flow.request.headers["x-codex-session"]
-    flow.request.headers["session_id"] = "sess-real"
+    flow.request.headers["session-id"] = "sess-real"
+    flow.request.headers["thread-id"] = "thread-real"
     flow.request.headers["x-codex-turn-metadata"] = json.dumps(
-        {"session_id": "sess-real", "turn_id": "turn-real"}
+        {"session_id": "sess-real", "thread_id": "thread-real", "turn_id": "turn-real"}
     )
 
     addon.websocket_start(flow)

@@ -23,7 +23,8 @@ def _codex_flow() -> http.HTTPFlow:
     assert flow.websocket is not None
     flow.request.host = "chatgpt.com"
     flow.request.path = "/backend-api/codex/responses?client=cli"
-    flow.request.headers["x-codex-session"] = "sess-123"
+    flow.request.headers["session-id"] = "sess-123"
+    flow.request.headers["thread-id"] = "thread-123"
     flow.response.headers["x-upstream"] = "chatgpt"
     flow.id = "flow-codex-1"
     return flow
