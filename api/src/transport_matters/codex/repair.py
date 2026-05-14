@@ -23,6 +23,7 @@ from transport_matters.codex.protocol import codex_terminal_status, is_codex_tur
 from transport_matters.codex.session_metadata import (
     codex_session_id_from_header_lookup,
     codex_session_id_from_request_metadata,
+    codex_turn_id_from_header_lookup,
 )
 from transport_matters.storage.base import (
     CodexDerivedArtifactFiles,
@@ -312,7 +313,7 @@ def _rebuild_codex_derived_artifacts(
         context=CodexTurnDerivationContext(
             exchange_id=exchange_id,
             session_id=session_id,
-            turn_id=_string_field(turn_payload, "turn_id") or exchange_id,
+            turn_id=_turn_id(artifacts, turn_payload) or exchange_id,
             turn_index=max(0, _int_field(turn_payload, "turn_index") or 0),
             request_message_index=request_message_index,
             model=_string_field(turn_payload, "model") or artifacts.request_ir.model,
@@ -514,18 +515,39 @@ def _session_id(
     session_id = codex_session_id_from_request_metadata(artifacts.request_ir.metadata)
     if session_id is not None:
         return session_id
-    transport = artifacts.transport
-    if transport is not None:
-        request_headers = {
-            header.name.strip().lower(): header.value
-            for header in transport.upgrade.request_headers
-        }
+    request_headers = _transport_request_headers(artifacts)
+    if request_headers:
         session_id = codex_session_id_from_header_lookup(
             lambda name: request_headers.get(name.lower())
         )
         if session_id is not None:
             return session_id
     return _string_field(turn_payload, "session_id")
+
+
+def _turn_id(
+    artifacts: ExchangeArtifacts,
+    turn_payload: dict[str, Any] | None,
+) -> str | None:
+    turn_id = _string_field(turn_payload, "turn_id")
+    if turn_id is not None:
+        return turn_id
+    request_headers = _transport_request_headers(artifacts)
+    return codex_turn_id_from_header_lookup(
+        lambda name: request_headers.get(name.lower())
+    )
+
+
+def _transport_request_headers(artifacts: ExchangeArtifacts) -> dict[str, str]:
+    transport = artifacts.transport
+    if transport is None:
+        return {}
+    headers = (
+        transport.request.headers
+        if transport.protocol == "http" and transport.request is not None
+        else transport.upgrade.request_headers
+    )
+    return {header.name.strip().lower(): header.value for header in headers}
 
 
 def _operator_facts(

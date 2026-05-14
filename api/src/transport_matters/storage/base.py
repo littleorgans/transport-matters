@@ -8,9 +8,16 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from datetime import datetime
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    SerializerFunctionWrapHandler,
+    model_serializer,
+    model_validator,
+)
 
 from transport_matters.codex.events import (
     CodexSemanticEvent,
@@ -192,6 +199,19 @@ class TransportUpgradeArtifacts(BaseModel):
     response_headers: list[TransportHeader] = Field(default_factory=list)
 
 
+class TransportHttpRequestArtifacts(BaseModel):
+    method: str | None = None
+    scheme: str
+    host: str
+    path: str
+    headers: list[TransportHeader] = Field(default_factory=list)
+
+
+class TransportHttpResponseArtifacts(BaseModel):
+    status_code: int | None = None
+    headers: list[TransportHeader] = Field(default_factory=list)
+
+
 class TransportCloseArtifacts(BaseModel):
     ts: datetime | None = None
     close_code: int | None = None
@@ -222,12 +242,31 @@ class TransportDiagnostic(BaseModel):
     operator_checks: list[str] = Field(default_factory=list)
 
 
+def _empty_transport_upgrade() -> TransportUpgradeArtifacts:
+    return TransportUpgradeArtifacts(scheme="", host="", path="")
+
+
 class TransportArtifacts(BaseModel):
     provider: str
-    protocol: Literal["websocket"] = "websocket"
-    upgrade: TransportUpgradeArtifacts
+    protocol: Literal["websocket", "http"] = "websocket"
+    upgrade: TransportUpgradeArtifacts = Field(default_factory=_empty_transport_upgrade)
+    request: TransportHttpRequestArtifacts | None = None
+    response: TransportHttpResponseArtifacts | None = None
     close: TransportCloseArtifacts | None = None
     messages: list[TransportMessageArtifact] = Field(default_factory=list)
+
+    @model_serializer(mode="wrap")
+    def serialize_by_protocol(
+        self, handler: SerializerFunctionWrapHandler
+    ) -> dict[str, Any]:
+        data = dict(cast("dict[str, Any]", handler(self)))
+        if self.protocol == "websocket":
+            data.pop("request", None)
+            data.pop("response", None)
+        else:
+            data.pop("upgrade", None)
+            data.pop("close", None)
+        return data
 
 
 # ── Abstract backend ───────────────────────────────────────────────

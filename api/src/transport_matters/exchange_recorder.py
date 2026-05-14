@@ -25,7 +25,11 @@ from transport_matters.storage import (
     ResStats,
     SpawnAnchor,
 )
-from transport_matters.storage.base import ExchangeArtifacts, StorageBackend
+from transport_matters.storage.base import (
+    ExchangeArtifacts,
+    StorageBackend,
+    TransportArtifacts,
+)
 from transport_matters.track_manager import (
     TrackAssignment,
     assignment_index_fields,
@@ -84,6 +88,23 @@ def _codex_turn_list_summary(
     if derived is None:
         return None
     return CodexTurnListSummary.from_turn(derived.turn)
+
+
+def _codex_http_transport_artifacts(
+    flow: http.HTTPFlow,
+    *,
+    raw_request: bytes,
+    raw_response: bytes,
+    ts: datetime,
+) -> TransportArtifacts | None:
+    from transport_matters.codex.transport import build_codex_http_transport_artifacts
+
+    return build_codex_http_transport_artifacts(
+        flow,
+        raw_request=raw_request,
+        raw_response=raw_response,
+        ts=ts,
+    )
 
 
 def emit_exchange(
@@ -222,9 +243,16 @@ async def _persist_http_exchange(
     if res_stats is None:
         res_stats = _http_error_response_stats(flow, raw_res)
     codex_derived: CodexDerivedTurnArtifacts | None = None
+    transport: TransportArtifacts | None = None
     if ir.provider == "codex":
         from transport_matters.codex.http_derivation import derive_codex_http_turn
 
+        transport = _codex_http_transport_artifacts(
+            flow,
+            raw_request=raw_req,
+            raw_response=raw_res,
+            ts=ts,
+        )
         codex_derived = derive_codex_http_turn(
             exchange_id=exchange_id,
             raw_request=raw_req,
@@ -280,6 +308,7 @@ async def _persist_http_exchange(
         request_audit=audit,
         response_raw=raw_res or None,
         response_ir=res_ir,
+        transport=transport,
         events=codex_derived.events if codex_derived is not None else None,
         turn=codex_derived.turn if codex_derived is not None else None,
     )
@@ -416,9 +445,16 @@ async def _finalize_http_provisional_exchange(
     if res_stats is None:
         res_stats = _http_error_response_stats(flow, raw_res)
     codex_derived: CodexDerivedTurnArtifacts | None = None
+    transport: TransportArtifacts | None = None
     if ir.provider == "codex":
         from transport_matters.codex.http_derivation import derive_codex_http_turn
 
+        transport = _codex_http_transport_artifacts(
+            flow,
+            raw_request=request_state.raw_request,
+            raw_response=raw_res,
+            ts=existing_entry.ts,
+        )
         codex_derived = derive_codex_http_turn(
             exchange_id=exchange_id,
             raw_request=request_state.raw_request,
@@ -460,6 +496,7 @@ async def _finalize_http_provisional_exchange(
         update={
             "response_raw": raw_res or None,
             "response_ir": res_ir,
+            "transport": transport,
             "events": codex_derived.events if codex_derived is not None else None,
             "turn": codex_derived.turn if codex_derived is not None else None,
         }

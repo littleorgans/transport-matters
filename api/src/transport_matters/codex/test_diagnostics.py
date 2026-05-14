@@ -13,7 +13,12 @@ from transport_matters.ir import (
     SamplingParams,
     TextBlock,
 )
-from transport_matters.storage.base import ExchangeArtifacts, TransportArtifacts
+from transport_matters.storage.base import (
+    ExchangeArtifacts,
+    TransportArtifacts,
+    TransportHttpRequestArtifacts,
+    TransportHttpResponseArtifacts,
+)
 
 _FIXTURES = Path(__file__).resolve().parents[3] / "tests" / "fixtures"
 
@@ -45,6 +50,29 @@ def test_transport_success_fixture_stays_diagnostic_free() -> None:
             request_raw=json.dumps({"type": "response.create"}).encode(),
             request_ir=_request_ir(),
             transport=_transport_fixture("codex_transport_chatgpt_success.json"),
+        )
+    )
+
+    assert diagnostics == []
+
+
+def test_http_transport_does_not_emit_websocket_handshake_diagnostics() -> None:
+    diagnostics = build_codex_transport_diagnostics(
+        ExchangeArtifacts(
+            request_raw=json.dumps({"type": "response.create"}).encode(),
+            request_ir=_request_ir(),
+            transport=TransportArtifacts(
+                provider="codex",
+                protocol="http",
+                request=TransportHttpRequestArtifacts(
+                    method="POST",
+                    scheme="https",
+                    host="chatgpt.com",
+                    path="/backend-api/codex/responses",
+                ),
+                response=TransportHttpResponseArtifacts(status_code=200),
+                messages=[],
+            ),
         )
     )
 

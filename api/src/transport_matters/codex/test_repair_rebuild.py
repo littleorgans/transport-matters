@@ -1,11 +1,20 @@
 from __future__ import annotations
 
+import json
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from transport_matters.codex import CodexAdapter
 from transport_matters.codex.repair import repair_codex_derived_artifacts
 from transport_matters.ir import Message, RequestMetadata, TextBlock
-from transport_matters.storage.base import ExchangeArtifacts
+from transport_matters.storage.base import (
+    ExchangeArtifacts,
+    TransportArtifacts,
+    TransportHeader,
+    TransportHttpRequestArtifacts,
+    TransportHttpResponseArtifacts,
+    TransportMessageArtifact,
+)
 
 from .test_repair_support import (
     _codex_ir,
@@ -217,3 +226,69 @@ async def test_repair_rebuilds_missing_codex_sidecars_from_transport_turn_metada
     loaded = await storage.read_exchange(exchange_id)
     assert loaded.turn is not None
     assert loaded.turn.session_id == "ws_from_header"
+
+
+async def test_repair_rebuilds_missing_codex_sidecars_from_http_transport(
+    storage: DiskStorageBackend,
+) -> None:
+    exchange_id = "codexrepairhttp-1234"
+    request_ir = _codex_ir().model_copy(
+        update={"metadata": RequestMetadata(provider_metadata={})}
+    )
+    start_ts = datetime(2026, 5, 14, tzinfo=UTC)
+    request_payload = {"type": "response.create", "model": "gpt-5-codex"}
+    transport = TransportArtifacts(
+        provider="codex",
+        protocol="http",
+        request=TransportHttpRequestArtifacts(
+            method="POST",
+            scheme="https",
+            host="chatgpt.com",
+            path="/backend-api/codex/responses",
+            headers=[
+                TransportHeader(name="session-id", value="http_from_header"),
+                TransportHeader(name="thread-id", value="thread_from_header"),
+                TransportHeader(
+                    name="x-codex-turn-metadata",
+                    value=_payload_json({"turn_id": "turn_from_header"}),
+                ),
+            ],
+        ),
+        response=TransportHttpResponseArtifacts(status_code=200),
+        messages=[
+            TransportMessageArtifact(
+                ts=start_ts,
+                direction="client",
+                is_text=True,
+                size_bytes=len(json.dumps(request_payload).encode()),
+                event_type="response.create",
+                payload_json=request_payload,
+            ),
+            TransportMessageArtifact(
+                ts=start_ts,
+                direction="server",
+                is_text=True,
+                size_bytes=0,
+                event_type="response.completed",
+                payload_json={
+                    "type": "response.completed",
+                    "response": {"status": "completed"},
+                },
+            ),
+        ],
+    )
+    artifacts = ExchangeArtifacts(
+        request_raw=json.dumps(request_payload).encode(),
+        request_ir=request_ir,
+        transport=transport,
+    )
+
+    await storage.write_exchange(exchange_id, artifacts)
+
+    result = await repair_codex_derived_artifacts(storage, exchange_id)
+
+    assert result.action == "repaired"
+    loaded = await storage.read_exchange(exchange_id)
+    assert loaded.turn is not None
+    assert loaded.turn.session_id == "http_from_header"
+    assert loaded.turn.turn_id == "turn_from_header"
