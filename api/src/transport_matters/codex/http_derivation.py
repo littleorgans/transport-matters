@@ -17,6 +17,10 @@ from typing import TYPE_CHECKING
 
 from pydantic import ValidationError
 
+from transport_matters.codex.continuity import (
+    allocate_codex_continuity_from_headers,
+    get_codex_continuity_allocator,
+)
 from transport_matters.codex.derivation_contract import (
     CodexDerivationOperatorFact,
     CodexReplayRequest,
@@ -32,6 +36,37 @@ if TYPE_CHECKING:
 
 
 logger = logging.getLogger(__name__)
+
+
+def _codex_http_turn_context(
+    *,
+    exchange_id: str,
+    request_headers: dict[str, str] | None,
+    model: str,
+) -> CodexTurnDerivationContext:
+    allocation = (
+        allocate_codex_continuity_from_headers(
+            get_codex_continuity_allocator(),
+            request_headers.get,
+        )
+        if request_headers is not None
+        else None
+    )
+    session_id = exchange_id
+    turn_id = exchange_id
+    turn_index = 0
+    if allocation is not None:
+        session_id = allocation.session_id
+        turn_id = allocation.turn_id or exchange_id
+        turn_index = allocation.turn_index
+    return CodexTurnDerivationContext(
+        exchange_id=exchange_id,
+        session_id=session_id,
+        turn_id=turn_id,
+        turn_index=turn_index,
+        request_message_index=0,
+        model=model,
+    )
 
 
 def derive_codex_http_turn(
@@ -92,12 +127,9 @@ def derive_codex_http_turn(
         for i, payload in enumerate(server_payloads, start=1)
     )
 
-    context = CodexTurnDerivationContext(
+    context = _codex_http_turn_context(
         exchange_id=exchange_id,
-        session_id=exchange_id,
-        turn_id=exchange_id,
-        turn_index=0,
-        request_message_index=0,
+        request_headers=request_headers,
         model=model,
     )
     try:
