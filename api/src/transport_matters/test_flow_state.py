@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, cast
 from transport_matters.flow_state import (
     capture_request_flow_state,
     get_request_flow_state,
+    snapshot_codex_http_request_headers,
     update_request_flow_state,
 )
 from transport_matters.ir import (
@@ -55,6 +56,7 @@ def test_capture_request_flow_state_sets_defaults() -> None:
     assert state.request_ir == request_ir
     assert state.curated_request_ir == request_ir
     assert state.audit is None
+    assert state.codex_request_headers == {}
     assert state.mutated_manually is False
     assert state.provisional_exchange_id is None
     assert state.dropped is False
@@ -66,6 +68,40 @@ def test_get_request_flow_state_returns_none_when_incomplete() -> None:
     flow.metadata["transport_matters_ir"] = _make_ir()
 
     assert get_request_flow_state(flow) is None
+
+
+def test_capture_request_flow_state_snapshots_narrow_codex_headers() -> None:
+    codex_headers = snapshot_codex_http_request_headers(
+        {
+            "Session-Id": "session-1",
+            "thread-id": "thread-1",
+            "x-codex-turn-metadata": '{"turn_id":"turn-1"}',
+            "authorization": "Bearer secret",
+            "session_id": "legacy-session",
+        }
+    )
+
+    assert codex_headers == {
+        "session-id": "session-1",
+        "thread-id": "thread-1",
+        "x-codex-turn-metadata": '{"turn_id":"turn-1"}',
+    }
+
+    flow = cast("http.HTTPFlow", _Flow())
+    adapter = object()
+    request_ir = _make_ir()
+
+    capture_request_flow_state(
+        flow,
+        adapter=adapter,
+        request_ir=request_ir,
+        raw_request=b"raw",
+        codex_request_headers=codex_headers,
+    )
+
+    state = get_request_flow_state(flow)
+    assert state is not None
+    assert state.codex_request_headers == codex_headers
 
 
 def test_update_request_flow_state_rewrites_mutable_fields() -> None:

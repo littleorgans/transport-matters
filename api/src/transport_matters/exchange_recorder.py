@@ -220,6 +220,7 @@ async def _persist_http_exchange(
             exchange_id=exchange_id,
             raw_request=raw_req,
             raw_response=raw_res,
+            request_headers=request_state.codex_request_headers,
             model=ir.model,
             ts=ts,
         )
@@ -410,6 +411,7 @@ async def _finalize_http_provisional_exchange(
             exchange_id=exchange_id,
             raw_request=request_state.raw_request,
             raw_response=raw_res,
+            request_headers=request_state.codex_request_headers,
             model=ir.model,
             ts=existing_entry.ts,
         )

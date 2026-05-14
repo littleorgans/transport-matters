@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import uuid
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 
@@ -101,6 +101,23 @@ def _make_state(
         mutated_manually=True,
         provisional_exchange_id=provisional_exchange_id,
     )
+
+
+def _make_codex_state() -> RequestFlowState:
+    state = _make_state()
+    state.request_ir = state.request_ir.model_copy(
+        update={"model": "codex/gpt-5-codex", "provider": "codex"}
+    )
+    state.curated_request_ir = state.curated_request_ir.model_copy(
+        update={"model": "codex/gpt-5-codex", "provider": "codex"}
+    )
+    request_headers = {
+        "session-id": "session-1",
+        "thread-id": "thread-1",
+        "x-codex-turn-metadata": '{"turn_id":"turn-1"}',
+    }
+    state.codex_request_headers = request_headers
+    return state
 
 
 def _make_response_body() -> dict[str, object]:
@@ -261,6 +278,43 @@ async def test_persist_http_provisional_exchange_returns_none_on_failure(
     assert events.empty()
     storage = await get_storage()
     assert await storage.read_index(limit=10, offset=0) == []
+
+
+async def test_codex_http_derivation_receives_request_header_snapshot(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    flow = cast("http.HTTPFlow", _Flow())
+    calls: list[dict[str, Any]] = []
+
+    def fake_derive_codex_http_turn(**kwargs: Any) -> None:
+        calls.append(kwargs)
+
+    monkeypatch.setattr(
+        "transport_matters.codex.http_derivation.derive_codex_http_turn",
+        fake_derive_codex_http_turn,
+    )
+
+    fresh_state = _make_codex_state()
+    cast("_Flow", flow).response = _Response(_make_response_body())
+
+    persisted = await recorder._persist_http_exchange(flow, fresh_state, None)
+
+    assert persisted is True
+    assert calls[0]["request_headers"] == fresh_state.codex_request_headers
+
+    provisional_state = _make_codex_state()
+    exchange_id = await recorder._persist_http_provisional_exchange(
+        flow, provisional_state
+    )
+    assert exchange_id is not None
+    provisional_state.provisional_exchange_id = exchange_id
+
+    finalized = await recorder._finalize_http_provisional_exchange(
+        flow, provisional_state, None
+    )
+
+    assert finalized is True
+    assert calls[1]["request_headers"] == provisional_state.codex_request_headers
 
 
 async def test_finalize_http_provisional_exchange_updates_pending_row_in_place(

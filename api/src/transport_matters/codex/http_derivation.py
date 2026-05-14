@@ -39,6 +39,7 @@ def derive_codex_http_turn(
     exchange_id: str,
     raw_request: bytes,
     raw_response: bytes,
+    request_headers: dict[str, str] | None = None,
     model: str,
     ts: datetime,
     operator_facts: tuple[CodexDerivationOperatorFact, ...] = (),

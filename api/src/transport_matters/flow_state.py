@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, cast
 
 from transport_matters.track_manager import TrackAssignment
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable
+
     from mitmproxy import http
 
     from transport_matters.ir import InternalRequest
@@ -21,8 +23,12 @@ _CURATED_REQUEST_IR_KEY = "transport_matters_curated_ir"
 _AUDIT_KEY = "transport_matters_audit"
 _MUTATED_MANUALLY_KEY = "transport_matters_mutated_manually"
 _TRACK_ASSIGNMENT_KEY = "transport_matters_track_assignment"
+_CODEX_REQUEST_HEADERS_KEY = "transport_matters_codex_request_headers"
 _PROVISIONAL_EXCHANGE_ID_KEY = "transport_matters_provisional_exchange_id"
 _DROPPED_KEY = "transport_matters_dropped"
+_CODEX_DERIVATION_HEADER_NAMES = frozenset(
+    {"session-id", "thread-id", "x-codex-turn-metadata"}
+)
 _UNSET = object()
 
 
@@ -34,10 +40,41 @@ class RequestFlowState:
     curated_request_ir: InternalRequest
     audit: OverrideAudit | None
     track_assignment: TrackAssignment | None = None
+    codex_request_headers: dict[str, str] = field(default_factory=dict)
     mutated_manually: bool = False
     provisional_exchange_id: str | None = None
     """HTTP provisional exchange ID. Finalize leaves this set until flow cleanup."""
     dropped: bool = False
+
+
+def snapshot_codex_http_request_headers(headers: object) -> dict[str, str]:
+    """Return the current Codex identity headers needed for HTTP derivation."""
+    if headers is None or not hasattr(headers, "items"):
+        return {}
+    snapshot: dict[str, str] = {}
+    for raw_name, raw_value in _header_items(headers):
+        name = str(raw_name).strip().lower()
+        if name in _CODEX_DERIVATION_HEADER_NAMES:
+            snapshot[name] = str(raw_value)
+    return snapshot
+
+
+def _header_items(headers: object) -> Iterable[tuple[object, object]]:
+    items = cast("Any", headers).items
+    try:
+        return cast("Iterable[tuple[object, object]]", items(multi=True))
+    except TypeError:
+        return cast("Iterable[tuple[object, object]]", items())
+
+
+def _header_map(value: object) -> dict[str, str]:
+    if not isinstance(value, dict):
+        return {}
+    return {
+        name: header_value
+        for name, header_value in value.items()
+        if isinstance(name, str) and isinstance(header_value, str)
+    }
 
 
 def capture_request_flow_state(
@@ -49,6 +86,7 @@ def capture_request_flow_state(
     curated_request_ir: InternalRequest | None = None,
     audit: OverrideAudit | None = None,
     track_assignment: TrackAssignment | None = None,
+    codex_request_headers: dict[str, str] | None = None,
     mutated_manually: bool = False,
 ) -> RequestFlowState:
     """Persist the canonical request state for a flow."""
@@ -59,6 +97,7 @@ def capture_request_flow_state(
         curated_request_ir=curated_request_ir or request_ir,
         audit=audit,
         track_assignment=track_assignment,
+        codex_request_headers=dict(codex_request_headers or {}),
         mutated_manually=mutated_manually,
     )
     flow.metadata[_ADAPTER_KEY] = state.adapter
@@ -67,6 +106,7 @@ def capture_request_flow_state(
     flow.metadata[_CURATED_REQUEST_IR_KEY] = state.curated_request_ir
     flow.metadata[_AUDIT_KEY] = state.audit
     flow.metadata[_TRACK_ASSIGNMENT_KEY] = state.track_assignment
+    flow.metadata[_CODEX_REQUEST_HEADERS_KEY] = state.codex_request_headers
     flow.metadata[_MUTATED_MANUALLY_KEY] = state.mutated_manually
     flow.metadata[_PROVISIONAL_EXCHANGE_ID_KEY] = state.provisional_exchange_id
     flow.metadata[_DROPPED_KEY] = state.dropped
@@ -83,6 +123,9 @@ def get_request_flow_state(flow: http.HTTPFlow) -> RequestFlowState | None:
     curated_request_ir = flow.metadata.get(_CURATED_REQUEST_IR_KEY, request_ir)
     audit = flow.metadata.get(_AUDIT_KEY)
     track_assignment = flow.metadata.get(_TRACK_ASSIGNMENT_KEY)
+    codex_request_headers = _header_map(
+        flow.metadata.get(_CODEX_REQUEST_HEADERS_KEY, {})
+    )
     mutated_manually = flow.metadata.get(_MUTATED_MANUALLY_KEY, False)
     provisional_exchange_id = flow.metadata.get(_PROVISIONAL_EXCHANGE_ID_KEY)
     dropped = flow.metadata.get(_DROPPED_KEY, False)
@@ -93,6 +136,7 @@ def get_request_flow_state(flow: http.HTTPFlow) -> RequestFlowState | None:
         curated_request_ir=curated_request_ir,
         audit=audit,
         track_assignment=track_assignment,
+        codex_request_headers=codex_request_headers,
         mutated_manually=mutated_manually,
         provisional_exchange_id=(
             provisional_exchange_id
@@ -112,6 +156,7 @@ def clear_request_flow_state(flow: http.HTTPFlow) -> None:
         _CURATED_REQUEST_IR_KEY,
         _AUDIT_KEY,
         _TRACK_ASSIGNMENT_KEY,
+        _CODEX_REQUEST_HEADERS_KEY,
         _MUTATED_MANUALLY_KEY,
         _PROVISIONAL_EXCHANGE_ID_KEY,
         _DROPPED_KEY,
