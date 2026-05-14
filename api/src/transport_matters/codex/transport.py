@@ -18,8 +18,13 @@ if TYPE_CHECKING:
     from mitmproxy import http
     from mitmproxy.websocket import WebSocketMessage
 
+    from transport_matters.codex.continuity import CodexContinuityAllocation
     from transport_matters.ir import InternalResponse
 
+from transport_matters.codex.continuity import (
+    allocate_codex_continuity_from_headers,
+    get_codex_continuity_allocator,
+)
 from transport_matters.codex.protocol import (
     CODEX_NORMAL_CLOSE_CODES,
     codex_close_stop_reason,
@@ -68,8 +73,7 @@ class CodexTransportState:
     turn_server_messages_before: int = 0
     client_message_count: int = 0
     server_message_count: int = 0
-    current_turn_index: int | None = None
-    next_turn_index: int = 0
+    current_turn_allocation: CodexContinuityAllocation | None = None
 
 
 @dataclass(slots=True)
@@ -170,6 +174,10 @@ def record_codex_websocket_message(
             if message.is_text:
                 state.initial_client_frame_text = message.text
             state.initial_client_frame_dropped = False
+            state.current_turn_allocation = allocate_codex_continuity_from_headers(
+                get_codex_continuity_allocator(),
+                flow.request.headers.get,
+            )
             captured_initial = True
     else:
         state.server_message_count += 1

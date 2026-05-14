@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 from mitmproxy import websocket
 from wsproto.frame_protocol import Opcode
 
@@ -14,6 +16,8 @@ from transport_matters.codex.transport import (
     is_codex_websocket_flow,
     record_codex_websocket_message,
 )
+
+pytest_plugins = ("transport_matters.codex.test_transport_support",)
 
 
 def test_is_codex_websocket_flow_only_matches_target_path() -> None:
@@ -98,6 +102,72 @@ def test_record_codex_websocket_message_tracks_counts_and_initial_frame() -> Non
     assert state.client_message_count == 3
     assert state.initial_client_frame == second_client_frame
     assert state.initial_client_frame_text == second_client_frame.decode()
+
+
+def test_record_codex_websocket_message_allocates_continuity_from_headers() -> None:
+    flow = _codex_flow()
+    flow.request.headers["session-id"] = "session-real"
+    flow.request.headers["thread-id"] = "thread-real"
+    flow.request.headers["x-codex-turn-metadata"] = json.dumps({"turn_id": "turn-real"})
+    assert flow.websocket is not None
+    ensure_codex_transport_state(flow)
+
+    flow.websocket.messages.append(
+        websocket.WebSocketMessage(Opcode.TEXT, True, b'{"type":"response.create"}')
+    )
+    update = record_codex_websocket_message(flow)
+
+    assert update is not None
+    state, _, captured_initial = update
+    assert captured_initial is True
+    assert state.current_turn_allocation is not None
+    assert state.current_turn_allocation.session_id == "session-real"
+    assert state.current_turn_allocation.thread_id == "thread-real"
+    assert state.current_turn_allocation.turn_id == "turn-real"
+    assert state.current_turn_allocation.turn_index == 0
+    assert state.current_turn_allocation.continuity == "exact"
+
+    retry_flow = _codex_flow()
+    retry_flow.request.headers["session-id"] = "session-real"
+    retry_flow.request.headers["thread-id"] = "thread-real"
+    retry_flow.request.headers["x-codex-turn-metadata"] = json.dumps(
+        {"turn_id": "turn-real"}
+    )
+    assert retry_flow.websocket is not None
+    ensure_codex_transport_state(retry_flow)
+    retry_flow.websocket.messages.append(
+        websocket.WebSocketMessage(Opcode.TEXT, True, b'{"type":"response.create"}')
+    )
+
+    retry_update = record_codex_websocket_message(retry_flow)
+
+    assert retry_update is not None
+    retry_state, _, _ = retry_update
+    assert retry_state.current_turn_allocation is not None
+    assert retry_state.current_turn_allocation.turn_index == 0
+
+
+def test_record_codex_websocket_message_advances_lossy_turns() -> None:
+    flow = _codex_flow()
+    assert flow.websocket is not None
+    ensure_codex_transport_state(flow)
+
+    flow.websocket.messages.append(
+        websocket.WebSocketMessage(Opcode.TEXT, True, b'{"type":"response.create"}')
+    )
+    first_update = record_codex_websocket_message(flow)
+    flow.websocket.messages.append(
+        websocket.WebSocketMessage(Opcode.TEXT, True, b'{"type":"response.create"}')
+    )
+    second_update = record_codex_websocket_message(flow)
+
+    assert first_update is not None
+    assert second_update is not None
+    state, _, _ = second_update
+    assert state.current_turn_allocation is not None
+    assert state.current_turn_allocation.turn_id is None
+    assert state.current_turn_allocation.turn_index == 1
+    assert state.current_turn_allocation.continuity == "lossy"
 
 
 def test_close_codex_transport_reports_close_state() -> None:

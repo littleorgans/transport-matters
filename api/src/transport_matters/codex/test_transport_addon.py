@@ -197,6 +197,8 @@ async def test_addon_websocket_message_derives_session_from_current_codex_header
     assert artifacts.events is not None
     assert artifacts.turn is not None
     assert artifacts.turn.session_id == "sess-real"
+    assert artifacts.turn.turn_id == "turn-real"
+    assert artifacts.turn.turn_index == 0
     assert tuple(event.kind for event in artifacts.events) == ("turn_started",)
 
 

@@ -56,9 +56,22 @@ from transport_matters.track_manager import assignment_index_fields, get_track_m
 if TYPE_CHECKING:
     from mitmproxy import http
 
+    from transport_matters.codex.continuity import CodexContinuityAllocation
     from transport_matters.codex.derivation import CodexDerivedTurnArtifacts
 
 logger = logging.getLogger(__name__)
+
+
+def _codex_turn_allocation(state: Any | None) -> CodexContinuityAllocation | None:
+    if state is None:
+        return None
+    allocation = getattr(state, "current_turn_allocation", None)
+    return allocation if allocation is not None else None
+
+
+def _codex_turn_index(state: Any | None) -> int:
+    allocation = _codex_turn_allocation(state)
+    return allocation.turn_index if allocation is not None else 0
 
 
 async def _persist_codex_provisional_exchange(flow: http.HTTPFlow) -> str | None:
@@ -82,7 +95,8 @@ async def _persist_codex_provisional_exchange(flow: http.HTTPFlow) -> str | None
     pipeline_stats = build_pipeline_stats(audit)
 
     exchange_id = str(uuid.uuid4())
-    turn_index = state.next_turn_index
+    allocation = _codex_turn_allocation(state)
+    turn_index = _codex_turn_index(state)
     ts = datetime.now(UTC)
     ts_slug = ts.strftime("%Y%m%dT%H%M%S")
     derived = (
@@ -92,6 +106,7 @@ async def _persist_codex_provisional_exchange(flow: http.HTTPFlow) -> str | None
             request_state=request_state,
             transport=transport,
             turn_index=turn_index,
+            continuity=allocation,
         )
         if transport is not None
         else None
@@ -132,8 +147,6 @@ async def _persist_codex_provisional_exchange(flow: http.HTTPFlow) -> str | None
 
     state.provisional_exchange_id = exchange_id
     state.finalized_exchange_id = None
-    state.current_turn_index = turn_index
-    state.next_turn_index = turn_index + 1
     emit_exchange(
         ir,
         req_stats,
@@ -167,15 +180,9 @@ async def _delete_codex_provisional_exchange(flow: http.HTTPFlow) -> bool:
         return False
 
     if state is not None:
-        if (
-            state.current_turn_index is not None
-            and state.next_turn_index > 0
-            and state.current_turn_index == state.next_turn_index - 1
-        ):
-            state.next_turn_index -= 1
         state.provisional_exchange_id = None
         state.finalized_exchange_id = None
-        state.current_turn_index = None
+        state.current_turn_allocation = None
     _clear_codex_breakpoint_lifecycle(flow)
     _emit_exchange_deleted(exchange_id, flow_id=flow.id)
     return True
@@ -218,11 +225,8 @@ async def _persist_codex_exchange(
     exchange_id = str(uuid.uuid4())
     ts = datetime.now(UTC)
     ts_slug = ts.strftime("%Y%m%dT%H%M%S")
-    turn_index = (
-        state.current_turn_index
-        if state is not None and state.current_turn_index is not None
-        else max(0, (state.next_turn_index - 1) if state is not None else 0)
-    )
+    allocation = _codex_turn_allocation(state)
+    turn_index = _codex_turn_index(state)
     derived = (
         _replay_codex_derived_artifacts(
             flow,
@@ -230,6 +234,7 @@ async def _persist_codex_exchange(
             request_state=request_state,
             transport=transport,
             turn_index=turn_index,
+            continuity=allocation,
         )
         if transport is not None
         else None
@@ -358,17 +363,15 @@ async def _finalize_codex_provisional_exchange(
                 existing_turn=existing_derived.turn,
             )
     else:
-        turn_index = (
-            state.current_turn_index
-            if state is not None and state.current_turn_index is not None
-            else max(0, (state.next_turn_index - 1) if state is not None else 0)
-        )
+        allocation = _codex_turn_allocation(state)
+        turn_index = _codex_turn_index(state)
         derived = _replay_codex_derived_artifacts(
             flow,
             exchange_id=exchange_id,
             request_state=request_state,
             transport=transport,
             turn_index=turn_index,
+            continuity=allocation,
         )
     persisted_derived = derived if derived is not None else existing_derived
     if derived is None:
@@ -442,7 +445,7 @@ def _mark_codex_exchange_finalized(state: Any | None, exchange_id: str) -> None:
         return
     state.provisional_exchange_id = None
     state.finalized_exchange_id = exchange_id
-    state.current_turn_index = None
+    state.current_turn_allocation = None
 
 
 def _emit_codex_entry_exchange(
