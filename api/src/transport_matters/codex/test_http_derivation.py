@@ -97,6 +97,26 @@ def test_http_derivation_uses_current_codex_identity_headers(
     assert contexts[0].turn_index == 0
 
 
+def test_http_derivation_returns_full_derived_artifacts() -> None:
+    derived = derive_codex_http_turn(
+        exchange_id="exchange-1",
+        raw_request=_request_body(),
+        raw_response=_response_stream(),
+        request_headers={
+            "session-id": "session-real",
+            "thread-id": "thread-real",
+            "x-codex-turn-metadata": '{"turn_id":"turn-real"}',
+        },
+        model="gpt-5-codex",
+        ts=datetime(2026, 5, 14, tzinfo=UTC),
+    )
+
+    assert derived is not None
+    assert derived.events
+    assert derived.turn.session_id == "session-real"
+    assert derived.turn.turn_id == "turn-real"
+
+
 def test_http_derivation_reuses_retry_and_advances_next_turn(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

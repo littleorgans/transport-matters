@@ -23,13 +23,13 @@ from transport_matters.codex.continuity import (
 )
 from transport_matters.codex.derivation_contract import (
     CodexDerivationOperatorFact,
+    CodexDerivedTurnArtifacts,
     CodexReplayRequest,
     CodexTransportMessageFact,
     CodexTurnDerivationContext,
 )
 from transport_matters.codex.derivation_engine import derive_codex_turn_replay
 from transport_matters.codex.response_parser import _parse_sse_event_payloads
-from transport_matters.storage import CodexTurnListSummary
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -78,13 +78,13 @@ def derive_codex_http_turn(
     model: str,
     ts: datetime,
     operator_facts: tuple[CodexDerivationOperatorFact, ...] = (),
-) -> CodexTurnListSummary | None:
-    """Derive a Codex turn summary for an HTTPS Responses fallback exchange.
+) -> CodexDerivedTurnArtifacts | None:
+    """Derive Codex turn artifacts for an HTTPS Responses fallback exchange.
 
     Returns None when the request body is not JSON, the response stream
     has no parseable events, or the derivation engine rejects the
-    synthesized facts. Callers treat None as "no codex_turn for this
-    row" and leave the index entry field unset.
+    synthesized facts. Callers project the index summary from the
+    returned turn and persist the full artifact sidecars.
     """
     try:
         request_payload = json.loads(raw_request)
@@ -146,6 +146,4 @@ def derive_codex_http_turn(
             "derive_codex_http_turn: derivation failed for %s", exchange_id
         )
         return None
-    if artifacts is None:
-        return None
-    return CodexTurnListSummary.from_turn(artifacts.turn)
+    return artifacts

@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 
-from transport_matters import broadcast, config
+from transport_matters import broadcast
 from transport_matters import exchange_recorder as recorder
 from transport_matters.adapters.anthropic import AnthropicAdapter
 from transport_matters.flow_state import RequestFlowState
@@ -25,10 +25,11 @@ from transport_matters.storage import (
     IndexEntry,
     StorageBackend,
     get_storage,
-    init_storage,
-    reset_storage,
 )
-from transport_matters.track_manager import TrackAssignment, get_track_manager
+from transport_matters.test_exchange_recorder_support import (
+    reset_exchange_recorder_runtime_state,
+)
+from transport_matters.track_manager import TrackAssignment
 
 if TYPE_CHECKING:
     from collections.abc import Generator
@@ -141,19 +142,7 @@ def _make_response_body() -> dict[str, object]:
 def _reset_runtime_state(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> Generator[None]:
-    broadcast._subscribers.clear()
-    broadcast._next_id = 0
-    reset_storage()
-    init_storage(root=tmp_path)
-    get_track_manager()._runs.clear()
-    monkeypatch.setenv("TRANSPORT_MATTERS_RUN_ID", "run-http")
-    config.get_settings.cache_clear()
-    yield
-    broadcast._subscribers.clear()
-    broadcast._next_id = 0
-    reset_storage()
-    get_track_manager()._runs.clear()
-    config.get_settings.cache_clear()
+    yield from reset_exchange_recorder_runtime_state(tmp_path, monkeypatch)
 
 
 async def test_persist_http_provisional_exchange_stores_and_broadcasts_pending_row(
