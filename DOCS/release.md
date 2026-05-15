@@ -31,6 +31,26 @@ The script validates the branch, verifies local `main` matches `origin/main`,
 rejects duplicate tags, prints the commits since the previous release, creates
 the annotated tag, and pushes it.
 
+To wait for the tag triggered release workflow:
+
+```bash
+just release --wait 0.2.2
+```
+
+To wait, install the exact released CLI from PyPI, and verify the local command:
+
+```bash
+just release --install 0.2.2
+```
+
+To install an already published release without cutting a new tag:
+
+```bash
+just install-release       # latest release tag
+just install-release 0.2.2 # specific release
+just install-release --list
+```
+
 ## Release Checks
 
 The release workflow verifies:

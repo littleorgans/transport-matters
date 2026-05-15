@@ -39,7 +39,7 @@ For day to day contributor work, install the local checkout as an
 editable uv tool:
 
 ```bash
-just tool-install-editable
+just install-local
 ```
 
 Then from any project directory:

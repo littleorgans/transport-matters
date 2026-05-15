@@ -103,7 +103,7 @@ Contributor (editable checkout as a global tool):
 
 ```bash
 just install
-just tool-install-editable
+just install-local
 ```
 
 Verify:
@@ -158,9 +158,11 @@ The root `justfile` exports `TRANSPORT_MATTERS_CWD` for split dev so the proxy a
 ## Release
 
 ```bash
-just release              # interactive
-just release --dry-run    # preview
-just release --yes        # skip confirm
+just release 0.2.2           # interactive
+just release --dry-run 0.2.2 # preview
+just release --yes 0.2.2     # skip confirm
+just release --wait 0.2.2    # wait for release CI
+just release --install 0.2.2 # wait, install, verify local CLI
 ```
 
 `release.sh` creates an annotated tag `vX.Y.Z` and pushes it. CI publishes the wheel to PyPI.

@@ -27,9 +27,6 @@ node_modules/
 # Vite build output (served by the Python addon)
 api/src/transport_matters/www/
 
-# hatch-vcs generated version file
-api/src/transport_matters/_version.py
-
 # Testing
 .pytest_cache/
 .coverage

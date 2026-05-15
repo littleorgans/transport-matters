@@ -53,8 +53,37 @@ install:
     cd www && pnpm install
 
 [no-exit-message]
-tool-install-editable:
+install-local:
+    rm -f api/src/transport_matters/_version.py
+    cd www && pnpm install && pnpm build
     uv tool install --force --editable ./api
+    transport-matters --version
+
+[no-exit-message]
+tool-install-editable: install-local
+
+[no-exit-message]
+install-release version="latest":
+    @set -euo pipefail; \
+    git fetch --quiet --tags origin; \
+    if [ "{{version}}" = "--list" ] || [ "{{version}}" = "list" ]; then \
+        git tag -l 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | sed -n '1,20p'; \
+        exit 0; \
+    fi; \
+    version="{{version}}"; \
+    if [ "$version" = "latest" ]; then \
+        tag="$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -n 1)"; \
+        if [ -z "$tag" ]; then \
+            echo "error: no release tags found" >&2; \
+            exit 1; \
+        fi; \
+        version="${tag#v}"; \
+    else \
+        version="${version#v}"; \
+    fi; \
+    echo "Installing transport-matters $version"; \
+    uv tool install --force "transport-matters==$version"; \
+    transport-matters --version
 
 [no-exit-message]
 start *args:

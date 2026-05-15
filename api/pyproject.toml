@@ -84,17 +84,13 @@ build-backend = "hatchling.build"
 source = "vcs"
 raw-options = { root = "..", version_scheme = "no-guess-dev" }
 
-[tool.hatch.build.hooks.vcs]
-version-file = "src/transport_matters/_version.py"
-
 [tool.hatch.build.targets.wheel]
 packages = ["src/transport_matters"]
 exclude = ["**/test_*.py"]
-artifacts = ["src/transport_matters/_version.py", "src/transport_matters/www/**"]
+artifacts = ["src/transport_matters/www/**"]
 
 [tool.hatch.build.targets.sdist]
 only-include = ["src/transport_matters", "tests", "README.md", "LICENSE"]
-artifacts = ["src/transport_matters/_version.py"]
 
 # ---- Ruff ----
 [tool.ruff]

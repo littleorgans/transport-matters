@@ -24,10 +24,10 @@ spike:
 # ------------- Build & Test -------------
 
 test *args:
-    uv run pytest {{args}}
+    uv run python -m pytest {{args}}
 
 coverage:
-    uv run pytest --cov=transport_matters --cov-report=term-missing --cov-report=html
+    uv run python -m pytest --cov=transport_matters --cov-report=term-missing --cov-report=html
 
 # Build wheel + sdist into api/dist/. Run `cd ../www && pnpm build` first
 # if you want the frontend bundle inside the wheel — vite writes it to
@@ -63,7 +63,7 @@ ci:
     uv run ruff format --check src/
     uv run ruff check src/
     uv run mypy src/
-    uv run pytest
+    uv run python -m pytest
 
 # ------------- Maintenance -------------
 

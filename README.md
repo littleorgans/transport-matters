@@ -123,7 +123,7 @@ For contributors, the default local workflow is an editable tool install:
 
 ```bash
 just install
-just tool-install-editable
+just install-local
 ```
 
 That gives you a global `transport-matters` command backed by this checkout, with `mitmdump` in the same tool environment.
@@ -134,6 +134,12 @@ Then from any target project:
 cd ~/some/other/project
 transport-matters claude
 transport-matters codex
+```
+
+To install the latest published release instead:
+
+```bash
+just install-release
 ```
 
 If you do not want a tool install, run directly from source:

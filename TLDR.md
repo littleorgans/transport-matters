@@ -37,7 +37,8 @@ Prints the proxy URL, web UI URL, and resolved workspace CWD on launch.
 
 ```bash
 just install
-just tool-install-editable              # global transport-matters backed by this checkout
+just install-local                      # global transport-matters backed by this checkout
+just install-release                    # global transport-matters from latest release
 just dev claude /path/to/workspace      # split proxy + www
 just test && just check
 ```
