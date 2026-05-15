@@ -36,10 +36,11 @@ class TestMeta:
         response = await client.get("/api/meta")
         assert response.status_code == 200
         data = response.json()
-        assert set(data.keys()) == {"cwd", "workspace_id", "run_id"}
+        assert set(data.keys()) == {"cwd", "workspace_id", "run_id", "harnesses"}
         assert isinstance(data["cwd"], str)
         assert isinstance(data["workspace_id"], str)
         assert data["run_id"] is None
+        assert isinstance(data["harnesses"], list)
 
     async def test_cwd_falls_back_to_process_cwd_when_env_unset(
         self, client: AsyncClient, monkeypatch: pytest.MonkeyPatch
@@ -82,3 +83,40 @@ class TestMeta:
         response = await client.get("/api/meta")
         data = response.json()
         assert data["run_id"] == "run-123"
+
+    async def test_harnesses_expose_current_capabilities(
+        self, client: AsyncClient
+    ) -> None:
+        response = await client.get("/api/meta")
+        data = response.json()
+        harnesses = {harness["id"]: harness for harness in data["harnesses"]}
+
+        assert set(harnesses) == {"claude", "codex"}
+
+        claude = harnesses["claude"]
+        assert claude["proxy_mode"] == "reverse"
+        assert claude["trust_requirement"] == "none"
+        base_capabilities = {
+            "startup_probe": False,
+            "disposable_probe": False,
+            "overlay_before_work": False,
+            "tool_schema_overlay": True,
+            "provider_extras_controls": True,
+            "replay": False,
+            "fork": False,
+            "transport_diagnostics": False,
+            "codex_turn_telemetry": False,
+            "websocket_artifacts": False,
+            "http_fallback_artifacts": False,
+        }
+        assert claude["capabilities"] == base_capabilities
+
+        codex = harnesses["codex"]
+        assert codex["proxy_mode"] == "explicit"
+        assert codex["trust_requirement"] == "codex_ca_certificate"
+        assert codex["capabilities"] == base_capabilities | {
+            "transport_diagnostics": True,
+            "codex_turn_telemetry": True,
+            "websocket_artifacts": True,
+            "http_fallback_artifacts": True,
+        }

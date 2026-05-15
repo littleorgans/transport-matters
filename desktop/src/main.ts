@@ -3,6 +3,8 @@ import { writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  SUPPORTED_BACKEND_CLIENTS,
+  isBackendClient,
   launchBackendProcess,
   stopBackendProcess,
   watchBackendExitBeforeReady,
@@ -234,13 +236,15 @@ export function registerDesktopLifecycleFromEnv(
 registerDesktopLifecycleFromEnv();
 
 function resolveBackendClient(value: string | undefined): BackendClient {
-  if (value === undefined || value === "claude") {
+  if (value === undefined) {
     return "claude";
   }
-  if (value === "codex") {
-    return "codex";
+  if (isBackendClient(value)) {
+    return value;
   }
-  throw new Error(`Unsupported Transport Matters desktop client: ${value}`);
+  throw new Error(
+    `Unsupported Transport Matters desktop client: ${value}. Supported clients: ${SUPPORTED_BACKEND_CLIENTS.join(", ")}`,
+  );
 }
 
 function resolvePort(value: string | undefined, fallback: number): number {

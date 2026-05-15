@@ -58,7 +58,8 @@ def test_claude_descriptor_matches_current_launch_boundary() -> None:
     assert claude.capabilities.startup_probe is False
     assert claude.capabilities.disposable_probe is False
     assert claude.capabilities.overlay_before_work is False
-    assert claude.capabilities.tool_schema_overlay is False
+    assert claude.capabilities.tool_schema_overlay is True
+    assert claude.capabilities.provider_extras_controls is True
     assert claude.capabilities.replay is False
     assert claude.capabilities.fork is False
     assert claude.capabilities.transport_diagnostics is False
@@ -86,7 +87,8 @@ def test_codex_descriptor_matches_current_launch_boundary() -> None:
     assert codex.capabilities.startup_probe is False
     assert codex.capabilities.disposable_probe is False
     assert codex.capabilities.overlay_before_work is False
-    assert codex.capabilities.tool_schema_overlay is False
+    assert codex.capabilities.tool_schema_overlay is True
+    assert codex.capabilities.provider_extras_controls is True
     assert codex.capabilities.replay is False
     assert codex.capabilities.fork is False
     assert codex.capabilities.transport_diagnostics is True

@@ -1,18 +1,31 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+readonly SUPPORTED_CLIENTS=("claude" "codex")
+
+supported_clients_label() {
+    local IFS='|'
+    echo "${SUPPORTED_CLIENTS[*]}"
+}
+
+is_supported_client() {
+    local candidate="$1"
+    local supported
+    for supported in "${SUPPORTED_CLIENTS[@]}"; do
+        [[ "$candidate" == "$supported" ]] && return 0
+    done
+    return 1
+}
+
 usage() {
-    echo "usage: $(basename "$0") <claude|codex> [path]" >&2
+    echo "usage: $(basename "$0") <$(supported_clients_label)> [path]" >&2
     exit 2
 }
 
 [[ $# -ge 1 ]] || usage
 client="$1"
 shift
-case "$client" in
-    claude | codex) ;;
-    *) usage ;;
-esac
+is_supported_client "$client" || usage
 
 target_path="${1:-$PWD}"
 target_path="$(cd "$target_path" && pwd)"

@@ -2,7 +2,12 @@ import { spawn as spawnChildProcess } from "node:child_process";
 import type { SpawnOptions } from "node:child_process";
 import type { EventEmitter } from "node:events";
 
-export type BackendClient = "claude" | "codex";
+export const SUPPORTED_BACKEND_CLIENTS = ["claude", "codex"] as const;
+export type BackendClient = (typeof SUPPORTED_BACKEND_CLIENTS)[number];
+
+export function isBackendClient(value: string): value is BackendClient {
+  return SUPPORTED_BACKEND_CLIENTS.some((client) => client === value);
+}
 
 export interface BackendLaunchOptions {
   client: BackendClient;

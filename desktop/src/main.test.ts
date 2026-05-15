@@ -175,6 +175,25 @@ describe("desktop main process", () => {
     });
   });
 
+  it("accepts only supported desktop backend clients from the environment", async () => {
+    const { resolveBackendStartupOptions } = await import("./main.js");
+
+    expect(
+      resolveBackendStartupOptions(
+        { TRANSPORT_MATTERS_DESKTOP_CLIENT: "codex" },
+        "/tmp/workspace",
+      ).client,
+    ).toBe("codex");
+    expect(() =>
+      resolveBackendStartupOptions(
+        { TRANSPORT_MATTERS_DESKTOP_CLIENT: "gemini" },
+        "/tmp/workspace",
+      ),
+    ).toThrow(
+      "Unsupported Transport Matters desktop client: gemini. Supported clients: claude, codex",
+    );
+  });
+
   it("shows a clear startup error when backend readiness fails", async () => {
     const backend = createBackendFixture();
     const appQuit = vi.fn();

@@ -41,6 +41,7 @@ class HarnessCapabilities:
     disposable_probe: bool
     overlay_before_work: bool
     tool_schema_overlay: bool
+    provider_extras_controls: bool
     replay: bool
     fork: bool
     transport_diagnostics: bool
@@ -89,7 +90,8 @@ _CLAUDE_DESCRIPTOR = HarnessDescriptor(
         startup_probe=False,
         disposable_probe=False,
         overlay_before_work=False,
-        tool_schema_overlay=False,
+        tool_schema_overlay=True,
+        provider_extras_controls=True,
         replay=False,
         fork=False,
         transport_diagnostics=False,
@@ -114,7 +116,8 @@ _CODEX_DESCRIPTOR = HarnessDescriptor(
         startup_probe=False,
         disposable_probe=False,
         overlay_before_work=False,
-        tool_schema_overlay=False,
+        tool_schema_overlay=True,
+        provider_extras_controls=True,
         replay=False,
         fork=False,
         transport_diagnostics=True,

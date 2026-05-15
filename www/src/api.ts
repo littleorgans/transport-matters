@@ -1,6 +1,7 @@
 import type {
   BreakpointStatusDetail,
   ExchangeDetail,
+  HarnessDescriptor,
   IndexEntry,
   InternalRequest,
   Override,
@@ -294,17 +295,20 @@ export async function fetchPausedFlowDetail(flowId: string): Promise<PausedFlow>
 
 export interface Meta {
   cwd: string;
+  harnesses: HarnessDescriptor[];
   workspaceId: string;
   runId?: string | null;
 }
 
 /**
- * Resolve the backend's cwd and workspace id. The cwd is fixed for the
- * lifetime of the process (set by `transport-matters start`), so the frontend
- * caches this with an infinite staleTime and prefetches at app mount.
+ * Resolve the backend's cwd, workspace id, and executable harness data. The cwd
+ * is fixed for the lifetime of the process (set by `transport-matters start`),
+ * so the frontend caches this with an infinite staleTime and prefetches at app
+ * mount.
  *
  * `workspaceId` is an opaque stable string the apply-at-intercept
- * pipeline will use to scope overlays; the UI does not read it today.
+ * pipeline will use to scope overlays; the UI does not read it today. Harness
+ * ids describe executable clients separately from captured provider fields.
  */
 export async function fetchMeta(): Promise<Meta> {
   const res = await apiTransport.request("/api/meta");
@@ -313,8 +317,14 @@ export async function fetchMeta(): Promise<Meta> {
   }
   const raw = (await res.json()) as {
     cwd: string;
+    harnesses: HarnessDescriptor[];
     workspace_id: string;
     run_id: string | null;
   };
-  return { cwd: raw.cwd, workspaceId: raw.workspace_id, runId: raw.run_id };
+  return {
+    cwd: raw.cwd,
+    harnesses: raw.harnesses,
+    workspaceId: raw.workspace_id,
+    runId: raw.run_id,
+  };
 }
