@@ -18,37 +18,12 @@ from typer.testing import CliRunner
 
 from transport_matters.cli import BindFailure, main
 
-from ._helpers import _which_all, _which_by_name
+from ._helpers import _patch_allocate_pairs, _which_all, _which_by_name
 
 if TYPE_CHECKING:
     from pathlib import Path
 
 runner = CliRunner()
-
-
-def _patch_allocate_pairs(
-    monkeypatch: pytest.MonkeyPatch, pairs: list[tuple[int, int]]
-) -> list[tuple[int, int]]:
-    """Patch ``allocate_port_pair`` at both call sites with a sequence.
-
-    The initial allocation in ``cli.start`` resolves the symbol through
-    ``transport_matters.cli.allocate_port_pair``; the retry-time re-allocation in
-    ``cli.runner._handle_bind_failure`` resolves it through
-    ``transport_matters.cli.runner.allocate_port_pair``. Patching one site only
-    leaves the other binding pointing at the real allocator. Returns
-    the list the caller can inspect to count how many pairs were drawn.
-    """
-    pool = iter(pairs)
-    drawn: list[tuple[int, int]] = []
-
-    def _alloc(*_a: Any, **_k: Any) -> tuple[int, int]:
-        pair = next(pool)
-        drawn.append(pair)
-        return pair
-
-    monkeypatch.setattr("transport_matters.cli.allocate_port_pair", _alloc)
-    monkeypatch.setattr("transport_matters.cli.runner.allocate_port_pair", _alloc)
-    return drawn
 
 
 # --------------------------------------------------------------------------- #

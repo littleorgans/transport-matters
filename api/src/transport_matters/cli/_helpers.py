@@ -16,6 +16,8 @@ from transport_matters.workspace import workspace_id
 if TYPE_CHECKING:
     from pathlib import Path
 
+    import pytest
+
 
 # Typer's `OptionHighlighter` (typer/rich_utils.py) registers two
 # overlapping regex groups on flag strings:
@@ -61,6 +63,23 @@ def _which_by_name(mapping: dict[str, str | None]) -> Any:
         return mapping.get(name)
 
     return _which
+
+
+def _patch_allocate_pairs(
+    monkeypatch: pytest.MonkeyPatch, pairs: list[tuple[int, int]]
+) -> list[tuple[int, int]]:
+    """Patch launch and retry port allocation with a deterministic sequence."""
+    pool = iter(pairs)
+    drawn: list[tuple[int, int]] = []
+
+    def _alloc(*_a: Any, **_k: Any) -> tuple[int, int]:
+        pair = next(pool)
+        drawn.append(pair)
+        return pair
+
+    monkeypatch.setattr("transport_matters.cli.allocate_port_pair", _alloc)
+    monkeypatch.setattr("transport_matters.cli.runner.allocate_port_pair", _alloc)
+    return drawn
 
 
 def _sample_manifest(

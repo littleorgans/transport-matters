@@ -184,6 +184,92 @@ def test_run_children_reports_proxy_failure_after_claude_exit(
     fake_sup.terminate_all.assert_called_once()
 
 
+def test_run_client_children_handles_custom_client_exit_then_proxy_lifecycle(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    fake_sup = MagicMock()
+    fake_sup.received_signal = None
+    fake_sup.wait_any.return_value = ("sample-client", 0)
+    fake_sup.wait_one.return_value = ("mitmdump", 0)
+
+    monkeypatch.setattr(
+        "transport_matters.cli.runner.ProcessSupervisor", lambda: fake_sup
+    )
+    monkeypatch.setattr(
+        "transport_matters.cli.runner._wait_for_port_ready", lambda *_a, **_k: True
+    )
+
+    outcome = _run_client_children_until_outcome(
+        mitmdump_argv=["/bin/mitmdump"],
+        mitmdump_env={"TRANSPORT_MATTERS_RUN_ID": "run-001"},
+        storage_dir=tmp_path,
+        client=ManagedClient(
+            name="sample-client",
+            display_name="Sample Client",
+            argv=["/bin/sample-client"],
+            env={"SAMPLE": "1"},
+            cwd=tmp_path,
+        ),
+        proxy_port=8787,
+        web_port=8788,
+    )
+
+    assert outcome == LaunchExitOutcome(0)
+    assert (
+        "Sample Client exited; web UI still live at "
+        "http://127.0.0.1:8788. Ctrl+C to stop."
+    ) in capsys.readouterr().out
+    mitmdump_call = fake_sup.spawn.call_args_list[0]
+    assert mitmdump_call.args == ("mitmdump", ["/bin/mitmdump"])
+    assert mitmdump_call.kwargs["env"] == {
+        "TRANSPORT_MATTERS_RUN_ID": "run-001",
+        "PYTHONUNBUFFERED": "1",
+    }
+    assert mitmdump_call.kwargs["log_path"] == tmp_path / "logs" / "mitmdump.log"
+    client_call = fake_sup.spawn.call_args_list[1]
+    assert client_call.args == ("sample-client", ["/bin/sample-client"])
+    assert client_call.kwargs["env"] == {"SAMPLE": "1"}
+    assert client_call.kwargs["cwd"] == tmp_path
+    assert client_call.kwargs["foreground"] is True
+    assert client_call.kwargs["pty"] is True
+    fake_sup.wait_one.assert_called_once_with("mitmdump")
+    fake_sup.terminate_all.assert_called_once()
+
+
+def test_run_client_children_proxy_only_runs_mitmdump_in_foreground(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake_sup = MagicMock()
+    fake_sup.wait_one.return_value = ("mitmdump", 4)
+
+    monkeypatch.setattr(
+        "transport_matters.cli.runner.ProcessSupervisor", lambda: fake_sup
+    )
+
+    outcome = _run_client_children_until_outcome(
+        mitmdump_argv=["/bin/mitmdump"],
+        mitmdump_env={"TRANSPORT_MATTERS_RUN_ID": "run-001"},
+        storage_dir=tmp_path,
+        client=None,
+        proxy_port=8787,
+        web_port=8788,
+    )
+
+    assert outcome == LaunchExitOutcome(4)
+    fake_sup.spawn.assert_called_once_with(
+        "mitmdump",
+        ["/bin/mitmdump"],
+        env={"TRANSPORT_MATTERS_RUN_ID": "run-001"},
+        foreground=True,
+    )
+    fake_sup.wait_one.assert_called_once_with("mitmdump")
+    fake_sup.wait_any.assert_not_called()
+    fake_sup.terminate_all.assert_not_called()
+
+
 def test_run_client_children_outcome_captures_proxy_failure_log(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

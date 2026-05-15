@@ -2,22 +2,25 @@
 
 from __future__ import annotations
 
+import json
 import tomllib
 from pathlib import Path
+from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
 from typer.testing import CliRunner
 
-from transport_matters.cli import main
+from transport_matters.cli import BindFailure, main, workspace_root
 from transport_matters.cli.trust import (
     ConfiguredCACertificateMissingError,
     MitmproxyCAMissingError,
     SystemTrustSnapshotError,
     TrustBundleWriteError,
 )
+from transport_matters.workspace import workspace_storage
 
-from ._helpers import _which_by_name
+from ._helpers import _patch_allocate_pairs, _which_by_name
 
 runner = CliRunner()
 
@@ -105,6 +108,104 @@ def test_codex_sets_proxy_env_on_managed_child(
     assert "localhost" in client.env["NO_PROXY"]
     assert "127.0.0.1" in client.env["NO_PROXY"]
     assert kwargs["mitmdump_argv"][:3] == ["/bin/mitmdump", "--mode", "regular"]
+
+
+def test_codex_writes_workspace_manifest_visible_to_managed_child(
+    tmp_storage: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    spy_run_client_children: MagicMock,
+) -> None:
+    monkeypatch.setattr(
+        "transport_matters.cli.shutil.which",
+        _which_by_name({"mitmdump": "/bin/mitmdump", "codex": "/bin/codex"}),
+    )
+    monkeypatch.setattr("transport_matters.cli._port_in_use", lambda _: False)
+    monkeypatch.delenv("TRANSPORT_MATTERS_STORAGE_DIR", raising=False)
+    bundle_path = tmp_path / "ca.pem"
+    bundle_path.write_text("bundle", encoding="utf-8")
+    monkeypatch.setattr(
+        "transport_matters.cli.resolve_codex_ca_certificate",
+        lambda *, env, bundle_dir: bundle_path,
+    )
+    captured: dict[str, Any] = {}
+
+    def _capture_manifest(**kwargs: Any) -> None:
+        client = kwargs["client"]
+        assert client is not None
+        manifest_path = workspace_root(client.cwd) / "manifest.json"
+        captured["exists_mid_run"] = manifest_path.exists()
+        captured["raw"] = json.loads(manifest_path.read_text(encoding="utf-8"))
+
+    spy_run_client_children.side_effect = _capture_manifest
+
+    workdir = tmp_path / "project"
+    workdir.mkdir()
+    result = runner.invoke(
+        main,
+        ["codex", str(workdir), "--proxy-port", "9000", "--web-port", "9001"],
+    )
+    assert result.exit_code == 0, result.output
+
+    kwargs = spy_run_client_children.call_args.kwargs
+    client_env = kwargs["client"].env
+    raw = captured["raw"]
+    expected_storage = workspace_storage(workdir)
+    assert captured["exists_mid_run"] is True
+    assert raw["cwd"] == str(workdir)
+    assert raw["proxy_port"] == 9000
+    assert raw["web_port"] == 9001
+    assert raw["storage_dir"] == str(expected_storage)
+    assert raw["run_id"] == kwargs["mitmdump_env"]["TRANSPORT_MATTERS_RUN_ID"]
+    assert raw["run_id"] == client_env["TRANSPORT_MATTERS_RUN_ID"]
+    assert client_env["TRANSPORT_MATTERS_STORAGE_DIR"] == str(expected_storage)
+
+
+def test_codex_retries_after_bind_failure_then_succeeds(
+    tmp_storage: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    spy_run_client_children: MagicMock,
+) -> None:
+    monkeypatch.setattr(
+        "transport_matters.cli.shutil.which",
+        _which_by_name({"mitmdump": "/bin/mitmdump", "codex": "/bin/codex"}),
+    )
+    monkeypatch.setattr("transport_matters.cli._port_in_use", lambda _: False)
+    bundle_path = tmp_path / "ca.pem"
+    bundle_path.write_text("bundle", encoding="utf-8")
+    monkeypatch.setattr(
+        "transport_matters.cli.resolve_codex_ca_certificate",
+        lambda *, env, bundle_dir: bundle_path,
+    )
+    drawn = _patch_allocate_pairs(monkeypatch, [(54321, 54322), (60001, 60002)])
+    log_path = tmp_path / "mitmdump.log"
+
+    def _side_effect(**kwargs: Any) -> None:
+        if spy_run_client_children.call_count == 1:
+            raise BindFailure(
+                proxy_port=kwargs["proxy_port"],
+                web_port=kwargs["web_port"],
+                failing_ports=(),
+                log_path=log_path,
+            )
+
+    spy_run_client_children.side_effect = _side_effect
+
+    result = runner.invoke(main, ["codex"])
+    assert result.exit_code == 0, result.output
+    assert drawn == [(54321, 54322), (60001, 60002)]
+    assert spy_run_client_children.call_count == 2
+    first_kwargs = spy_run_client_children.call_args_list[0].kwargs
+    second_kwargs = spy_run_client_children.call_args_list[1].kwargs
+    assert first_kwargs["mitmdump_env"]["TRANSPORT_MATTERS_RUN_ID"]
+    assert (
+        second_kwargs["mitmdump_env"]["TRANSPORT_MATTERS_RUN_ID"]
+        == first_kwargs["mitmdump_env"]["TRANSPORT_MATTERS_RUN_ID"]
+    )
+    assert second_kwargs["proxy_port"] == 60001
+    assert second_kwargs["web_port"] == 60002
+    assert second_kwargs["client"].env["HTTP_PROXY"] == "http://127.0.0.1:60001"
 
 
 def test_codex_excludes_manicure_proxy_env_from_shell_commands(
