@@ -13,6 +13,7 @@ import typer
 from .identity import CLI_COMMAND
 from .launch_runtime import (
     build_launch_env,
+    build_managed_child_env,
     new_run_id,
     reject_passthrough_without_client,
     resolve_launch_ports,
@@ -21,6 +22,8 @@ from .launch_runtime import (
     resolve_working_dir,
     run_with_workspace_manifest,
 )
+from .net import loopback_http_url
+from .runner import ManagedClient
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -92,13 +95,13 @@ def _build_start_invocation(
     debug: bool,
     inject_system_prompt: Callable[..., list[str]],
     user_supplied_system_prompt: Callable[[list[str]], bool],
-) -> Callable[[int, int], tuple[list[str], dict[str, str], list[str] | None]]:
+) -> Callable[[int, int], tuple[list[str], dict[str, str], ManagedClient | None]]:
     """Build the retry-safe invocation factory for `transport-matters claude`."""
 
     def build_invocation(
         proxy_port: int,
         web_port: int,
-    ) -> tuple[list[str], dict[str, str], list[str] | None]:
+    ) -> tuple[list[str], dict[str, str], ManagedClient | None]:
         passthrough = list(claude_passthrough_user)
         if (
             not no_claude
@@ -132,8 +135,20 @@ def _build_start_invocation(
         if not debug:
             argv.extend(["--set", "termlog_verbosity=warn"])
 
-        claude_argv = [claude_path, *passthrough] if claude_path is not None else None
-        return argv, env, claude_argv
+        client = None
+        if claude_path is not None:
+            client_env = build_managed_child_env(
+                env,
+                extra_env={"ANTHROPIC_BASE_URL": loopback_http_url(proxy_port)},
+            )
+            client = ManagedClient(
+                name="claude",
+                display_name="Claude",
+                argv=[claude_path, *passthrough],
+                env=client_env,
+                cwd=working_dir,
+            )
+        return argv, env, client
 
     return build_invocation
 
@@ -159,7 +174,7 @@ def run_start(
     inject_system_prompt: Callable[..., list[str]],
     user_supplied_system_prompt: Callable[[list[str]], bool],
     print_banner: Callable[..., None],
-    run_with_retry: Callable[..., None],
+    run_client_with_retry: Callable[..., None],
     print_contention_error: Callable[..., None],
 ) -> None:
     """Execute the `claude` launch lifecycle."""
@@ -210,10 +225,10 @@ def run_start(
         )
 
         if print_command:
-            mitmdump_argv, _env, claude_argv = build_invocation(proxy_port, web_port)
+            mitmdump_argv, _env, client = build_invocation(proxy_port, web_port)
             typer.echo(" ".join(mitmdump_argv))
-            if claude_argv is not None:
-                typer.echo(" ".join(claude_argv))
+            if client is not None:
+                typer.echo(" ".join(client.argv))
             raise typer.Exit(0)
 
         def run_launch(write_manifest_for: Callable[[int, int], None]) -> None:
@@ -226,7 +241,7 @@ def run_start(
                     no_claude=no_claude,
                 )
 
-            run_with_retry(
+            run_client_with_retry(
                 proxy_port=proxy_port,
                 web_port=web_port,
                 proxy_user_supplied=proxy_user_supplied,
@@ -235,7 +250,6 @@ def run_start(
                 print_banner_for=print_banner_for,
                 write_manifest_for=write_manifest_for,
                 resolved_storage=resolved_storage,
-                working_dir=working_dir,
             )
 
         run_with_workspace_manifest(

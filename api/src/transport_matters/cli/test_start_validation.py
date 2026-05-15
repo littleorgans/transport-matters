@@ -21,7 +21,7 @@ def test_start_refuses_when_proxy_port_is_busy(
     tmp_storage: Path,
     busy_port: int,
     monkeypatch: pytest.MonkeyPatch,
-    spy_run_children: MagicMock,
+    spy_run_client_children: MagicMock,
 ) -> None:
     monkeypatch.setattr("transport_matters.cli.shutil.which", _which_all())
     monkeypatch.setattr("transport_matters.cli._port_in_use", lambda p: p == busy_port)
@@ -39,13 +39,13 @@ def test_start_refuses_when_proxy_port_is_busy(
     )
     assert result.exit_code == 2
     assert "already in use" in result.output
-    spy_run_children.assert_not_called()
+    spy_run_client_children.assert_not_called()
 
 
 def test_start_refuses_when_mitmdump_missing(
     tmp_storage: Path,
     monkeypatch: pytest.MonkeyPatch,
-    spy_run_children: MagicMock,
+    spy_run_client_children: MagicMock,
 ) -> None:
     monkeypatch.setattr("transport_matters.cli.shutil.which", _which_none())
 
@@ -53,13 +53,13 @@ def test_start_refuses_when_mitmdump_missing(
     assert result.exit_code == 2
     assert "`mitmdump` was not found" in result.output
     assert "uv tool install --force transport-matters" in result.output
-    spy_run_children.assert_not_called()
+    spy_run_client_children.assert_not_called()
 
 
 def test_start_refuses_when_claude_missing(
     tmp_storage: Path,
     monkeypatch: pytest.MonkeyPatch,
-    spy_run_children: MagicMock,
+    spy_run_client_children: MagicMock,
 ) -> None:
     """No claude on PATH, no --claude-bin, no --no-claude → exit 2 with hint."""
     monkeypatch.setattr(
@@ -73,13 +73,13 @@ def test_start_refuses_when_claude_missing(
     assert "`claude` was not found" in result.output
     assert "npm install -g @anthropic-ai/claude-code" in result.output
     assert "--no-claude" in result.output
-    spy_run_children.assert_not_called()
+    spy_run_client_children.assert_not_called()
 
 
 def test_start_no_claude_works_when_claude_absent(
     tmp_storage: Path,
     monkeypatch: pytest.MonkeyPatch,
-    spy_run_children: MagicMock,
+    spy_run_client_children: MagicMock,
 ) -> None:
     """``--no-claude`` skips the claude-missing error."""
     monkeypatch.setattr(
@@ -95,7 +95,7 @@ def test_start_no_claude_works_when_claude_absent(
 def test_start_rejects_malformed_upstream_url(
     tmp_storage: Path,
     monkeypatch: pytest.MonkeyPatch,
-    spy_run_children: MagicMock,
+    spy_run_client_children: MagicMock,
 ) -> None:
     """Upstream URL must have both a scheme and hostname."""
     monkeypatch.setattr("transport_matters.cli.shutil.which", _which_all())
@@ -107,13 +107,13 @@ def test_start_rejects_malformed_upstream_url(
     )
     assert result.exit_code == 2
     assert "invalid upstream URL" in result.output
-    spy_run_children.assert_not_called()
+    spy_run_client_children.assert_not_called()
 
 
 def test_start_rejects_upstream_without_scheme(
     tmp_storage: Path,
     monkeypatch: pytest.MonkeyPatch,
-    spy_run_children: MagicMock,
+    spy_run_client_children: MagicMock,
 ) -> None:
     monkeypatch.setattr("transport_matters.cli.shutil.which", _which_all())
     monkeypatch.setattr("transport_matters.cli._port_in_use", lambda _: False)
@@ -124,14 +124,14 @@ def test_start_rejects_upstream_without_scheme(
     )
     assert result.exit_code == 2
     assert "invalid upstream URL" in result.output
-    spy_run_children.assert_not_called()
+    spy_run_client_children.assert_not_called()
 
 
 def test_start_rejects_missing_directory(
     tmp_storage: Path,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-    spy_run_children: MagicMock,
+    spy_run_client_children: MagicMock,
 ) -> None:
     """Non-existent positional directory is rejected by click before we run."""
     monkeypatch.setattr("transport_matters.cli.shutil.which", _which_all())
@@ -143,4 +143,4 @@ def test_start_rejects_missing_directory(
     assert (
         "does not exist" in result.output.lower() or "does-not-exist" in result.output
     )
-    spy_run_children.assert_not_called()
+    spy_run_client_children.assert_not_called()

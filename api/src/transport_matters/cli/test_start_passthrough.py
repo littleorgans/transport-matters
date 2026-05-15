@@ -20,7 +20,7 @@ runner = CliRunner()
 def test_start_print_command_includes_passthrough(
     tmp_storage: Path,
     monkeypatch: pytest.MonkeyPatch,
-    spy_run_children: MagicMock,
+    spy_run_client_children: MagicMock,
 ) -> None:
     """Args after ``--`` must appear on the printed claude line."""
     monkeypatch.setattr(
@@ -40,13 +40,13 @@ def test_start_print_command_includes_passthrough(
     assert "--model" in claude_line
     assert "sonnet" in claude_line
     assert "--resume" in claude_line
-    spy_run_children.assert_not_called()
+    spy_run_client_children.assert_not_called()
 
 
 def test_start_no_claude_plus_passthrough_fails(
     tmp_storage: Path,
     monkeypatch: pytest.MonkeyPatch,
-    spy_run_children: MagicMock,
+    spy_run_client_children: MagicMock,
 ) -> None:
     """``--no-claude`` + pass-through is nonsensical and exits 2."""
     monkeypatch.setattr("transport_matters.cli.shutil.which", _which_all())
@@ -55,13 +55,13 @@ def test_start_no_claude_plus_passthrough_fails(
     result = runner.invoke(main, ["claude", "--no-claude", "--", "--model", "sonnet"])
     assert result.exit_code == 2
     assert "--no-claude" in result.output
-    spy_run_children.assert_not_called()
+    spy_run_client_children.assert_not_called()
 
 
 def test_start_empty_double_dash_is_noop(
     tmp_storage: Path,
     monkeypatch: pytest.MonkeyPatch,
-    spy_run_children: MagicMock,
+    spy_run_client_children: MagicMock,
 ) -> None:
     """``manicure start --`` with nothing after it must behave like no ``--``."""
     monkeypatch.setattr(
@@ -72,15 +72,15 @@ def test_start_empty_double_dash_is_noop(
 
     result = runner.invoke(main, ["claude", "--no-system-prompt", "--"])
     assert result.exit_code == 0, result.output
-    spy_run_children.assert_called_once()
-    assert spy_run_children.call_args.kwargs["claude_argv"] == ["/bin/claude"]
+    spy_run_client_children.assert_called_once()
+    assert spy_run_client_children.call_args.kwargs["client"].argv == ["/bin/claude"]
 
 
 def test_start_dir_plus_passthrough(
     tmp_storage: Path,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-    spy_run_children: MagicMock,
+    spy_run_client_children: MagicMock,
 ) -> None:
     """Positional directory + pass-through: both survive."""
     monkeypatch.setattr(
@@ -103,12 +103,12 @@ def test_start_dir_plus_passthrough(
     assert "--model sonnet" in claude_line
 
 
-def test_start_passthrough_forwards_to_run_children(
+def test_start_passthrough_forwards_to_managed_client(
     tmp_storage: Path,
     monkeypatch: pytest.MonkeyPatch,
-    spy_run_children: MagicMock,
+    spy_run_client_children: MagicMock,
 ) -> None:
-    """Without ``--print-command``, the tail reaches ``_run_children`` verbatim."""
+    """Without ``--print-command``, the tail reaches the client argv verbatim."""
     monkeypatch.setattr(
         "transport_matters.cli.shutil.which",
         _which_by_name({"mitmdump": "/bin/mitmdump", "claude": "/bin/claude"}),
@@ -119,5 +119,5 @@ def test_start_passthrough_forwards_to_run_children(
         main, ["claude", "--no-system-prompt", "--", "-p", "hello world"]
     )
     assert result.exit_code == 0, result.output
-    kwargs = spy_run_children.call_args.kwargs
-    assert kwargs["claude_argv"] == ["/bin/claude", "-p", "hello world"]
+    kwargs = spy_run_client_children.call_args.kwargs
+    assert kwargs["client"].argv == ["/bin/claude", "-p", "hello world"]

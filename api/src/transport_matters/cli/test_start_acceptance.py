@@ -34,7 +34,7 @@ runner = CliRunner()
 def test_start_dynamic_ports_appear_in_print_command(
     tmp_storage: Path,
     monkeypatch: pytest.MonkeyPatch,
-    spy_run_children: MagicMock,
+    spy_run_client_children: MagicMock,
 ) -> None:
     """Without explicit port flags, ``allocate_port_pair`` hands us a
     kernel-assigned proxy + web pair, and both surface in the printed
@@ -61,7 +61,7 @@ def test_start_dynamic_ports_appear_in_print_command(
 def test_start_explicit_proxy_port_overrides_allocation(
     tmp_storage: Path,
     monkeypatch: pytest.MonkeyPatch,
-    spy_run_children: MagicMock,
+    spy_run_client_children: MagicMock,
 ) -> None:
     """Explicit ``--proxy-port`` wins over the allocator's proxy slot;
     the web slot still comes from the allocator and shows up via the
@@ -91,7 +91,7 @@ def test_start_explicit_proxy_port_overrides_allocation(
 def test_start_port_allocation_error_surfaces_actionable_message(
     tmp_storage: Path,
     monkeypatch: pytest.MonkeyPatch,
-    spy_run_children: MagicMock,
+    spy_run_client_children: MagicMock,
 ) -> None:
     """When the kernel can't hand us a free pair, exit 2 with a message
     telling the user how to recover (pin --proxy-port / --web-port)."""
@@ -106,14 +106,14 @@ def test_start_port_allocation_error_surfaces_actionable_message(
     result = runner.invoke(main, ["claude", "--no-claude", "--print-command"])
     assert result.exit_code == 2
     assert "kernel said no" in result.output
-    spy_run_children.assert_not_called()
+    spy_run_client_children.assert_not_called()
 
 
 @pytest.mark.parametrize("bad_port", ["0", "-1", "65536", "99999"])
 def test_start_rejects_out_of_range_port_values(
     tmp_storage: Path,
     monkeypatch: pytest.MonkeyPatch,
-    spy_run_children: MagicMock,
+    spy_run_client_children: MagicMock,
     bad_port: str,
 ) -> None:
     """Typer's port callback must reject 0 (silent skip), negatives, and
@@ -128,7 +128,7 @@ def test_start_rejects_out_of_range_port_values(
     assert "1..65535" in result.output
     assert bad_port in result.output
     assert "Omit the flag" in result.output
-    spy_run_children.assert_not_called()
+    spy_run_client_children.assert_not_called()
 
 
 # --------------------------------------------------------------------------- #
@@ -139,7 +139,7 @@ def test_start_rejects_out_of_range_port_values(
 def test_start_injects_system_prompt_by_default(
     tmp_storage: Path,
     monkeypatch: pytest.MonkeyPatch,
-    spy_run_children: MagicMock,
+    spy_run_client_children: MagicMock,
 ) -> None:
     """Default behaviour: prepend ``--append-system-prompt`` with the
     proxy + inspector URLs so the model knows it is inside transport_matters."""
@@ -153,8 +153,8 @@ def test_start_injects_system_prompt_by_default(
         main, ["claude", "--proxy-port", "9000", "--web-port", "9001"]
     )
     assert result.exit_code == 0, result.output
-    argv = spy_run_children.call_args.kwargs["claude_argv"]
-    # `claude_argv` = [claude_path, *passthrough]; injection prepends
+    argv = spy_run_client_children.call_args.kwargs["client"].argv
+    # client.argv = [claude_path, *passthrough]; injection prepends
     # `--append-system-prompt <text>` to the passthrough, so the binary
     # stays at index 0 with the injection following.
     assert argv[0] == "/bin/claude"
@@ -167,7 +167,7 @@ def test_start_injects_system_prompt_by_default(
 def test_start_no_system_prompt_skips_injection(
     tmp_storage: Path,
     monkeypatch: pytest.MonkeyPatch,
-    spy_run_children: MagicMock,
+    spy_run_client_children: MagicMock,
 ) -> None:
     """``--no-system-prompt`` short-circuits the auto-injection branch."""
     monkeypatch.setattr(
@@ -178,7 +178,7 @@ def test_start_no_system_prompt_skips_injection(
 
     result = runner.invoke(main, ["claude", "--no-system-prompt"])
     assert result.exit_code == 0, result.output
-    argv = spy_run_children.call_args.kwargs["claude_argv"]
+    argv = spy_run_client_children.call_args.kwargs["client"].argv
     assert "--append-system-prompt" not in argv
     assert argv == ["/bin/claude"]
 
@@ -186,7 +186,7 @@ def test_start_no_system_prompt_skips_injection(
 def test_start_user_supplied_system_prompt_wins(
     tmp_storage: Path,
     monkeypatch: pytest.MonkeyPatch,
-    spy_run_children: MagicMock,
+    spy_run_client_children: MagicMock,
 ) -> None:
     """If the user passes their own ``--system-prompt`` (or
     ``--append-system-prompt``) after ``--``, manicure must NOT also
@@ -199,7 +199,7 @@ def test_start_user_supplied_system_prompt_wins(
 
     result = runner.invoke(main, ["claude", "--", "--system-prompt", "you are X"])
     assert result.exit_code == 0, result.output
-    argv = spy_run_children.call_args.kwargs["claude_argv"]
+    argv = spy_run_client_children.call_args.kwargs["client"].argv
     # Exactly one --system-prompt (the user's) and zero
     # --append-system-prompt (manicure stayed out of it).
     assert argv.count("--system-prompt") == 1
@@ -211,7 +211,7 @@ def test_start_user_supplied_system_prompt_wins(
 def test_start_user_supplied_append_system_prompt_wins(
     tmp_storage: Path,
     monkeypatch: pytest.MonkeyPatch,
-    spy_run_children: MagicMock,
+    spy_run_client_children: MagicMock,
 ) -> None:
     """Same as above for ``--append-system-prompt`` — manicure detects
     either flag and stays out of the way."""
@@ -226,7 +226,7 @@ def test_start_user_supplied_append_system_prompt_wins(
         ["claude", "--proxy-port", "9000", "--", "--append-system-prompt", "extra"],
     )
     assert result.exit_code == 0, result.output
-    argv = spy_run_children.call_args.kwargs["claude_argv"]
+    argv = spy_run_client_children.call_args.kwargs["client"].argv
     # Only the user's --append-system-prompt is present (manicure's
     # injection would have added a second).
     assert argv.count("--append-system-prompt") == 1
@@ -244,13 +244,13 @@ def test_start_user_supplied_append_system_prompt_wins(
 def test_start_retries_after_bind_failure_then_succeeds(
     tmp_storage: Path,
     monkeypatch: pytest.MonkeyPatch,
-    spy_run_children: MagicMock,
+    spy_run_client_children: MagicMock,
     tmp_path: Path,
 ) -> None:
     """First spawn raises ``BindFailure`` (port stolen between allocate and
     spawn); the retry loop draws a fresh pair via ``allocate_port_pair``
     and the second spawn succeeds. Exit 0, allocator called twice (initial
-    + one re-allocation), second ``_run_children`` invocation receives the
+    + one re-allocation), second shared runner invocation receives the
     re-allocated ports."""
     monkeypatch.setattr(
         "transport_matters.cli.shutil.which",
@@ -263,7 +263,7 @@ def test_start_retries_after_bind_failure_then_succeeds(
 
     def _side_effect(**kwargs: Any) -> None:
         # Raise on the first invocation, succeed on the second.
-        if spy_run_children.call_count == 1:
+        if spy_run_client_children.call_count == 1:
             raise BindFailure(
                 proxy_port=kwargs["proxy_port"],
                 web_port=kwargs["web_port"],
@@ -274,15 +274,15 @@ def test_start_retries_after_bind_failure_then_succeeds(
                 log_path=log_path,
             )
 
-    spy_run_children.side_effect = _side_effect
+    spy_run_client_children.side_effect = _side_effect
 
     result = runner.invoke(main, ["claude"])
     assert result.exit_code == 0, result.output
     # Both pairs drawn: initial allocation + retry-time re-allocation.
     assert drawn == [(54321, 54322), (60001, 60002)]
-    # _run_children called twice; second call uses re-allocated ports.
-    assert spy_run_children.call_count == 2
-    second_kwargs = spy_run_children.call_args_list[1].kwargs
+    # Shared runner called twice; second call uses re-allocated ports.
+    assert spy_run_client_children.call_count == 2
+    second_kwargs = spy_run_client_children.call_args_list[1].kwargs
     assert second_kwargs["proxy_port"] == 60001
     assert second_kwargs["web_port"] == 60002
 
@@ -290,7 +290,7 @@ def test_start_retries_after_bind_failure_then_succeeds(
 def test_start_exhausts_retry_budget_with_actionable_message(
     tmp_storage: Path,
     monkeypatch: pytest.MonkeyPatch,
-    spy_run_children: MagicMock,
+    spy_run_client_children: MagicMock,
     tmp_path: Path,
 ) -> None:
     """All 3 spawn attempts raise ``BindFailure``: exit 1 with a message
@@ -316,13 +316,13 @@ def test_start_exhausts_retry_budget_with_actionable_message(
             log_path=log_path,
         )
 
-    spy_run_children.side_effect = _side_effect
+    spy_run_client_children.side_effect = _side_effect
 
     result = runner.invoke(main, ["claude"])
     assert result.exit_code == 1
     # Three attempts exactly; no fourth allocator call (the loop bails
     # before re-allocating on the final iteration).
-    assert spy_run_children.call_count == 3
+    assert spy_run_client_children.call_count == 3
     assert drawn == [(54321, 54322), (60001, 60002), (60003, 60004)]
     # Exhaustion message names the attempted pairs and the recovery flags.
     assert "could not bind ports after 3 attempts" in result.output
@@ -335,7 +335,7 @@ def test_start_exhausts_retry_budget_with_actionable_message(
 def test_start_exhaustion_message_highlights_pinned_flag(
     tmp_storage: Path,
     monkeypatch: pytest.MonkeyPatch,
-    spy_run_children: MagicMock,
+    spy_run_client_children: MagicMock,
     tmp_path: Path,
 ) -> None:
     """One side pinned + repeated anonymous bind failures → the
@@ -370,11 +370,11 @@ def test_start_exhaustion_message_highlights_pinned_flag(
             log_path=log_path,
         )
 
-    spy_run_children.side_effect = _side_effect
+    spy_run_client_children.side_effect = _side_effect
 
     result = runner.invoke(main, ["claude", "--web-port", "9001"])
     assert result.exit_code == 1
-    assert spy_run_children.call_count == 3
+    assert spy_run_client_children.call_count == 3
     # Allocator drew once initially (web=9001 ignored from that pair)
     # plus twice for retries; retry-time allocations only contribute
     # the proxy half because web stays pinned.
@@ -399,12 +399,12 @@ def test_start_exhaustion_message_highlights_pinned_flag(
 def test_start_does_not_retry_when_pinned_port_is_in_use(
     tmp_storage: Path,
     monkeypatch: pytest.MonkeyPatch,
-    spy_run_children: MagicMock,
+    spy_run_client_children: MagicMock,
     tmp_path: Path,
 ) -> None:
     """When the bind-failure log names a user-pinned port, fail fast with
     the spec's actionable message — never silently re-allocate the slot
-    the user explicitly chose. ``_run_children`` runs exactly once."""
+    the user explicitly chose. The shared runner runs exactly once."""
     monkeypatch.setattr(
         "transport_matters.cli.shutil.which",
         _which_by_name({"mitmdump": "/bin/mitmdump", "claude": "/bin/claude"}),
@@ -427,12 +427,12 @@ def test_start_does_not_retry_when_pinned_port_is_in_use(
             log_path=log_path,
         )
 
-    spy_run_children.side_effect = _side_effect
+    spy_run_client_children.side_effect = _side_effect
 
     result = runner.invoke(main, ["claude", "--proxy-port", "9000"])
     assert result.exit_code == 2
     # Exactly one spawn attempt: no retry on a pinned-port conflict.
-    assert spy_run_children.call_count == 1
+    assert spy_run_client_children.call_count == 1
     # Initial allocation only — `_handle_bind_failure` short-circuits
     # before re-allocating when the failure is pinned.
     assert drawn == [(50000, 60000)]
