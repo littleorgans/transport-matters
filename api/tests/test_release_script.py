@@ -42,7 +42,10 @@ def test_install_local_recipe_reinstalls_editable_checkout_without_version_file(
 
     assert "install-local:" in justfile
     assert "rm -f api/src/transport_matters/_version.py" in justfile
-    assert "uv tool install --force --editable ./api" in justfile
+    assert (
+        "uv tool install --force --refresh-package transport-matters --editable ./api"
+        in justfile
+    )
     assert "tool-install-editable: install-local" in justfile
 
 

@@ -20,7 +20,7 @@ runner = CliRunner()
 def test_start_print_command_does_not_spawn(
     tmp_storage: Path,
     monkeypatch: pytest.MonkeyPatch,
-    spy_run_children: MagicMock,
+    spy_run_client_children: MagicMock,
 ) -> None:
     """``--print-command`` must short-circuit before we spawn anything."""
     monkeypatch.setattr("transport_matters.cli.shutil.which", _which_all())
@@ -31,13 +31,13 @@ def test_start_print_command_does_not_spawn(
     assert "mitmdump" in result.stdout
     assert "reverse:https://api.anthropic.com" in result.stdout
     assert "--listen-port" in result.stdout
-    spy_run_children.assert_not_called()
+    spy_run_client_children.assert_not_called()
 
 
 def test_start_prefers_same_environment_mitmdump(
     tmp_storage: Path,
     monkeypatch: pytest.MonkeyPatch,
-    spy_run_children: MagicMock,
+    spy_run_client_children: MagicMock,
 ) -> None:
     """Use the mitmdump binary from the active environment before PATH."""
 
@@ -60,13 +60,13 @@ def test_start_prefers_same_environment_mitmdump(
     assert result.exit_code == 0
     assert "/tool/bin/mitmdump" in result.stdout
     assert "/usr/local/bin/mitmdump" not in result.stdout
-    spy_run_children.assert_not_called()
+    spy_run_client_children.assert_not_called()
 
 
 def test_start_print_command_includes_claude_invocation(
     tmp_storage: Path,
     monkeypatch: pytest.MonkeyPatch,
-    spy_run_children: MagicMock,
+    spy_run_client_children: MagicMock,
 ) -> None:
     """With claude on PATH, both child invocations are printed."""
     monkeypatch.setattr(
@@ -80,13 +80,13 @@ def test_start_print_command_includes_claude_invocation(
     lines = [line for line in result.stdout.splitlines() if line.strip()]
     assert any("/bin/mitmdump" in line for line in lines)
     assert any(line == "/bin/claude" for line in lines)
-    spy_run_children.assert_not_called()
+    spy_run_client_children.assert_not_called()
 
 
 def test_start_print_command_no_claude_omits_claude(
     tmp_storage: Path,
     monkeypatch: pytest.MonkeyPatch,
-    spy_run_children: MagicMock,
+    spy_run_client_children: MagicMock,
 ) -> None:
     """``--no-claude`` skips the claude resolution and prints only mitmdump."""
     monkeypatch.setattr(
@@ -99,13 +99,13 @@ def test_start_print_command_no_claude_omits_claude(
     lines = [line for line in result.stdout.splitlines() if line.strip()]
     assert any("mitmdump" in line for line in lines)
     assert not any(line.endswith("claude") and "mitmdump" not in line for line in lines)
-    spy_run_children.assert_not_called()
+    spy_run_client_children.assert_not_called()
 
 
 def test_start_print_command_respects_port_and_upstream(
     tmp_storage: Path,
     monkeypatch: pytest.MonkeyPatch,
-    spy_run_children: MagicMock,
+    spy_run_client_children: MagicMock,
 ) -> None:
     monkeypatch.setattr("transport_matters.cli.shutil.which", _which_all())
     monkeypatch.setattr("transport_matters.cli._port_in_use", lambda _: False)
@@ -131,7 +131,7 @@ def test_start_print_command_respects_port_and_upstream(
 def test_start_uses_claude_bin_override(
     tmp_storage: Path,
     monkeypatch: pytest.MonkeyPatch,
-    spy_run_children: MagicMock,
+    spy_run_client_children: MagicMock,
     tmp_path: Path,
 ) -> None:
     """``--claude-bin PATH`` bypasses PATH resolution."""

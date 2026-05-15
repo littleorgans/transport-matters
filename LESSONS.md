@@ -6,3 +6,4 @@
 - For Transport Matters UX, do not anchor new designs around the existing ARM breakpoint workflow. Prefer staged launch and overlay workflows: capture startup payload, edit or save overlay, then run the working agent session through that overlay.
 - In the Transport Matters staged launch UX, include Screen 0 for env vars before probe capture because env vars can affect the initial payload. Include a separate exchange detail screen after the working session for inspection tools.
 - In Transport Matters architecture language, distinguish agent harnesses or clients from upstream providers. Claude Code, Codex, Gemini CLI, OpenCode, and similar CLIs are harnesses or clients. Anthropic, OpenAI, Google, and similar APIs are providers.
+- Classify the harness driver boundary and capability surface work as a feature for PR titles and release notes, even when the final patch also includes install or metadata hygiene.

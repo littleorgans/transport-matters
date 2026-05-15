@@ -17,13 +17,13 @@ if TYPE_CHECKING:
 runner = CliRunner()
 
 
-def test_start_calls_run_children_with_claude_env(
+def test_start_calls_run_client_children_with_claude_client(
     tmp_storage: Path,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-    spy_run_children: MagicMock,
+    spy_run_client_children: MagicMock,
 ) -> None:
-    """When not using --print-command, the spawn helper gets a claude env."""
+    """When not using --print-command, the shared runner gets a Claude client."""
     monkeypatch.setattr(
         "transport_matters.cli.shutil.which",
         _which_by_name({"mitmdump": "/bin/mitmdump", "claude": "/bin/claude"}),
@@ -37,11 +37,14 @@ def test_start_calls_run_children_with_claude_env(
         ["claude", str(workdir), "--no-system-prompt", "--proxy-port", "9900"],
     )
     assert result.exit_code == 0, result.output
-    spy_run_children.assert_called_once()
-    kwargs = spy_run_children.call_args.kwargs
-    assert kwargs["claude_argv"] == ["/bin/claude"]
-    assert kwargs["claude_env"]["ANTHROPIC_BASE_URL"] == "http://127.0.0.1:9900"
-    assert kwargs["claude_cwd"] == workdir
+    spy_run_client_children.assert_called_once()
+    kwargs = spy_run_client_children.call_args.kwargs
+    client = kwargs["client"]
+    assert client.name == "claude"
+    assert client.display_name == "Claude"
+    assert client.argv == ["/bin/claude"]
+    assert client.env["ANTHROPIC_BASE_URL"] == "http://127.0.0.1:9900"
+    assert client.cwd == workdir
     assert kwargs["proxy_port"] == 9900
     assert f"TRANSPORT_MATTERS_CWD={workdir}" in result.output
     assert kwargs["mitmdump_argv"][0] == "/bin/mitmdump"
@@ -52,7 +55,7 @@ def test_start_sanitizes_managed_claude_env(
     tmp_storage: Path,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-    spy_run_children: MagicMock,
+    spy_run_client_children: MagicMock,
 ) -> None:
     monkeypatch.setattr(
         "transport_matters.cli.shutil.which",
@@ -76,7 +79,7 @@ def test_start_sanitizes_managed_claude_env(
     )
     assert result.exit_code == 0, result.output
 
-    claude_env = spy_run_children.call_args.kwargs["claude_env"]
+    claude_env = spy_run_client_children.call_args.kwargs["client"].env
     assert claude_env["ANTHROPIC_BASE_URL"] == "http://127.0.0.1:9900"
     assert claude_env["NO_PROXY"] == "127.0.0.1,localhost"
     assert claude_env["no_proxy"] == "127.0.0.1,localhost"
@@ -92,16 +95,15 @@ def test_start_sanitizes_managed_claude_env(
         assert key not in claude_env
 
 
-def test_start_no_claude_passes_none_claude_argv(
+def test_start_no_claude_passes_none_client(
     tmp_storage: Path,
     monkeypatch: pytest.MonkeyPatch,
-    spy_run_children: MagicMock,
+    spy_run_client_children: MagicMock,
 ) -> None:
     monkeypatch.setattr("transport_matters.cli.shutil.which", _which_all())
     monkeypatch.setattr("transport_matters.cli._port_in_use", lambda _: False)
 
     result = runner.invoke(main, ["claude", "--no-claude"])
     assert result.exit_code == 0, result.output
-    kwargs = spy_run_children.call_args.kwargs
-    assert kwargs["claude_argv"] is None
-    assert kwargs["claude_env"] is None
+    kwargs = spy_run_client_children.call_args.kwargs
+    assert kwargs["client"] is None

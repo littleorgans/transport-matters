@@ -28,7 +28,7 @@ def test_start_accepts_directory_argument(
     tmp_storage: Path,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-    spy_run_children: MagicMock,
+    spy_run_client_children: MagicMock,
 ) -> None:
     """A valid directory passes validation and reaches print-command."""
     monkeypatch.setattr(
@@ -45,7 +45,7 @@ def test_start_accepts_directory_argument(
 def test_start_does_not_pollute_os_environ(
     tmp_storage: Path,
     monkeypatch: pytest.MonkeyPatch,
-    spy_run_children: MagicMock,
+    spy_run_client_children: MagicMock,
 ) -> None:
     """The start command builds a child_env dict instead of mutating os.environ."""
     monkeypatch.setattr(
@@ -74,7 +74,7 @@ def test_start_does_not_pollute_os_environ(
 def test_start_fails_when_addon_missing(
     tmp_storage: Path,
     monkeypatch: pytest.MonkeyPatch,
-    spy_run_children: MagicMock,
+    spy_run_client_children: MagicMock,
 ) -> None:
     fake_traversable = MagicMock()
     fake_traversable.is_file.return_value = False
@@ -89,4 +89,4 @@ def test_start_fails_when_addon_missing(
     result = runner.invoke(main, ["claude", "--print-command"])
     assert result.exit_code == 2
     assert "could not locate the Transport Matters mitmproxy addon" in result.output
-    spy_run_children.assert_not_called()
+    spy_run_client_children.assert_not_called()

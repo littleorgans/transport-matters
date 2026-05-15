@@ -87,15 +87,12 @@ def tmp_storage(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 
 @pytest.fixture
-def spy_run_children(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
-    """Replace ``_run_children`` with a MagicMock so ``start`` never forks.
+def spy_run_client_children(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
+    """Replace ``_run_client_children`` so ``start`` never forks.
 
-    The retry harness in :func:`transport_matters.cli.runner._run_with_retry`
-    looks up ``_run_children`` via runner's own module namespace, so
-    that is where the patch must land. The package-scope re-export at
-    ``transport_matters.cli._run_children`` is unaffected; tests that read
-    ``call_args`` against the returned spy work either way.
+    The shared retry harness looks up ``_run_client_children`` via
+    runner's own module namespace, so that is where the patch must land.
     """
     spy = MagicMock()
-    monkeypatch.setattr("transport_matters.cli.runner._run_children", spy)
+    monkeypatch.setattr("transport_matters.cli.runner._run_client_children", spy)
     return spy

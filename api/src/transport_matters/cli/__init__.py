@@ -323,7 +323,7 @@ def claude(
         inject_system_prompt=inject_system_prompt,
         user_supplied_system_prompt=user_supplied_system_prompt,
         print_banner=_print_banner,
-        run_with_retry=_run_with_retry,
+        run_client_with_retry=_run_client_with_retry,
         print_contention_error=_print_contention_error,
     )
 

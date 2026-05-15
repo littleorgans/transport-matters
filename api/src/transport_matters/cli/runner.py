@@ -1,9 +1,9 @@
-"""Supervisor-driven lifecycle for `transport-matters claude`.
+"""Supervisor-driven lifecycle for Transport Matters launch commands.
 
 Owns both child processes end to end: spawn mitmdump, wait for readiness,
-spawn claude, then translate whichever child exits first into a sensible
-top-level exit code. See the `_run_children` docstring for the full
-decision matrix.
+spawn the managed client, then translate whichever child exits first into a
+sensible top-level exit code. See the `_run_client_children_until_outcome`
+docstring for the full decision matrix.
 
 The startup window also detects ``EADDRINUSE``-shaped failures and
 surfaces them as :class:`BindFailure` rather than ``typer.Exit(1)`` —
@@ -310,59 +310,41 @@ def _run_with_retry(
     resolved_storage: Path,
     working_dir: Path,
 ) -> None:
-    """Run the Claude spawn lifecycle with bounded allocate-→-spawn retry."""
+    """Compatibility adapter for the older Claude launch callback contract."""
 
-    attempted: list[tuple[int, int]] = []
-    for attempt in range(_BIND_RETRY_ATTEMPTS):
-        attempted.append((proxy_port, web_port))
-        write_manifest_for(proxy_port, web_port)
-        if attempt > 0:
-            typer.secho(
-                f"retrying after bind conflict "
-                f"(attempt {attempt + 1}/{_BIND_RETRY_ATTEMPTS})",
-                fg=typer.colors.YELLOW,
-                err=True,
-            )
-        print_banner_for(proxy_port, web_port)
-        mitmdump_argv, child_env, claude_argv = build_invocation(proxy_port, web_port)
-        try:
-            _run_children(
-                mitmdump_argv=mitmdump_argv,
-                mitmdump_env=child_env,
-                storage_dir=resolved_storage,
-                claude_argv=claude_argv,
-                claude_env=(
-                    None
-                    if claude_argv is None
-                    else build_managed_child_env(
-                        child_env,
-                        extra_env={"ANTHROPIC_BASE_URL": loopback_http_url(proxy_port)},
-                    )
-                ),
-                claude_cwd=working_dir,
-                proxy_port=proxy_port,
-                web_port=web_port,
-            )
-            return
-        except BindFailure as exc:
-            if attempt + 1 >= _BIND_RETRY_ATTEMPTS:
-                break
-            proxy_port, web_port = _handle_bind_failure(
-                exc,
-                proxy_port=proxy_port,
-                web_port=web_port,
-                proxy_user_supplied=proxy_user_supplied,
-                web_user_supplied=web_user_supplied,
-            )
-
-    _raise_retry_exhausted(
-        LaunchRetryExhaustedOutcome(
-            attempted=tuple(attempted),
-            proxy_port=proxy_port,
-            web_port=web_port,
-            proxy_user_supplied=proxy_user_supplied,
-            web_user_supplied=web_user_supplied,
+    def build_client_invocation(
+        current_proxy_port: int,
+        current_web_port: int,
+    ) -> tuple[list[str], dict[str, str], ManagedClient | None]:
+        mitmdump_argv, child_env, claude_argv = build_invocation(
+            current_proxy_port,
+            current_web_port,
         )
+        client = None
+        if claude_argv is not None:
+            client = ManagedClient(
+                name="claude",
+                display_name="Claude",
+                argv=claude_argv,
+                env=build_managed_child_env(
+                    child_env,
+                    extra_env={
+                        "ANTHROPIC_BASE_URL": loopback_http_url(current_proxy_port)
+                    },
+                ),
+                cwd=working_dir,
+            )
+        return mitmdump_argv, child_env, client
+
+    _run_client_with_retry(
+        proxy_port=proxy_port,
+        web_port=web_port,
+        proxy_user_supplied=proxy_user_supplied,
+        web_user_supplied=web_user_supplied,
+        build_invocation=build_client_invocation,
+        print_banner_for=print_banner_for,
+        write_manifest_for=write_manifest_for,
+        resolved_storage=resolved_storage,
     )
 
 

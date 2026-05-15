@@ -19,7 +19,7 @@ vi.mock("../../hooks/useMeta", () => ({
 
 beforeEach(() => {
   useOverlaysStore.setState({ overlays: [], draftId: null });
-  mockMeta.value = { cwd: "/tmp/fake", workspaceId: "fake/abc123" };
+  mockMeta.value = { cwd: "/tmp/fake", harnesses: [], workspaceId: "fake/abc123" };
 });
 
 describe("OverlaysView: empty state", () => {

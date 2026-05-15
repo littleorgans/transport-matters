@@ -28,7 +28,7 @@ def test_start_fails_fast_when_workspace_locked(
     tmp_storage: Path,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-    spy_run_children: MagicMock,
+    spy_run_client_children: MagicMock,
 ) -> None:
     """Second ``start`` in the same CWD must exit 2 and surface live state."""
     monkeypatch.setattr("transport_matters.cli.shutil.which", _which_all())
@@ -53,14 +53,14 @@ def test_start_fails_fast_when_workspace_locked(
     assert "99999" in result.output
     assert "4545" in result.output
     assert "8788" in result.output
-    spy_run_children.assert_not_called()
+    spy_run_client_children.assert_not_called()
 
 
 def test_start_contention_message_falls_back_when_manifest_missing(
     tmp_storage: Path,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-    spy_run_children: MagicMock,
+    spy_run_client_children: MagicMock,
 ) -> None:
     """Lock held but no sibling manifest still exits 2 cleanly."""
     monkeypatch.setattr("transport_matters.cli.shutil.which", _which_all())
@@ -75,28 +75,29 @@ def test_start_contention_message_falls_back_when_manifest_missing(
 
     assert result.exit_code == 2
     assert "lock" in result.output.lower()
-    spy_run_children.assert_not_called()
+    spy_run_client_children.assert_not_called()
 
 
-def test_start_writes_manifest_visible_to_children(
+def test_start_writes_manifest_visible_to_client_runner(
     tmp_storage: Path,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """While ``_run_children`` is running the manifest must exist on disk."""
+    """While the shared runner is running the manifest must exist on disk."""
     monkeypatch.setattr("transport_matters.cli.shutil.which", _which_all())
     monkeypatch.setattr("transport_matters.cli._port_in_use", lambda _: False)
 
     captured: dict[str, Any] = {}
 
-    def _fake_run_children(**kwargs: Any) -> None:
-        cwd = kwargs["claude_cwd"]
+    def _fake_run_client_children(**kwargs: Any) -> None:
+        cwd = kwargs["client"].cwd
         manifest_path = workspace_root(cwd) / "manifest.json"
         captured["exists_mid_run"] = manifest_path.exists()
         captured["raw"] = json.loads(manifest_path.read_text(encoding="utf-8"))
 
     monkeypatch.setattr(
-        "transport_matters.cli.runner._run_children", _fake_run_children
+        "transport_matters.cli.runner._run_client_children",
+        _fake_run_client_children,
     )
 
     workdir = tmp_path / "project"
@@ -121,7 +122,7 @@ def test_start_releases_lock_on_normal_exit(
     tmp_storage: Path,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-    spy_run_children: MagicMock,
+    spy_run_client_children: MagicMock,
 ) -> None:
     """After a successful ``start``, the lock must release."""
     monkeypatch.setattr("transport_matters.cli.shutil.which", _which_all())
@@ -136,14 +137,14 @@ def test_start_releases_lock_on_normal_exit(
         pass
     result_b = runner.invoke(main, ["claude", str(workdir)])
     assert result_b.exit_code == 0, result_b.output
-    assert spy_run_children.call_count == 2
+    assert spy_run_client_children.call_count == 2
 
 
 def test_start_different_cwds_coexist(
     tmp_storage: Path,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-    spy_run_children: MagicMock,
+    spy_run_client_children: MagicMock,
 ) -> None:
     """Two ``start``s in different CWDs must not contend on the lock."""
     monkeypatch.setattr("transport_matters.cli.shutil.which", _which_all())

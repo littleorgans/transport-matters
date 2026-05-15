@@ -56,7 +56,7 @@ install:
 install-local:
     rm -f api/src/transport_matters/_version.py
     cd www && pnpm install && pnpm build
-    uv tool install --force --editable ./api
+    uv tool install --force --refresh-package transport-matters --editable ./api
     transport-matters --version
 
 [no-exit-message]

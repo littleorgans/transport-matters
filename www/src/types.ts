@@ -18,6 +18,41 @@ export interface ResStats {
   tool_calls: number;
 }
 
+export type HarnessProxyMode = "reverse" | "explicit";
+export type HarnessTrustRequirement = "none" | "codex_ca_certificate";
+export type HarnessShellEnvironmentPolicy =
+  | "sanitized_base_url"
+  | "sanitized_proxy_with_shell_excludes";
+export type HarnessPassThroughPolicy = "verbatim_after_separator";
+
+export interface HarnessCapabilities {
+  startup_probe: boolean;
+  disposable_probe: boolean;
+  overlay_before_work: boolean;
+  tool_schema_overlay: boolean;
+  provider_extras_controls: boolean;
+  replay: boolean;
+  fork: boolean;
+  transport_diagnostics: boolean;
+  codex_turn_telemetry: boolean;
+  websocket_artifacts: boolean;
+  http_fallback_artifacts: boolean;
+}
+
+export interface HarnessDescriptor {
+  id: string;
+  display_name: string;
+  command_name: string;
+  subcommand_id: string;
+  binary_option: string;
+  disable_flag: string;
+  proxy_mode: HarnessProxyMode;
+  trust_requirement: HarnessTrustRequirement;
+  shell_environment_policy: HarnessShellEnvironmentPolicy;
+  pass_through_policy: HarnessPassThroughPolicy;
+  capabilities: HarnessCapabilities;
+}
+
 export interface CodexTurnListSummary {
   turn_index: number;
   message_range_start: number;
