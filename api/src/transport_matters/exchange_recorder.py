@@ -25,7 +25,11 @@ from transport_matters.storage import (
     ResStats,
     SpawnAnchor,
 )
-from transport_matters.storage.base import ExchangeArtifacts, StorageBackend
+from transport_matters.storage.base import (
+    ExchangeArtifacts,
+    StorageBackend,
+    TransportArtifacts,
+)
 from transport_matters.track_manager import (
     TrackAssignment,
     assignment_index_fields,
@@ -35,6 +39,7 @@ from transport_matters.track_manager import (
 if TYPE_CHECKING:
     from mitmproxy import http
 
+    from transport_matters.codex.derivation_contract import CodexDerivedTurnArtifacts
     from transport_matters.flow_state import RequestFlowState
 
 logger = logging.getLogger(__name__)
@@ -75,6 +80,31 @@ def _persistable_curated_ir(
     except Exception:
         logger.warning("Skipping invalid curated IR persistence")
         return None
+
+
+def _codex_turn_list_summary(
+    derived: CodexDerivedTurnArtifacts | None,
+) -> CodexTurnListSummary | None:
+    if derived is None:
+        return None
+    return CodexTurnListSummary.from_turn(derived.turn)
+
+
+def _codex_http_transport_artifacts(
+    flow: http.HTTPFlow,
+    *,
+    raw_request: bytes,
+    raw_response: bytes,
+    ts: datetime,
+) -> TransportArtifacts | None:
+    from transport_matters.codex.transport import build_codex_http_transport_artifacts
+
+    return build_codex_http_transport_artifacts(
+        flow,
+        raw_request=raw_request,
+        raw_response=raw_response,
+        ts=ts,
+    )
 
 
 def emit_exchange(
@@ -212,17 +242,26 @@ async def _persist_http_exchange(
     res_ir, res_stats = _parse_response_ir(adapter, raw_res, content_type, exchange_id)
     if res_stats is None:
         res_stats = _http_error_response_stats(flow, raw_res)
-    codex_turn_summary: CodexTurnListSummary | None = None
+    codex_derived: CodexDerivedTurnArtifacts | None = None
+    transport: TransportArtifacts | None = None
     if ir.provider == "codex":
         from transport_matters.codex.http_derivation import derive_codex_http_turn
 
-        codex_turn_summary = derive_codex_http_turn(
+        transport = _codex_http_transport_artifacts(
+            flow,
+            raw_request=raw_req,
+            raw_response=raw_res,
+            ts=ts,
+        )
+        codex_derived = derive_codex_http_turn(
             exchange_id=exchange_id,
             raw_request=raw_req,
             raw_response=raw_res,
+            request_headers=request_state.codex_request_headers,
             model=ir.model,
             ts=ts,
         )
+    codex_turn_summary = _codex_turn_list_summary(codex_derived)
     req_stats = build_req_stats(curated_ir)
     pipeline_stats = build_pipeline_stats(audit)
     if pipeline_stats is not None and token_counter is not None:
@@ -269,6 +308,9 @@ async def _persist_http_exchange(
         request_audit=audit,
         response_raw=raw_res or None,
         response_ir=res_ir,
+        transport=transport,
+        events=codex_derived.events if codex_derived is not None else None,
+        turn=codex_derived.turn if codex_derived is not None else None,
     )
     if not await _persist_exchange(storage, entry, artifacts):
         return False
@@ -402,17 +444,26 @@ async def _finalize_http_provisional_exchange(
     res_ir, res_stats = _parse_response_ir(adapter, raw_res, content_type, exchange_id)
     if res_stats is None:
         res_stats = _http_error_response_stats(flow, raw_res)
-    codex_turn_summary: CodexTurnListSummary | None = None
+    codex_derived: CodexDerivedTurnArtifacts | None = None
+    transport: TransportArtifacts | None = None
     if ir.provider == "codex":
         from transport_matters.codex.http_derivation import derive_codex_http_turn
 
-        codex_turn_summary = derive_codex_http_turn(
+        transport = _codex_http_transport_artifacts(
+            flow,
+            raw_request=request_state.raw_request,
+            raw_response=raw_res,
+            ts=existing_entry.ts,
+        )
+        codex_derived = derive_codex_http_turn(
             exchange_id=exchange_id,
             raw_request=request_state.raw_request,
             raw_response=raw_res,
+            request_headers=request_state.codex_request_headers,
             model=ir.model,
             ts=existing_entry.ts,
         )
+    codex_turn_summary = _codex_turn_list_summary(codex_derived)
     pipeline_stats = existing_entry.pipeline
     if pipeline_stats is not None and token_counter is not None:
         try:
@@ -442,7 +493,13 @@ async def _finalize_http_provisional_exchange(
     )
     existing_artifacts = await storage.read_exchange(exchange_id)
     artifacts = existing_artifacts.model_copy(
-        update={"response_raw": raw_res or None, "response_ir": res_ir}
+        update={
+            "response_raw": raw_res or None,
+            "response_ir": res_ir,
+            "transport": transport,
+            "events": codex_derived.events if codex_derived is not None else None,
+            "turn": codex_derived.turn if codex_derived is not None else None,
+        }
     )
     try:
         await storage.persist_exchange(entry, artifacts)

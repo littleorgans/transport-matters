@@ -39,6 +39,7 @@ from transport_matters.flow_state import (
     capture_request_flow_state,
     clear_request_flow_state,
     get_request_flow_state,
+    snapshot_codex_http_request_headers,
     update_request_flow_state,
 )
 from transport_matters.pause_session import (
@@ -66,9 +67,8 @@ async def handle_http_request(
     flow: http.HTTPFlow,
     token_counter: TokenCountingClient | None,
 ) -> None:
-    if not flow.request.path.startswith(
-        "/v1/messages"
-    ) and not is_codex_http_responses_flow(flow):
+    codex_http = is_codex_http_responses_flow(flow)
+    if not flow.request.path.startswith("/v1/messages") and not codex_http:
         return
     try:
         adapter = get_adapter(flow)
@@ -102,6 +102,11 @@ async def handle_http_request(
         curated_request_ir=curated_ir,
         audit=audit,
         track_assignment=track_assignment,
+        codex_request_headers=(
+            snapshot_codex_http_request_headers(flow.request.headers)
+            if codex_http
+            else None
+        ),
     )
     provisional_exchange_id = await _persist_http_provisional_exchange(
         flow,

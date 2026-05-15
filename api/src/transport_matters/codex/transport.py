@@ -1,8 +1,8 @@
-"""Codex websocket transport helpers.
+"""Codex transport helpers.
 
 Tracks the ChatGPT authenticated Codex websocket handshake and the
-active client request turn without pulling the later IR work into the
-addon.
+active client request turn. Also builds the canonical HTTP fallback
+transport record from the buffered request and SSE response stream.
 """
 
 from __future__ import annotations
@@ -11,15 +11,20 @@ import base64
 import json
 import time
 from dataclasses import dataclass
-from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any
+from datetime import UTC, datetime, timedelta
+from typing import TYPE_CHECKING, Any, cast
 
 if TYPE_CHECKING:
     from mitmproxy import http
     from mitmproxy.websocket import WebSocketMessage
 
+    from transport_matters.codex.continuity import CodexContinuityAllocation
     from transport_matters.ir import InternalResponse
 
+from transport_matters.codex.continuity import (
+    allocate_codex_continuity_from_headers,
+    get_codex_continuity_allocator,
+)
 from transport_matters.codex.protocol import (
     CODEX_NORMAL_CLOSE_CODES,
     codex_close_stop_reason,
@@ -28,12 +33,17 @@ from transport_matters.codex.protocol import (
     codex_terminal_stop_reason,
     is_codex_turn_start,
 )
-from transport_matters.codex.response_parser import parse_codex_response_payloads
+from transport_matters.codex.response_parser import (
+    _parse_sse_event_payloads,
+    parse_codex_response_payloads,
+)
 from transport_matters.storage.base import (
     ResStats,
     TransportArtifacts,
     TransportCloseArtifacts,
     TransportHeader,
+    TransportHttpRequestArtifacts,
+    TransportHttpResponseArtifacts,
     TransportMessageArtifact,
     TransportUpgradeArtifacts,
 )
@@ -68,8 +78,7 @@ class CodexTransportState:
     turn_server_messages_before: int = 0
     client_message_count: int = 0
     server_message_count: int = 0
-    current_turn_index: int | None = None
-    next_turn_index: int = 0
+    current_turn_allocation: CodexContinuityAllocation | None = None
 
 
 @dataclass(slots=True)
@@ -85,6 +94,12 @@ class CodexCloseSummary:
     @property
     def is_normal(self) -> bool:
         return self.close_code in CODEX_NORMAL_CLOSE_CODES
+
+
+@dataclass(frozen=True, slots=True)
+class CodexHttpTransportPayloads:
+    request: dict[str, Any] | None
+    response_events: tuple[dict[str, Any], ...]
 
 
 def is_codex_websocket_flow(flow: http.HTTPFlow) -> bool:
@@ -170,6 +185,10 @@ def record_codex_websocket_message(
             if message.is_text:
                 state.initial_client_frame_text = message.text
             state.initial_client_frame_dropped = False
+            state.current_turn_allocation = allocate_codex_continuity_from_headers(
+                get_codex_continuity_allocator(),
+                flow.request.headers.get,
+            )
             captured_initial = True
     else:
         state.server_message_count += 1
@@ -266,6 +285,41 @@ def build_codex_transport_artifacts(
     return transport
 
 
+def build_codex_http_transport_artifacts(
+    flow: http.HTTPFlow,
+    *,
+    raw_request: bytes,
+    raw_response: bytes,
+    ts: datetime,
+) -> TransportArtifacts | None:
+    request = getattr(flow, "request", None)
+    if request is None:
+        return None
+    response = getattr(flow, "response", None)
+    payloads = parse_codex_http_transport_payloads(raw_request, raw_response)
+    transport, _ = redact_transport_artifacts(
+        TransportArtifacts(
+            provider="codex",
+            protocol="http",
+            request=TransportHttpRequestArtifacts(
+                method=getattr(request, "method", None),
+                scheme=getattr(request, "scheme", ""),
+                host=getattr(request, "host", ""),
+                path=getattr(request, "path", ""),
+                headers=_header_models(_snapshot_headers(request.headers)),
+            ),
+            response=TransportHttpResponseArtifacts(
+                status_code=getattr(response, "status_code", None),
+                headers=_header_models(_snapshot_headers(response.headers))
+                if response is not None
+                else [],
+            ),
+            messages=_http_transport_messages(payloads, raw_request, ts),
+        )
+    )
+    return transport
+
+
 def build_codex_response_stats(
     flow: http.HTTPFlow,
     summary: CodexCloseSummary | None = None,
@@ -310,10 +364,28 @@ def build_codex_response_ir(
     )
 
 
+def parse_codex_http_transport_payloads(
+    raw_request: bytes,
+    raw_response: bytes,
+) -> CodexHttpTransportPayloads:
+    request_payload = _json_object_payload(raw_request)
+    if request_payload is not None and "type" not in request_payload:
+        request_payload = {**request_payload, "type": "response.create"}
+    return CodexHttpTransportPayloads(
+        request=request_payload,
+        response_events=tuple(_parse_sse_event_payloads(raw_response)),
+    )
+
+
 def _snapshot_headers(headers: object) -> tuple[tuple[str, str], ...]:
     if headers is None or not hasattr(headers, "items"):
         return ()
-    return tuple((key, value) for key, value in headers.items(multi=True))
+    items = cast("Any", headers).items
+    try:
+        raw_items = items(multi=True)
+    except TypeError:
+        raw_items = items()
+    return tuple((str(key), str(value)) for key, value in raw_items)
 
 
 def _header_models(headers: tuple[tuple[str, str], ...]) -> list[TransportHeader]:
@@ -338,6 +410,37 @@ def _message_artifact(message: WebSocketMessage) -> TransportMessageArtifact:
         payload_json=payload_json,
         payload_base64=payload_base64,
     )
+
+
+def _http_transport_messages(
+    payloads: CodexHttpTransportPayloads,
+    raw_request: bytes,
+    ts: datetime,
+) -> list[TransportMessageArtifact]:
+    messages: list[TransportMessageArtifact] = []
+    if payloads.request is not None:
+        messages.append(
+            TransportMessageArtifact(
+                ts=ts,
+                direction="client",
+                is_text=True,
+                size_bytes=len(raw_request),
+                event_type=_payload_event_type(payloads.request),
+                payload_json=payloads.request,
+            )
+        )
+    for index, payload in enumerate(payloads.response_events, start=1):
+        messages.append(
+            TransportMessageArtifact(
+                ts=ts + timedelta(microseconds=index),
+                direction="server",
+                is_text=True,
+                size_bytes=_json_payload_size_bytes(payload),
+                event_type=_payload_event_type(payload),
+                payload_json=payload,
+            )
+        )
+    return messages
 
 
 def _transport_ts(timestamp: float | None) -> datetime | None:
@@ -365,6 +468,20 @@ def _payload_json(payload_text: str | None) -> dict[str, Any] | list[Any] | None
     if isinstance(payload, (dict, list)):
         return payload
     return None
+
+
+def _json_object_payload(raw: bytes) -> dict[str, Any] | None:
+    try:
+        payload: Any = json.loads(raw)
+    except (json.JSONDecodeError, ValueError):
+        return None
+    if isinstance(payload, dict):
+        return payload
+    return None
+
+
+def _json_payload_size_bytes(payload: dict[str, Any]) -> int:
+    return len(json.dumps(payload, separators=(",", ":")).encode())
 
 
 def _message_event_type(message: WebSocketMessage) -> str | None:

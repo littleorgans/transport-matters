@@ -460,6 +460,9 @@ describe("ExchangeList — row behavior", () => {
     ]);
 
     expectWaitingTransportVisual("codex-pending");
+    expect(
+      screen.getByTestId("exchange-row-codex-pending").querySelector("[title]"),
+    ).toHaveAttribute("title", "request | waiting for Codex transport");
   });
 
   it("keeps terminal Codex rows out of the res-null waiting fallback", () => {

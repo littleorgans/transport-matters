@@ -18,6 +18,8 @@ from transport_matters.storage.base import (
     TransportCloseArtifacts,
     TransportDiagnostic,
     TransportHeader,
+    TransportHttpRequestArtifacts,
+    TransportHttpResponseArtifacts,
     TransportMessageArtifact,
     TransportUpgradeArtifacts,
 )
@@ -69,6 +71,8 @@ __all__ = [
     "TransportCloseArtifacts",
     "TransportDiagnostic",
     "TransportHeader",
+    "TransportHttpRequestArtifacts",
+    "TransportHttpResponseArtifacts",
     "TransportMessageArtifact",
     "TransportUpgradeArtifacts",
     "get_storage",

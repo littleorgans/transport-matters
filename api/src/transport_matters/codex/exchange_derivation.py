@@ -40,6 +40,7 @@ from transport_matters.storage import CodexTurnListSummary
 if TYPE_CHECKING:
     from mitmproxy import http
 
+    from transport_matters.codex.continuity import CodexContinuityAllocation
     from transport_matters.codex.events import CodexTurnSummary
     from transport_matters.storage import IndexEntry
     from transport_matters.storage.base import ExchangeArtifacts, TransportArtifacts
@@ -93,6 +94,40 @@ def _codex_session_id(
 def _codex_request_curated_present(request_state: Any) -> bool:
     audit_entries = getattr(request_state.audit, "entries", None)
     return bool(audit_entries) or bool(request_state.mutated_manually)
+
+
+def _codex_replay_context(
+    flow: http.HTTPFlow,
+    *,
+    exchange_id: str,
+    request_state: Any,
+    turn_index: int,
+    continuity: CodexContinuityAllocation | None,
+    existing_turn: CodexTurnSummary | None,
+) -> CodexTurnDerivationContext | None:
+    session_id = (
+        continuity.session_id
+        if continuity is not None
+        else _codex_session_id(flow, request_state)
+    )
+    if session_id is None:
+        return None
+    resolved_turn_id = exchange_id
+    resolved_turn_index = turn_index
+    if continuity is not None:
+        resolved_turn_id = continuity.turn_id or exchange_id
+        resolved_turn_index = continuity.turn_index
+    if existing_turn is not None:
+        resolved_turn_id = existing_turn.turn_id
+        resolved_turn_index = existing_turn.turn_index
+    return _codex_turn_context(
+        exchange_id=exchange_id,
+        session_id=session_id,
+        turn_id=resolved_turn_id,
+        turn_index=resolved_turn_index,
+        model=request_state.request_ir.model,
+        existing_turn=existing_turn,
+    )
 
 
 def _codex_operator_facts(
@@ -200,6 +235,7 @@ def _replay_codex_derived_artifacts(
     request_state: Any,
     transport: TransportArtifacts,
     turn_index: int,
+    continuity: CodexContinuityAllocation | None = None,
     existing_turn: CodexTurnSummary | None = None,
 ) -> CodexDerivedTurnArtifacts | None:
     if not transport.messages:
@@ -207,22 +243,20 @@ def _replay_codex_derived_artifacts(
     transport_messages = _codex_transport_message_facts(transport)
     if transport_messages is None or not transport_messages:
         return None
-    session_id = _codex_session_id(flow, request_state)
-    if session_id is None:
+    context = _codex_replay_context(
+        flow,
+        exchange_id=exchange_id,
+        request_state=request_state,
+        turn_index=turn_index,
+        continuity=continuity,
+        existing_turn=existing_turn,
+    )
+    if context is None:
         return None
     turn_started_at = transport_messages[0].ts
     return derive_codex_turn_replay(
         CodexReplayRequest(
-            context=_codex_turn_context(
-                exchange_id=exchange_id,
-                session_id=session_id,
-                turn_id=(
-                    existing_turn.turn_id if existing_turn is not None else exchange_id
-                ),
-                turn_index=turn_index,
-                model=request_state.request_ir.model,
-                existing_turn=existing_turn,
-            ),
+            context=context,
             transport_messages=transport_messages,
             operator_facts=_codex_operator_facts(
                 flow,
@@ -348,11 +382,8 @@ async def _rewrite_codex_provisional_exchange(
 
         derived = _supported_codex_derived_artifacts(existing_artifacts)
         if force_replay or derived is None:
-            turn_index = (
-                state.current_turn_index
-                if state.current_turn_index is not None
-                else max(0, state.next_turn_index - 1)
-            )
+            allocation = state.current_turn_allocation
+            turn_index = allocation.turn_index if allocation is not None else 0
             existing_turn = derived.turn if derived is not None else None
             replayed = _replay_codex_derived_artifacts(
                 flow,
@@ -364,6 +395,7 @@ async def _rewrite_codex_provisional_exchange(
                     if existing_turn is not None
                     else turn_index
                 ),
+                continuity=allocation,
                 existing_turn=existing_turn,
             )
             if replayed is None:
@@ -382,6 +414,7 @@ async def _rewrite_codex_provisional_exchange(
                     request_state=request_state,
                     transport=transport,
                     turn_index=derived.turn.turn_index,
+                    continuity=state.current_turn_allocation,
                     existing_turn=derived.turn,
                 )
                 if replayed is None:

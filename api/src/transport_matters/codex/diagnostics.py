@@ -27,6 +27,9 @@ def build_codex_transport_diagnostics(
         return []
 
     diagnostics: list[TransportDiagnostic] = []
+    if transport.protocol == "http":
+        return diagnostics
+
     status = transport.upgrade.response_status_code
     response_text = _response_text(artifacts.response_raw)
     response_text_folded = response_text.lower() if response_text else ""

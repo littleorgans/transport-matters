@@ -35,29 +35,36 @@ def redact_transport_artifacts(
     if transport is None:
         return None, False
 
-    request_headers, request_changed = _redact_headers(
+    updates: dict[str, object] = {}
+    upgrade_request, upgrade_request_changed = _redact_headers(
         transport.upgrade.request_headers
     )
-    response_headers, response_changed = _redact_headers(
+    upgrade_response, upgrade_response_changed = _redact_headers(
         transport.upgrade.response_headers
     )
-    changed = request_changed or response_changed
-    if not changed:
+    if upgrade_request_changed or upgrade_response_changed:
+        updates["upgrade"] = transport.upgrade.model_copy(
+            update={
+                "request_headers": upgrade_request,
+                "response_headers": upgrade_response,
+            }
+        )
+    if transport.request is not None:
+        request_headers, request_changed = _redact_headers(transport.request.headers)
+        if request_changed:
+            updates["request"] = transport.request.model_copy(
+                update={"headers": request_headers}
+            )
+    if transport.response is not None:
+        response_headers, response_changed = _redact_headers(transport.response.headers)
+        if response_changed:
+            updates["response"] = transport.response.model_copy(
+                update={"headers": response_headers}
+            )
+    if not updates:
         return transport, False
 
-    return (
-        transport.model_copy(
-            update={
-                "upgrade": transport.upgrade.model_copy(
-                    update={
-                        "request_headers": request_headers,
-                        "response_headers": response_headers,
-                    }
-                )
-            }
-        ),
-        True,
-    )
+    return transport.model_copy(update=updates), True
 
 
 def _redact_headers(

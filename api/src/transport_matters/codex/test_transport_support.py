@@ -10,6 +10,7 @@ from mitmproxy import http
 from mitmproxy.test import tflow
 
 from transport_matters import breakpoint as bp
+from transport_matters.codex.continuity import get_codex_continuity_allocator
 from transport_matters.overrides import get_store
 from transport_matters.storage import init_storage, reset_storage
 
@@ -23,7 +24,8 @@ def _codex_flow() -> http.HTTPFlow:
     assert flow.websocket is not None
     flow.request.host = "chatgpt.com"
     flow.request.path = "/backend-api/codex/responses?client=cli"
-    flow.request.headers["x-codex-session"] = "sess-123"
+    flow.request.headers["session-id"] = "sess-123"
+    flow.request.headers["thread-id"] = "thread-123"
     flow.response.headers["x-upstream"] = "chatgpt"
     flow.id = "flow-codex-1"
     return flow
@@ -67,7 +69,9 @@ def _reset_breakpoint_and_overrides() -> None:
 
 @pytest.fixture(autouse=True)
 def _reset_storage(tmp_path: Any) -> Generator[None]:
+    get_codex_continuity_allocator().clear()
     reset_storage()
     init_storage(root=tmp_path)
     yield
     reset_storage()
+    get_codex_continuity_allocator().clear()

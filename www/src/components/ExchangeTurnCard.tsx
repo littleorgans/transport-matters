@@ -117,8 +117,11 @@ function cardBorderClass(entry: IndexEntry, isOpen: boolean): string {
   return "border-edge-strong group-hover:border-edge";
 }
 
-function transportTitle(turn?: CodexTurnListSummary | null): string | undefined {
-  if (!turn) return undefined;
+function transportTitle(entry: IndexEntry): string | undefined {
+  const turn = entry.codex_turn;
+  if (!turn) {
+    return entry.provider === "codex" ? "request | waiting for Codex transport" : undefined;
+  }
   const parts = [
     `turn ${turn.turn_index}`,
     `frames ${turn.message_range_start}->${turn.message_range_end}`,
@@ -129,9 +132,24 @@ function transportTitle(turn?: CodexTurnListSummary | null): string | undefined 
   return parts.join(" | ");
 }
 
-function previewTransportTitle(turn?: CodexTurnListSummary | null): string {
+function previewTransportTitle(entry: IndexEntry): string {
+  const turn = entry.codex_turn;
   const turnLabel = turn ? `turn ${turn.turn_index}` : "request";
   return `${turnLabel} | previewing open waiting transport`;
+}
+
+function isPendingCodexTransport(entry: IndexEntry): boolean {
+  if (entry.provider !== "codex") {
+    return false;
+  }
+  if (entry.codex_turn?.status === "open") {
+    return true;
+  }
+  return entry.codex_turn == null && entry.res === null;
+}
+
+function isPendingClaudeTransport(entry: IndexEntry): boolean {
+  return entry.provider !== "codex" && !entry.codex_turn && entry.res === null;
 }
 
 function panelMetrics(entry: IndexEntry): PanelMetric[] {
@@ -203,6 +221,42 @@ function SettledTurnContentPreview({ entryId }: { entryId: string }) {
   );
 }
 
+function WaitingTransportStrip({
+  entry,
+  isCodexPending,
+  previewWaiting,
+}: {
+  entry: IndexEntry;
+  isCodexPending: boolean;
+  previewWaiting: boolean;
+}) {
+  return (
+    <span
+      title={previewWaiting ? previewTransportTitle(entry) : transportTitle(entry)}
+      className="flex items-center gap-3 border-b border-edge px-4 py-3"
+    >
+      <span
+        data-testid={`exchange-token-activity-${entry.id}`}
+        className="grid w-full grid-cols-[repeat(10,minmax(0,1fr))] gap-1"
+        aria-hidden
+      >
+        {TOKEN_SEGMENTS.map((segment) => (
+          <span
+            key={`${entry.id}-${segment.key}`}
+            className="token-segment h-3 border border-edge-strong bg-surface"
+            style={{ animationDelay: segment.delay }}
+          />
+        ))}
+      </span>
+      {isCodexPending && entry.codex_turn && (
+        <span className="label shrink-0 text-[11px] text-txt-3">
+          {entry.codex_turn.message_range_start}→{entry.codex_turn.message_range_end}
+        </span>
+      )}
+    </span>
+  );
+}
+
 export function ExchangeTurnCard({
   entry,
   depth,
@@ -214,12 +268,9 @@ export function ExchangeTurnCard({
   turnSequence,
   onSelect,
 }: ExchangeTurnCardProps) {
-  const isOpen =
-    previewWaiting ||
-    entry.codex_turn?.status === "open" ||
-    (!entry.codex_turn && entry.res === null);
-  const isClaudePending = !entry.codex_turn && entry.provider !== "codex" && entry.res === null;
-  const isCodexPending = entry.codex_turn?.status === "open";
+  const isClaudePending = isPendingClaudeTransport(entry);
+  const isCodexPending = isPendingCodexTransport(entry);
+  const isOpen = previewWaiting || isCodexPending || isClaudePending;
   useElapsedTick(isClaudePending);
   const isSubagent = depth > 0;
   const metrics = panelMetrics(entry);
@@ -290,33 +341,11 @@ export function ExchangeTurnCard({
         </span>
 
         {isOpen ? (
-          <span
-            title={
-              previewWaiting
-                ? previewTransportTitle(entry.codex_turn)
-                : transportTitle(entry.codex_turn)
-            }
-            className="flex items-center gap-3 border-b border-edge px-4 py-3"
-          >
-            <span
-              data-testid={`exchange-token-activity-${entry.id}`}
-              className="grid w-full grid-cols-[repeat(10,minmax(0,1fr))] gap-1"
-              aria-hidden
-            >
-              {TOKEN_SEGMENTS.map((segment) => (
-                <span
-                  key={`${entry.id}-${segment.key}`}
-                  className="token-segment h-3 border border-edge-strong bg-surface"
-                  style={{ animationDelay: segment.delay }}
-                />
-              ))}
-            </span>
-            {isCodexPending && entry.codex_turn && (
-              <span className="label shrink-0 text-[11px] text-txt-3">
-                {entry.codex_turn.message_range_start}→{entry.codex_turn.message_range_end}
-              </span>
-            )}
-          </span>
+          <WaitingTransportStrip
+            entry={entry}
+            isCodexPending={isCodexPending}
+            previewWaiting={previewWaiting}
+          />
         ) : (
           <SettledTurnContentPreview entryId={entry.id} />
         )}

@@ -10,22 +10,25 @@ single shape across both transports.
 
 from __future__ import annotations
 
-import json
 import logging
 from datetime import timedelta
 from typing import TYPE_CHECKING
 
 from pydantic import ValidationError
 
+from transport_matters.codex.continuity import (
+    allocate_codex_continuity_from_headers,
+    get_codex_continuity_allocator,
+)
 from transport_matters.codex.derivation_contract import (
     CodexDerivationOperatorFact,
+    CodexDerivedTurnArtifacts,
     CodexReplayRequest,
     CodexTransportMessageFact,
     CodexTurnDerivationContext,
 )
 from transport_matters.codex.derivation_engine import derive_codex_turn_replay
-from transport_matters.codex.response_parser import _parse_sse_event_payloads
-from transport_matters.storage import CodexTurnListSummary
+from transport_matters.codex.transport import parse_codex_http_transport_payloads
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -34,41 +37,62 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _codex_http_turn_context(
+    *,
+    exchange_id: str,
+    request_headers: dict[str, str] | None,
+    model: str,
+) -> CodexTurnDerivationContext:
+    allocation = (
+        allocate_codex_continuity_from_headers(
+            get_codex_continuity_allocator(),
+            request_headers.get,
+        )
+        if request_headers is not None
+        else None
+    )
+    session_id = exchange_id
+    turn_id = exchange_id
+    turn_index = 0
+    if allocation is not None:
+        session_id = allocation.session_id
+        turn_id = allocation.turn_id or exchange_id
+        turn_index = allocation.turn_index
+    return CodexTurnDerivationContext(
+        exchange_id=exchange_id,
+        session_id=session_id,
+        turn_id=turn_id,
+        turn_index=turn_index,
+        request_message_index=0,
+        model=model,
+    )
+
+
 def derive_codex_http_turn(
     *,
     exchange_id: str,
     raw_request: bytes,
     raw_response: bytes,
+    request_headers: dict[str, str] | None = None,
     model: str,
     ts: datetime,
     operator_facts: tuple[CodexDerivationOperatorFact, ...] = (),
-) -> CodexTurnListSummary | None:
-    """Derive a Codex turn summary for an HTTPS Responses fallback exchange.
+) -> CodexDerivedTurnArtifacts | None:
+    """Derive Codex turn artifacts for an HTTPS Responses fallback exchange.
 
     Returns None when the request body is not JSON, the response stream
     has no parseable events, or the derivation engine rejects the
-    synthesized facts. Callers treat None as "no codex_turn for this
-    row" and leave the index entry field unset.
+    synthesized facts. Callers project the index summary from the
+    returned turn and persist the full artifact sidecars.
     """
-    try:
-        request_payload = json.loads(raw_request)
-    except (json.JSONDecodeError, ValueError):
+    payloads = parse_codex_http_transport_payloads(raw_request, raw_response)
+    if payloads.request is None:
         logger.debug(
             "derive_codex_http_turn: request body is not JSON for %s",
             exchange_id,
         )
         return None
-    if not isinstance(request_payload, dict):
-        return None
-    # Codex HTTP bodies have no top-level `type`; the derivation engine
-    # discriminates the turn start by payload_json.type == "response.create".
-    # Inject the field on the synthesized client fact so the engine sees
-    # the turn open. The wire is unaffected.
-    if "type" not in request_payload:
-        request_payload = {**request_payload, "type": "response.create"}
-
-    server_payloads = _parse_sse_event_payloads(raw_response)
-    if not server_payloads:
+    if not payloads.response_events:
         return None
 
     # HTTP fallback delivers the SSE stream as one buffered body, so all
@@ -79,7 +103,7 @@ def derive_codex_http_turn(
         message_index=0,
         ts=ts,
         direction="client",
-        payload_json=request_payload,
+        payload_json=payloads.request,
     )
     server_facts = tuple(
         CodexTransportMessageFact(
@@ -88,15 +112,12 @@ def derive_codex_http_turn(
             direction="server",
             payload_json=payload,
         )
-        for i, payload in enumerate(server_payloads, start=1)
+        for i, payload in enumerate(payloads.response_events, start=1)
     )
 
-    context = CodexTurnDerivationContext(
+    context = _codex_http_turn_context(
         exchange_id=exchange_id,
-        session_id=exchange_id,
-        turn_id=exchange_id,
-        turn_index=0,
-        request_message_index=0,
+        request_headers=request_headers,
         model=model,
     )
     try:
@@ -113,6 +134,4 @@ def derive_codex_http_turn(
             "derive_codex_http_turn: derivation failed for %s", exchange_id
         )
         return None
-    if artifacts is None:
-        return None
-    return CodexTurnListSummary.from_turn(artifacts.turn)
+    return artifacts

@@ -46,6 +46,7 @@ class _Request:
     ) -> None:
         self.host = host
         self.path = path
+        self.method = "POST"
         self.headers = {"x-api-key": "test-key"}
         self.text = json.dumps(
             {
@@ -86,6 +87,20 @@ async def _fake_run_pipeline(
     run_id: str | None,
 ) -> tuple[InternalRequest, None, None]:
     return _curated_ir(), None, None
+
+
+def _codex_ir() -> InternalRequest:
+    return _curated_ir().model_copy(
+        update={"model": "codex/gpt-5-codex", "provider": "codex"}
+    )
+
+
+class _FakeCodexAdapter:
+    def inbound_request(self, raw_body: bytes) -> InternalRequest:
+        return _codex_ir()
+
+    def outbound_request(self, ir: InternalRequest) -> bytes:
+        return b'{"model":"gpt-5-codex"}'
 
 
 async def test_http_request_persists_provisional_exchange_before_breakpoint(
@@ -156,6 +171,55 @@ async def test_http_request_leaves_flow_clean_when_provisional_persist_fails(
     assert json.loads(cast("_Flow", flow).request.text)["system"][0]["text"] == (
         "curated system"
     )
+
+
+async def test_codex_http_request_snapshots_current_identity_headers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    flow = cast("http.HTTPFlow", _Flow())
+    request = cast("_Flow", flow).request
+    request.host = CODEX_CHATGPT_HOST
+    request.path = CODEX_RESPONSES_PATH
+    request.headers = {
+        "session-id": "session-1",
+        "thread-id": "thread-1",
+        "x-codex-turn-metadata": '{"turn_id":"turn-1"}',
+        "authorization": "Bearer secret",
+        "session_id": "legacy-session",
+    }
+
+    async def fake_pipeline(
+        ir: InternalRequest,
+        flow_id: str,
+        run_id: str | None,
+    ) -> tuple[InternalRequest, None, None]:
+        return ir, None, None
+
+    async def fake_persist(
+        persist_flow: http.HTTPFlow,
+        state: RequestFlowState,
+    ) -> None:
+        assert persist_flow is flow
+        assert state.codex_request_headers == {
+            "session-id": "session-1",
+            "thread-id": "thread-1",
+            "x-codex-turn-metadata": '{"turn_id":"turn-1"}',
+        }
+
+    monkeypatch.setattr(addon_handlers, "get_adapter", lambda flow: _FakeCodexAdapter())
+    monkeypatch.setattr(addon_handlers, "run_pipeline", fake_pipeline)
+    monkeypatch.setattr(addon_handlers, "_should_skip_breakpoint", lambda model: True)
+    monkeypatch.setattr(
+        addon_handlers,
+        "_persist_http_provisional_exchange",
+        fake_persist,
+    )
+
+    await addon_handlers.handle_http_request(flow, None)
+
+    state = get_request_flow_state(flow)
+    assert state is not None
+    assert state.codex_request_headers["thread-id"] == "thread-1"
 
 
 class _DropFlow(_Flow):
@@ -251,6 +315,7 @@ async def test_addon_error_skips_codex_websocket_flow(
         host=CODEX_CHATGPT_HOST,
         path=CODEX_RESPONSES_PATH,
     )
+    cast("_Flow", flow).request.headers["Upgrade"] = "websocket"
     ir = _curated_ir()
     capture_request_flow_state(
         flow, adapter=object(), request_ir=ir, raw_request=b"raw"
