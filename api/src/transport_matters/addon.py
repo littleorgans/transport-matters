@@ -18,7 +18,10 @@ from transport_matters.addon_handlers import (
     log_websocket_start,
 )
 from transport_matters.addon_runtime import AddonRuntime, close_runtime, load_runtime
-from transport_matters.codex.transport import is_codex_websocket_flow
+from transport_matters.codex.transport import (
+    is_codex_http_responses_flow,
+    is_codex_websocket_flow,
+)
 from transport_matters.exchange_recorder import (
     _delete_http_provisional_exchange,
     emit_exchange,
@@ -83,7 +86,7 @@ class TransportMattersAddon:
         )
 
     async def error(self, flow: http.HTTPFlow) -> None:
-        if is_codex_websocket_flow(flow):
+        if is_codex_websocket_flow(flow) and not is_codex_http_responses_flow(flow):
             return
         request_state = get_request_flow_state(flow)
         if request_state is None or request_state.provisional_exchange_id is None:

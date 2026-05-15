@@ -20,6 +20,7 @@ from transport_matters.codex.exchange_derivation import (
 from transport_matters.codex.transport import (
     close_codex_transport,
     ensure_codex_transport_state,
+    is_codex_http_responses_flow,
     is_codex_turn_terminal_message,
     is_codex_websocket_flow,
     record_codex_websocket_message,
@@ -65,7 +66,9 @@ async def handle_http_request(
     flow: http.HTTPFlow,
     token_counter: TokenCountingClient | None,
 ) -> None:
-    if not flow.request.path.startswith("/v1/messages"):
+    if not flow.request.path.startswith(
+        "/v1/messages"
+    ) and not is_codex_http_responses_flow(flow):
         return
     try:
         adapter = get_adapter(flow)
@@ -279,6 +282,12 @@ async def handle_response(
     flow: http.HTTPFlow,
     token_counter: TokenCountingClient | None,
 ) -> None:
+    if is_codex_http_responses_flow(flow):
+        request_state = get_request_flow_state(flow)
+        if request_state is None:
+            return
+        await _persist_http_exchange(flow, request_state, token_counter)
+        return
     if is_codex_websocket_flow(flow) and getattr(flow, "websocket", None) is None:
         await _persist_codex_handshake_failure(flow)
         return

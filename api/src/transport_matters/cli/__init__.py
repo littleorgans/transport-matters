@@ -135,6 +135,24 @@ def _require_addon() -> Traversable:
     return addon_traversable
 
 
+def _require_force_http_fallback_addon() -> Traversable:
+    """Locate the test-mode Codex HTTP fallback injector addon."""
+    addon_traversable = files("transport_matters") / "force_http_fallback_addon.py"
+    if not addon_traversable.is_file():
+        typer.secho(
+            "error: could not locate the --force-http-fallback test addon.",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        typer.echo(
+            "The package may be corrupted. Try reinstalling:\n"
+            f"  uv tool install --force {CLI_COMMAND}",
+            err=True,
+        )
+        raise typer.Exit(2)
+    return addon_traversable
+
+
 def _merge_no_proxy(current: str | None, hosts: Iterable[str]) -> str:
     """Add loopback hosts to `NO_PROXY` without dropping existing entries."""
     merged: list[str] = []
@@ -398,6 +416,17 @@ def codex(
             help="Enable verbose mitmproxy output (for troubleshooting).",
         ),
     ] = False,
+    force_http_fallback: Annotated[
+        bool,
+        typer.Option(
+            "--force-http-fallback",
+            help=(
+                "Test mode: short-circuit Codex's WebSocket upgrade with HTTP 426 "
+                "to force the HTTPS Responses fallback path. Used to capture "
+                "the HTTP wire format without changing Codex CLI config."
+            ),
+        ),
+    ] = False,
     print_command: Annotated[
         bool,
         typer.Option(
@@ -417,8 +446,10 @@ def codex(
         codex_bin=codex_bin,
         no_codex=no_codex,
         debug=debug,
+        force_http_fallback=force_http_fallback,
         print_command=print_command,
         require_addon=_require_addon,
+        require_force_http_fallback_addon=_require_force_http_fallback_addon,
         resolve_mitmdump=_resolve_mitmdump,
         which=shutil.which,
         port_in_use=_port_in_use,
