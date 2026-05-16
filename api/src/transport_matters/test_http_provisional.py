@@ -371,7 +371,7 @@ async def test_http_response_hook_keeps_req_stats_json_equivalent(
     assert final["req"] == pending["req"]
 
 
-async def test_http_breakpoint_edit_does_not_recompute_final_req_stats(
+async def test_http_breakpoint_edit_updates_final_req_stats(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     flow = _http_flow("flow-http-edit")
@@ -397,7 +397,15 @@ async def test_http_breakpoint_edit_does_not_recompute_final_req_stats(
         final = await _wait_event(queue)
     assert final["type"] == "exchange"
     assert final["id"] == pending["id"]
-    assert final["req"] == pending["req"]
+    assert final["req"] != pending["req"]
+    assert final["req"]["messages_chars"] > pending["req"]["messages_chars"]
+
+    storage = await get_storage()
+    artifacts = await storage.read_exchange(cast("str", final["id"]))
+    assert artifacts.request_curated_ir is not None
+    block = artifacts.request_curated_ir.messages[0].content[0]
+    assert isinstance(block, TextBlock)
+    assert block.text == "much longer"
 
 
 async def test_http_breakpoint_drop_deletes_provisional_exchange(

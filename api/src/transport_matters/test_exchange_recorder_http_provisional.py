@@ -19,7 +19,7 @@ from transport_matters.ir import (
     SystemPart,
     TextBlock,
 )
-from transport_matters.overrides import OverrideAudit
+from transport_matters.overrides import OverrideAudit, OverrideAuditEntry
 from transport_matters.storage import (
     ExchangeArtifacts,
     IndexEntry,
@@ -348,13 +348,25 @@ async def test_finalize_http_provisional_exchange_updates_pending_row_in_place(
     storage = await get_storage()
     pending_entry = await storage.read_index_entry(exchange_id)
     assert pending_entry is not None
-    pending_req = pending_entry.req.model_dump(mode="json")
     pending_path = pending_entry.path
     pending_ts = pending_entry.ts
-    pending_artifacts = await storage.read_exchange(exchange_id)
 
     state.provisional_exchange_id = exchange_id
     state.curated_request_ir = _make_ir("curated changed before finalize")
+    state.audit = OverrideAudit(
+        entries=[
+            OverrideAuditEntry(
+                kind="system_part_text",
+                target="system:0",
+                applied=True,
+                chars_delta=15,
+                curated_value="curated changed before finalize",
+            )
+        ],
+        chars_before=100,
+        chars_after=115,
+    )
+    state.mutated_manually = False
     response = _Response(_make_response_body())
     cast("_Flow", flow).response = response
     counter = _SeqCounter([321, 123])
@@ -383,7 +395,9 @@ async def test_finalize_http_provisional_exchange_updates_pending_row_in_place(
     assert finalized_entry.parent_track_id == pending_entry.parent_track_id
     assert finalized_entry.track_display_name == pending_entry.track_display_name
     assert finalized_entry.track_role == pending_entry.track_role
-    assert finalized_entry.req.model_dump(mode="json") == pending_req
+    assert finalized_entry.req.system_chars == len("curated changed before finalize")
+    assert finalized_entry.req.total_chars != pending_entry.req.total_chars
+    assert finalized_entry.mutated_manually is False
     assert finalized_entry.res is not None
     assert finalized_entry.res.stop_reason == "end_turn"
     assert finalized_entry.res.input_tokens == 25
@@ -393,20 +407,18 @@ async def test_finalize_http_provisional_exchange_updates_pending_row_in_place(
     assert finalized_entry.res.text_chars == len("final text")
     assert finalized_entry.pipeline is not None
     assert finalized_entry.pipeline.chars_before == 100
-    assert finalized_entry.pipeline.chars_after == 80
+    assert finalized_entry.pipeline.chars_after == 115
+    assert len(finalized_entry.pipeline.overrides_applied) == 1
     assert finalized_entry.pipeline.tokens_before == 321
     assert finalized_entry.pipeline.tokens_after == 123
 
     finalized_artifacts = await storage.read_exchange(exchange_id)
-    assert finalized_artifacts.request_raw == pending_artifacts.request_raw
-    assert finalized_artifacts.request_ir == pending_artifacts.request_ir
-    assert finalized_artifacts.request_curated_raw == (
-        pending_artifacts.request_curated_raw
-    )
-    assert finalized_artifacts.request_curated_ir == (
-        pending_artifacts.request_curated_ir
-    )
-    assert finalized_artifacts.request_audit == pending_artifacts.request_audit
+    assert finalized_artifacts.request_raw == state.raw_request
+    assert finalized_artifacts.request_ir == state.request_ir
+    assert finalized_artifacts.request_curated_raw is not None
+    assert b"curated changed before finalize" in finalized_artifacts.request_curated_raw
+    assert finalized_artifacts.request_curated_ir == state.curated_request_ir
+    assert finalized_artifacts.request_audit == state.audit
     assert finalized_artifacts.response_raw == response.get_text().encode()
     assert finalized_artifacts.response_ir is not None
     assert finalized_artifacts.response_ir.stop_reason == "end_turn"
@@ -415,7 +427,8 @@ async def test_finalize_http_provisional_exchange_updates_pending_row_in_place(
     assert final_event["type"] == "exchange"
     assert final_event["id"] == exchange_id
     assert final_event["flow_id"] == flow.id
-    assert final_event["req"] == pending_event["req"] == pending_req
+    assert final_event["req"] == finalized_entry.req.model_dump(mode="json")
+    assert final_event["req"] != pending_event["req"]
     assert final_event["res"] == finalized_entry.res.model_dump(mode="json")
     assert final_event["pipeline"] == finalized_entry.pipeline.model_dump(mode="json")
     assert final_event["track_id"] == "track-http"
