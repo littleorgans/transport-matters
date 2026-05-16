@@ -8,11 +8,11 @@
 # trusted publishing, and creates a GitHub Release with auto-notes.
 #
 # Usage:
-#   ./release.sh 0.2.2             # cut v0.2.2 (interactive confirm)
-#   ./release.sh --dry-run 0.2.2   # validate + show plan, do not push
-#   ./release.sh --yes 0.2.2       # skip the interactive confirm
-#   ./release.sh --wait 0.2.2      # wait for release CI after tag push
-#   ./release.sh --install 0.2.2   # wait, install exact release, verify CLI
+#   ./scripts/release.sh 0.2.2             # cut v0.2.2 (interactive confirm)
+#   ./scripts/release.sh --dry-run 0.2.2   # validate + show plan, do not push
+#   ./scripts/release.sh --yes 0.2.2       # skip the interactive confirm
+#   ./scripts/release.sh --wait 0.2.2      # wait for release CI after tag push
+#   ./scripts/release.sh --install 0.2.2   # wait, install exact release, verify CLI
 #
 # Equivalent entry points:
 #   just release 0.2.2             # from repo root

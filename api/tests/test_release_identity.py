@@ -6,9 +6,8 @@ OLD_IDENTITIES = ("manicure", "Manicure", "MANICURE")
 RELEASE_SURFACES = [
     ".github/workflows/ci.yml",
     ".github/workflows/release.yml",
-    "release.sh",
-    "install.sh",
-    "DOCS/release.md",
+    "scripts/release.sh",
+    "scripts/install.sh",
     "justfile",
     "api/justfile",
     "www/package.json",
@@ -27,7 +26,7 @@ LOCAL_DEVELOPER_SURFACES = [
     "api/CLAUDE.md",
 ]
 DOCS_IDENTITY_SURFACES = [
-    "PROJECT.md",
+    "README.md",
     "api/README.md",
 ]
 
@@ -112,6 +111,7 @@ def test_release_artifacts_use_normalized_transport_matters_names() -> None:
     assert "dist/transport_matters-*.tar.gz" in release_workflow
     assert "sha256sum transport_matters-* > SHA256SUMS" in release_workflow
     assert "--title \"Transport Matters $VERSION\"" in release_workflow
+    assert "scripts/install.sh" in release_workflow
     assert "dist/transport_matters-*.whl" in ci_workflow
 
 
@@ -127,15 +127,3 @@ def test_release_surfaces_do_not_advertise_deferred_migration_work() -> None:
         "workspace migration",
     ):
         assert deferred_term not in combined.lower()
-
-
-def test_release_notes_keep_unsigned_desktop_artifacts_human_gated() -> None:
-    release_notes = read_surface("DOCS/release.md").lower()
-    normalized_release_notes = " ".join(release_notes.split())
-
-    assert "electron desktop package smoke" in release_notes
-    assert (
-        "does not ship signed or notarized desktop artifacts"
-        in normalized_release_notes
-    )
-    assert "without human direction" in normalized_release_notes

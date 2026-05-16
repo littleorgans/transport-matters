@@ -7,7 +7,7 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-RELEASE_SCRIPT = REPO_ROOT / "release.sh"
+RELEASE_SCRIPT = REPO_ROOT / "scripts" / "release.sh"
 ROOT_JUSTFILE = REPO_ROOT / "justfile"
 
 
@@ -59,7 +59,8 @@ def test_release_install_waits_installs_exact_version_and_verifies_cli(tmp_path:
     _run(["git", "init", "-b", "main", str(repo)], tmp_path)
     _run(["git", "config", "user.email", "test@example.com"], repo)
     _run(["git", "config", "user.name", "Release Test"], repo)
-    shutil.copy(RELEASE_SCRIPT, repo / "release.sh")
+    (repo / "scripts").mkdir()
+    shutil.copy(RELEASE_SCRIPT, repo / "scripts" / "release.sh")
     (repo / "README.md").write_text("release test\n")
     _run(["git", "add", "."], repo)
     _run(["git", "commit", "-m", "initial"], repo)
@@ -98,7 +99,11 @@ echo "transport-matters 9.8.7"
     )
 
     env = os.environ | {"PATH": f"{bin_dir}:{os.environ['PATH']}"}
-    result = _run(["bash", "release.sh", "--yes", "--install", "9.8.7"], repo, env=env)
+    result = _run(
+        ["bash", "scripts/release.sh", "--yes", "--install", "9.8.7"],
+        repo,
+        env=env,
+    )
 
     call_log = calls.read_text()
     assert "[push] pushed v9.8.7 to origin" in result.stdout
