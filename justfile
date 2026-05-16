@@ -82,7 +82,7 @@ install-release version="latest":
         version="${version#v}"; \
     fi; \
     echo "Installing transport-matters $version"; \
-    uv tool install --force "transport-matters==$version"; \
+    uv tool install --force --refresh-package transport-matters "transport-matters==$version"; \
     transport-matters --version
 
 [no-exit-message]

@@ -33,7 +33,11 @@ def test_install_release_recipe_defaults_to_latest_and_supports_listing() -> Non
     assert 'install-release version="latest":' in justfile
     assert 'git fetch --quiet --tags origin' in justfile
     assert '--sort=-v:refname' in justfile
-    assert 'uv tool install --force "transport-matters==$version"' in justfile
+    assert (
+        'uv tool install --force --refresh-package transport-matters '
+        '"transport-matters==$version"'
+        in justfile
+    )
     assert 'transport-matters --version' in justfile
 
 
