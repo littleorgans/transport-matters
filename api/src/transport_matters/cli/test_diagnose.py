@@ -86,6 +86,35 @@ def test_doctor_prefers_same_environment_mitmdump(
     assert "ok    mitmdump — /tool/bin/mitmdump" in result.stdout
 
 
+def test_doctor_skips_active_mitmdump_with_missing_shebang_interpreter(
+    tmp_storage: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    scripts_dir = tmp_path / "tool-bin"
+    path_dir = tmp_path / "path-bin"
+    scripts_dir.mkdir()
+    path_dir.mkdir()
+
+    broken_mitmdump = scripts_dir / "mitmdump"
+    broken_mitmdump.write_text(f"#!{tmp_path / 'missing-python'}\n")
+    broken_mitmdump.chmod(0o755)
+
+    fallback_mitmdump = path_dir / "mitmdump"
+    fallback_mitmdump.write_text("#!/bin/sh\nexit 0\n")
+    fallback_mitmdump.chmod(0o755)
+
+    monkeypatch.setattr(
+        "transport_matters.cli.diagnose.sysconfig.get_path",
+        lambda name: str(scripts_dir),
+    )
+    monkeypatch.setenv("PATH", str(path_dir))
+    monkeypatch.setattr("transport_matters.cli.diagnose._port_in_use", lambda _: False)
+
+    result = runner.invoke(main, ["doctor"])
+    assert result.exit_code == 0
+    assert f"ok    mitmdump — {fallback_mitmdump}" in result.stdout
+    assert str(broken_mitmdump) not in result.stdout
+
+
 def test_doctor_reports_missing_mitmdump(
     tmp_storage: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -48,6 +48,7 @@ from .diagnose import run_doctor
 from .help import _PlainCommand, _PlainGroup
 from .identity import CLI_COMMAND
 from .instances import _list_instances, _print_contention_error
+from .launch_runtime import resolve_mitmdump_executable
 from .net import _port_in_use, _wait_for_port_ready, validate_port_option
 from .paths import resolve_paths
 from .ports import PortAllocationError, allocate_port_pair
@@ -95,12 +96,10 @@ main = typer.Typer(
 
 def _resolve_mitmdump() -> str | None:
     """Prefer the console script from the active Transport Matters environment."""
-    scripts_dir = sysconfig.get_path("scripts")
-    if scripts_dir:
-        resolved = shutil.which("mitmdump", path=scripts_dir)
-        if resolved is not None:
-            return resolved
-    return shutil.which("mitmdump")
+    return resolve_mitmdump_executable(
+        which=shutil.which,
+        get_scripts_dir=sysconfig.get_path,
+    )
 
 
 def _split_passthrough(
