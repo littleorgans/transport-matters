@@ -5,7 +5,7 @@ import { defineConfig } from "vitest/config";
 
 // Single source of truth is the git tag (same source hatch-vcs uses for
 // the Python wheel). TRANSPORT_MATTERS_VERSION wins when set explicitly (e.g. from
-// release.sh or a hermetic build). Otherwise, derive from `git describe`.
+// scripts/release.sh or a hermetic build). Otherwise, derive from `git describe`.
 // Final fallback is "dev" so the dev server works outside a git checkout.
 function resolveVersion(): string {
   const envVersion = process.env.TRANSPORT_MATTERS_VERSION;

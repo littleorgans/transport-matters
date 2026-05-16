@@ -24,7 +24,7 @@
     "format": "biome format --write .",
     "typecheck": "tsc -b --noEmit",
     "ci": "pnpm lint && pnpm typecheck && pnpm test && pnpm build",
-    "release": "bash ../release.sh",
+    "release": "bash ../scripts/release.sh",
     "prepare": "lefthook install"
   },
   "dependencies": {

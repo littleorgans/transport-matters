@@ -225,4 +225,4 @@ jobs:
             dist/transport_matters-*.whl \
             dist/transport_matters-*.tar.gz \
             dist/SHA256SUMS \
-            install.sh
+            scripts/install.sh

@@ -63,6 +63,42 @@ def test_start_prefers_same_environment_mitmdump(
     spy_run_client_children.assert_not_called()
 
 
+def test_start_skips_active_mitmdump_with_missing_shebang_interpreter(
+    tmp_storage: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    spy_run_client_children: MagicMock,
+    tmp_path: Path,
+) -> None:
+    scripts_dir = tmp_path / "tool-bin"
+    path_dir = tmp_path / "path-bin"
+    scripts_dir.mkdir()
+    path_dir.mkdir()
+
+    broken_mitmdump = scripts_dir / "mitmdump"
+    broken_mitmdump.write_text(f"#!{tmp_path / 'missing-python'}\n")
+    broken_mitmdump.chmod(0o755)
+
+    fallback_mitmdump = path_dir / "mitmdump"
+    fallback_mitmdump.write_text("#!/bin/sh\nexit 0\n")
+    fallback_mitmdump.chmod(0o755)
+
+    claude = path_dir / "claude"
+    claude.write_text("#!/bin/sh\nexit 0\n")
+    claude.chmod(0o755)
+
+    monkeypatch.setattr(
+        "transport_matters.cli.sysconfig.get_path", lambda name: str(scripts_dir)
+    )
+    monkeypatch.setenv("PATH", str(path_dir))
+    monkeypatch.setattr("transport_matters.cli._port_in_use", lambda _: False)
+
+    result = runner.invoke(main, ["claude", "--no-system-prompt", "--print-command"])
+    assert result.exit_code == 0
+    assert str(fallback_mitmdump) in result.stdout
+    assert str(broken_mitmdump) not in result.stdout
+    spy_run_client_children.assert_not_called()
+
+
 def test_start_print_command_includes_claude_invocation(
     tmp_storage: Path,
     monkeypatch: pytest.MonkeyPatch,

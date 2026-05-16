@@ -51,3 +51,9 @@ Thumbs.db
 
 # Superpowers
 .superpowers/
+
+# Local docs
+DOCS/
+LESSONS.md
+PROJECT.md
+TLDR.md

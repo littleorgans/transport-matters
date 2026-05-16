@@ -33,7 +33,7 @@ pnpm dev
 | `pnpm lint` | Lint and format check |
 | `pnpm lint:fix` | Auto-fix lint and format issues |
 | `pnpm typecheck` | TypeScript type checking |
-| `pnpm release <ver>` | Cut a tagged release (see `../release.sh`) |
+| `pnpm release <ver>` | Cut a tagged release (see `../scripts/release.sh`) |
 
 ## Project Structure
 

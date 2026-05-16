@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import contextlib
 import os
+import shutil
+import sysconfig
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol
 
 import typer
 
@@ -22,6 +24,15 @@ from .ports import PortAllocationError
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping, Sequence
+
+
+class WhichFunction(Protocol):
+    def __call__(
+        self,
+        cmd: str,
+        mode: int = ...,
+        path: str | None = ...,
+    ) -> str | None: ...
 
 
 _MANAGED_CHILD_PROXY_ENV_KEYS = frozenset(
@@ -85,6 +96,71 @@ _MANAGED_CHILD_TRUST_ENV_KEYS = frozenset(
 )
 
 _LOOPBACK_NO_PROXY = "127.0.0.1,localhost"
+
+
+def _candidate_has_missing_shebang_interpreter(candidate: Path) -> bool:
+    try:
+        first_line = candidate.open("rb").readline(4096)
+    except OSError:
+        return True
+    if not first_line.startswith(b"#!"):
+        return False
+
+    shebang = first_line[2:].decode("utf-8", "ignore").strip()
+    if not shebang:
+        return True
+
+    interpreter = shebang.split(maxsplit=1)[0]
+    if interpreter == "/usr/bin/env":
+        return False
+    if interpreter.startswith("/"):
+        return not Path(interpreter).exists()
+    return False
+
+
+def _candidate_is_runnable(candidate: str) -> bool:
+    path = Path(candidate)
+    if not path.exists():
+        # Real shutil.which only returns existing executables; tests inject
+        # synthetic paths through the same resolver hook.
+        return True
+    if not path.is_file():
+        return False
+    if not os.access(path, os.X_OK):
+        return False
+    return not _candidate_has_missing_shebang_interpreter(path)
+
+
+def _which_runnable(
+    name: str,
+    *,
+    which: WhichFunction,
+    path: str | None = None,
+) -> str | None:
+    search_dirs = path.split(os.pathsep) if path is not None else os.get_exec_path()
+    seen: set[str] = set()
+    for directory in search_dirs:
+        resolved = which(name, path=directory)
+        if resolved is None or resolved in seen:
+            continue
+        seen.add(resolved)
+        if _candidate_is_runnable(resolved):
+            return resolved
+    return None
+
+
+def resolve_mitmdump_executable(
+    *,
+    which: WhichFunction = shutil.which,
+    get_scripts_dir: Callable[[str], str | None] = sysconfig.get_path,
+) -> str | None:
+    """Resolve a mitmdump executable that the kernel can actually run."""
+    scripts_dir = get_scripts_dir("scripts")
+    if scripts_dir:
+        resolved = _which_runnable("mitmdump", which=which, path=scripts_dir)
+        if resolved is not None:
+            return resolved
+    return _which_runnable("mitmdump", which=which)
 
 
 def reject_passthrough_without_client(
