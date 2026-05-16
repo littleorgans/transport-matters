@@ -435,7 +435,9 @@ async def _finalize_http_provisional_exchange(
 
     adapter = request_state.adapter
     ir = request_state.request_ir
+    raw_req = request_state.raw_request
     curated_ir = request_state.curated_request_ir
+    audit = request_state.audit
     res_text = flow.response.get_text() if flow.response else None
     raw_res = res_text.encode() if res_text else b""
     content_type = (
@@ -464,7 +466,8 @@ async def _finalize_http_provisional_exchange(
             ts=existing_entry.ts,
         )
     codex_turn_summary = _codex_turn_list_summary(codex_derived)
-    pipeline_stats = existing_entry.pipeline
+    req_stats = build_req_stats(curated_ir)
+    pipeline_stats = build_pipeline_stats(audit)
     if pipeline_stats is not None and token_counter is not None:
         try:
             auth = _relevant_auth_headers(flow.request.headers)
@@ -486,14 +489,21 @@ async def _finalize_http_provisional_exchange(
     _persist_track_assignment(run_id, request_state, res_ir, exchange_id=exchange_id)
     entry = existing_entry.model_copy(
         update={
+            "req": req_stats,
             "res": res_stats,
             "pipeline": pipeline_stats,
             "codex_turn": codex_turn_summary,
+            "mutated_manually": request_state.mutated_manually,
         }
     )
     existing_artifacts = await storage.read_exchange(exchange_id)
     artifacts = existing_artifacts.model_copy(
         update={
+            "request_raw": raw_req,
+            "request_ir": ir,
+            "request_curated_raw": _curated_request_raw(adapter, raw_req, curated_ir),
+            "request_curated_ir": _persistable_curated_ir(curated_ir, ir),
+            "request_audit": audit,
             "response_raw": raw_res or None,
             "response_ir": res_ir,
             "transport": transport,
@@ -509,12 +519,12 @@ async def _finalize_http_provisional_exchange(
 
     emit_exchange(
         ir,
-        existing_entry.req,
+        req_stats,
         res_stats,
         exchange_id,
         existing_entry.ts,
         run_id,
-        existing_entry.mutated_manually,
+        request_state.mutated_manually,
         pipeline_stats,
         flow_id=flow.id,
         codex_turn=codex_turn_summary,

@@ -26,6 +26,7 @@ describe("useExchangeStream race condition guard", () => {
 
     expect(useUIStore.getState().pausedFlow).toBeNull();
     expect(useUIStore.getState().forwardingFlowId).toBeNull();
+    expect(useUIStore.getState().selectedId).toBe("exchange-uuid-1");
   });
 
   it("preserves new pausedFlow when a different flow paused during forwarding", () => {

@@ -244,6 +244,7 @@ function applyExchangeEvent(data: Record<string, unknown>, context: ExchangeStre
 
   const { forwardingFlowId, pausedFlow } = useUIStore.getState();
   if (forwardingFlowId && data.flow_id === forwardingFlowId) {
+    context.setSelectedId(entry.id);
     if (!pausedFlow || pausedFlow.flow_id === forwardingFlowId) {
       context.clearPausedFlow();
     } else {
