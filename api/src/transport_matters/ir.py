@@ -21,6 +21,7 @@ class TextBlock(BaseModel):
 
     type: Literal["text"] = "text"
     text: str
+    provider_data: dict[str, Any] | None = None  # Any: extra provider fields
 
 
 class ToolUseBlock(BaseModel):
@@ -30,6 +31,7 @@ class ToolUseBlock(BaseModel):
     id: str
     name: str
     input: dict[str, Any]  # Any: arbitrary tool input schema
+    provider_data: dict[str, Any] | None = None  # Any: extra provider fields
 
 
 class ToolResultBlock(BaseModel):
@@ -37,7 +39,7 @@ class ToolResultBlock(BaseModel):
 
     type: Literal["tool_result"] = "tool_result"
     tool_use_id: str
-    content: list[TextBlock | ImageBlock]
+    content: list[TextBlock | ImageBlock | UnknownBlock]
     is_error: bool = False
     provider_data: dict[str, Any] | None = None  # Any: opaque provider blob
 
@@ -55,6 +57,7 @@ class ImageBlock(BaseModel):
 
     type: Literal["image"] = "image"
     source: dict[str, Any]  # Any: provider-specific image encoding
+    provider_data: dict[str, Any] | None = None  # Any: extra provider fields
 
 
 class UnknownBlock(BaseModel):
@@ -102,6 +105,7 @@ class Message(BaseModel):
 
     role: Literal["user", "assistant"]
     content: list[ContentBlock]
+    provider_data: dict[str, Any] | None = None  # Any: extra provider fields
 
 
 class SamplingParams(BaseModel):

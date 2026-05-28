@@ -47,6 +47,19 @@ _MAPPED_REQUEST_KEYS = frozenset(
 )
 
 
+def _extra_provider_data(
+    raw: dict[str, Any],  # Any: raw JSON dict
+    known: set[str],
+) -> dict[str, Any] | None:
+    """Capture unknown sibling fields into an opaque overflow dict, or None.
+
+    Keeps fields the IR does not model so they survive an edit round-trip. The
+    single capture point shared by every block and component parser.
+    """
+    extra = {k: raw[k] for k in sorted(set(raw) - known)}
+    return extra or None
+
+
 class AnthropicAdapter(ProviderAdapter):
     name = "anthropic"
 
@@ -264,17 +277,14 @@ class AnthropicAdapter(ProviderAdapter):
     ) -> list[SystemPart]:  # Any: raw JSON dicts
         parts: list[SystemPart] = []
         for item in raw:
-            cache_hint = item.get("cache_control")
-            provider_data: dict[str, Any] | None = None  # Any: extra fields
-            extra_keys = set(item.keys()) - {"type", "text", "cache_control"}
-            if extra_keys:
-                provider_data = {k: item[k] for k in extra_keys}
             parts.append(
                 SystemPart(
                     type=item.get("type", "text"),
                     text=item["text"],
-                    cache_hint=cache_hint,
-                    provider_data=provider_data,
+                    cache_hint=item.get("cache_control"),
+                    provider_data=_extra_provider_data(
+                        item, {"type", "text", "cache_control"}
+                    ),
                 )
             )
         return parts
@@ -294,16 +304,14 @@ class AnthropicAdapter(ProviderAdapter):
     def _parse_tools(raw: list[dict[str, Any]]) -> list[ToolDef]:  # Any: raw JSON dicts
         tools: list[ToolDef] = []
         for item in raw:
-            provider_data: dict[str, Any] | None = None  # Any: extra fields
-            extra_keys = set(item.keys()) - {"name", "description", "input_schema"}
-            if extra_keys:
-                provider_data = {k: item[k] for k in sorted(extra_keys)}
             tools.append(
                 ToolDef(
                     name=item["name"],
                     description=item["description"],
                     input_schema=item["input_schema"],
-                    provider_data=provider_data,
+                    provider_data=_extra_provider_data(
+                        item, {"name", "description", "input_schema"}
+                    ),
                 )
             )
         return tools
@@ -334,56 +342,93 @@ class AnthropicAdapter(ProviderAdapter):
             else:
                 blocks = [cls._parse_content_block(b) for b in raw_content]
             if blocks:
-                messages.append(Message(role=item["role"], content=blocks))
+                messages.append(
+                    Message(
+                        role=item["role"],
+                        content=blocks,
+                        provider_data=_extra_provider_data(item, {"role", "content"}),
+                    )
+                )
         return messages
 
-    @staticmethod
+    @classmethod
     def _parse_content_block(
+        cls,
         raw: dict[str, Any],  # Any: raw JSON dict
     ) -> ContentBlock:
         block_type = raw.get("type", "unknown")
         if block_type == "text":
-            return TextBlock(text=raw["text"])
+            return TextBlock(
+                text=raw["text"],
+                provider_data=_extra_provider_data(raw, {"type", "text"}),
+            )
         if block_type == "tool_use":
-            return ToolUseBlock(id=raw["id"], name=raw["name"], input=raw["input"])
+            return ToolUseBlock(
+                id=raw["id"],
+                name=raw["name"],
+                input=raw["input"],
+                provider_data=_extra_provider_data(
+                    raw, {"type", "id", "name", "input"}
+                ),
+            )
         if block_type == "tool_result":
-            sub_content: list[TextBlock | ImageBlock] = []
             raw_sub = raw.get("content", [])
             if isinstance(raw_sub, str):
-                sub_content = [TextBlock(text=raw_sub)]
+                sub_content: list[TextBlock | ImageBlock | UnknownBlock] = [
+                    TextBlock(text=raw_sub)
+                ]
             else:
-                for sub in raw_sub:
-                    if sub.get("type") == "text":
-                        sub_content.append(TextBlock(text=sub["text"]))
-                    elif sub.get("type") == "image":
-                        sub_content.append(ImageBlock(source=sub["source"]))
-                    else:
-                        # Treat unknown sub-blocks as text if they have text
-                        sub_content.append(TextBlock(text=str(sub)))
+                sub_content = [cls._parse_tool_result_sub_block(s) for s in raw_sub]
             return ToolResultBlock(
                 tool_use_id=raw["tool_use_id"],
                 content=sub_content,
                 is_error=raw.get("is_error", False),
+                provider_data=_extra_provider_data(
+                    raw, {"type", "tool_use_id", "content", "is_error"}
+                ),
             )
         if block_type == "thinking":
             # Anthropic uses 'thinking' field in conversation history, 'text' in some
             # response contexts — accept both for robustness.
             text = raw.get("thinking") or raw.get("text", "")
-            provider_data: dict[str, Any] | None = None  # Any: extra fields
-            extra_keys = set(raw.keys()) - {"type", "text", "thinking"}
-            if extra_keys:
-                provider_data = {k: raw[k] for k in sorted(extra_keys)}
-            return ThinkingBlock(text=text, provider_data=provider_data)
+            return ThinkingBlock(
+                text=text,
+                provider_data=_extra_provider_data(raw, {"type", "text", "thinking"}),
+            )
         if block_type == "image":
-            return ImageBlock(source=raw["source"])
+            return ImageBlock(
+                source=raw["source"],
+                provider_data=_extra_provider_data(raw, {"type", "source"}),
+            )
         return UnknownBlock(raw=raw)
+
+    @staticmethod
+    def _parse_tool_result_sub_block(
+        sub: dict[str, Any],  # Any: raw JSON dict
+    ) -> TextBlock | ImageBlock | UnknownBlock:
+        sub_type = sub.get("type")
+        if sub_type == "text":
+            return TextBlock(
+                text=sub["text"],
+                provider_data=_extra_provider_data(sub, {"type", "text"}),
+            )
+        if sub_type == "image":
+            return ImageBlock(
+                source=sub["source"],
+                provider_data=_extra_provider_data(sub, {"type", "source"}),
+            )
+        # Unknown sub-block: preserve verbatim instead of a lossy str() coercion.
+        return UnknownBlock(raw=sub)
 
     @classmethod
     def _message_to_dict(cls, m: Message) -> dict[str, Any]:  # Any: raw JSON
-        return {
+        d: dict[str, Any] = {  # Any: building JSON
             "role": m.role,
             "content": [cls._content_block_to_dict(b) for b in m.content],
         }
+        if m.provider_data:
+            d.update(m.provider_data)
+        return d
 
     @classmethod
     def _content_block_to_dict(
@@ -391,40 +436,42 @@ class AnthropicAdapter(ProviderAdapter):
         block: ContentBlock,
     ) -> dict[str, Any]:  # Any: raw JSON
         if isinstance(block, TextBlock):
-            return {"type": "text", "text": block.text}
+            d: dict[str, Any] = {"type": "text", "text": block.text}  # Any: raw JSON
+            if block.provider_data:
+                d.update(block.provider_data)
+            return d
         if isinstance(block, ToolUseBlock):
-            return {
+            d = {
                 "type": "tool_use",
                 "id": block.id,
                 "name": block.name,
                 "input": block.input,
             }
+            if block.provider_data:
+                d.update(block.provider_data)
+            return d
         if isinstance(block, ToolResultBlock):
-            sub: list[dict[str, Any]] = []  # Any: raw JSON
-            for item in block.content:
-                if isinstance(item, TextBlock):
-                    sub.append({"type": "text", "text": item.text})
-                elif isinstance(item, ImageBlock):
-                    sub.append({"type": "image", "source": item.source})
             result: dict[str, Any] = {  # Any: raw JSON
                 "type": "tool_result",
                 "tool_use_id": block.tool_use_id,
-                "content": sub,
+                "content": [cls._content_block_to_dict(item) for item in block.content],
             }
             if block.is_error:
                 result["is_error"] = block.is_error
+            if block.provider_data:
+                result.update(block.provider_data)
             return result
         if isinstance(block, ThinkingBlock):
             # Anthropic expects 'thinking' field name (not 'text') for round-trips
-            d: dict[str, Any] = {
-                "type": "thinking",
-                "thinking": block.text,
-            }  # Any: raw JSON
+            d = {"type": "thinking", "thinking": block.text}
             if block.provider_data:
                 d.update(block.provider_data)
             return d
         if isinstance(block, ImageBlock):
-            return {"type": "image", "source": block.source}
+            d = {"type": "image", "source": block.source}
+            if block.provider_data:
+                d.update(block.provider_data)
+            return d
         if isinstance(block, UnknownBlock):
             return block.raw
         return block.model_dump(mode="json")
@@ -487,21 +534,36 @@ class AnthropicAdapter(ProviderAdapter):
         for item in raw:
             block_type = item.get("type", "unknown")
             if block_type == "text":
-                blocks.append(TextBlock(text=item["text"]))
+                blocks.append(
+                    TextBlock(
+                        text=item["text"],
+                        provider_data=_extra_provider_data(item, {"type", "text"}),
+                    )
+                )
             elif block_type == "tool_use":
                 blocks.append(
-                    ToolUseBlock(id=item["id"], name=item["name"], input=item["input"])
+                    ToolUseBlock(
+                        id=item["id"],
+                        name=item["name"],
+                        input=item["input"],
+                        provider_data=_extra_provider_data(
+                            item, {"type", "id", "name", "input"}
+                        ),
+                    )
                 )
             elif block_type == "thinking":
                 # Anthropic uses 'thinking' field in the JSON wire format and
                 # SSE-buffered blocks; some historical payloads use 'text'.
                 # Accept both for parity with _parse_content_block.
                 text = item.get("thinking") or item.get("text", "")
-                provider_data: dict[str, Any] | None = None  # Any: extra fields
-                extra_keys = set(item.keys()) - {"type", "text", "thinking"}
-                if extra_keys:
-                    provider_data = {k: item[k] for k in sorted(extra_keys)}
-                blocks.append(ThinkingBlock(text=text, provider_data=provider_data))
+                blocks.append(
+                    ThinkingBlock(
+                        text=text,
+                        provider_data=_extra_provider_data(
+                            item, {"type", "text", "thinking"}
+                        ),
+                    )
+                )
             else:
                 blocks.append(UnknownBlock(raw=item))
         return blocks

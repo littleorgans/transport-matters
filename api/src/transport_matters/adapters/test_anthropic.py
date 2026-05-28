@@ -138,6 +138,78 @@ WITH_EXTRAS_REQUEST: dict[str, Any] = {
     "top_p": 0.9,
 }
 
+# Unknown sibling fields on modeled blocks and on the message object. Each must
+# survive the round-trip so an edit elsewhere in the request never drops them.
+WITH_BLOCK_EXTRAS_REQUEST: dict[str, Any] = {
+    "max_tokens": 1024,
+    "messages": [
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "text",
+                    "text": "look",
+                    "cache_control": {"type": "ephemeral"},
+                },
+                {
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": "image/png",
+                        "data": "iVBOR",
+                    },
+                    "cache_control": {"type": "ephemeral"},
+                },
+            ],
+            "custom_message_field": "keep-me",
+        },
+        {
+            "role": "assistant",
+            "content": [
+                {
+                    "type": "tool_use",
+                    "id": "tu_1",
+                    "name": "read",
+                    "input": {"p": "/x"},
+                    "cache_control": {"type": "ephemeral"},
+                }
+            ],
+        },
+    ],
+    "model": "claude-sonnet-4-20250514",
+}
+
+# tool_result block-level extras, sub-block extras, and an unknown sub-block
+# type that must be preserved verbatim instead of stringified.
+WITH_TOOL_RESULT_EXTRAS_REQUEST: dict[str, Any] = {
+    "max_tokens": 1024,
+    "messages": [
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "tool_result",
+                    "tool_use_id": "tu_1",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": "ok",
+                            "cache_control": {"type": "ephemeral"},
+                        },
+                        {
+                            "type": "document",
+                            "source": {"type": "url", "url": "http://x"},
+                            "title": "doc",
+                        },
+                    ],
+                    "cache_control": {"type": "ephemeral"},
+                }
+            ],
+        }
+    ],
+    "model": "claude-sonnet-4-20250514",
+}
+
 
 # ── round-trip tests ───────────────────────────────────────────────
 
@@ -184,6 +256,22 @@ class TestRoundTrip:
         ir = adapter.inbound_request(raw)
         result = adapter.outbound_request(ir)
         assert json.loads(result) == _normalise(WITH_EXTRAS_REQUEST)
+
+    def test_block_level_extras_survive_round_trip(
+        self, adapter: AnthropicAdapter
+    ) -> None:
+        raw = json.dumps(WITH_BLOCK_EXTRAS_REQUEST, sort_keys=True).encode()
+        ir = adapter.inbound_request(raw)
+        result = adapter.outbound_request(ir)
+        assert json.loads(result) == _normalise(WITH_BLOCK_EXTRAS_REQUEST)
+
+    def test_tool_result_extras_survive_round_trip(
+        self, adapter: AnthropicAdapter
+    ) -> None:
+        raw = json.dumps(WITH_TOOL_RESULT_EXTRAS_REQUEST, sort_keys=True).encode()
+        ir = adapter.inbound_request(raw)
+        result = adapter.outbound_request(ir)
+        assert json.loads(result) == _normalise(WITH_TOOL_RESULT_EXTRAS_REQUEST)
 
 
 # ── metadata unpacking ──────────────────────────────────────────────
