@@ -93,7 +93,9 @@ async def test_persist_unparsed_codex_exchange_is_exception_safe(
     async def boom(*args: object, **kwargs: object) -> bool:
         raise RuntimeError("storage exploded")
 
-    monkeypatch.setattr(codex_exchange, "_persist_exchange", boom)
+    # The codex helper delegates to the shared recorder, so the persistence
+    # call resolves in exchange_recorder's namespace.
+    monkeypatch.setattr("transport_matters.exchange_recorder._persist_exchange", boom)
 
     await codex_exchange._persist_unparsed_codex_exchange(flow, b"{}")
 

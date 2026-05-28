@@ -126,7 +126,13 @@ def _parse_response_ir(
         return res_ir, res_stats
     except Exception:
         logger.exception("Failed to parse response for flow %s", exchange_id)
-        return None, None
+        # Surface an unparsable response instead of silently leaving res empty,
+        # mirroring the request-side parse-failure record. Raw bytes are still
+        # persisted as response_raw by the caller.
+        return None, ResStats(
+            stop_reason="response_parse_failure",
+            text_chars=len(raw_res.decode("utf-8", errors="replace")),
+        )
 
 
 def build_pipeline_stats(audit: OverrideAudit | None) -> PipelineStats | None:

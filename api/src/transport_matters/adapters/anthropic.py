@@ -370,8 +370,12 @@ class AnthropicAdapter(ProviderAdapter):
     @classmethod
     def _parse_content_block(
         cls,
-        raw: dict[str, Any],  # Any: raw JSON dict
+        raw: Any,  # Any: raw JSON value; a content element may not be a dict
     ) -> ContentBlock:
+        # A non-dict element (e.g. a bare string in a content array) is preserved
+        # verbatim rather than crashing the parse and dropping the whole request.
+        if not isinstance(raw, dict):
+            return UnknownBlock(raw={"value": raw})
         # Each known-type branch requires its modeled keys; a known type missing
         # one falls through to UnknownBlock(raw=raw) (preserved verbatim) rather
         # than raising and dropping the whole request.
@@ -396,8 +400,12 @@ class AnthropicAdapter(ProviderAdapter):
                 sub_content: list[TextBlock | ImageBlock | UnknownBlock] = [
                     TextBlock(text=raw_sub)
                 ]
-            else:
+            elif isinstance(raw_sub, list):
                 sub_content = [cls._parse_tool_result_sub_block(s) for s in raw_sub]
+            else:
+                # content is neither the string shorthand nor a block list
+                # (e.g. null or an object) — preserve the block verbatim.
+                return UnknownBlock(raw=raw)
             return ToolResultBlock(
                 tool_use_id=raw["tool_use_id"],
                 content=sub_content,
@@ -423,8 +431,10 @@ class AnthropicAdapter(ProviderAdapter):
 
     @staticmethod
     def _parse_tool_result_sub_block(
-        sub: dict[str, Any],  # Any: raw JSON dict
+        sub: Any,  # Any: raw JSON value; a sub-block may not be a dict
     ) -> TextBlock | ImageBlock | UnknownBlock:
+        if not isinstance(sub, dict):
+            return UnknownBlock(raw={"value": sub})
         sub_type = sub.get("type")
         if sub_type == "text" and "text" in sub:
             return TextBlock(

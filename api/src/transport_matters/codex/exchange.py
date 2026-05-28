@@ -7,7 +7,6 @@ import uuid
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
-from transport_matters.client_version import detect_client_version
 from transport_matters.codex.exchange_derivation import (
     _advance_codex_derived_artifacts,
     _clear_codex_breakpoint_lifecycle,
@@ -27,8 +26,8 @@ from transport_matters.exchange_recorder import (
     _emit_exchange_deleted,
     _persist_exchange,
     _persist_track_assignment,
+    _persist_unparsed_exchange,
     _persistable_curated_ir,
-    _unparsed_request_ir,
     emit_exchange,
 )
 from transport_matters.exchange_stats import (
@@ -566,52 +565,11 @@ async def _persist_unparsed_codex_exchange(
     flow: http.HTTPFlow,
     raw_frame: bytes,
 ) -> None:
-    """Record a synthetic exchange for an unparsable Codex initial frame.
+    """Record an unparsable Codex initial frame (raw bytes preserved).
 
-    Preserves the raw client frame bytes and surfaces it live in the UI rather
-    than silently dropping the turn. Never raises: a recording failure must not
-    crash the websocket hook. Skips gracefully when the frame is unavailable.
+    Skips gracefully when the frame is unavailable; otherwise delegates to the
+    shared recorder so HTTP and Codex parse-failures stay identical.
     """
     if not raw_frame:
         return
-    try:
-        headers = getattr(getattr(flow, "request", None), "headers", None)
-        client_version = detect_client_version(headers)
-        logger.warning(
-            "Unsupported/unparsable Codex initial frame from %s; "
-            "Transport Matters may need updating to support this client version",
-            client_version or "unknown client",
-        )
-        ir = _unparsed_request_ir(raw_frame, "codex", client_version)
-        req_stats = build_req_stats(ir)
-
-        from transport_matters.storage import get_storage
-
-        storage = await get_storage()
-        exchange_id = str(uuid.uuid4())
-        ts = datetime.now(UTC)
-        ts_slug = ts.strftime("%Y%m%dT%H%M%S")
-        run_id = get_settings().run_id
-        entry = IndexEntry(
-            id=exchange_id,
-            run_id=run_id,
-            ts=ts,
-            provider=ir.provider,
-            model=ir.model,
-            path=f"exchanges/{ts_slug}-{exchange_id[:8]}/",
-            req=req_stats,
-        )
-        artifacts = ExchangeArtifacts(request_raw=raw_frame, request_ir=ir)
-        if not await _persist_exchange(storage, entry, artifacts):
-            return
-        emit_exchange(
-            ir,
-            req_stats,
-            None,
-            exchange_id,
-            ts,
-            run_id,
-            flow_id=flow.id,
-        )
-    except Exception:
-        logger.exception("Failed to record unparsed Codex frame for flow %s", flow.id)
+    await _persist_unparsed_exchange(flow, raw_frame, "codex")

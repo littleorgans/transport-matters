@@ -175,6 +175,10 @@ def _message_content_to_dict(
         return {"type": text_type, "text": block.text}
     if isinstance(block, ImageBlock) and role == "user":
         return {"type": "input_image", **block.source}
+    if isinstance(block, UnknownBlock):
+        # Forward-compat: preserve an unmodeled sub-block verbatim rather than
+        # crashing serialization (matches the Anthropic adapter's degradation).
+        return block.raw
     raise ValueError(
         f"Codex serializer cannot encode {block.type!r} inside {role!r} message"
     )

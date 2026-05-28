@@ -728,3 +728,34 @@ async def test_persist_http_exchange_falls_back_when_finalize_misses_record(
     assert len(entries) == 1
     assert entries[0].id != "exchange-missing"
     assert entries[0].res is not None
+
+
+def test_tag_http_error_status_preserves_parsed_usage() -> None:
+    import types
+
+    from transport_matters.storage import ResStats
+
+    flow = types.SimpleNamespace(
+        response=types.SimpleNamespace(status_code=429),
+    )
+    parsed = ResStats(
+        stop_reason="end_turn", input_tokens=10, output_tokens=5, text_chars=3
+    )
+    tagged = recorder._tag_http_error_status(parsed, cast("http.HTTPFlow", flow), b"{}")
+    assert tagged is not None
+    assert tagged.stop_reason == "http_429"
+    assert tagged.input_tokens == 10
+    assert tagged.output_tokens == 5
+
+
+def test_tag_http_error_status_noop_on_success() -> None:
+    import types
+
+    from transport_matters.storage import ResStats
+
+    flow = types.SimpleNamespace(response=types.SimpleNamespace(status_code=200))
+    parsed = ResStats(stop_reason="end_turn", input_tokens=10)
+    assert (
+        recorder._tag_http_error_status(parsed, cast("http.HTTPFlow", flow), b"{}")
+        is parsed
+    )

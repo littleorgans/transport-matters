@@ -616,3 +616,49 @@ class TestForwardCompat:
         res = adapter.inbound_response(raw, "application/json")
         assert res.id == ""
         assert res.model == "anthropic/unknown"
+
+
+class TestForwardCompatContentShapes:
+    """Odd content shapes degrade the offending block, never the whole request."""
+
+    def _req(self, content: object) -> bytes:
+        return json.dumps(
+            {
+                "model": "m",
+                "max_tokens": 16,
+                "messages": [{"role": "user", "content": content}],
+            }
+        ).encode()
+
+    def test_tool_result_null_content_degrades_block(
+        self, adapter: AnthropicAdapter
+    ) -> None:
+        raw = self._req([{"type": "tool_result", "tool_use_id": "t", "content": None}])
+        ir = adapter.inbound_request(raw)
+        assert ir.messages[0].content[0].type == "unknown"
+
+    def test_tool_result_dict_content_degrades_block(
+        self, adapter: AnthropicAdapter
+    ) -> None:
+        raw = self._req(
+            [{"type": "tool_result", "tool_use_id": "t", "content": {"weird": 1}}]
+        )
+        ir = adapter.inbound_request(raw)
+        assert ir.messages[0].content[0].type == "unknown"
+
+    def test_non_dict_content_element_degrades(self, adapter: AnthropicAdapter) -> None:
+        raw = self._req(["bare string element", {"type": "text", "text": "ok"}])
+        ir = adapter.inbound_request(raw)
+        assert ir.messages[0].content[0].type == "unknown"
+        assert ir.messages[0].content[1].type == "text"
+
+    def test_non_dict_tool_result_subblock_degrades(
+        self, adapter: AnthropicAdapter
+    ) -> None:
+        raw = self._req(
+            [{"type": "tool_result", "tool_use_id": "t", "content": ["bare", {"x": 1}]}]
+        )
+        ir = adapter.inbound_request(raw)
+        block = ir.messages[0].content[0]
+        assert isinstance(block, ToolResultBlock)
+        assert all(b.type == "unknown" for b in block.content)

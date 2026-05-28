@@ -172,3 +172,19 @@ async def test_stamp_pipeline_tokens_counts_both_sides_when_changed() -> None:
     assert counter.calls == 2
     assert result.tokens_before is not None
     assert result.tokens_after is not None
+
+
+class _RaisingResponseAdapter:
+    def inbound_response(self, raw: bytes, content_type: str) -> object:
+        raise ValueError("unparsable response shape")
+
+
+def test_parse_response_ir_marks_unparsable_response() -> None:
+    from transport_matters.exchange_stats import _parse_response_ir
+
+    res_ir, res_stats = _parse_response_ir(
+        _RaisingResponseAdapter(), b"<<garbage>>", "application/json", "ex-1"
+    )
+    assert res_ir is None
+    assert res_stats is not None
+    assert res_stats.stop_reason == "response_parse_failure"
