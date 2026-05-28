@@ -5,6 +5,7 @@ from __future__ import annotations
 from transport_matters.exchange_stats import (
     extract_response_text,
     extract_user_prompt_text,
+    stamp_pipeline_tokens,
 )
 from transport_matters.ir import (
     ContentBlock,
@@ -13,6 +14,7 @@ from transport_matters.ir import (
     Message,
     RequestMetadata,
     SamplingParams,
+    SystemPart,
     TextBlock,
     ThinkingBlock,
     ToolResultBlock,
@@ -20,6 +22,7 @@ from transport_matters.ir import (
     UnknownBlock,
     UsageStats,
 )
+from transport_matters.storage import PipelineStats
 
 
 def _make_ir(messages: list[Message]) -> InternalRequest:
@@ -120,3 +123,68 @@ def test_extract_user_prompt_text_falls_back_to_tool_result_text() -> None:
     )
     ir = _make_ir([_user([tool_result])])
     assert extract_user_prompt_text(ir) == "tool output"
+
+
+class _CountAdapter:
+    def __init__(self) -> None:
+        self.outbound_calls = 0
+
+    def outbound_request(self, ir: InternalRequest) -> bytes:
+        self.outbound_calls += 1
+        return f"serialized:{ir.system}".encode()
+
+
+class _SeqCounter:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def count(self, payload: bytes, auth_headers: dict[str, str]) -> int | None:
+        self.calls += 1
+        return len(payload)
+
+
+async def test_stamp_pipeline_tokens_skips_curated_serialization_when_unchanged() -> (
+    None
+):
+    adapter = _CountAdapter()
+    counter = _SeqCounter()
+    ir = _make_ir([_user([TextBlock(text="hi")])])
+    stats = PipelineStats(overrides_applied=[], chars_before=10, chars_after=10)
+
+    result = await stamp_pipeline_tokens(stats, ir, ir, adapter, counter, {})
+
+    # No-op pipeline: only the original is serialized and counted once.
+    assert adapter.outbound_calls == 1
+    assert counter.calls == 1
+    assert result.tokens_before == result.tokens_after
+
+
+async def test_stamp_pipeline_tokens_counts_both_sides_when_changed() -> None:
+    adapter = _CountAdapter()
+    counter = _SeqCounter()
+    original = _make_ir([_user([TextBlock(text="hi")])])
+    curated = original.model_copy(update={"system": [SystemPart(text="injected")]})
+    stats = PipelineStats(overrides_applied=[], chars_before=10, chars_after=20)
+
+    result = await stamp_pipeline_tokens(stats, original, curated, adapter, counter, {})
+
+    assert adapter.outbound_calls == 2
+    assert counter.calls == 2
+    assert result.tokens_before is not None
+    assert result.tokens_after is not None
+
+
+class _RaisingResponseAdapter:
+    def inbound_response(self, raw: bytes, content_type: str) -> object:
+        raise ValueError("unparsable response shape")
+
+
+def test_parse_response_ir_marks_unparsable_response() -> None:
+    from transport_matters.exchange_stats import _parse_response_ir
+
+    res_ir, res_stats = _parse_response_ir(
+        _RaisingResponseAdapter(), b"<<garbage>>", "application/json", "ex-1"
+    )
+    assert res_ir is None
+    assert res_stats is not None
+    assert res_stats.stop_reason == "response_parse_failure"

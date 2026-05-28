@@ -29,12 +29,12 @@ from transport_matters.codex.transport import (
     get_codex_transport_state,
 )
 from transport_matters.exchange_recorder import (
-    _curated_request_raw,
     _persistable_curated_ir,
     emit_exchange,
 )
 from transport_matters.exchange_stats import build_pipeline_stats, build_req_stats
 from transport_matters.flow_state import get_request_flow_state
+from transport_matters.request_diff import outbound_request_if_changed
 from transport_matters.storage import CodexTurnListSummary
 
 if TYPE_CHECKING:
@@ -323,9 +323,9 @@ def _updated_codex_exchange_artifacts(
         update={
             "request_raw": request_state.raw_request,
             "request_ir": request_state.request_ir,
-            "request_curated_raw": _curated_request_raw(
+            "request_curated_raw": outbound_request_if_changed(
                 request_state.adapter,
-                request_state.raw_request,
+                request_state.request_ir,
                 request_state.curated_request_ir,
             ),
             "request_curated_ir": _persistable_curated_ir(

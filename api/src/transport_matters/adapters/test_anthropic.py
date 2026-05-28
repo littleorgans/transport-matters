@@ -13,6 +13,7 @@ from typing import Any
 import pytest
 
 from transport_matters.adapters.anthropic import AnthropicAdapter
+from transport_matters.ir import ToolResultBlock
 
 
 @pytest.fixture
@@ -138,6 +139,78 @@ WITH_EXTRAS_REQUEST: dict[str, Any] = {
     "top_p": 0.9,
 }
 
+# Unknown sibling fields on modeled blocks and on the message object. Each must
+# survive the round-trip so an edit elsewhere in the request never drops them.
+WITH_BLOCK_EXTRAS_REQUEST: dict[str, Any] = {
+    "max_tokens": 1024,
+    "messages": [
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "text",
+                    "text": "look",
+                    "cache_control": {"type": "ephemeral"},
+                },
+                {
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": "image/png",
+                        "data": "iVBOR",
+                    },
+                    "cache_control": {"type": "ephemeral"},
+                },
+            ],
+            "custom_message_field": "keep-me",
+        },
+        {
+            "role": "assistant",
+            "content": [
+                {
+                    "type": "tool_use",
+                    "id": "tu_1",
+                    "name": "read",
+                    "input": {"p": "/x"},
+                    "cache_control": {"type": "ephemeral"},
+                }
+            ],
+        },
+    ],
+    "model": "claude-sonnet-4-20250514",
+}
+
+# tool_result block-level extras, sub-block extras, and an unknown sub-block
+# type that must be preserved verbatim instead of stringified.
+WITH_TOOL_RESULT_EXTRAS_REQUEST: dict[str, Any] = {
+    "max_tokens": 1024,
+    "messages": [
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "tool_result",
+                    "tool_use_id": "tu_1",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": "ok",
+                            "cache_control": {"type": "ephemeral"},
+                        },
+                        {
+                            "type": "document",
+                            "source": {"type": "url", "url": "http://x"},
+                            "title": "doc",
+                        },
+                    ],
+                    "cache_control": {"type": "ephemeral"},
+                }
+            ],
+        }
+    ],
+    "model": "claude-sonnet-4-20250514",
+}
+
 
 # ── round-trip tests ───────────────────────────────────────────────
 
@@ -184,6 +257,22 @@ class TestRoundTrip:
         ir = adapter.inbound_request(raw)
         result = adapter.outbound_request(ir)
         assert json.loads(result) == _normalise(WITH_EXTRAS_REQUEST)
+
+    def test_block_level_extras_survive_round_trip(
+        self, adapter: AnthropicAdapter
+    ) -> None:
+        raw = json.dumps(WITH_BLOCK_EXTRAS_REQUEST, sort_keys=True).encode()
+        ir = adapter.inbound_request(raw)
+        result = adapter.outbound_request(ir)
+        assert json.loads(result) == _normalise(WITH_BLOCK_EXTRAS_REQUEST)
+
+    def test_tool_result_extras_survive_round_trip(
+        self, adapter: AnthropicAdapter
+    ) -> None:
+        raw = json.dumps(WITH_TOOL_RESULT_EXTRAS_REQUEST, sort_keys=True).encode()
+        ir = adapter.inbound_request(raw)
+        result = adapter.outbound_request(ir)
+        assert json.loads(result) == _normalise(WITH_TOOL_RESULT_EXTRAS_REQUEST)
 
 
 # ── metadata unpacking ──────────────────────────────────────────────
@@ -336,3 +425,240 @@ class TestResponseParsing:
         text = resp.content[1]
         assert isinstance(text, TextBlock)
         assert text.text == "Done."
+
+
+class TestForwardCompat:
+    """inbound_request / inbound_response must never raise on a JSON body.
+
+    Unmodeled or missing fields degrade in place (UnknownBlock for content
+    blocks, sentinel defaults for scalars) instead of dropping the whole
+    request or response. Triggered in production by provider/CLI version bumps
+    (e.g. Claude Code 2.1.154 inlining a {"role":"system"} message).
+    """
+
+    def test_unknown_message_role_passes_through(
+        self, adapter: AnthropicAdapter
+    ) -> None:
+        raw = json.dumps(
+            {
+                "model": "claude-opus-4-8",
+                "max_tokens": 16,
+                "messages": [
+                    {"role": "system", "content": [{"type": "text", "text": "s"}]},
+                    {"role": "user", "content": [{"type": "text", "text": "hi"}]},
+                ],
+            }
+        ).encode()
+        ir = adapter.inbound_request(raw)
+        assert ir.messages[0].role == "system"
+        assert ir.messages[1].role == "user"
+
+    def test_missing_message_role_defaults_to_user(
+        self, adapter: AnthropicAdapter
+    ) -> None:
+        raw = json.dumps(
+            {
+                "model": "m",
+                "max_tokens": 16,
+                "messages": [{"content": [{"type": "text", "text": "hi"}]}],
+            }
+        ).encode()
+        ir = adapter.inbound_request(raw)
+        assert ir.messages[0].role == "user"
+
+    def test_text_block_missing_text_degrades_to_unknown(
+        self, adapter: AnthropicAdapter
+    ) -> None:
+        raw = json.dumps(
+            {
+                "model": "m",
+                "max_tokens": 16,
+                "messages": [{"role": "user", "content": [{"type": "text"}]}],
+            }
+        ).encode()
+        ir = adapter.inbound_request(raw)
+        assert ir.messages[0].content[0].type == "unknown"
+
+    def test_tool_use_missing_input_degrades_to_unknown(
+        self, adapter: AnthropicAdapter
+    ) -> None:
+        raw = json.dumps(
+            {
+                "model": "m",
+                "max_tokens": 16,
+                "messages": [
+                    {
+                        "role": "assistant",
+                        "content": [{"type": "tool_use", "id": "t", "name": "x"}],
+                    }
+                ],
+            }
+        ).encode()
+        ir = adapter.inbound_request(raw)
+        assert ir.messages[0].content[0].type == "unknown"
+
+    def test_image_block_missing_source_degrades_to_unknown(
+        self, adapter: AnthropicAdapter
+    ) -> None:
+        raw = json.dumps(
+            {
+                "model": "m",
+                "max_tokens": 16,
+                "messages": [{"role": "user", "content": [{"type": "image"}]}],
+            }
+        ).encode()
+        ir = adapter.inbound_request(raw)
+        assert ir.messages[0].content[0].type == "unknown"
+
+    def test_tool_result_missing_tool_use_id_degrades_to_unknown(
+        self, adapter: AnthropicAdapter
+    ) -> None:
+        raw = json.dumps(
+            {
+                "model": "m",
+                "max_tokens": 16,
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": [{"type": "tool_result", "content": []}],
+                    }
+                ],
+            }
+        ).encode()
+        ir = adapter.inbound_request(raw)
+        assert ir.messages[0].content[0].type == "unknown"
+
+    def test_tool_result_unknown_subblock_shape_degrades(
+        self, adapter: AnthropicAdapter
+    ) -> None:
+        raw = json.dumps(
+            {
+                "model": "m",
+                "max_tokens": 16,
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "tool_result",
+                                "tool_use_id": "t",
+                                "content": [{"type": "text"}],
+                            }
+                        ],
+                    }
+                ],
+            }
+        ).encode()
+        ir = adapter.inbound_request(raw)
+        block = ir.messages[0].content[0]
+        assert isinstance(block, ToolResultBlock)
+        assert block.content[0].type == "unknown"
+
+    def test_system_string_shorthand(self, adapter: AnthropicAdapter) -> None:
+        raw = json.dumps(
+            {
+                "model": "m",
+                "max_tokens": 16,
+                "system": "You are helpful.",
+                "messages": [
+                    {"role": "user", "content": [{"type": "text", "text": "x"}]}
+                ],
+            }
+        ).encode()
+        ir = adapter.inbound_request(raw)
+        assert len(ir.system) == 1
+        assert ir.system[0].text == "You are helpful."
+
+    def test_server_side_tool_without_schema(self, adapter: AnthropicAdapter) -> None:
+        raw = json.dumps(
+            {
+                "model": "m",
+                "max_tokens": 16,
+                "messages": [
+                    {"role": "user", "content": [{"type": "text", "text": "x"}]}
+                ],
+                "tools": [{"type": "web_search_20250305", "name": "web_search"}],
+            }
+        ).encode()
+        ir = adapter.inbound_request(raw)
+        assert ir.tools[0].name == "web_search"
+
+    def test_request_missing_model(self, adapter: AnthropicAdapter) -> None:
+        raw = json.dumps(
+            {
+                "max_tokens": 16,
+                "messages": [
+                    {"role": "user", "content": [{"type": "text", "text": "x"}]}
+                ],
+            }
+        ).encode()
+        ir = adapter.inbound_request(raw)
+        assert ir.model == "anthropic/unknown"
+
+    def test_request_missing_max_tokens(self, adapter: AnthropicAdapter) -> None:
+        raw = json.dumps(
+            {
+                "model": "m",
+                "messages": [
+                    {"role": "user", "content": [{"type": "text", "text": "x"}]}
+                ],
+            }
+        ).encode()
+        ir = adapter.inbound_request(raw)
+        assert ir.sampling.max_tokens == 0
+
+    def test_error_response_body_does_not_crash(
+        self, adapter: AnthropicAdapter
+    ) -> None:
+        raw = json.dumps(
+            {"type": "error", "error": {"type": "rate_limit_error", "message": "slow"}}
+        ).encode()
+        res = adapter.inbound_response(raw, "application/json")
+        assert res.id == ""
+        assert res.model == "anthropic/unknown"
+
+
+class TestForwardCompatContentShapes:
+    """Odd content shapes degrade the offending block, never the whole request."""
+
+    def _req(self, content: object) -> bytes:
+        return json.dumps(
+            {
+                "model": "m",
+                "max_tokens": 16,
+                "messages": [{"role": "user", "content": content}],
+            }
+        ).encode()
+
+    def test_tool_result_null_content_degrades_block(
+        self, adapter: AnthropicAdapter
+    ) -> None:
+        raw = self._req([{"type": "tool_result", "tool_use_id": "t", "content": None}])
+        ir = adapter.inbound_request(raw)
+        assert ir.messages[0].content[0].type == "unknown"
+
+    def test_tool_result_dict_content_degrades_block(
+        self, adapter: AnthropicAdapter
+    ) -> None:
+        raw = self._req(
+            [{"type": "tool_result", "tool_use_id": "t", "content": {"weird": 1}}]
+        )
+        ir = adapter.inbound_request(raw)
+        assert ir.messages[0].content[0].type == "unknown"
+
+    def test_non_dict_content_element_degrades(self, adapter: AnthropicAdapter) -> None:
+        raw = self._req(["bare string element", {"type": "text", "text": "ok"}])
+        ir = adapter.inbound_request(raw)
+        assert ir.messages[0].content[0].type == "unknown"
+        assert ir.messages[0].content[1].type == "text"
+
+    def test_non_dict_tool_result_subblock_degrades(
+        self, adapter: AnthropicAdapter
+    ) -> None:
+        raw = self._req(
+            [{"type": "tool_result", "tool_use_id": "t", "content": ["bare", {"x": 1}]}]
+        )
+        ir = adapter.inbound_request(raw)
+        block = ir.messages[0].content[0]
+        assert isinstance(block, ToolResultBlock)
+        assert all(b.type == "unknown" for b in block.content)

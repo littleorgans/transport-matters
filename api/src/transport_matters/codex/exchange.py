@@ -23,10 +23,10 @@ from transport_matters.codex.transport import (
 )
 from transport_matters.config import get_settings
 from transport_matters.exchange_recorder import (
-    _curated_request_raw,
     _emit_exchange_deleted,
     _persist_exchange,
     _persist_track_assignment,
+    _persist_unparsed_exchange,
     _persistable_curated_ir,
     emit_exchange,
 )
@@ -43,6 +43,7 @@ from transport_matters.ir import (
     SamplingParams,
     TextBlock,
 )
+from transport_matters.request_diff import outbound_request_if_changed
 from transport_matters.storage import (
     CodexTurnListSummary,
     IndexEntry,
@@ -135,7 +136,7 @@ async def _persist_codex_provisional_exchange(flow: http.HTTPFlow) -> str | None
     artifacts = ExchangeArtifacts(
         request_raw=raw_req,
         request_ir=ir,
-        request_curated_raw=_curated_request_raw(adapter, raw_req, curated_ir),
+        request_curated_raw=outbound_request_if_changed(adapter, ir, curated_ir),
         request_curated_ir=_persistable_curated_ir(curated_ir, ir),
         request_audit=audit,
         transport=transport,
@@ -264,7 +265,7 @@ async def _persist_codex_exchange(
     artifacts = ExchangeArtifacts(
         request_raw=raw_req,
         request_ir=ir,
-        request_curated_raw=_curated_request_raw(adapter, raw_req, curated_ir),
+        request_curated_raw=outbound_request_if_changed(adapter, ir, curated_ir),
         request_curated_ir=_persistable_curated_ir(curated_ir, ir),
         request_audit=audit,
         response_ir=res_ir,
@@ -558,3 +559,17 @@ async def _persist_codex_handshake_failure(flow: http.HTTPFlow) -> None:
         get_settings().run_id,
         flow_id=flow.id,
     )
+
+
+async def _persist_unparsed_codex_exchange(
+    flow: http.HTTPFlow,
+    raw_frame: bytes,
+) -> None:
+    """Record an unparsable Codex initial frame (raw bytes preserved).
+
+    Skips gracefully when the frame is unavailable; otherwise delegates to the
+    shared recorder so HTTP and Codex parse-failures stay identical.
+    """
+    if not raw_frame:
+        return
+    await _persist_unparsed_exchange(flow, raw_frame, "codex")

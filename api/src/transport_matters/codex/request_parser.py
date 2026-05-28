@@ -64,7 +64,7 @@ def parse_codex_request(raw_body: bytes) -> InternalRequest:
         extras["input_item_raw"] = input_item_raw
 
     return InternalRequest(
-        model=_normalise_model(str(data["model"])),
+        model=_normalise_model(str(data.get("model", "unknown"))),
         provider="codex",
         system=system,
         tools=_parse_tools(data.get("tools", [])),

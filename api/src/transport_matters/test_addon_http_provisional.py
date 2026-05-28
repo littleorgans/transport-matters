@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import types
 from typing import TYPE_CHECKING, cast
 
 from transport_matters import addon as addon_module
@@ -23,7 +24,7 @@ from transport_matters.ir import (
     SystemPart,
     TextBlock,
 )
-from transport_matters.pause_session import handle_breakpoint
+from transport_matters.pause_session import _release_payload, handle_breakpoint
 
 if TYPE_CHECKING:
     import pytest
@@ -173,6 +174,40 @@ async def test_http_request_leaves_flow_clean_when_provisional_persist_fails(
     )
 
 
+async def test_http_request_preserves_original_bytes_when_pipeline_is_noop(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    flow = cast("http.HTTPFlow", _Flow())
+    original_text = cast("_Flow", flow).request.text
+
+    async def noop_pipeline(
+        ir: InternalRequest,
+        flow_id: str,
+        run_id: str | None,
+    ) -> tuple[InternalRequest, None, None]:
+        return ir, None, None
+
+    async def fake_persist(
+        persist_flow: http.HTTPFlow,
+        state: RequestFlowState,
+    ) -> str:
+        return "exchange-noop"
+
+    monkeypatch.setattr(addon_handlers, "run_pipeline", noop_pipeline)
+    monkeypatch.setattr(addon_handlers, "_should_skip_breakpoint", lambda model: True)
+    monkeypatch.setattr(
+        addon_handlers,
+        "_persist_http_provisional_exchange",
+        fake_persist,
+    )
+
+    await addon_handlers.handle_http_request(flow, None)
+
+    # Pipeline changed nothing, so the captured wire bytes must pass through
+    # untouched rather than being reserialized (which reorders JSON keys).
+    assert cast("_Flow", flow).request.text == original_text
+
+
 async def test_codex_http_request_snapshots_current_identity_headers(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -220,6 +255,114 @@ async def test_codex_http_request_snapshots_current_identity_headers(
     state = get_request_flow_state(flow)
     assert state is not None
     assert state.codex_request_headers["thread-id"] == "thread-1"
+
+
+class _WSAdapter:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def outbound_request(self, ir: InternalRequest) -> bytes:
+        self.calls += 1
+        return b"reserialized-frame"
+
+
+class _WSMessage:
+    def __init__(self) -> None:
+        self.from_client = True
+        self.is_text = True
+        self.content: bytes = b"ORIGINAL_FRAME"
+
+
+class _WSState:
+    def __init__(self) -> None:
+        self.provisional_exchange_id: str | None = None
+        self.client_message_count = 1
+        self.server_message_count = 0
+        self.initial_client_frame: bytes = b"frame"
+        self.finalized_exchange_id: str | None = None
+        self.turn_start_message_index = 0
+        self.turn_client_messages_before = 0
+        self.turn_server_messages_before = 0
+
+
+def _drive_codex_ws_noop(
+    monkeypatch: pytest.MonkeyPatch,
+    adapter: _WSAdapter,
+    message: _WSMessage,
+    curated_ir: InternalRequest,
+) -> http.HTTPFlow:
+    state = _WSState()
+    flow = cast(
+        "http.HTTPFlow",
+        types.SimpleNamespace(
+            id="flow-ws", websocket=types.SimpleNamespace(messages=[object()])
+        ),
+    )
+    ir = _codex_ir()
+
+    async def noop_pipeline(
+        req: InternalRequest,
+        flow_id: str,
+        run_id: str | None,
+    ) -> tuple[InternalRequest, None, None]:
+        return curated_ir, None, None
+
+    async def noop_persist(persist_flow: http.HTTPFlow) -> None:
+        return None
+
+    monkeypatch.setattr(
+        addon_handlers,
+        "record_codex_websocket_message",
+        lambda f: (state, message, True),
+    )
+    monkeypatch.setattr(
+        addon_handlers, "_clear_codex_breakpoint_lifecycle", lambda f: None
+    )
+    monkeypatch.setattr(
+        addon_handlers, "capture_codex_initial_request_ir", lambda f, frame: ir
+    )
+    monkeypatch.setattr(
+        addon_handlers,
+        "get_request_flow_state",
+        lambda f: types.SimpleNamespace(adapter=adapter),
+    )
+    monkeypatch.setattr(addon_handlers, "run_pipeline", noop_pipeline)
+    monkeypatch.setattr(
+        addon_handlers, "update_request_flow_state", lambda *a, **k: None
+    )
+    monkeypatch.setattr(
+        addon_handlers, "_persist_codex_provisional_exchange", noop_persist
+    )
+    monkeypatch.setattr(addon_handlers, "_should_skip_breakpoint", lambda model: True)
+    return flow
+
+
+async def test_codex_ws_preserves_original_frame_when_pipeline_is_noop(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    adapter = _WSAdapter()
+    message = _WSMessage()
+    # Pipeline returns the same IR capture produces, so curated == original.
+    flow = _drive_codex_ws_noop(monkeypatch, adapter, message, _codex_ir())
+
+    await addon_handlers.handle_codex_websocket_message(flow)
+
+    assert message.content == b"ORIGINAL_FRAME"
+    assert adapter.calls == 0
+
+
+async def test_codex_ws_reserializes_frame_when_pipeline_changes_request(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    adapter = _WSAdapter()
+    message = _WSMessage()
+    curated = _codex_ir().model_copy(update={"model": "codex/edited"})
+    flow = _drive_codex_ws_noop(monkeypatch, adapter, message, curated)
+
+    await addon_handlers.handle_codex_websocket_message(flow)
+
+    assert message.content == b"reserialized-frame"
+    assert adapter.calls == 1
 
 
 class _DropFlow(_Flow):
@@ -279,6 +422,77 @@ async def test_http_breakpoint_drop_marks_state_before_synthetic_response(
     assert state is not None
     assert state.dropped is True
     assert cast("_DropFlow", flow).response_set_saw_dropped is True
+
+
+def _paused(
+    original: InternalRequest,
+    curated: InternalRequest,
+    *,
+    mutated_ir: InternalRequest | None = None,
+    release_payload: bytes | None = None,
+) -> bp.PausedFlow:
+    return bp.PausedFlow(
+        flow=cast("http.HTTPFlow", _Flow()),
+        event=asyncio.Event(),
+        original_ir=original,
+        curated_ir=curated,
+        paused_at_ms=0,
+        mutated_ir=mutated_ir,
+        release_payload=release_payload,
+    )
+
+
+def test_release_payload_none_when_unchanged_and_no_user_payload() -> None:
+    ir = _curated_ir()
+    adapter = _WSAdapter()
+    assert _release_payload(_paused(ir, ir), adapter, ir) is None
+    assert adapter.calls == 0
+
+
+def test_release_payload_returns_user_payload_verbatim() -> None:
+    ir = _curated_ir()
+    adapter = _WSAdapter()
+    pf = _paused(ir, ir, release_payload=b"USER_EDIT")
+    assert _release_payload(pf, adapter, ir) == b"USER_EDIT"
+    assert adapter.calls == 0
+
+
+def test_release_payload_serializes_when_final_ir_changed() -> None:
+    original = _curated_ir()
+    changed = original.model_copy(update={"model": "edited"})
+    adapter = _WSAdapter()
+    pf = _paused(original, changed, mutated_ir=changed)
+    assert _release_payload(pf, adapter, changed) == b"reserialized-frame"
+    assert adapter.calls == 1
+
+
+async def test_http_breakpoint_release_preserves_original_bytes_when_unchanged(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    flow = cast("http.HTTPFlow", _Flow())
+    original_text = cast("_Flow", flow).request.text
+    ir = _curated_ir()
+    capture_request_flow_state(
+        flow, adapter=object(), request_ir=ir, raw_request=b"raw", curated_request_ir=ir
+    )
+    adapter = _WSAdapter()
+    paused = _paused(ir, ir)
+    paused.event.set()
+
+    async def fake_pause(*args: object, **kwargs: object) -> asyncio.Event:
+        return paused.event
+
+    async def fake_pop_paused(flow_id: str) -> bp.PausedFlow:
+        return paused
+
+    monkeypatch.setattr(bp, "pause", fake_pause)
+    monkeypatch.setattr(bp, "pop_paused", fake_pop_paused)
+
+    await handle_breakpoint(flow, adapter, ir, ir, None, None)
+
+    # Released unchanged with no manual edit: keep the original wire bytes.
+    assert cast("_Flow", flow).request.text == original_text
+    assert adapter.calls == 0
 
 
 async def test_addon_error_deletes_http_provisional_exchange(
@@ -359,3 +573,89 @@ async def test_addon_error_skips_when_provisional_exchange_id_missing(
     monkeypatch.setattr(addon_module, "_delete_http_provisional_exchange", fail_delete)
 
     await TransportMattersAddon().error(flow)
+
+
+async def test_http_request_records_unparsed_exchange_on_parse_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    flow = cast("http.HTTPFlow", _Flow())
+    original_text = cast("_Flow", flow).request.text
+    calls: list[tuple[http.HTTPFlow, object, bool]] = []
+
+    async def fake_parse(
+        parse_flow: http.HTTPFlow,
+        adapter: object,
+    ) -> None:
+        return None
+
+    async def fake_unparsed(
+        record_flow: http.HTTPFlow,
+        adapter: object,
+        codex_http: bool,
+    ) -> None:
+        calls.append((record_flow, adapter, codex_http))
+
+    async def fail_persist(*args: object, **kwargs: object) -> str:
+        raise AssertionError("parse failure must not reach the happy path")
+
+    monkeypatch.setattr(addon_handlers, "get_adapter", lambda flow: object())
+    monkeypatch.setattr(addon_handlers, "parse_request_ir", fake_parse)
+    monkeypatch.setattr(
+        addon_handlers, "_persist_unparsed_http_exchange", fake_unparsed
+    )
+    monkeypatch.setattr(
+        addon_handlers, "_persist_http_provisional_exchange", fail_persist
+    )
+
+    await addon_handlers.handle_http_request(flow, None)
+
+    assert len(calls) == 1
+    assert calls[0][0] is flow
+    assert calls[0][2] is False
+    # The wire bytes must pass through untouched on the failure path.
+    assert cast("_Flow", flow).request.text == original_text
+
+
+async def test_codex_ws_records_unparsed_exchange_when_initial_frame_unparsable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = _WSState()
+    state.initial_client_frame = b"unparsable-frame"
+    message = _WSMessage()
+    flow = cast(
+        "http.HTTPFlow",
+        types.SimpleNamespace(
+            id="flow-ws-unparsed",
+            websocket=types.SimpleNamespace(messages=[object()]),
+        ),
+    )
+    calls: list[tuple[http.HTTPFlow, bytes]] = []
+
+    async def fake_unparsed(record_flow: http.HTTPFlow, raw_frame: bytes) -> None:
+        calls.append((record_flow, raw_frame))
+
+    async def fail_pipeline(*args: object, **kwargs: object) -> object:
+        raise AssertionError("unparsable frame must not reach the pipeline")
+
+    monkeypatch.setattr(
+        addon_handlers,
+        "record_codex_websocket_message",
+        lambda f: (state, message, True),
+    )
+    monkeypatch.setattr(
+        addon_handlers, "_clear_codex_breakpoint_lifecycle", lambda f: None
+    )
+    monkeypatch.setattr(
+        addon_handlers, "capture_codex_initial_request_ir", lambda f, frame: None
+    )
+    monkeypatch.setattr(addon_handlers, "clear_request_flow_state", lambda f: None)
+    monkeypatch.setattr(
+        addon_handlers, "_persist_unparsed_codex_exchange", fake_unparsed
+    )
+    monkeypatch.setattr(addon_handlers, "run_pipeline", fail_pipeline)
+
+    await addon_handlers.handle_codex_websocket_message(flow)
+
+    assert calls == [(flow, b"unparsable-frame")]
+    # Transparency: the client frame on the wire is never rewritten.
+    assert message.content == b"ORIGINAL_FRAME"

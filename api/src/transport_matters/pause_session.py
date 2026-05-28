@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from typing import TYPE_CHECKING, Any, Literal, TypedDict, cast
+from typing import TYPE_CHECKING, Any, Literal, TypedDict
 
 from transport_matters import breakpoint as bp
 from transport_matters import broadcast
@@ -25,6 +25,7 @@ from transport_matters.flow_state import (
     get_request_flow_state,
     update_request_flow_state,
 )
+from transport_matters.request_diff import outbound_request_if_changed
 
 if TYPE_CHECKING:
     from mitmproxy import http
@@ -74,10 +75,16 @@ def _release_payload(
     pf: bp.PausedFlow,
     adapter: Any,  # Any: adapter protocol has no shared base
     final_ir: InternalRequest,
-) -> bytes:
+) -> bytes | None:
+    """Bytes to forward on release, or None to keep the original wire bytes.
+
+    An explicit user payload (Forward with edits) is always honored. Otherwise
+    the request is reserialized only when the released IR diverges from the
+    original; an unchanged release leaves mitmproxy's captured bytes intact.
+    """
     if pf.release_payload is not None:
         return pf.release_payload
-    return cast("bytes", adapter.outbound_request(final_ir))
+    return outbound_request_if_changed(adapter, pf.original_ir, final_ir)
 
 
 async def fire_pause_count(
@@ -241,7 +248,9 @@ async def handle_breakpoint(
         return
 
     final_ir, mutated_manually, final_audit = resolve_paused_flow(pf)
-    flow.request.set_text(_release_payload(pf, adapter, final_ir).decode())
+    release = _release_payload(pf, adapter, final_ir)
+    if release is not None:
+        flow.request.set_text(release.decode())
     update_request_flow_state(
         flow,
         curated_request_ir=final_ir,
@@ -315,7 +324,9 @@ async def handle_websocket_breakpoint(
         released_at_ms=int(time.time() * 1000),
     )
     final_ir, mutated_manually, final_audit = resolve_paused_flow(pf)
-    message.content = _release_payload(pf, adapter, final_ir)
+    release = _release_payload(pf, adapter, final_ir)
+    if release is not None:
+        message.content = release
     update_request_flow_state(
         flow,
         curated_request_ir=final_ir,

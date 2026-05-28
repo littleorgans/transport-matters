@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import uuid
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from transport_matters import broadcast
+from transport_matters.client_version import detect_client_version
 from transport_matters.config import get_settings
 from transport_matters.counting import TokenCountingClient, _relevant_auth_headers
 from transport_matters.exchange_stats import (
@@ -16,7 +18,18 @@ from transport_matters.exchange_stats import (
     build_req_stats,
     stamp_pipeline_tokens,
 )
-from transport_matters.ir import InternalRequest, InternalResponse
+from transport_matters.ir import (
+    InternalRequest,
+    InternalResponse,
+    Message,
+    RequestMetadata,
+    SamplingParams,
+    TextBlock,
+)
+from transport_matters.request_diff import (
+    outbound_request_if_changed,
+    request_unchanged,
+)
 from transport_matters.storage import (
     CodexTurnListSummary,
     IndexEntry,
@@ -59,21 +72,11 @@ async def _persist_exchange(
         return False
 
 
-def _curated_request_raw(
-    adapter: Any,
-    original_raw: bytes,
-    curated_ir: InternalRequest,
-) -> bytes | None:
-    """Return the exact outbound request bytes when they differ from the input."""
-    curated_raw = adapter.outbound_request(curated_ir)
-    return curated_raw if curated_raw != original_raw else None
-
-
 def _persistable_curated_ir(
     curated_ir: InternalRequest, original_ir: InternalRequest
 ) -> InternalRequest | None:
     """Return a validated curated IR snapshot or None when it should not be stored."""
-    if curated_ir == original_ir:
+    if request_unchanged(original_ir, curated_ir):
         return None
     try:
         return InternalRequest.model_validate(curated_ir.model_dump(mode="python"))
@@ -173,6 +176,146 @@ def _http_error_response_stats(
     )
 
 
+def _tag_http_error_status(
+    res_stats: ResStats | None,
+    flow: http.HTTPFlow,
+    raw_res: bytes,
+) -> ResStats | None:
+    """Tag an HTTP error status (>=400) onto the response stats.
+
+    Adapters now degrade rather than raise on error bodies (e.g. a 429 with no
+    'id'), so error tagging keys on the status code, not on a parse failure.
+    When the body did parse into usable stats, the parsed token usage is kept
+    and only the stop_reason is overridden with http_{status}.
+    """
+    error_stats = _http_error_response_stats(flow, raw_res)
+    if error_stats is None:
+        return res_stats
+    if res_stats is None:
+        return error_stats
+    # Error status + body size win (error_stats); carry over any parsed token
+    # usage so a billed error response does not lose its accounting.
+    return error_stats.model_copy(
+        update={
+            "input_tokens": res_stats.input_tokens,
+            "output_tokens": res_stats.output_tokens,
+            "cache_creation_input_tokens": res_stats.cache_creation_input_tokens,
+            "cache_read_input_tokens": res_stats.cache_read_input_tokens,
+            "tool_calls": res_stats.tool_calls,
+        }
+    )
+
+
+def _request_raw_bytes(flow: http.HTTPFlow) -> bytes:
+    """Capture the request body binary-safely, never raising on bad bodies.
+
+    Prefers the content-decoded body (what the adapter parsed and the rest of
+    the system stores via get_text) so a content-encoded request is recorded as
+    readable JSON rather than compressed bytes; falls back to raw bytes.
+    """
+    request = getattr(flow, "request", None)
+    if request is None:
+        return b""
+    try:
+        text = request.get_text()
+    except Exception:
+        text = None
+    if isinstance(text, str):
+        return text.encode("utf-8", errors="replace")
+    for attr in ("content", "raw_content"):
+        value = getattr(request, attr, None)
+        if isinstance(value, bytes):
+            return value
+    return b""
+
+
+def _unparsed_model(raw: bytes, adapter_name: str) -> str:
+    """Best-effort model from the raw JSON body, with a stable fallback."""
+    try:
+        decoded = json.loads(raw)
+    except Exception:
+        return f"{adapter_name}/unparsed"
+    model = decoded.get("model") if isinstance(decoded, dict) else None
+    return model if isinstance(model, str) and model else f"{adapter_name}/unparsed"
+
+
+def _unparsed_request_ir(
+    raw: bytes,
+    adapter_name: str,
+    client_version: str | None,
+) -> InternalRequest:
+    """Fabricate a synthetic IR marking a request we could not parse."""
+    provider_extras: dict[str, Any] = {"type": "transport.parse_failure"}
+    if client_version is not None:
+        provider_extras["client_version"] = client_version
+    return InternalRequest(
+        model=_unparsed_model(raw, adapter_name),
+        provider=adapter_name,
+        system=[],
+        tools=[],
+        messages=[Message(role="user", content=[TextBlock(text="[unparsed request]")])],
+        sampling=SamplingParams(max_tokens=0),
+        metadata=RequestMetadata(),
+        provider_extras=provider_extras,
+    )
+
+
+async def _persist_unparsed_exchange(
+    flow: http.HTTPFlow,
+    raw: bytes,
+    provider_name: str,
+) -> None:
+    """Record a synthetic exchange for traffic the adapter could not parse.
+
+    Shared by the HTTP and Codex-WS seams. Preserves the raw bytes and surfaces
+    the exchange live in the UI rather than silently dropping it, tagged with
+    the detected client version. Never mutates the wire and never raises: a
+    recording failure must not crash the proxy hook.
+    """
+    try:
+        headers = getattr(getattr(flow, "request", None), "headers", None)
+        client_version = detect_client_version(headers)
+        logger.warning(
+            "Unsupported/unparsable request shape from %s; "
+            "Transport Matters may need updating to support this client version",
+            client_version or "unknown client",
+        )
+        ir = _unparsed_request_ir(raw, provider_name, client_version)
+        req_stats = build_req_stats(ir)
+
+        from transport_matters.storage import get_storage
+
+        storage = await get_storage()
+        exchange_id = str(uuid.uuid4())
+        ts = datetime.now(UTC)
+        ts_slug = ts.strftime("%Y%m%dT%H%M%S")
+        run_id = get_settings().run_id
+        entry = IndexEntry(
+            id=exchange_id,
+            run_id=run_id,
+            ts=ts,
+            provider=ir.provider,
+            model=ir.model,
+            path=f"exchanges/{ts_slug}-{exchange_id[:8]}/",
+            req=req_stats,
+        )
+        artifacts = ExchangeArtifacts(request_raw=raw, request_ir=ir)
+        if not await _persist_exchange(storage, entry, artifacts):
+            return
+        emit_exchange(ir, req_stats, None, exchange_id, ts, run_id, flow_id=flow.id)
+    except Exception:
+        logger.exception("Failed to record unparsed request for flow %s", flow.id)
+
+
+async def _persist_unparsed_http_exchange(
+    flow: http.HTTPFlow,
+    adapter: Any,  # Any: adapter protocol has no shared base
+    codex_http: bool,
+) -> None:
+    """Record an HTTP request the adapter could not parse (raw bytes preserved)."""
+    await _persist_unparsed_exchange(flow, _request_raw_bytes(flow), adapter.name)
+
+
 def _assign_track(
     run_id: str | None,
     ir: InternalRequest,
@@ -240,8 +383,7 @@ async def _persist_http_exchange(
         flow.response.headers.get("content-type", "") if flow.response else ""
     )
     res_ir, res_stats = _parse_response_ir(adapter, raw_res, content_type, exchange_id)
-    if res_stats is None:
-        res_stats = _http_error_response_stats(flow, raw_res)
+    res_stats = _tag_http_error_status(res_stats, flow, raw_res)
     codex_derived: CodexDerivedTurnArtifacts | None = None
     transport: TransportArtifacts | None = None
     if ir.provider == "codex":
@@ -303,7 +445,7 @@ async def _persist_http_exchange(
     artifacts = ExchangeArtifacts(
         request_raw=raw_req,
         request_ir=ir,
-        request_curated_raw=_curated_request_raw(adapter, raw_req, curated_ir),
+        request_curated_raw=outbound_request_if_changed(adapter, ir, curated_ir),
         request_curated_ir=_persistable_curated_ir(curated_ir, ir),
         request_audit=audit,
         response_raw=raw_res or None,
@@ -371,7 +513,7 @@ async def _persist_http_provisional_exchange(
     artifacts = ExchangeArtifacts(
         request_raw=raw_req,
         request_ir=ir,
-        request_curated_raw=_curated_request_raw(adapter, raw_req, curated_ir),
+        request_curated_raw=outbound_request_if_changed(adapter, ir, curated_ir),
         request_curated_ir=_persistable_curated_ir(curated_ir, ir),
         request_audit=audit,
     )
@@ -444,8 +586,7 @@ async def _finalize_http_provisional_exchange(
         flow.response.headers.get("content-type", "") if flow.response else ""
     )
     res_ir, res_stats = _parse_response_ir(adapter, raw_res, content_type, exchange_id)
-    if res_stats is None:
-        res_stats = _http_error_response_stats(flow, raw_res)
+    res_stats = _tag_http_error_status(res_stats, flow, raw_res)
     codex_derived: CodexDerivedTurnArtifacts | None = None
     transport: TransportArtifacts | None = None
     if ir.provider == "codex":
@@ -501,7 +642,7 @@ async def _finalize_http_provisional_exchange(
         update={
             "request_raw": raw_req,
             "request_ir": ir,
-            "request_curated_raw": _curated_request_raw(adapter, raw_req, curated_ir),
+            "request_curated_raw": outbound_request_if_changed(adapter, ir, curated_ir),
             "request_curated_ir": _persistable_curated_ir(curated_ir, ir),
             "request_audit": audit,
             "response_raw": raw_res or None,

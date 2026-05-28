@@ -104,6 +104,10 @@ async def test_addon_websocket_message_clears_stale_request_state() -> None:
     )
     await addon.websocket_message(flow)
 
+    # A second turn whose initial frame omits 'model' no longer crashes the
+    # parser. Forward-compat: it degrades to codex/unknown and is captured as a
+    # fresh turn rather than being dropped. Stale state from the first turn must
+    # not leak into it.
     flow.websocket.messages.append(
         websocket.WebSocketMessage(
             Opcode.TEXT,
@@ -113,7 +117,10 @@ async def test_addon_websocket_message_clears_stale_request_state() -> None:
     )
     await addon.websocket_message(flow)
 
-    assert get_request_flow_state(flow) is None
+    second_state = get_request_flow_state(flow)
+    assert second_state is not None
+    assert second_state.request_ir.model == "codex/unknown"
+    assert second_state.request_ir.system[0].text == "missing model"
 
     flow.websocket.messages.append(
         websocket.WebSocketMessage(
@@ -131,14 +138,16 @@ async def test_addon_websocket_message_clears_stale_request_state() -> None:
 
     storage = await get_storage()
     entries = await storage.read_index(limit=10, offset=0)
-    assert len(entries) == 1
+    assert len(entries) == 2
 
-    entry = entries[0]
-    artifacts = await storage.read_exchange(entry.id)
-    assert entry.res is not None
-    assert artifacts.request_ir.system[0].text == "first"
-    assert artifacts.transport is not None
-    assert [message.event_type for message in artifacts.transport.messages] == [
+    by_text = {
+        artifacts.request_ir.system[0].text: artifacts
+        for artifacts in [await storage.read_exchange(entry.id) for entry in entries]
+    }
+    assert by_text["first"].request_ir.model == "codex/gpt-5-codex"
+    assert by_text["missing model"].request_ir.model == "codex/unknown"
+    assert by_text["first"].transport is not None
+    assert [message.event_type for message in by_text["first"].transport.messages] == [
         "response.create",
         "response.completed",
     ]

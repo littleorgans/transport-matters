@@ -17,6 +17,7 @@ from transport_matters.ir import (
     ToolUseBlock,
 )
 from transport_matters.overrides import OverrideAudit, count_chars_parts
+from transport_matters.request_diff import request_unchanged
 from transport_matters.storage import PipelineStats, ReqStats, ResStats
 
 logger = logging.getLogger(__name__)
@@ -125,7 +126,13 @@ def _parse_response_ir(
         return res_ir, res_stats
     except Exception:
         logger.exception("Failed to parse response for flow %s", exchange_id)
-        return None, None
+        # Surface an unparsable response instead of silently leaving res empty,
+        # mirroring the request-side parse-failure record. Raw bytes are still
+        # persisted as response_raw by the caller.
+        return None, ResStats(
+            stop_reason="response_parse_failure",
+            text_chars=len(raw_res.decode("utf-8", errors="replace")),
+        )
 
 
 def build_pipeline_stats(audit: OverrideAudit | None) -> PipelineStats | None:
@@ -148,11 +155,19 @@ async def stamp_pipeline_tokens(
     auth_headers: dict[str, str],
 ) -> PipelineStats:
     """Attach before and after token counts from /v1/messages/count_tokens."""
+    # When the pipeline changed nothing, the after-count equals the before-count.
+    # Pass None so count_before_after collapses to a single call and the curated
+    # IR is never reserialized.
+    after_payload = (
+        None
+        if request_unchanged(original_ir, curated_ir)
+        else adapter.outbound_request(curated_ir)
+    )
     tokens_before, tokens_after = await count_before_after(
         counter,
         auth_headers,
         adapter.outbound_request(original_ir),
-        adapter.outbound_request(curated_ir),
+        after_payload,
     )
     if tokens_before is None or tokens_after is None:
         return stats
