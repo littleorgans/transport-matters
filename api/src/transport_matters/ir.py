@@ -103,7 +103,10 @@ class ToolDef(BaseModel):
 class Message(BaseModel):
     model_config = ConfigDict(frozen=True)
 
-    role: Literal["user", "assistant"]
+    # Plain str (not Literal) for forward-compat: providers occasionally inline
+    # unmodeled roles (e.g. Claude Code 2.1.154 added {"role":"system"} to
+    # messages[]). Preserve the role verbatim rather than dropping the request.
+    role: str
     content: list[ContentBlock]
     provider_data: dict[str, Any] | None = None  # Any: extra provider fields
 

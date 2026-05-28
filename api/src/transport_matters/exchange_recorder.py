@@ -234,8 +234,13 @@ async def _persist_http_exchange(
         flow.response.headers.get("content-type", "") if flow.response else ""
     )
     res_ir, res_stats = _parse_response_ir(adapter, raw_res, content_type, exchange_id)
-    if res_stats is None:
-        res_stats = _http_error_response_stats(flow, raw_res)
+    # An HTTP error status (>=400) is tagged http_{status} regardless of whether
+    # the body parsed. Adapters now degrade rather than raise on error bodies
+    # (e.g. a 429 with no 'id'), so error tagging keys on the status code, not on
+    # a parse failure.
+    error_stats = _http_error_response_stats(flow, raw_res)
+    if error_stats is not None:
+        res_stats = error_stats
     codex_derived: CodexDerivedTurnArtifacts | None = None
     transport: TransportArtifacts | None = None
     if ir.provider == "codex":
@@ -438,8 +443,13 @@ async def _finalize_http_provisional_exchange(
         flow.response.headers.get("content-type", "") if flow.response else ""
     )
     res_ir, res_stats = _parse_response_ir(adapter, raw_res, content_type, exchange_id)
-    if res_stats is None:
-        res_stats = _http_error_response_stats(flow, raw_res)
+    # An HTTP error status (>=400) is tagged http_{status} regardless of whether
+    # the body parsed. Adapters now degrade rather than raise on error bodies
+    # (e.g. a 429 with no 'id'), so error tagging keys on the status code, not on
+    # a parse failure.
+    error_stats = _http_error_response_stats(flow, raw_res)
+    if error_stats is not None:
+        res_stats = error_stats
     codex_derived: CodexDerivedTurnArtifacts | None = None
     transport: TransportArtifacts | None = None
     if ir.provider == "codex":

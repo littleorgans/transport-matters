@@ -73,7 +73,11 @@ class AnthropicAdapter(ProviderAdapter):
     def inbound_request(self, raw_body: bytes) -> InternalRequest:
         data: dict[str, Any] = json.loads(raw_body)  # Any: raw JSON
 
-        model = self._normalise_model(data["model"])
+        model = (
+            self._normalise_model(data["model"])
+            if data.get("model")
+            else "anthropic/unknown"
+        )
         system = self._parse_system(data.get("system", []))
         tools = self._parse_tools(data.get("tools", []))
         messages = self._parse_messages(data.get("messages", []))
@@ -166,8 +170,12 @@ class AnthropicAdapter(ProviderAdapter):
         }
 
         return InternalResponse(
-            id=data["id"],
-            model=self._normalise_model(data["model"]),
+            id=data.get("id", ""),
+            model=(
+                self._normalise_model(data["model"])
+                if data.get("model")
+                else "anthropic/unknown"
+            ),
             provider="anthropic",
             stop_reason=data.get("stop_reason"),
             usage=usage,
@@ -230,9 +238,14 @@ class AnthropicAdapter(ProviderAdapter):
                 if buf:
                     if "_input_partial" in buf:
                         try:
-                            buf["input"] = json.loads(buf.pop("_input_partial"))
+                            parsed = json.loads(buf.pop("_input_partial"))
                         except json.JSONDecodeError:
-                            buf["input"] = {}
+                            parsed = {}
+                        # ToolUseBlock.input is a dict; a stream that decodes to
+                        # a non-object must be wrapped, not passed through.
+                        buf["input"] = (
+                            parsed if isinstance(parsed, dict) else {"value": parsed}
+                        )
                     content_blocks.append(buf)
             elif ev_type == "message_delta":
                 delta = ev.get("delta", {})
@@ -273,14 +286,17 @@ class AnthropicAdapter(ProviderAdapter):
 
     @staticmethod
     def _parse_system(
-        raw: list[dict[str, Any]],
-    ) -> list[SystemPart]:  # Any: raw JSON dicts
+        raw: list[dict[str, Any]] | str,  # Any: raw JSON dicts
+    ) -> list[SystemPart]:
+        # Anthropic accepts `system` as a plain string or a list of parts.
+        if isinstance(raw, str):
+            return [SystemPart(text=raw)] if raw else []
         parts: list[SystemPart] = []
         for item in raw:
             parts.append(
                 SystemPart(
                     type=item.get("type", "text"),
-                    text=item["text"],
+                    text=item.get("text", ""),
                     cache_hint=item.get("cache_control"),
                     provider_data=_extra_provider_data(
                         item, {"type", "text", "cache_control"}
@@ -306,9 +322,9 @@ class AnthropicAdapter(ProviderAdapter):
         for item in raw:
             tools.append(
                 ToolDef(
-                    name=item["name"],
-                    description=item["description"],
-                    input_schema=item["input_schema"],
+                    name=item.get("name", ""),
+                    description=item.get("description", ""),
+                    input_schema=item.get("input_schema", {}),
                     provider_data=_extra_provider_data(
                         item, {"name", "description", "input_schema"}
                     ),
@@ -344,7 +360,7 @@ class AnthropicAdapter(ProviderAdapter):
             if blocks:
                 messages.append(
                     Message(
-                        role=item["role"],
+                        role=item.get("role", "user"),
                         content=blocks,
                         provider_data=_extra_provider_data(item, {"role", "content"}),
                     )
@@ -356,13 +372,16 @@ class AnthropicAdapter(ProviderAdapter):
         cls,
         raw: dict[str, Any],  # Any: raw JSON dict
     ) -> ContentBlock:
+        # Each known-type branch requires its modeled keys; a known type missing
+        # one falls through to UnknownBlock(raw=raw) (preserved verbatim) rather
+        # than raising and dropping the whole request.
         block_type = raw.get("type", "unknown")
-        if block_type == "text":
+        if block_type == "text" and "text" in raw:
             return TextBlock(
                 text=raw["text"],
                 provider_data=_extra_provider_data(raw, {"type", "text"}),
             )
-        if block_type == "tool_use":
+        if block_type == "tool_use" and {"id", "name", "input"} <= raw.keys():
             return ToolUseBlock(
                 id=raw["id"],
                 name=raw["name"],
@@ -371,7 +390,7 @@ class AnthropicAdapter(ProviderAdapter):
                     raw, {"type", "id", "name", "input"}
                 ),
             )
-        if block_type == "tool_result":
+        if block_type == "tool_result" and "tool_use_id" in raw:
             raw_sub = raw.get("content", [])
             if isinstance(raw_sub, str):
                 sub_content: list[TextBlock | ImageBlock | UnknownBlock] = [
@@ -395,7 +414,7 @@ class AnthropicAdapter(ProviderAdapter):
                 text=text,
                 provider_data=_extra_provider_data(raw, {"type", "text", "thinking"}),
             )
-        if block_type == "image":
+        if block_type == "image" and "source" in raw:
             return ImageBlock(
                 source=raw["source"],
                 provider_data=_extra_provider_data(raw, {"type", "source"}),
@@ -407,17 +426,18 @@ class AnthropicAdapter(ProviderAdapter):
         sub: dict[str, Any],  # Any: raw JSON dict
     ) -> TextBlock | ImageBlock | UnknownBlock:
         sub_type = sub.get("type")
-        if sub_type == "text":
+        if sub_type == "text" and "text" in sub:
             return TextBlock(
                 text=sub["text"],
                 provider_data=_extra_provider_data(sub, {"type", "text"}),
             )
-        if sub_type == "image":
+        if sub_type == "image" and "source" in sub:
             return ImageBlock(
                 source=sub["source"],
                 provider_data=_extra_provider_data(sub, {"type", "source"}),
             )
-        # Unknown sub-block: preserve verbatim instead of a lossy str() coercion.
+        # Unknown or incomplete sub-block: preserve verbatim instead of a lossy
+        # str() coercion or a KeyError that would drop the whole request.
         return UnknownBlock(raw=sub)
 
     @classmethod
@@ -516,7 +536,7 @@ class AnthropicAdapter(ProviderAdapter):
     @staticmethod
     def _parse_sampling(data: dict[str, Any]) -> SamplingParams:  # Any: raw JSON
         return SamplingParams(
-            max_tokens=data["max_tokens"],
+            max_tokens=data.get("max_tokens", 0),
             temperature=data.get("temperature"),
             top_p=data.get("top_p"),
             top_k=data.get("top_k"),
@@ -533,14 +553,14 @@ class AnthropicAdapter(ProviderAdapter):
         blocks: list[TextBlock | ToolUseBlock | ThinkingBlock | UnknownBlock] = []
         for item in raw:
             block_type = item.get("type", "unknown")
-            if block_type == "text":
+            if block_type == "text" and "text" in item:
                 blocks.append(
                     TextBlock(
                         text=item["text"],
                         provider_data=_extra_provider_data(item, {"type", "text"}),
                     )
                 )
-            elif block_type == "tool_use":
+            elif block_type == "tool_use" and {"id", "name", "input"} <= item.keys():
                 blocks.append(
                     ToolUseBlock(
                         id=item["id"],
