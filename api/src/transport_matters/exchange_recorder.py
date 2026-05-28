@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import uuid
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from transport_matters import broadcast
 from transport_matters.config import get_settings
@@ -17,6 +17,10 @@ from transport_matters.exchange_stats import (
     stamp_pipeline_tokens,
 )
 from transport_matters.ir import InternalRequest, InternalResponse
+from transport_matters.request_diff import (
+    outbound_request_if_changed,
+    request_unchanged,
+)
 from transport_matters.storage import (
     CodexTurnListSummary,
     IndexEntry,
@@ -59,21 +63,11 @@ async def _persist_exchange(
         return False
 
 
-def _curated_request_raw(
-    adapter: Any,
-    original_raw: bytes,
-    curated_ir: InternalRequest,
-) -> bytes | None:
-    """Return the exact outbound request bytes when they differ from the input."""
-    curated_raw = adapter.outbound_request(curated_ir)
-    return curated_raw if curated_raw != original_raw else None
-
-
 def _persistable_curated_ir(
     curated_ir: InternalRequest, original_ir: InternalRequest
 ) -> InternalRequest | None:
     """Return a validated curated IR snapshot or None when it should not be stored."""
-    if curated_ir == original_ir:
+    if request_unchanged(original_ir, curated_ir):
         return None
     try:
         return InternalRequest.model_validate(curated_ir.model_dump(mode="python"))
@@ -303,7 +297,7 @@ async def _persist_http_exchange(
     artifacts = ExchangeArtifacts(
         request_raw=raw_req,
         request_ir=ir,
-        request_curated_raw=_curated_request_raw(adapter, raw_req, curated_ir),
+        request_curated_raw=outbound_request_if_changed(adapter, ir, curated_ir),
         request_curated_ir=_persistable_curated_ir(curated_ir, ir),
         request_audit=audit,
         response_raw=raw_res or None,
@@ -371,7 +365,7 @@ async def _persist_http_provisional_exchange(
     artifacts = ExchangeArtifacts(
         request_raw=raw_req,
         request_ir=ir,
-        request_curated_raw=_curated_request_raw(adapter, raw_req, curated_ir),
+        request_curated_raw=outbound_request_if_changed(adapter, ir, curated_ir),
         request_curated_ir=_persistable_curated_ir(curated_ir, ir),
         request_audit=audit,
     )
@@ -501,7 +495,7 @@ async def _finalize_http_provisional_exchange(
         update={
             "request_raw": raw_req,
             "request_ir": ir,
-            "request_curated_raw": _curated_request_raw(adapter, raw_req, curated_ir),
+            "request_curated_raw": outbound_request_if_changed(adapter, ir, curated_ir),
             "request_curated_ir": _persistable_curated_ir(curated_ir, ir),
             "request_audit": audit,
             "response_raw": raw_res or None,

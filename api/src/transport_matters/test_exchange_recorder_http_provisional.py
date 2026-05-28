@@ -210,6 +210,55 @@ async def test_persist_http_provisional_exchange_stores_and_broadcasts_pending_r
     assert event["track_id"] == "track-http"
 
 
+def _make_noop_state() -> RequestFlowState:
+    """A no-op pipeline state: curated IR equals the original, wire bytes differ.
+
+    ``raw_request`` is kept in the original (non-canonical) key order so it
+    diverges from the serializer's sorted output, reproducing the case where a
+    byte comparison would wrongly record a curated artifact.
+    """
+    adapter = AnthropicAdapter()
+    request_ir = _make_ir("same system")
+    wire_bytes = json.dumps(
+        {
+            "model": "claude-3-5-sonnet",
+            "system": [{"type": "text", "text": "same system"}],
+            "max_tokens": 1024,
+            "messages": [
+                {"role": "user", "content": [{"type": "text", "text": "hello"}]}
+            ],
+        }
+    ).encode()
+    return RequestFlowState(
+        adapter=adapter,
+        request_ir=request_ir,
+        raw_request=wire_bytes,
+        curated_request_ir=request_ir,
+        audit=OverrideAudit(entries=[], chars_before=100, chars_after=100),
+        mutated_manually=False,
+        provisional_exchange_id=None,
+    )
+
+
+async def test_provisional_exchange_skips_curated_artifacts_when_pipeline_is_noop(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = _make_noop_state()
+    flow = cast("http.HTTPFlow", _Flow())
+    monkeypatch.setattr(recorder, "_persist_track_assignment", lambda *a, **k: None)
+
+    exchange_id = await recorder._persist_http_provisional_exchange(flow, state)
+    assert exchange_id is not None
+
+    storage = await get_storage()
+    artifacts = await storage.read_exchange(exchange_id)
+    # No-op pipeline: forward the original wire bytes, store no curated artifacts
+    # even though the serializer would have reordered keys.
+    assert artifacts.request_raw == state.raw_request
+    assert artifacts.request_curated_raw is None
+    assert artifacts.request_curated_ir is None
+
+
 async def test_persist_http_provisional_exchange_reuses_existing_id(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

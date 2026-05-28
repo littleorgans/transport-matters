@@ -46,6 +46,7 @@ from transport_matters.pause_session import (
     handle_breakpoint,
     handle_websocket_breakpoint,
 )
+from transport_matters.request_diff import outbound_request_if_changed
 from transport_matters.request_pipeline import (
     capture_codex_initial_request_ir,
     parse_request_ir,
@@ -132,7 +133,9 @@ async def handle_http_request(
         "Skipping breakpoint for %s (another flow paused or not armed)",
         flow.id,
     )
-    flow.request.set_text(adapter.outbound_request(curated_ir).decode())
+    outbound = outbound_request_if_changed(adapter, ir, curated_ir)
+    if outbound is not None:
+        flow.request.set_text(outbound.decode())
 
 
 def log_websocket_start(flow: http.HTTPFlow) -> None:
@@ -239,7 +242,9 @@ async def handle_codex_websocket_message(flow: http.HTTPFlow) -> None:
         logger.info("CODEX BREAKPOINT %s armed, pausing", flow.id)
         await handle_websocket_breakpoint(flow, message, adapter, ir, curated_ir, audit)
         return
-    message.content = adapter.outbound_request(curated_ir)
+    outbound = outbound_request_if_changed(adapter, ir, curated_ir)
+    if outbound is not None:
+        message.content = outbound
 
 
 async def handle_codex_websocket_end(flow: http.HTTPFlow) -> None:

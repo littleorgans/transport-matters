@@ -23,7 +23,6 @@ from transport_matters.codex.transport import (
 )
 from transport_matters.config import get_settings
 from transport_matters.exchange_recorder import (
-    _curated_request_raw,
     _emit_exchange_deleted,
     _persist_exchange,
     _persist_track_assignment,
@@ -43,6 +42,7 @@ from transport_matters.ir import (
     SamplingParams,
     TextBlock,
 )
+from transport_matters.request_diff import outbound_request_if_changed
 from transport_matters.storage import (
     CodexTurnListSummary,
     IndexEntry,
@@ -135,7 +135,7 @@ async def _persist_codex_provisional_exchange(flow: http.HTTPFlow) -> str | None
     artifacts = ExchangeArtifacts(
         request_raw=raw_req,
         request_ir=ir,
-        request_curated_raw=_curated_request_raw(adapter, raw_req, curated_ir),
+        request_curated_raw=outbound_request_if_changed(adapter, ir, curated_ir),
         request_curated_ir=_persistable_curated_ir(curated_ir, ir),
         request_audit=audit,
         transport=transport,
@@ -264,7 +264,7 @@ async def _persist_codex_exchange(
     artifacts = ExchangeArtifacts(
         request_raw=raw_req,
         request_ir=ir,
-        request_curated_raw=_curated_request_raw(adapter, raw_req, curated_ir),
+        request_curated_raw=outbound_request_if_changed(adapter, ir, curated_ir),
         request_curated_ir=_persistable_curated_ir(curated_ir, ir),
         request_audit=audit,
         response_ir=res_ir,
