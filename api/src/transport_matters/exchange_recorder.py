@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import uuid
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from transport_matters import broadcast
+from transport_matters.client_version import detect_client_version
 from transport_matters.config import get_settings
 from transport_matters.counting import TokenCountingClient, _relevant_auth_headers
 from transport_matters.exchange_stats import (
@@ -16,7 +18,14 @@ from transport_matters.exchange_stats import (
     build_req_stats,
     stamp_pipeline_tokens,
 )
-from transport_matters.ir import InternalRequest, InternalResponse
+from transport_matters.ir import (
+    InternalRequest,
+    InternalResponse,
+    Message,
+    RequestMetadata,
+    SamplingParams,
+    TextBlock,
+)
 from transport_matters.request_diff import (
     outbound_request_if_changed,
     request_unchanged,
@@ -165,6 +174,108 @@ def _http_error_response_stats(
         stop_reason=f"http_{status_code}",
         text_chars=len(response_text),
     )
+
+
+def _request_raw_bytes(flow: http.HTTPFlow) -> bytes:
+    """Capture the request body binary-safely, never raising on bad bodies."""
+    request = getattr(flow, "request", None)
+    if request is None:
+        return b""
+    for attr in ("raw_content", "content"):
+        value = getattr(request, attr, None)
+        if isinstance(value, bytes):
+            return value
+    try:
+        text = request.get_text()
+    except Exception:
+        return b""
+    return text.encode("utf-8", errors="replace") if isinstance(text, str) else b""
+
+
+def _unparsed_model(raw: bytes, adapter_name: str) -> str:
+    """Best-effort model from the raw JSON body, with a stable fallback."""
+    try:
+        decoded = json.loads(raw)
+    except Exception:
+        return f"{adapter_name}/unparsed"
+    model = decoded.get("model") if isinstance(decoded, dict) else None
+    return model if isinstance(model, str) and model else f"{adapter_name}/unparsed"
+
+
+def _unparsed_request_ir(
+    raw: bytes,
+    adapter_name: str,
+    client_version: str | None,
+) -> InternalRequest:
+    """Fabricate a synthetic IR marking a request we could not parse."""
+    provider_extras: dict[str, Any] = {"type": "transport.parse_failure"}
+    if client_version is not None:
+        provider_extras["client_version"] = client_version
+    return InternalRequest(
+        model=_unparsed_model(raw, adapter_name),
+        provider=adapter_name,
+        system=[],
+        tools=[],
+        messages=[Message(role="user", content=[TextBlock(text="[unparsed request]")])],
+        sampling=SamplingParams(max_tokens=0),
+        metadata=RequestMetadata(),
+        provider_extras=provider_extras,
+    )
+
+
+async def _persist_unparsed_http_exchange(
+    flow: http.HTTPFlow,
+    adapter: Any,  # Any: adapter protocol has no shared base
+    codex_http: bool,
+) -> None:
+    """Record a synthetic exchange for a request the adapter could not parse.
+
+    Preserves the raw request bytes and surfaces it live in the UI rather than
+    silently dropping it. Never mutates ``flow.request`` and never raises: a
+    recording failure must not crash the proxy hook.
+    """
+    try:
+        raw = _request_raw_bytes(flow)
+        headers = getattr(flow.request, "headers", None)
+        client_version = detect_client_version(headers)
+        logger.warning(
+            "Unsupported/unparsable request shape from %s; "
+            "Transport Matters may need updating to support this client version",
+            client_version or "unknown client",
+        )
+        ir = _unparsed_request_ir(raw, adapter.name, client_version)
+        req_stats = build_req_stats(ir)
+
+        from transport_matters.storage import get_storage
+
+        storage = await get_storage()
+        exchange_id = str(uuid.uuid4())
+        ts = datetime.now(UTC)
+        ts_slug = ts.strftime("%Y%m%dT%H%M%S")
+        run_id = get_settings().run_id
+        entry = IndexEntry(
+            id=exchange_id,
+            run_id=run_id,
+            ts=ts,
+            provider=ir.provider,
+            model=ir.model,
+            path=f"exchanges/{ts_slug}-{exchange_id[:8]}/",
+            req=req_stats,
+        )
+        artifacts = ExchangeArtifacts(request_raw=raw, request_ir=ir)
+        if not await _persist_exchange(storage, entry, artifacts):
+            return
+        emit_exchange(
+            ir,
+            req_stats,
+            None,
+            exchange_id,
+            ts,
+            run_id,
+            flow_id=flow.id,
+        )
+    except Exception:
+        logger.exception("Failed to record unparsed request for flow %s", flow.id)
 
 
 def _assign_track(

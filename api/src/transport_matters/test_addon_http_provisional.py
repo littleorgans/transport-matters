@@ -573,3 +573,89 @@ async def test_addon_error_skips_when_provisional_exchange_id_missing(
     monkeypatch.setattr(addon_module, "_delete_http_provisional_exchange", fail_delete)
 
     await TransportMattersAddon().error(flow)
+
+
+async def test_http_request_records_unparsed_exchange_on_parse_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    flow = cast("http.HTTPFlow", _Flow())
+    original_text = cast("_Flow", flow).request.text
+    calls: list[tuple[http.HTTPFlow, object, bool]] = []
+
+    async def fake_parse(
+        parse_flow: http.HTTPFlow,
+        adapter: object,
+    ) -> None:
+        return None
+
+    async def fake_unparsed(
+        record_flow: http.HTTPFlow,
+        adapter: object,
+        codex_http: bool,
+    ) -> None:
+        calls.append((record_flow, adapter, codex_http))
+
+    async def fail_persist(*args: object, **kwargs: object) -> str:
+        raise AssertionError("parse failure must not reach the happy path")
+
+    monkeypatch.setattr(addon_handlers, "get_adapter", lambda flow: object())
+    monkeypatch.setattr(addon_handlers, "parse_request_ir", fake_parse)
+    monkeypatch.setattr(
+        addon_handlers, "_persist_unparsed_http_exchange", fake_unparsed
+    )
+    monkeypatch.setattr(
+        addon_handlers, "_persist_http_provisional_exchange", fail_persist
+    )
+
+    await addon_handlers.handle_http_request(flow, None)
+
+    assert len(calls) == 1
+    assert calls[0][0] is flow
+    assert calls[0][2] is False
+    # The wire bytes must pass through untouched on the failure path.
+    assert cast("_Flow", flow).request.text == original_text
+
+
+async def test_codex_ws_records_unparsed_exchange_when_initial_frame_unparsable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = _WSState()
+    state.initial_client_frame = b"unparsable-frame"
+    message = _WSMessage()
+    flow = cast(
+        "http.HTTPFlow",
+        types.SimpleNamespace(
+            id="flow-ws-unparsed",
+            websocket=types.SimpleNamespace(messages=[object()]),
+        ),
+    )
+    calls: list[tuple[http.HTTPFlow, bytes]] = []
+
+    async def fake_unparsed(record_flow: http.HTTPFlow, raw_frame: bytes) -> None:
+        calls.append((record_flow, raw_frame))
+
+    async def fail_pipeline(*args: object, **kwargs: object) -> object:
+        raise AssertionError("unparsable frame must not reach the pipeline")
+
+    monkeypatch.setattr(
+        addon_handlers,
+        "record_codex_websocket_message",
+        lambda f: (state, message, True),
+    )
+    monkeypatch.setattr(
+        addon_handlers, "_clear_codex_breakpoint_lifecycle", lambda f: None
+    )
+    monkeypatch.setattr(
+        addon_handlers, "capture_codex_initial_request_ir", lambda f, frame: None
+    )
+    monkeypatch.setattr(addon_handlers, "clear_request_flow_state", lambda f: None)
+    monkeypatch.setattr(
+        addon_handlers, "_persist_unparsed_codex_exchange", fake_unparsed
+    )
+    monkeypatch.setattr(addon_handlers, "run_pipeline", fail_pipeline)
+
+    await addon_handlers.handle_codex_websocket_message(flow)
+
+    assert calls == [(flow, b"unparsable-frame")]
+    # Transparency: the client frame on the wire is never rewritten.
+    assert message.content == b"ORIGINAL_FRAME"

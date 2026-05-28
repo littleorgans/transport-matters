@@ -12,6 +12,7 @@ from transport_matters.codex.exchange import (
     _finalize_codex_provisional_exchange,
     _persist_codex_handshake_failure,
     _persist_codex_provisional_exchange,
+    _persist_unparsed_codex_exchange,
 )
 from transport_matters.codex.exchange_derivation import (
     _clear_codex_breakpoint_lifecycle,
@@ -34,6 +35,7 @@ from transport_matters.counting import (
 from transport_matters.exchange_recorder import (
     _persist_http_exchange,
     _persist_http_provisional_exchange,
+    _persist_unparsed_http_exchange,
 )
 from transport_matters.flow_state import (
     capture_request_flow_state,
@@ -80,6 +82,7 @@ async def handle_http_request(
     set_recent_auth(_relevant_auth_headers(flow.request.headers))
     result = await parse_request_ir(flow, adapter)
     if result is None:
+        await _persist_unparsed_http_exchange(flow, adapter, codex_http)
         return
     raw, ir = result
 
@@ -204,6 +207,7 @@ async def handle_codex_websocket_message(flow: http.HTTPFlow) -> None:
         state.initial_client_frame or b"",
     )
     if ir is None:
+        await _persist_unparsed_codex_exchange(flow, state.initial_client_frame or b"")
         clear_request_flow_state(flow)
         return
     request_state = get_request_flow_state(flow)
