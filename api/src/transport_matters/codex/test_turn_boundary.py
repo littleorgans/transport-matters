@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from transport_matters.codex.turn_boundary import (
+from transport_matters.codex.protocol import (
     CODEX_INTERRUPTED_STATUS,
     codex_assistant_completed_item,
     codex_close_stop_reason,

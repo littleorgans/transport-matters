@@ -58,7 +58,7 @@ from .net import _port_in_use, _wait_for_port_ready, validate_port_option
 from .paths import resolve_paths
 from .ports import PortAllocationError, allocate_port_pair
 from .prompt import inject_system_prompt, user_supplied_system_prompt
-from .runner import BindFailure, _run_children, _run_client_with_retry, _run_with_retry
+from .runner import BindFailure, _run_children, _run_client_with_retry
 from .start_cmd import run_start
 from .trust import resolve_codex_ca_certificate
 
@@ -75,7 +75,6 @@ __all__ = [
     "_print_banner",
     "_run_children",
     "_run_client_with_retry",
-    "_run_with_retry",
     "_wait_for_port_ready",
     "allocate_port_pair",
     "inject_system_prompt",

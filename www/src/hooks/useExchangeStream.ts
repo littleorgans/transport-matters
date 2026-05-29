@@ -4,32 +4,9 @@ import { apiUrl } from "../api";
 import { useUIStore } from "../stores/uiStore";
 import { applyExchangeStreamEvent } from "./exchangeStreamEvents";
 
-export interface ExchangeStreamSourceHandlers {
-  onOpen: () => void;
-  onError: () => void;
-  onMessage: (message: string) => void;
-}
-
-export interface ExchangeStreamSource {
-  close: () => void;
-}
-
-export interface BrowserExchangeStreamSourceOptions {
+export type UseExchangeStreamOptions = {
   baseUrl?: string;
-}
-
-export function createBrowserExchangeStreamSource(
-  handlers: ExchangeStreamSourceHandlers,
-  { baseUrl }: BrowserExchangeStreamSourceOptions = {},
-): ExchangeStreamSource {
-  const source = new EventSource(apiUrl("/api/stream", baseUrl));
-  source.onopen = handlers.onOpen;
-  source.onerror = handlers.onError;
-  source.onmessage = (event: MessageEvent<string>) => handlers.onMessage(event.data);
-  return { close: () => source.close() };
-}
-
-export type UseExchangeStreamOptions = BrowserExchangeStreamSourceOptions;
+};
 
 /**
  * Browser SSE pump. EventSource construction stays here; shared event
@@ -54,20 +31,16 @@ export function useExchangeStream({ baseUrl }: UseExchangeStreamOptions = {}): {
   }, [connected, queryClient]);
 
   useEffect(() => {
-    const source = createBrowserExchangeStreamSource(
-      {
-        onOpen: () => setConnected(true),
-        onError: () => setConnected(false),
-        onMessage: (message) =>
-          applyExchangeStreamEvent(message, {
-            queryClient,
-            setPausedFlow,
-            clearPausedFlow,
-            setSelectedId,
-          }),
-      },
-      { baseUrl },
-    );
+    const source = new EventSource(apiUrl("/api/stream", baseUrl));
+    source.onopen = () => setConnected(true);
+    source.onerror = () => setConnected(false);
+    source.onmessage = (event: MessageEvent<string>) =>
+      applyExchangeStreamEvent(event.data, {
+        queryClient,
+        setPausedFlow,
+        clearPausedFlow,
+        setSelectedId,
+      });
 
     return () => source.close();
   }, [baseUrl, queryClient, setPausedFlow, clearPausedFlow, setSelectedId]);

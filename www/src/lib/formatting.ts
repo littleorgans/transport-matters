@@ -18,7 +18,6 @@ export function displayCwd(cwd: string): string {
   if (trimmed === "") return cwd || "/";
 
   const parts = trimmed.split(/[\\/]/).filter(Boolean);
-  if (parts.length === 0) return trimmed.startsWith("/") ? "/" : trimmed;
   if (parts.length === 1) return parts[0] ?? trimmed;
   return parts.slice(-2).join("/");
 }

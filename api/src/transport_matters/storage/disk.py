@@ -155,14 +155,14 @@ class DiskStorageBackend(DiskStorageRecoveryMixin, StorageBackend):
         if self._root.exists():
             for d in self._root.iterdir():
                 if d.is_dir() and not self._layout.is_tmp_exchange_dir(d):
-                    short = d.name.rsplit("-", 1)[-1]
+                    short = self._layout.short_id_from_dir_name(d.name)
                     dir_by_short[short] = d
 
         corrected = 0
         for exchange_id, entry in list(entries.items()):
             if entry.res is None or entry.res.cache_creation_input_tokens != 0:
                 continue
-            exchange_dir = dir_by_short.get(exchange_id[:8])
+            exchange_dir = dir_by_short.get(self._layout.short_id(exchange_id))
             if exchange_dir is None:
                 continue
             resp_ir_path = self._layout.artifact_paths(exchange_dir).response_ir
@@ -488,10 +488,6 @@ class DiskStorageBackend(DiskStorageRecoveryMixin, StorageBackend):
             raise
 
     # ── private helpers ─────────────────────────────────────────────
-
-    def _exchange_dir(self, exchange_id: str, artifacts: ExchangeArtifacts) -> Path:
-        """Build the per-exchange directory path: ``{ts_slug}-{id[:8]}/``."""
-        return self._layout.new_exchange_dir(exchange_id)
 
     def _find_exchange_dir(self, exchange_id: str) -> Path:
         """Locate an exchange directory by its ID prefix."""

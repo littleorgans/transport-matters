@@ -24,25 +24,13 @@ interface EditorToolGroup {
   totalChars: number;
 }
 
-/**
- * Plugin prefix for a tool name. Built-in tools (no ``__`` separator)
- * return "built-in"; MCP tools use the plugin segment between the
- * leading ``mcp__`` and the tool name. Exposed so the detail view can
- * derive the same grouping as the editor.
- */
-export function pluginLabel(name: string): string {
+function pluginLabel(name: string): string {
   if (!name.startsWith("mcp__")) return "built-in";
   const parts = name.split("__");
   return (parts[1] ?? "").replace(/^plugin_/, "");
 }
 
-/**
- * Bucket tools by plugin prefix. ``built-in`` sorts first; the rest
- * sort alphabetically. Preserved here (not in ToolGroupSection) so
- * callers that need only the grouping — like buildEditorGroups below
- * or external render paths — don't drag in the section chrome.
- */
-export function groupTools<T extends { name: string }>(tools: T[]): [string, T[]][] {
+function groupTools<T extends { name: string }>(tools: T[]): [string, T[]][] {
   const map: Record<string, T[]> = {};
   for (const t of tools) {
     const group = pluginLabel(t.name);

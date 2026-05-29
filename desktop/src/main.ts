@@ -21,14 +21,7 @@ import {
 
 const moduleDir = dirname(fileURLToPath(import.meta.url));
 
-export const DEFAULT_PROXY_PORT = 8787;
-export {
-  APP_NAME,
-  DEFAULT_RENDERER_URL,
-  DEFAULT_WEB_PORT,
-  createWindowOptions,
-  rendererUrlForPort,
-} from "./window.js";
+const DEFAULT_PROXY_PORT = 8787;
 
 export interface MainWindowOptions {
   preloadPath?: string;

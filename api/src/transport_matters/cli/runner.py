@@ -23,7 +23,6 @@ import typer
 
 from transport_matters.supervisor import SIGNAL_EXIT, ProcessSupervisor
 
-from .launch_runtime import build_managed_child_env
 from .net import _wait_for_port_ready, loopback_http_url
 from .ports import PortAllocationError, allocate_port_pair
 
@@ -40,7 +39,6 @@ __all__ = [
     "_run_client_children",
     "_run_client_with_retry",
     "_run_children",
-    "_run_with_retry",
 ]
 
 
@@ -294,58 +292,6 @@ def _handle_bind_failure(
     if not web_user_supplied and (not failing or web_port in failing):
         web_port = new_web
     return proxy_port, web_port
-
-
-def _run_with_retry(
-    *,
-    proxy_port: int,
-    web_port: int,
-    proxy_user_supplied: bool,
-    web_user_supplied: bool,
-    build_invocation: Callable[
-        [int, int], tuple[list[str], dict[str, str], list[str] | None]
-    ],
-    print_banner_for: Callable[[int, int], None],
-    write_manifest_for: Callable[[int, int], None],
-    resolved_storage: Path,
-    working_dir: Path,
-) -> None:
-    """Compatibility adapter for the older Claude launch callback contract."""
-
-    def build_client_invocation(
-        current_proxy_port: int,
-        current_web_port: int,
-    ) -> tuple[list[str], dict[str, str], ManagedClient | None]:
-        mitmdump_argv, child_env, claude_argv = build_invocation(
-            current_proxy_port,
-            current_web_port,
-        )
-        client = None
-        if claude_argv is not None:
-            client = ManagedClient(
-                name="claude",
-                display_name="Claude",
-                argv=claude_argv,
-                env=build_managed_child_env(
-                    child_env,
-                    extra_env={
-                        "ANTHROPIC_BASE_URL": loopback_http_url(current_proxy_port)
-                    },
-                ),
-                cwd=working_dir,
-            )
-        return mitmdump_argv, child_env, client
-
-    _run_client_with_retry(
-        proxy_port=proxy_port,
-        web_port=web_port,
-        proxy_user_supplied=proxy_user_supplied,
-        web_user_supplied=web_user_supplied,
-        build_invocation=build_client_invocation,
-        print_banner_for=print_banner_for,
-        write_manifest_for=write_manifest_for,
-        resolved_storage=resolved_storage,
-    )
 
 
 def _run_client_with_retry(

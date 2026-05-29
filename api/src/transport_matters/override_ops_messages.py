@@ -31,22 +31,6 @@ def codex_has_tool_result_only_turn(ir: InternalRequest) -> bool:
     return has_tool_result and not has_tool_use
 
 
-def count_chars(ir: InternalRequest) -> int:
-    """Rough character count of the IR payload."""
-    return (
-        sum(len(part.text) for part in ir.system)
-        + sum(
-            len(tool.name) + len(tool.description) + len(json.dumps(tool.input_schema))
-            for tool in ir.tools
-        )
-        + sum(
-            len(block.model_dump_json())
-            for message in ir.messages
-            for block in message.content
-        )
-    )
-
-
 def apply_tool_toggle(
     ir: InternalRequest, tool_name: str, enabled: bool
 ) -> tuple[InternalRequest, int, bool]:

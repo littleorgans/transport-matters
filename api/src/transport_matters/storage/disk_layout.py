@@ -141,3 +141,6 @@ class DiskStorageLayout:
 
     def short_id(self, exchange_id: str) -> str:
         return exchange_id[:8]
+
+    def short_id_from_dir_name(self, exchange_dir_name: str) -> str:
+        return exchange_dir_name.rsplit("-", 1)[-1]
