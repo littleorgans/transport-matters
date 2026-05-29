@@ -27,7 +27,13 @@ from transport_matters.storage_roots import default_workspaces_root
 if TYPE_CHECKING:
     from pathlib import Path
 
-__all__ = ["WorkspaceId", "workspace_id", "workspace_root", "workspace_storage"]
+__all__ = [
+    "WorkspaceId",
+    "run_root",
+    "workspace_id",
+    "workspace_root",
+    "workspace_storage",
+]
 
 
 # How many tail path segments contribute to the slug. Three captures the
@@ -66,22 +72,34 @@ def workspace_id(cwd: Path) -> WorkspaceId:
 
 
 def workspace_root(cwd: Path) -> Path:
-    """Return the on-disk workspace directory for *cwd*.
+    """Return the on-disk workspace *container* for *cwd*.
 
-    Does **not** create the directory. Callers that need it materialised
-    should ``mkdir(parents=True, exist_ok=True)`` themselves.
+    This is the ``{slug}/{hash}/`` directory shared by every run launched
+    from *cwd*. Individual runs live in ``{run_id}/`` subdirectories
+    below it (see :func:`run_root`), so two instances in the same CWD
+    never collide. Does **not** create the directory.
     """
     wid = workspace_id(cwd)
     return default_workspaces_root() / wid.slug / wid.hash
 
 
-def workspace_storage(cwd: Path) -> Path:
-    """Return the per-workspace storage directory for *cwd*, creating it.
+def run_root(cwd: Path, run_id: str) -> Path:
+    """Return the per-run directory for *cwd* / *run_id*.
 
-    Identical path to :func:`workspace_root` — the lock, the manifest,
-    and the captured exchanges all live under the same ``{slug}/{hash}/``
-    root so a single ``rm -rf`` on that directory wipes one workspace
-    cleanly. The important side effect is the ``mkdir``: callers use the
+    Layout: ``{slug}/{hash}/{run_id}/``. Each launch gets a fresh
+    ``run_id`` (a UUID), so this path is unique per instance even when
+    several instances share *cwd*. The lock, the manifest, and the
+    captured exchanges all live here, so one ``rm -rf`` wipes a single
+    run cleanly. Does **not** create the directory.
+    """
+    return workspace_root(cwd) / run_id
+
+
+def workspace_storage(cwd: Path, run_id: str) -> Path:
+    """Return the default storage directory for one run, creating it.
+
+    Identical path to :func:`run_root` — the per-run ``{slug}/{hash}/{run_id}/``
+    directory. The important side effect is the ``mkdir``: callers use the
     returned path as ``settings.storage_dir`` input, so it must exist by
     the time the addon's :class:`DiskStorageBackend` opens it.
 
@@ -91,7 +109,7 @@ def workspace_storage(cwd: Path) -> Path:
     previous call or (b) feed its own output back to itself once the CLI
     sets the env var for the child process.
     """
-    root = workspace_root(cwd)
+    root = run_root(cwd, run_id)
     root.mkdir(parents=True, exist_ok=True)
     return root
 

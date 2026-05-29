@@ -18,7 +18,6 @@ from transport_matters.cli.trust import (
     SystemTrustSnapshotError,
     TrustBundleWriteError,
 )
-from transport_matters.workspace import workspace_storage
 
 from ._helpers import _patch_allocate_pairs, _which_by_name
 
@@ -133,7 +132,8 @@ def test_codex_writes_workspace_manifest_visible_to_managed_child(
     def _capture_manifest(**kwargs: Any) -> None:
         client = kwargs["client"]
         assert client is not None
-        manifest_path = workspace_root(client.cwd) / "manifest.json"
+        run_id = client.env["TRANSPORT_MATTERS_RUN_ID"]
+        manifest_path = workspace_root(client.cwd) / run_id / "manifest.json"
         captured["exists_mid_run"] = manifest_path.exists()
         captured["raw"] = json.loads(manifest_path.read_text(encoding="utf-8"))
 
@@ -150,7 +150,7 @@ def test_codex_writes_workspace_manifest_visible_to_managed_child(
     kwargs = spy_run_client_children.call_args.kwargs
     client_env = kwargs["client"].env
     raw = captured["raw"]
-    expected_storage = workspace_storage(workdir)
+    expected_storage = workspace_root(workdir) / raw["run_id"]
     assert captured["exists_mid_run"] is True
     assert raw["cwd"] == str(workdir)
     assert raw["proxy_port"] == 9000

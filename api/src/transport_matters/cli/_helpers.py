@@ -11,7 +11,8 @@ import re
 from typing import TYPE_CHECKING, Any
 
 from transport_matters.manifest import Manifest
-from transport_matters.workspace import workspace_id
+from transport_matters.manifest import write as _manifest_write
+from transport_matters.workspace import run_root, workspace_id
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -89,6 +90,7 @@ def _sample_manifest(
     pid: int,
     proxy_port: int = 8787,
     web_port: int = 8788,
+    run_id: str = "run-001",
 ) -> Manifest:
     """Build a Manifest with sane defaults for the test under inspection."""
     wid = workspace_id(workdir)
@@ -98,9 +100,21 @@ def _sample_manifest(
         proxy_port=proxy_port,
         web_port=web_port,
         storage_dir=str(storage),
-        run_id="run-001",
+        run_id=run_id,
         started_at="2026-04-15T12:00:00+00:00",
         transport_matters_version="0.5.0",
         slug=wid.slug,
         hash=wid.hash,
     )
+
+
+def _write_run_manifest(workdir: Path, m: Manifest) -> Path:
+    """Materialise *m* at its per-run directory and return that directory.
+
+    The directory is ``{slug}/{hash}/{run_id}/`` under *workdir*'s
+    workspace, matching where a live launch would place lock + manifest.
+    """
+    run_dir = run_root(workdir, m.run_id)
+    run_dir.mkdir(parents=True, exist_ok=True)
+    _manifest_write(run_dir / "manifest.json", m)
+    return run_dir

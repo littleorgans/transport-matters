@@ -89,7 +89,7 @@ For Codex, pass an explicit working directory such as `.` before `--` when the f
 
 ## What you get
 
-Every captured turn persists a workspace scoped artifact bundle under `~/.transport-matters/workspaces/{slug}/{hash}/...`.
+Every captured turn persists a run scoped artifact bundle under `~/.transport-matters/workspaces/{slug}/{hash}/{run_id}/...`. The `{slug}/{hash}/` directory is the workspace container for one CWD; each launch owns a `{run_id}/` subdirectory, so its lock, manifest, `index.jsonl`, captured exchanges, and `mitmdump.log` never collide with another run.
 
 For Claude and Codex, Transport Matters captures:
 - the original outbound request
@@ -116,6 +116,16 @@ The normal operator flow is:
 6. Inspect the captured artifacts if something fails
 
 For Codex, later websocket turns carry incremental request payloads rather than replaying the full conversation on every turn. The UI reflects that wire reality.
+
+## Multiple instances in one directory
+
+You can run several `transport-matters claude` / `transport-matters codex` instances from the same directory at once. Each launch mints a fresh `run_id`, auto-allocates its own proxy and web ports, and gets an isolated storage root, so two instances never share a capture store, log, or breakpoint state.
+
+- `transport-matters list` shows every live run separately, with its run id, ports, and storage dir.
+- `transport-matters paths` run from *inside* a session reports that session's own paths (it reads `TRANSPORT_MATTERS_STORAGE_DIR` from the env). Run from a bare shell where several live runs share the directory, it lists them and asks you to pick one rather than guessing; pass one of the listed storage dirs back with `--workspace <storage-dir>` to select it.
+- `--storage-dir` is honored verbatim. Pointing two concurrent runs at the same explicit storage dir is your responsibility; the default per-run path never collides.
+
+Each web UI serves exactly one run. There is no aggregated view across instances yet: breakpoint state, the SSE stream, settings, and storage are all process local, so a single UI supervising several runs needs a coordinator that does not exist today. That aggregation is a deliberately separate, future workstream.
 
 ## Source checkout
 

@@ -52,6 +52,9 @@ Thumbs.db
 # Superpowers
 .superpowers/
 
+# Claude Code local state (worktrees, workflows, session data)
+.claude/
+
 # Local docs
 DOCS/
 LESSONS.md

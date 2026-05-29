@@ -14,10 +14,14 @@ from typing import TYPE_CHECKING, Protocol
 import typer
 
 from transport_matters import __version__
-from transport_matters.lock import WorkspaceLock, WorkspaceLocked
+from transport_matters.lock import WorkspaceLock
 from transport_matters.manifest import Manifest
 from transport_matters.manifest import write as manifest_write
-from transport_matters.workspace import workspace_id, workspace_root, workspace_storage
+from transport_matters.workspace import (
+    run_root,
+    workspace_id,
+    workspace_storage,
+)
 
 from .identity import CLI_COMMAND, PRODUCT_LABEL
 from .ports import PortAllocationError
@@ -235,9 +239,18 @@ def resolve_launch_ports(
     return proxy_port, web_port, proxy_user_supplied, web_user_supplied
 
 
-def resolve_storage_dir(*, storage_dir: Path | None, working_dir: Path) -> Path:
-    """Resolve the per-workspace storage root for the launch."""
-    return storage_dir if storage_dir is not None else workspace_storage(working_dir)
+def resolve_storage_dir(
+    *, storage_dir: Path | None, working_dir: Path, run_id: str
+) -> Path:
+    """Resolve the storage root for the launch.
+
+    An explicit ``--storage-dir`` is caller-owned and used verbatim. The
+    default is the per-run directory ``{slug}/{hash}/{run_id}/``, so two
+    instances launched from the same CWD get isolated storage roots.
+    """
+    if storage_dir is not None:
+        return storage_dir
+    return workspace_storage(working_dir, run_id)
 
 
 def resolve_mitmdump_or_exit(
@@ -340,37 +353,39 @@ def run_with_workspace_manifest(
     working_dir: Path,
     storage_dir: Path,
     run_id: str,
-    on_locked: Callable[[WorkspaceLocked, Path], None],
     run_launch: Callable[[Callable[[int, int], None]], None],
 ) -> None:
-    """Acquire the workspace lock, manage the manifest, and run the launch."""
+    """Acquire the per-run lock, manage the manifest, and run the launch.
+
+    The lock lives under the run directory ``{slug}/{hash}/{run_id}/``,
+    not the shared workspace container. Each launch has a fresh ``run_id``,
+    so the lock never contends: it is a per-run liveness beacon that
+    ``instances`` / ``paths`` probe to tell a live run from a stale
+    manifest, not a gate against a second instance in the same CWD.
+    """
     wid = workspace_id(working_dir)
-    ws_root = workspace_root(working_dir)
-    try:
-        with WorkspaceLock(ws_root) as wslock:
+    run_dir = run_root(working_dir, run_id)
+    with WorkspaceLock(run_dir) as wslock:
 
-            def write_manifest_for(proxy_port: int, web_port: int) -> None:
-                manifest_write(
-                    wslock.manifest_path,
-                    Manifest(
-                        cwd=str(working_dir),
-                        pid=os.getpid(),
-                        proxy_port=proxy_port,
-                        web_port=web_port,
-                        storage_dir=str(storage_dir),
-                        run_id=run_id,
-                        started_at=datetime.now(UTC).isoformat(),
-                        transport_matters_version=__version__,
-                        slug=wid.slug,
-                        hash=wid.hash,
-                    ),
-                )
+        def write_manifest_for(proxy_port: int, web_port: int) -> None:
+            manifest_write(
+                wslock.manifest_path,
+                Manifest(
+                    cwd=str(working_dir),
+                    pid=os.getpid(),
+                    proxy_port=proxy_port,
+                    web_port=web_port,
+                    storage_dir=str(storage_dir),
+                    run_id=run_id,
+                    started_at=datetime.now(UTC).isoformat(),
+                    transport_matters_version=__version__,
+                    slug=wid.slug,
+                    hash=wid.hash,
+                ),
+            )
 
-            try:
-                run_launch(write_manifest_for)
-            finally:
-                with contextlib.suppress(FileNotFoundError):
-                    wslock.manifest_path.unlink()
-    except WorkspaceLocked as exc:
-        on_locked(exc, working_dir)
-        raise typer.Exit(2) from exc
+        try:
+            run_launch(write_manifest_for)
+        finally:
+            with contextlib.suppress(FileNotFoundError):
+                wslock.manifest_path.unlink()

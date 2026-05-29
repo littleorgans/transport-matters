@@ -9,10 +9,13 @@ import pytest
 
 from transport_matters.workspace import (
     WorkspaceId,
+    run_root,
     workspace_id,
     workspace_root,
     workspace_storage,
 )
+
+_RUN_ID = "11111111-2222-3333-4444-555555555555"
 
 # --------------------------------------------------------------------------- #
 # Slug derivation                                                             #
@@ -172,18 +175,42 @@ def test_workspace_root_does_not_create_directory(tmp_path: Path) -> None:
 
 
 # --------------------------------------------------------------------------- #
+# run_root                                                                    #
+# --------------------------------------------------------------------------- #
+
+
+def test_run_root_nests_run_id_under_workspace_root() -> None:
+    cwd = Path("/tmp/project/api")
+    assert run_root(cwd, _RUN_ID) == workspace_root(cwd) / _RUN_ID
+
+
+def test_run_root_does_not_create_directory(tmp_path: Path) -> None:
+    cwd = tmp_path / "myproj"
+    cwd.mkdir()
+    assert not run_root(cwd, _RUN_ID).exists()
+
+
+def test_run_root_distinct_for_distinct_run_ids() -> None:
+    cwd = Path("/tmp/project/api")
+    other = "99999999-8888-7777-6666-555555555555"
+    assert run_root(cwd, _RUN_ID) != run_root(cwd, other)
+
+
+# --------------------------------------------------------------------------- #
 # workspace_storage                                                           #
 # --------------------------------------------------------------------------- #
 
 
-def test_workspace_storage_matches_workspace_root(
+def test_workspace_storage_nests_run_id(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Same slug/hash triple as the read-only :func:`workspace_root`."""
+    """Default storage lives one level below the workspace root, per run."""
     monkeypatch.setenv("HOME", str(tmp_path))
     cwd = tmp_path / "project"
     cwd.mkdir()
-    assert workspace_storage(cwd) == workspace_root(cwd)
+    storage = workspace_storage(cwd, _RUN_ID)
+    assert storage == workspace_root(cwd) / _RUN_ID
+    assert storage.parent == workspace_root(cwd)
 
 
 def test_workspace_storage_creates_directory(
@@ -192,7 +219,7 @@ def test_workspace_storage_creates_directory(
     monkeypatch.setenv("HOME", str(tmp_path))
     cwd = tmp_path / "project"
     cwd.mkdir()
-    path = workspace_storage(cwd)
+    path = workspace_storage(cwd, _RUN_ID)
     assert path.is_dir()
 
 
@@ -203,11 +230,24 @@ def test_workspace_storage_is_idempotent(
     monkeypatch.setenv("HOME", str(tmp_path))
     cwd = tmp_path / "project"
     cwd.mkdir()
-    first = workspace_storage(cwd)
+    first = workspace_storage(cwd, _RUN_ID)
     (first / "marker").write_text("keep me", encoding="utf-8")
-    second = workspace_storage(cwd)
+    second = workspace_storage(cwd, _RUN_ID)
     assert second == first
     assert (second / "marker").read_text(encoding="utf-8") == "keep me"
+
+
+def test_workspace_storage_distinct_for_distinct_run_ids(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Two runs from the same CWD get isolated storage roots."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    cwd = tmp_path / "project"
+    cwd.mkdir()
+    run_a = workspace_storage(cwd, _RUN_ID)
+    run_b = workspace_storage(cwd, "99999999-8888-7777-6666-555555555555")
+    assert run_a != run_b
+    assert run_a.parent == run_b.parent  # share the workspace container
 
 
 def test_workspace_storage_distinct_for_distinct_cwds(
@@ -218,13 +258,13 @@ def test_workspace_storage_distinct_for_distinct_cwds(
     dir_a.mkdir()
     dir_b = tmp_path / "beta"
     dir_b.mkdir()
-    assert workspace_storage(dir_a) != workspace_storage(dir_b)
+    assert workspace_storage(dir_a, _RUN_ID) != workspace_storage(dir_b, _RUN_ID)
 
 
 def test_workspace_storage_skips_get_settings(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Derived purely from ``workspace_id`` + ``Path.home``.
+    """Derived purely from ``workspace_id`` + ``Path.home`` + run id.
 
     The @lru_cache on ``get_settings`` and the TRANSPORT_MATTERS_STORAGE_DIR env
     var must not influence the returned path.
@@ -233,6 +273,6 @@ def test_workspace_storage_skips_get_settings(
     monkeypatch.setenv("TRANSPORT_MATTERS_STORAGE_DIR", str(tmp_path / "unused"))
     cwd = tmp_path / "project"
     cwd.mkdir()
-    assert workspace_storage(cwd) == workspace_root(cwd)
+    assert workspace_storage(cwd, _RUN_ID) == workspace_root(cwd) / _RUN_ID
     # Sanity: the env var we set is NOT the returned path.
-    assert workspace_storage(cwd) != tmp_path / "unused"
+    assert workspace_storage(cwd, _RUN_ID) != tmp_path / "unused"

@@ -40,14 +40,19 @@ from transport_matters.lock import WorkspaceLock, WorkspaceLocked
 from transport_matters.manifest import Manifest
 from transport_matters.manifest import write as manifest_write
 from transport_matters.supervisor import SIGNAL_EXIT, ProcessSupervisor
-from transport_matters.workspace import workspace_id, workspace_root, workspace_storage
+from transport_matters.workspace import (
+    run_root,
+    workspace_id,
+    workspace_root,
+    workspace_storage,
+)
 
 from .banner import _print_banner, _print_client_banner
 from .codex_cmd import run_codex
 from .diagnose import run_doctor
 from .help import _PlainCommand, _PlainGroup
 from .identity import CLI_COMMAND
-from .instances import _list_instances, _print_contention_error
+from .instances import _list_instances
 from .launch_runtime import resolve_mitmdump_executable
 from .net import _port_in_use, _wait_for_port_ready, validate_port_option
 from .paths import resolve_paths
@@ -68,7 +73,6 @@ __all__ = [
     "_list_instances",
     "_port_in_use",
     "_print_banner",
-    "_print_contention_error",
     "_run_children",
     "_run_client_with_retry",
     "_run_with_retry",
@@ -77,6 +81,7 @@ __all__ = [
     "inject_system_prompt",
     "main",
     "manifest_write",
+    "run_root",
     "user_supplied_system_prompt",
     "workspace_id",
     "workspace_root",
@@ -250,7 +255,10 @@ def claude(
         typer.Option(
             "--storage-dir",
             "-d",
-            envvar="TRANSPORT_MATTERS_STORAGE_DIR",
+            # No envvar: a launch must not inherit a parent session's
+            # TRANSPORT_MATTERS_STORAGE_DIR as its --storage-dir, or nested
+            # runs would co-reside in the parent's store. The addon (pydantic
+            # settings) and `paths` env-first still read the env var directly.
             help=(
                 "Directory for captured exchanges, rules, and the index. "
                 "Defaults to `~/.transport-matters`."
@@ -323,7 +331,6 @@ def claude(
         user_supplied_system_prompt=user_supplied_system_prompt,
         print_banner=_print_banner,
         run_client_with_retry=_run_client_with_retry,
-        print_contention_error=_print_contention_error,
     )
 
 
@@ -380,7 +387,10 @@ def codex(
         typer.Option(
             "--storage-dir",
             "-d",
-            envvar="TRANSPORT_MATTERS_STORAGE_DIR",
+            # No envvar: a launch must not inherit a parent session's
+            # TRANSPORT_MATTERS_STORAGE_DIR as its --storage-dir, or nested
+            # runs would co-reside in the parent's store. The addon (pydantic
+            # settings) and `paths` env-first still read the env var directly.
             help=(
                 "Directory for captured exchanges, rules, and the index. "
                 "Defaults to `~/.transport-matters`."
@@ -456,7 +466,6 @@ def codex(
         resolve_codex_ca_certificate=resolve_codex_ca_certificate,
         print_client_banner=_print_client_banner,
         run_client_with_retry=_run_client_with_retry,
-        print_contention_error=_print_contention_error,
     )
 
 

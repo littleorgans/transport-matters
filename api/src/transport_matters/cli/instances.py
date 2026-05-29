@@ -14,21 +14,21 @@ from typing import TYPE_CHECKING
 
 import typer
 
-from transport_matters.lock import WorkspaceLock, WorkspaceLocked
-from transport_matters.manifest import Manifest, read, read_all
+from transport_matters.lock import WorkspaceLock
+from transport_matters.manifest import Manifest, read_all
 from transport_matters.storage_roots import default_workspaces_root
 
 from .identity import PRODUCT_LABEL
-from .net import loopback_http_url
 
 if TYPE_CHECKING:
     from pathlib import Path
 
-__all__ = ["_list_instances", "_print_contention_error"]
+__all__ = ["_list_instances"]
 
 
 _TABLE_HEADERS: tuple[str, ...] = (
     "WORKSPACE",
+    "RUN",
     "PID",
     "PROXY",
     "WEB",
@@ -36,47 +36,14 @@ _TABLE_HEADERS: tuple[str, ...] = (
     "STARTED",
 )
 
+# Runs are keyed by a UUID; the leading block is enough to disambiguate
+# the handful of instances a user runs in one CWD without a 36-char column.
+_RUN_ID_DISPLAY_LEN = 8
+
 
 def _workspaces_root() -> Path:
     """Return the workspaces directory under the user's home."""
     return default_workspaces_root()
-
-
-def _print_contention_error(exc: WorkspaceLocked, working_dir: Path) -> None:
-    """Render a human-readable error for a live workspace.
-
-    Reads the sibling manifest via :func:`transport_matters.manifest.read` so
-    the error surfaces the live PID + ports. Missing/malformed manifests
-    fall back to pointing at the lock path.
-    """
-    existing = read(exc.manifest_path)
-    typer.secho(
-        f"error: another {PRODUCT_LABEL} instance is already live in this workspace.",
-        fg=typer.colors.RED,
-        err=True,
-    )
-    typer.echo(f"  cwd: {working_dir}", err=True)
-    if existing is not None:
-        typer.echo("", err=True)
-        typer.echo(f"  pid       {existing.pid}", err=True)
-        typer.echo(
-            f"  proxy     {loopback_http_url(existing.proxy_port)}",
-            err=True,
-        )
-        typer.echo(
-            f"  web       {loopback_http_url(existing.web_port)}",
-            err=True,
-        )
-        typer.echo(f"  started   {existing.started_at}", err=True)
-    else:
-        typer.echo(f"  lock      {exc.lock_path}", err=True)
-    typer.echo("", err=True)
-    typer.echo(
-        "If that process is no longer running, the lock releases on its own.\n"
-        f"Otherwise stop the running instance, or start {PRODUCT_LABEL} from a\n"
-        "different directory.",
-        err=True,
-    )
 
 
 def _list_instances(*, as_json: bool) -> None:
@@ -90,11 +57,11 @@ def _list_instances(*, as_json: bool) -> None:
     manifests = read_all(root)
     live: list[Manifest] = []
     for m in manifests:
-        ws_dir = root / m.slug / m.hash
-        if WorkspaceLock.is_held(ws_dir):
+        run_dir = root / m.slug / m.hash / m.run_id
+        if WorkspaceLock.is_held(run_dir):
             live.append(m)
         else:
-            _reap(ws_dir)
+            _reap(run_dir)
 
     if as_json:
         typer.echo(
@@ -114,6 +81,7 @@ def _manifest_to_dict(m: Manifest) -> dict[str, object]:
     return {
         "slug": m.slug,
         "hash": m.hash,
+        "run_id": m.run_id,
         "cwd": m.cwd,
         "pid": m.pid,
         "proxy_port": m.proxy_port,
@@ -124,22 +92,21 @@ def _manifest_to_dict(m: Manifest) -> dict[str, object]:
     }
 
 
-def _reap(ws_dir: Path) -> None:
-    """Remove the stale manifest for a dead workspace.
+def _reap(run_dir: Path) -> None:
+    """Remove the stale manifest for a dead run.
 
     Silent by design: best-effort cleanup during ``transport-matters list``.
 
-    Only the manifest is unlinked — the ``lock`` file stays in place.
-    Unlinking the lock would race with a concurrent ``start`` that has
-    already opened the file and taken the flock: our unlink removes the
-    dentry while the live instance's fd keeps the inode alive, and the
-    next ``start`` re-creates the path via ``O_CREAT`` → a fresh inode,
-    a successful flock, two processes sharing a workspace. Leaving the
-    empty lock file alone is semantically harmless — the next ``start``
-    re-opens the same inode and flocks it cleanly.
+    Only the manifest is unlinked. The run directory also holds the run's
+    captured exchanges (``index.jsonl``, ``exchanges/``) when storage is
+    the default per-run root, and that history must survive the process
+    that recorded it — so reaping clears the liveness advertisement, never
+    the data. The ``lock`` file is left in place too: it is harmless, and
+    no future ``start`` reuses this directory because each launch mints a
+    fresh ``run_id``.
     """
     with contextlib.suppress(FileNotFoundError):
-        (ws_dir / "manifest.json").unlink()
+        (run_dir / "manifest.json").unlink()
 
 
 def _print_table(manifests: list[Manifest]) -> None:
@@ -147,6 +114,7 @@ def _print_table(manifests: list[Manifest]) -> None:
     rows: list[tuple[str, ...]] = [
         (
             m.slug,
+            m.run_id[:_RUN_ID_DISPLAY_LEN],
             str(m.pid),
             str(m.proxy_port),
             str(m.web_port),
