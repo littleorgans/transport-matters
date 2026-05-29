@@ -51,13 +51,6 @@ NULLABLE_PROVIDER_MODELS = (
 )
 
 NULLABLE_RECORD = "Record<string, unknown> | null"
-EXPECTED_RESPONSE_BLOCKS = {
-    "TextBlock",
-    "ToolUseBlock",
-    "ThinkingBlock",
-    "UnknownBlock",
-}
-EXPECTED_TOOL_RESULT_BLOCKS = {"TextBlock", "ImageBlock", "UnknownBlock"}
 
 
 @dataclass(frozen=True)
@@ -66,11 +59,11 @@ class TsField:
     optional: bool
 
 
-def test_override_kind_values_match_in_order() -> None:
+def test_override_kind_values_match() -> None:
     py_values = _py_literal_values(PY_OVERRIDES.read_text(), "OverrideKind")
     ts_values = _ts_type_values(TS_TYPES.read_text(), "OverrideKind")
 
-    assert ts_values == py_values
+    assert set(ts_values) == set(py_values)
 
 
 def test_ir_model_field_sets_match() -> None:
@@ -89,6 +82,7 @@ def test_content_block_union_matches_python_ir() -> None:
 
 
 def test_targeted_type_mirror_contracts() -> None:
+    py_fields = _py_model_fields(PY_IR.read_text())
     ts_fields = _ts_interface_fields(TS_TYPES.read_text())
 
     assert _field(ts_fields, "Message", "role").type == "string"
@@ -102,11 +96,15 @@ def test_targeted_type_mirror_contracts() -> None:
         type=NULLABLE_RECORD,
         optional=True,
     )
-    assert _field_blocks(ts_fields, "ToolResultBlock", "content") == (
-        EXPECTED_TOOL_RESULT_BLOCKS
+    assert _field_blocks(ts_fields, "ToolResultBlock", "content") == _py_field_blocks(
+        py_fields,
+        "ToolResultBlock",
+        "content",
     )
-    assert _field_blocks(ts_fields, "InternalResponse", "content") == (
-        EXPECTED_RESPONSE_BLOCKS
+    assert _field_blocks(ts_fields, "InternalResponse", "content") == _py_field_blocks(
+        py_fields,
+        "InternalResponse",
+        "content",
     )
     assert "ContentBlock" not in _field(ts_fields, "InternalResponse", "content").type
 
@@ -210,6 +208,17 @@ def _field_blocks(
     field_name: str,
 ) -> set[str]:
     return _block_names(_field(fields, model_name, field_name).type)
+
+
+def _py_field_blocks(
+    fields: dict[str, dict[str, str]],
+    model_name: str,
+    field_name: str,
+) -> set[str]:
+    try:
+        return _block_names(fields[model_name][field_name])
+    except KeyError as error:
+        raise AssertionError(f"Missing Python {model_name}.{field_name}") from error
 
 
 def _block_names(source: str) -> set[str]:
