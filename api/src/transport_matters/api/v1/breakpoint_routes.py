@@ -25,9 +25,8 @@ from transport_matters.ir import (  # noqa: TC001 — FastAPI needs runtime acce
     ToolDef,
 )
 from transport_matters.override_state import (
-    LEGACY_SCOPE_ID,
     OverrideScope,
-    normalize_scope,
+    scope_from_params,
 )
 from transport_matters.overrides import (
     OverrideAudit,  # noqa: TC001 — FastAPI needs runtime access
@@ -43,9 +42,7 @@ router = APIRouter()
 
 
 def _scope_for_paused_flow(pf: bp.PausedFlow) -> OverrideScope:
-    if pf.run_id is None:
-        return normalize_scope((LEGACY_SCOPE_ID, pf.track_id or LEGACY_SCOPE_ID))
-    return normalize_scope((pf.run_id, pf.track_id or pf.run_id))
+    return scope_from_params(pf.run_id, pf.track_id)
 
 
 def _flow_not_found(flow_id: str) -> NotFoundError:

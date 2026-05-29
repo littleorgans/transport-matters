@@ -9,6 +9,7 @@ if TYPE_CHECKING:
     from transport_matters.overrides import Override
 
 type OverrideScope = tuple[str, str]
+type OverrideScopeParams = tuple[str | None, str | None]
 type OverrideKey = tuple[str, str]
 
 LEGACY_SCOPE_ID = "__legacy__"
@@ -19,12 +20,16 @@ def root_scope(run_id: str | None) -> OverrideScope:
     return scope_run_id, scope_run_id
 
 
-def normalize_scope(scope: OverrideScope | None = None) -> OverrideScope:
+def normalize_scope(scope: OverrideScopeParams | None = None) -> OverrideScope:
     if scope is None:
         return root_scope(None)
     run_id, track_id = scope
     scope_run_id = run_id or LEGACY_SCOPE_ID
     return scope_run_id, track_id or scope_run_id
+
+
+def scope_from_params(run_id: str | None, track_id: str | None) -> OverrideScope:
+    return normalize_scope((run_id, track_id))
 
 
 class OverrideStore:
