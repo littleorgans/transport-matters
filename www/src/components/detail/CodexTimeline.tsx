@@ -1,3 +1,4 @@
+import { formatClockTime, pluralize } from "../../lib/formatting";
 import type { CodexSemanticEvent, CodexTurnStatus, CodexTurnSummary } from "../../types";
 
 const STATUS_TONE: Record<CodexTurnStatus, string> = {
@@ -36,18 +37,6 @@ interface CodexTimelineProps {
 interface EventCopy {
   summary: string;
   detail: string | null;
-}
-
-function pluralize(count: number, singular: string, plural = `${singular}s`): string {
-  return `${count.toLocaleString()} ${count === 1 ? singular : plural}`;
-}
-
-function formatEventTime(ts: string): string {
-  return new Date(ts).toLocaleTimeString("en-US", {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  });
 }
 
 function formatDuration(startedAt: string, endedAt: string | null): string | null {
@@ -199,7 +188,7 @@ function EventRow({
             #{event.seq.toString().padStart(3, "0")}
           </div>
           <div className="label mt-1 tabular-nums normal-case tracking-[0.12em]">
-            {formatEventTime(event.ts)}
+            {formatClockTime(event.ts)}
           </div>
         </div>
 

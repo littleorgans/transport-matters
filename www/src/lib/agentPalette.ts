@@ -5,6 +5,10 @@ export type AgentRailStyle = CSSProperties & {
   "--agent-rail-rgb": string;
 };
 
+export type DepthRailStyle = AgentRailStyle & {
+  "--track-depth": string;
+};
+
 const AGENT_RAILS = [
   { color: "var(--color-agent-rail-0)", rgb: "var(--agent-rail-0-rgb)" },
   { color: "var(--color-agent-rail-1)", rgb: "var(--agent-rail-1-rgb)" },

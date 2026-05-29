@@ -4,8 +4,9 @@ import { overrideValue } from "../../lib/overrides";
 import { useUIStore } from "../../stores/uiStore";
 import type { Message, Override } from "../../types";
 import { MasterBar, SECTION_TONE } from "../detail/atoms";
-import { blockKey, ROLE_TONE } from "../detail/ContentBlocks";
+import { blockKey } from "../detail/ContentBlocks";
 import { BlockRow } from "./BlockRow";
+import { noopOverride, overrideCountLabel } from "./overrideUtils";
 
 interface MessagesSectionProps {
   messages: Message[];
@@ -109,7 +110,7 @@ function MessageCard({
   onOverride: (batch: Override[]) => void;
   readOnly?: boolean;
 }) {
-  const tone = SECTION_TONE[message.role] ?? ROLE_TONE[message.role];
+  const tone = SECTION_TONE[message.role];
 
   const modifiedCount = message.content.filter((_block, blkIdx) => {
     const target = blockTarget(msgIdx, blkIdx);
@@ -176,12 +177,10 @@ function MessageCard({
   );
 }
 
-const NOOP_OVERRIDE = () => {};
-
 export function MessagesSection({
   messages,
   overrides = [],
-  onOverride = NOOP_OVERRIDE,
+  onOverride = noopOverride,
   readOnly,
 }: MessagesSectionProps) {
   const messageOverrideCount = overrides.filter(
@@ -209,11 +208,7 @@ export function MessagesSection({
     key: `${msg.role}-${idx}`,
   }));
 
-  const overrideLabel = readOnly
-    ? "modified"
-    : messageOverrideCount === 1
-      ? "override"
-      : "overrides";
+  const overrideLabel = overrideCountLabel(messageOverrideCount, readOnly);
 
   return (
     <section className="space-y-4">

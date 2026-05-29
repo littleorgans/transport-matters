@@ -8,8 +8,7 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from transport_matters import __version__
-from transport_matters.cli import WorkspaceLock, main, run_root, workspace_root
+from transport_matters.cli import WorkspaceLock, main, workspace_root
 
 from ._helpers import _plain, _sample_manifest, _write_run_manifest
 
@@ -50,25 +49,24 @@ def test_paths_prefers_storage_dir_env(
     assert Path(payload["storage"]) == run_storage
 
 
-def test_paths_json_is_valid_and_structured(
+def test_paths_errors_without_env_or_live_run(
     tmp_storage: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Default resolution: workspace container for the current CWD.
+    """Default resolution fails loudly when no run identifies a storage dir.
 
-    No env storage and no live run → falls back to ``workspace_root(cwd)``
-    under the sandboxed ``$HOME`` that ``tmp_storage`` pins.
+    After per-run storage, the workspace container is not itself a storage dir.
+    A bare shell must not render empty ``exchanges`` / ``rules`` paths.
     """
     monkeypatch.delenv("TRANSPORT_MATTERS_STORAGE_DIR", raising=False)
     workdir = tmp_path / "project"
     workdir.mkdir()
     monkeypatch.chdir(workdir)
     result = runner.invoke(main, ["paths", "--json"])
-    assert result.exit_code == 0
-    payload = json.loads(result.stdout)
-    assert payload["version"] == __version__
-    assert payload["package"].endswith("transport_matters")
-    assert payload["addon"].endswith("addon.py")
-    assert Path(payload["storage"]) == workspace_root(workdir)
+    assert result.exit_code == 2
+    assert "no live Transport Matters instance" in result.output
+    assert "run transport-matters list" in result.output
+    assert "--workspace <slug-or-storage-dir>" in result.output
+    assert result.stdout == ""
 
 
 def test_paths_works_with_live_lock_in_same_cwd(
@@ -79,11 +77,18 @@ def test_paths_works_with_live_lock_in_same_cwd(
     """``paths`` is read-only and must not touch a run's lock."""
     monkeypatch.delenv("TRANSPORT_MATTERS_STORAGE_DIR", raising=False)
     monkeypatch.chdir(tmp_path)
-    run_dir = run_root(tmp_path, "run-001")
-    run_dir.mkdir(parents=True, exist_ok=True)
+    storage = tmp_path / "run-storage"
+    storage.mkdir()
+    run_dir = _write_run_manifest(
+        tmp_path,
+        _sample_manifest(
+            workdir=tmp_path, storage=storage, pid=12345, run_id="run-001"
+        ),
+    )
     with WorkspaceLock(run_dir):
         result = runner.invoke(main, ["paths"])
-    assert result.exit_code == 0
+    assert result.exit_code == 0, result.output
+    assert str(storage) in result.output
 
 
 def test_paths_live_manifest_wins_over_default(
@@ -163,11 +168,11 @@ def test_paths_stale_manifest_ignored(
             proxy_port=5050,
         ),
     )
-    # No lock held → manifest is stale.
+    # No lock held, so the manifest is stale and cannot identify storage.
     result = runner.invoke(main, ["paths", "--json"])
-    assert result.exit_code == 0
-    payload = json.loads(result.stdout)
-    assert Path(payload["storage"]) == workspace_root(workdir)
+    assert result.exit_code == 2
+    assert "no live Transport Matters instance" in result.output
+    assert "stale-storage" not in result.output
 
 
 def test_paths_respects_transport_matters_cwd_env_over_process_cwd(
@@ -187,13 +192,21 @@ def test_paths_respects_transport_matters_cwd_env_over_process_cwd(
     launch_dir.mkdir()
     subdir = launch_dir / "api"
     subdir.mkdir()
+    storage = tmp_path / "launch-storage"
+    run_dir = _write_run_manifest(
+        launch_dir,
+        _sample_manifest(
+            workdir=launch_dir, storage=storage, pid=1, run_id="run-launch"
+        ),
+    )
     monkeypatch.chdir(subdir)
     monkeypatch.setenv("TRANSPORT_MATTERS_CWD", str(launch_dir))
 
-    result = runner.invoke(main, ["paths", "--json"])
+    with WorkspaceLock(run_dir):
+        result = runner.invoke(main, ["paths", "--json"])
     assert result.exit_code == 0, result.output
     payload = json.loads(result.stdout)
-    assert Path(payload["storage"]) == workspace_root(launch_dir)
+    assert Path(payload["storage"]) == storage
     # Double-check: the subdir would have produced a different storage.
     assert Path(payload["storage"]) != workspace_root(subdir)
 
@@ -208,11 +221,17 @@ def test_paths_workspace_flag_accepts_directory(
     cwd_a.mkdir()
     cwd_b = tmp_path / "b"
     cwd_b.mkdir()
+    storage = tmp_path / "storage-b"
+    run_dir = _write_run_manifest(
+        cwd_b,
+        _sample_manifest(workdir=cwd_b, storage=storage, pid=1, run_id="run-b"),
+    )
     monkeypatch.chdir(cwd_a)
-    result = runner.invoke(main, ["paths", "--workspace", str(cwd_b), "--json"])
+    with WorkspaceLock(run_dir):
+        result = runner.invoke(main, ["paths", "--workspace", str(cwd_b), "--json"])
     assert result.exit_code == 0, result.output
     payload = json.loads(result.stdout)
-    assert Path(payload["storage"]) == workspace_root(cwd_b)
+    assert Path(payload["storage"]) == storage
 
 
 def test_paths_workspace_flag_resolves_a_runs_storage_dir(

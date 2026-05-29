@@ -5,8 +5,8 @@ under the 700-LOC invariant. The typer command itself stays in
 ``cli/__init__.py`` as a thin wrapper that calls :func:`run_doctor`.
 
 Tests that previously patched ``transport_matters.cli.shutil.which`` /
-``transport_matters.cli._port_in_use`` continue to work — those re-exports are
-still resolved at call time inside ``run_doctor``'s own module.
+``transport_matters.cli._port_in_use`` continue to work because those
+re-exports are still resolved at call time inside ``run_doctor``'s own module.
 """
 
 from __future__ import annotations
@@ -27,14 +27,6 @@ from .launch_runtime import resolve_mitmdump_executable
 from .net import _port_in_use
 
 __all__ = ["run_doctor"]
-
-
-def _resolve_mitmdump() -> str | None:
-    """Prefer the console script from the active Transport Matters environment."""
-    return resolve_mitmdump_executable(
-        which=shutil.which,
-        get_scripts_dir=sysconfig.get_path,
-    )
 
 
 def run_doctor() -> None:
@@ -71,7 +63,10 @@ def run_doctor() -> None:
         )
 
     # mitmdump on PATH
-    mitmdump = _resolve_mitmdump()
+    mitmdump = resolve_mitmdump_executable(
+        which=shutil.which,
+        get_scripts_dir=sysconfig.get_path,
+    )
     if mitmdump:
         _ok("mitmdump", mitmdump)
     else:
@@ -118,7 +113,8 @@ def run_doctor() -> None:
         _fail(
             "storage",
             f"Cannot write to {storage}: {exc}.\n"
-            "Fix permissions or set `TRANSPORT_MATTERS_STORAGE_DIR` to a writable path.",
+            "Fix permissions or set `TRANSPORT_MATTERS_STORAGE_DIR` "
+            "for doctor/addon/paths storage checks. Launches choose per-run storage.",
         )
 
     # Configured ports — uses the *defaults* from Settings, so the user

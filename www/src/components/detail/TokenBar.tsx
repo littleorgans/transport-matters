@@ -1,4 +1,4 @@
-import { contextTokens } from "../../lib/formatting";
+import { contextTokens, formatCompactChars } from "../../lib/formatting";
 import type { UsageStats } from "../../types";
 import { HoverCard } from "../HoverCard";
 
@@ -90,8 +90,8 @@ export function TokenStat({
   const dim = value === 0;
   const display = dim
     ? "\u2014"
-    : format === "chars" && value >= 1024
-      ? `${(value / 1024).toFixed(1)}K`
+    : format === "chars"
+      ? formatCompactChars(value)
       : value.toLocaleString();
   // "tokens" suffix renders only for the token format and only when we have
   // a real number to label. Chars intentionally stay bare per the convention

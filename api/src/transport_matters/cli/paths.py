@@ -16,10 +16,9 @@ Resolution order for the ``storage`` value:
    session is exact and unambiguous even when several runs share the CWD.
 3. Failing that, prefer ``TRANSPORT_MATTERS_CWD`` (then ``Path.cwd()``)
    and scan that workspace container for live runs. Exactly one live run
-   returns its ``storage_dir``; none returns the container root; more
-   than one is an actionable error, because a bare external shell cannot
-   know which run you mean. None of these branches create directories —
-   ``paths`` is read-only.
+   returns its ``storage_dir``. None or more than one is an actionable
+   error, because a bare external shell cannot know which run you mean.
+   None of these branches create directories; ``paths`` is read-only.
 """
 
 from __future__ import annotations
@@ -40,11 +39,6 @@ from transport_matters.workspace import workspace_root
 from .identity import CLI_COMMAND
 
 __all__ = ["resolve_paths"]
-
-
-def _workspaces_root() -> Path:
-    """Return the shared `~/.transport-matters/workspaces/` directory."""
-    return default_workspaces_root()
 
 
 def resolve_paths(*, workspace: str | None, as_json: bool) -> None:
@@ -125,7 +119,7 @@ def _names_known_storage(candidate: Path) -> bool:
     target = candidate.resolve(strict=False)
     return any(
         Path(m.storage_dir).resolve(strict=False) == target
-        for m in read_all(_workspaces_root())
+        for m in read_all(default_workspaces_root())
     )
 
 
@@ -134,15 +128,26 @@ def _storage_for_cwd(cwd: Path) -> Path:
 
     Scans the workspace container for live runs. Exactly one live run
     returns its ``storage_dir`` (which may be a ``--storage-dir`` override).
-    None returns the container root — nothing is running here yet. More
-    than one is ambiguous from a bare shell, so error and list them; a
-    launched session never reaches this because its own storage dir is in
+    None is ambiguous after per-run storage landed, because the workspace
+    container is not itself a storage dir. More than one is also ambiguous
+    from a bare shell, so error and list them. A launched session never
+    reaches this because its own storage dir is in
     ``TRANSPORT_MATTERS_STORAGE_DIR``.
     """
     ws_root = workspace_root(cwd)
     live = _live_runs(ws_root)
     if not live:
-        return ws_root
+        typer.secho(
+            f"error: no live Transport Matters instance for {cwd}.",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        typer.echo(
+            f"Start a session, run {CLI_COMMAND} list to see live instances, "
+            "or pass --workspace <slug-or-storage-dir> to inspect a recorded run.",
+            err=True,
+        )
+        raise typer.Exit(2)
     if len(live) > 1:
         _exit_ambiguous_runs(live)
     return Path(live[0].storage_dir)
@@ -158,7 +163,7 @@ def _storage_for_slug(slug: str) -> Path:
     ``{slug}/*/*/manifest.json`` (live or stale, so users can inspect a
     recently-exited instance's paths) but fail loudly on ambiguity.
     """
-    root = _workspaces_root() / slug
+    root = default_workspaces_root() / slug
     candidates: list[Manifest] = []
     if root.is_dir():
         for manifest_path in sorted(root.glob("*/*/manifest.json")):

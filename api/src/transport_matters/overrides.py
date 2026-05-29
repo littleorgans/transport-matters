@@ -113,6 +113,13 @@ class Override(BaseModel):
 # ── Apply pipeline ───────────────────────────────────────────────
 
 
+def _decode_json_payload(value: str) -> tuple[bool, object]:
+    try:
+        return True, json.loads(value)
+    except json.JSONDecodeError:
+        return False, None
+
+
 def apply_overrides(
     overrides: list[Override],
     ir: InternalRequest,
@@ -257,9 +264,8 @@ def apply_overrides(
             # stays unchanged.
             field = parse_sampling_field(target)
             if field is not None and isinstance(value, str):
-                try:
-                    parsed_value = json.loads(value)
-                except json.JSONDecodeError:
+                decoded, parsed_value = _decode_json_payload(value)
+                if not decoded:
                     applied = False
                 else:
                     current_ir, chars_delta, applied = apply_sampling_set(
@@ -269,9 +275,8 @@ def apply_overrides(
         elif kind == "provider_extras_set":
             key = parse_provider_extras_key(target)
             if key is not None and isinstance(value, str):
-                try:
-                    parsed_value = json.loads(value)
-                except json.JSONDecodeError:
+                decoded, parsed_value = _decode_json_payload(value)
+                if not decoded:
                     applied = False
                 else:
                     current_ir, chars_delta, applied = apply_provider_extras_set(

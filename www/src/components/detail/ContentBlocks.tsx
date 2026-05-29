@@ -10,6 +10,7 @@
  */
 
 import { ColorizedPre } from "../../lib/colorizeLine";
+import { truncatePreview } from "../../lib/formatting";
 import type { ContentBlock, Message } from "../../types";
 
 // Block type markers are intentionally uniform: a single .chip
@@ -27,7 +28,7 @@ export function blockSummary(block: ContentBlock, maxPreview = 220): string {
     case "text": {
       const trimmed = block.text.trim();
       if (trimmed.length === 0) return "(empty)";
-      return trimmed.slice(0, maxPreview) + (trimmed.length > maxPreview ? "\u2026" : "");
+      return truncatePreview(trimmed, maxPreview);
     }
     case "tool_use":
       return `${block.name}  \u00b7  ${block.id}`;
@@ -95,13 +96,3 @@ export function ContentBlockRow({
     </div>
   );
 }
-
-// ── Role tone ──────────────────────────────────────────────────────
-// Tint palette shared with the editor's MessageCard so user and
-// assistant rows read the same in the Breakpoint editor and in the
-// readOnly Inspect tab.
-
-export const ROLE_TONE: Record<string, { text: string; bg: string }> = {
-  user: { text: "text-sky", bg: "bg-sky/5" },
-  assistant: { text: "text-sage", bg: "bg-sage/5" },
-};

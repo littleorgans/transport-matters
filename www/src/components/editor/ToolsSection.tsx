@@ -4,6 +4,7 @@ import { hasOverride, overrideValue } from "../../lib/overrides";
 import type { Override, ToolDef } from "../../types";
 import { SizeDelta } from "../detail/atoms";
 import { Toggle } from "../Toggle";
+import { noopOverride, overrideCountLabel } from "./overrideUtils";
 import { TextOverrideEditor } from "./TextOverrideEditor";
 
 interface ToolsSectionProps {
@@ -217,7 +218,7 @@ function ToolGroupSection({
   // Mirror the per-tool disabled treatment (opacity-40 on ToolRow) so a
   // fully-disabled group reads the same at the group level.
   const allDisabled = checkedCount === 0;
-  const overrideLabel = readOnly ? "modified" : overrideCount === 1 ? "override" : "overrides";
+  const overrideLabel = overrideCountLabel(overrideCount, readOnly);
 
   return (
     <div
@@ -288,12 +289,10 @@ function ToolGroupSection({
   );
 }
 
-const NOOP_OVERRIDE = () => {};
-
 export function ToolsSection({
   tools,
   overrides = [],
-  onOverride = NOOP_OVERRIDE,
+  onOverride = noopOverride,
   readOnly,
 }: ToolsSectionProps) {
   const groups = useMemo(() => buildEditorGroups(tools), [tools]);
@@ -304,7 +303,7 @@ export function ToolsSection({
   const totalOverrides = overrides.filter(
     (o) => o.kind === "tool_toggle" || o.kind === "tool_description",
   ).length;
-  const overrideLabel = readOnly ? "modified" : totalOverrides === 1 ? "override" : "overrides";
+  const overrideLabel = overrideCountLabel(totalOverrides, readOnly);
 
   const checkAll = () => {
     const batch: Override[] = tools

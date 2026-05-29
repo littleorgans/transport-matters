@@ -1,8 +1,33 @@
 import type { UsageStats } from "../types";
 
+export const PREVIEW_MAX = 220;
+
 export function displayModel(provider: string, model: string): string {
   const prefix = `${provider}/`;
   return model.startsWith(prefix) ? model.slice(prefix.length) : model;
+}
+
+export function pluralize(count: number, singular: string, plural = `${singular}s`): string {
+  return `${count.toLocaleString()} ${count === 1 ? singular : plural}`;
+}
+
+export function formatCompactChars(value: number): string {
+  return value >= 1024 ? `${(value / 1024).toFixed(1)}K` : value.toLocaleString();
+}
+
+export function formatClockTime(ts: string | Date | null | undefined): string | null {
+  if (!ts) return null;
+  const parsed = ts instanceof Date ? ts : new Date(ts);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed.toLocaleTimeString("en-US", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+}
+
+export function truncatePreview(text: string, maxPreview = PREVIEW_MAX): string {
+  return text.length <= maxPreview ? text : `${text.slice(0, maxPreview)}…`;
 }
 
 /**

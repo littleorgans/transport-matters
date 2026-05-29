@@ -1,13 +1,7 @@
-import type { CSSProperties } from "react";
-import { agentRailStyle } from "../lib/agentPalette";
+import { agentRailStyle, type DepthRailStyle } from "../lib/agentPalette";
+import { pluralize } from "../lib/formatting";
 import type { ExchangeTrack } from "../types";
 import type { OrphanAnchorMeta } from "./exchangeListRows";
-
-type TrackDepthStyle = CSSProperties & {
-  "--track-depth": string;
-  "--agent-rail": string;
-  "--agent-rail-rgb": string;
-};
 
 interface TrackHeaderProps {
   track: ExchangeTrack;
@@ -21,7 +15,7 @@ interface TrackHeaderProps {
 }
 
 function turnLabel(count: number): string {
-  return `${count.toLocaleString()} ${count === 1 ? "turn" : "turns"}`;
+  return pluralize(count, "turn");
 }
 
 function trackLabel(track: ExchangeTrack): string {
@@ -50,7 +44,7 @@ export function TrackHeader({
   const displayName = trackDisplayName(track);
   const turnCount = track.exchanges.length;
   const toggleLabel = `${isCollapsed ? "Expand" : "Collapse"} track ${track.track_id}`;
-  const style: TrackDepthStyle = {
+  const style: DepthRailStyle = {
     transform: `translateY(${offsetTop}px)`,
     "--track-depth": String(depth),
     ...agentRailStyle(track.track_id),

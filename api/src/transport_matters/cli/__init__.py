@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import shutil
 import sysconfig
+from functools import partial
 from importlib.resources import files
 from pathlib import Path  # noqa: TC003
 from typing import TYPE_CHECKING, Annotated
@@ -96,14 +97,6 @@ main = typer.Typer(
     rich_markup_mode=None,
     context_settings={"help_option_names": ["-h", "--help"]},
 )
-
-
-def _resolve_mitmdump() -> str | None:
-    """Prefer the console script from the active Transport Matters environment."""
-    return resolve_mitmdump_executable(
-        which=shutil.which,
-        get_scripts_dir=sysconfig.get_path,
-    )
 
 
 def _split_passthrough(
@@ -322,7 +315,11 @@ def claude(
         debug=debug,
         print_command=print_command,
         require_addon=_require_addon,
-        resolve_mitmdump=_resolve_mitmdump,
+        resolve_mitmdump=partial(
+            resolve_mitmdump_executable,
+            which=shutil.which,
+            get_scripts_dir=sysconfig.get_path,
+        ),
         which=shutil.which,
         port_in_use=_port_in_use,
         allocate_port_pair=allocate_port_pair,
@@ -458,7 +455,11 @@ def codex(
         print_command=print_command,
         require_addon=_require_addon,
         require_force_http_fallback_addon=_require_force_http_fallback_addon,
-        resolve_mitmdump=_resolve_mitmdump,
+        resolve_mitmdump=partial(
+            resolve_mitmdump_executable,
+            which=shutil.which,
+            get_scripts_dir=sysconfig.get_path,
+        ),
         which=shutil.which,
         port_in_use=_port_in_use,
         allocate_port_pair=allocate_port_pair,

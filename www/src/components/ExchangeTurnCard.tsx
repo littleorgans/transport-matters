@@ -1,15 +1,9 @@
-import { type CSSProperties, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { useTurnContent } from "../hooks/useTurnContent";
-import { agentRailStyle } from "../lib/agentPalette";
-import { displayModel } from "../lib/formatting";
+import { agentRailStyle, type DepthRailStyle } from "../lib/agentPalette";
+import { contextTokens, displayModel } from "../lib/formatting";
 import type { CodexTurnListSummary, IndexEntry } from "../types";
 import { ExchangePreview } from "./ExchangePreview";
-
-type DepthStyle = CSSProperties & {
-  "--track-depth": string;
-  "--agent-rail": string;
-  "--agent-rail-rgb": string;
-};
 
 interface ExchangeTurnCardProps {
   entry: IndexEntry;
@@ -161,11 +155,10 @@ function panelMetrics(entry: IndexEntry): PanelMetric[] {
       { key: "total", label: "Total", value: "—" },
     ];
   }
-  const total = res.input_tokens + res.cache_creation_input_tokens + res.cache_read_input_tokens;
   return [
     { key: "input", label: "Input", value: formatCount(res.input_tokens) },
     { key: "output", label: "Output", value: formatCount(res.output_tokens) },
-    { key: "total", label: "Total", value: formatCount(total) },
+    { key: "total", label: "Total", value: formatCount(contextTokens(res)) },
   ];
 }
 
@@ -275,7 +268,7 @@ export function ExchangeTurnCard({
   const isSubagent = depth > 0;
   const metrics = panelMetrics(entry);
   const borderClass = isSelected ? "border-accent row-selected" : cardBorderClass(entry, isOpen);
-  const style: DepthStyle = {
+  const style: DepthRailStyle = {
     transform: `translateY(${offsetTop}px)`,
     "--track-depth": String(depth),
     ...agentRailStyle(entry.track_id),

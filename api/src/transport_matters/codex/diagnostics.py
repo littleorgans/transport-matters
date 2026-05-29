@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from transport_matters.codex.protocol import CODEX_NORMAL_CLOSE_CODES
 from transport_matters.storage.base import TransportArtifacts, TransportDiagnostic
 
 if TYPE_CHECKING:
@@ -90,7 +91,10 @@ def build_codex_transport_diagnostics(
 
     close = transport.close
     if close is not None:
-        abnormal_close = close.close_code not in (None, 1000, 1001)
+        abnormal_close = (
+            close.close_code is not None
+            and close.close_code not in CODEX_NORMAL_CLOSE_CODES
+        )
         if abnormal_close:
             diagnostics.append(
                 TransportDiagnostic(

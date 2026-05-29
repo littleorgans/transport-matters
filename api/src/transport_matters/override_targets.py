@@ -59,9 +59,11 @@ def parse_message_target(target: str) -> tuple[int, int] | None:
 
 def adjust_system_index(original_index: int, removed_indices: set[int]) -> int:
     """Map an original system index to its current position after removals."""
-    return original_index - sum(
-        1 for removed in removed_indices if removed < original_index
-    )
+    return _shift_after_removals(original_index, removed_indices)
+
+
+def _shift_after_removals(index: int, removed: set[int]) -> int:
+    return index - sum(1 for prior in removed if prior < index)
 
 
 def adjust_blk_index(
@@ -76,4 +78,4 @@ def adjust_blk_index(
     removed = removed_blk_indices.get(msg_idx, set())
     if original_blk_idx in removed:
         return None
-    return original_blk_idx - sum(1 for prior in removed if prior < original_blk_idx)
+    return _shift_after_removals(original_blk_idx, removed)

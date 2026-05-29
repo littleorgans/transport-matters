@@ -1,4 +1,5 @@
 import { type MutableRefObject, useEffect, useRef } from "react";
+import { formatClockTime, pluralize, truncatePreview } from "../../lib/formatting";
 import type {
   TransportArtifacts,
   TransportHeader,
@@ -19,21 +20,6 @@ interface MessageRow {
 }
 
 const CODEX_HTTP_HEADER_NAMES = new Set(["session-id", "thread-id", "x-codex-turn-metadata"]);
-
-function formatTimestamp(ts: string | null | undefined): string | null {
-  if (!ts) {
-    return null;
-  }
-  const parsed = new Date(ts);
-  if (Number.isNaN(parsed.getTime())) {
-    return null;
-  }
-  return parsed.toLocaleTimeString("en-US", {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  });
-}
 
 function endpointUrl(parts: { scheme: string; host: string; path: string }): string {
   return `${parts.scheme}://${parts.host}${parts.path}`;
@@ -75,17 +61,11 @@ function payloadPreview(message: TransportMessageArtifact): string {
   }
   if (message.payload_text) {
     const compact = message.payload_text.replace(/\s+/g, " ").trim();
-    if (compact.length <= 220) {
-      return compact;
-    }
-    return `${compact.slice(0, 220)}...`;
+    return truncatePreview(compact);
   }
   if (message.payload_json) {
     const compact = JSON.stringify(message.payload_json);
-    if (compact.length <= 220) {
-      return compact;
-    }
-    return `${compact.slice(0, 220)}...`;
+    return truncatePreview(compact);
   }
   if (message.payload_base64) {
     return `Base64 payload, ${message.payload_base64.length.toLocaleString()} chars.`;
@@ -107,10 +87,6 @@ function messageKey(index: number, message: TransportMessageArtifact): string {
     message.size_bytes.toString(),
     payloadIdentity,
   ].join("|");
-}
-
-function pluralize(count: number, singular: string, plural = `${singular}s`): string {
-  return `${count.toLocaleString()} ${count === 1 ? singular : plural}`;
 }
 
 function httpSseEventCount(transport: TransportHttpArtifacts): number {
@@ -235,7 +211,7 @@ function TransportMessageList({
     <div>
       {rows.map(({ index, label, message }) => {
         const isFocused = focusedMessageIndex === index;
-        const timeLabel = formatTimestamp(message.ts);
+        const timeLabel = formatClockTime(message.ts);
         return (
           <div
             key={messageKey(index, message)}

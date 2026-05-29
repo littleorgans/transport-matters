@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useMeta } from "../../hooks/useMeta";
+import { pluralize } from "../../lib/formatting";
 import { type Overlay, UNKNOWN_CWD, useOverlaysStore } from "../../stores/overlaysStore";
 import type { Override, OverrideKind } from "../../types";
 import { TransportMattersIcon } from "../TransportMattersIcon";
@@ -68,7 +69,7 @@ function summarizeOverrides(overrides: Override[]): string {
     const n = counts.get(kind) ?? 0;
     if (n === 0) continue;
     const label = KIND_LABELS[kind];
-    parts.push(`${n} ${n === 1 ? label.singular : label.plural}`);
+    parts.push(pluralize(n, label.singular, label.plural));
   }
   return parts.join(", ");
 }

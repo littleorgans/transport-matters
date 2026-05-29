@@ -1,4 +1,5 @@
 import type { Override, SamplingParams } from "../../types";
+import { overrideCountLabel } from "./overrideUtils";
 import {
   ProviderExtrasRow,
   SamplingBasicsRow,
@@ -74,8 +75,7 @@ export function SamplingSection({
         <span className="label">Sampling</span>
         {samplingOverrideCount > 0 && (
           <span className="chip text-amber ml-2">
-            {samplingOverrideCount}{" "}
-            {readOnly ? "modified" : samplingOverrideCount === 1 ? "override" : "overrides"}
+            {samplingOverrideCount} {overrideCountLabel(samplingOverrideCount, readOnly)}
           </span>
         )}
       </div>
