@@ -10,16 +10,16 @@ Resolution order for the ``storage`` value:
    contains a path separator or expands via ``~``) or a slug. Paths
    canonicalise via :func:`workspace_id`; slugs go through a manifest
    scan under ``~/.transport-matters/workspaces/{slug}/``.
-2. Otherwise prefer ``TRANSPORT_MATTERS_CWD`` from the environment — so
-   ``transport-matters paths`` invoked from a Claude session launched by
-   ``transport-matters claude`` targets the launching workspace even if the
-   user has ``cd``'d into a subdirectory. Fall back to ``Path.cwd()``
-   when the env var is absent (bare CLI invocation).
-3. Once a target CWD or slug is known, prefer a live manifest's
-   ``storage_dir`` (the user may have overridden it with
-   ``start --storage-dir``); failing that, return
-   :func:`workspace_root` (the default per-workspace root). Neither
-   branch creates directories — ``paths`` is read-only.
+2. Otherwise prefer ``TRANSPORT_MATTERS_STORAGE_DIR`` from the
+   environment. A session launched by ``transport-matters claude``
+   carries its own run's storage dir there, so ``paths`` from inside a
+   session is exact and unambiguous even when several runs share the CWD.
+3. Failing that, prefer ``TRANSPORT_MATTERS_CWD`` (then ``Path.cwd()``)
+   and scan that workspace container for live runs. Exactly one live run
+   returns its ``storage_dir``; none returns the container root; more
+   than one is an actionable error, because a bare external shell cannot
+   know which run you mean. None of these branches create directories —
+   ``paths`` is read-only.
 """
 
 from __future__ import annotations
@@ -85,10 +85,16 @@ def _resolve_storage(selector: str | None) -> Path:
     See the module docstring for the full resolution order.
     """
     if selector is None:
+        # A launched session carries its own run's storage dir in the env,
+        # which is exact and survives the same-CWD multi-run case. Empty
+        # string is treated as unset.
+        env_storage = os.environ.get("TRANSPORT_MATTERS_STORAGE_DIR") or None
+        if env_storage:
+            return Path(env_storage)
         # TRANSPORT_MATTERS_CWD wins over Path.cwd() so a paths lookup from a
         # Claude session spawned by ``transport-matters claude`` resolves to the
         # launching workspace even if the user has since ``cd``'d into
-        # a subdirectory. Empty string is treated as unset.
+        # a subdirectory.
         env_cwd = os.environ.get("TRANSPORT_MATTERS_CWD") or None
         return _storage_for_cwd(Path(env_cwd) if env_cwd else Path.cwd())
 
@@ -104,36 +110,39 @@ def _resolve_storage(selector: str | None) -> Path:
 def _storage_for_cwd(cwd: Path) -> Path:
     """Return the storage path for *cwd*.
 
-    Live manifest wins (it may point at a user-overridden storage dir
-    from ``start --storage-dir``). Otherwise return the default
-    per-workspace root via :func:`workspace_root`.
+    Scans the workspace container for live runs. Exactly one live run
+    returns its ``storage_dir`` (which may be a ``--storage-dir`` override).
+    None returns the container root — nothing is running here yet. More
+    than one is ambiguous from a bare shell, so error and list them; a
+    launched session never reaches this because its own storage dir is in
+    ``TRANSPORT_MATTERS_STORAGE_DIR``.
     """
     ws_root = workspace_root(cwd)
-    manifest = _live_manifest(ws_root)
-    if manifest is not None:
-        return Path(manifest.storage_dir)
-    return ws_root
+    live = _live_runs(ws_root)
+    if not live:
+        return ws_root
+    if len(live) > 1:
+        _exit_ambiguous_runs(live)
+    return Path(live[0].storage_dir)
 
 
 def _storage_for_slug(slug: str) -> Path:
     """Resolve a slug to a storage path via manifest scan.
 
     A slug is a display aid; the on-disk identity is
-    ``{slug}/{hash}/``, so multiple workspaces can share a slug when
-    two distinct CWDs happen to collapse to the same tail. We accept
-    any manifest under ``{slug}/*/manifest.json`` (live or stale, so
-    users can inspect a recently-exited instance's paths) but fail
-    loudly on ambiguity.
+    ``{slug}/{hash}/{run_id}/``, so multiple workspaces can share a slug
+    when two distinct CWDs collapse to the same tail, and one workspace
+    can hold several runs. We accept any manifest under
+    ``{slug}/*/*/manifest.json`` (live or stale, so users can inspect a
+    recently-exited instance's paths) but fail loudly on ambiguity.
     """
     root = _workspaces_root() / slug
-    candidates: list[tuple[Path, Manifest]] = []
+    candidates: list[Manifest] = []
     if root.is_dir():
-        for hash_dir in sorted(root.iterdir()):
-            if not hash_dir.is_dir():
-                continue
-            m = read(hash_dir / "manifest.json")
+        for manifest_path in sorted(root.glob("*/*/manifest.json")):
+            m = read(manifest_path)
             if m is not None:
-                candidates.append((hash_dir, m))
+                candidates.append(m)
 
     if not candidates:
         typer.secho(
@@ -149,31 +158,54 @@ def _storage_for_slug(slug: str) -> Path:
         raise typer.Exit(2)
     if len(candidates) > 1:
         typer.secho(
-            f"error: slug {slug!r} matches {len(candidates)} workspaces.",
+            f"error: slug {slug!r} matches {len(candidates)} runs.",
             fg=typer.colors.RED,
             err=True,
         )
-        for _hash_dir, m in candidates:
-            typer.echo(f"  {m.slug}/{m.hash}  cwd={m.cwd}", err=True)
+        _print_run_choices(candidates)
         typer.echo(
-            "Disambiguate by passing the CWD path to --workspace instead.",
+            "Disambiguate by passing a storage path to --workspace instead.",
             err=True,
         )
         raise typer.Exit(2)
-    return Path(candidates[0][1].storage_dir)
+    return Path(candidates[0].storage_dir)
 
 
-def _live_manifest(ws_root: Path) -> Manifest | None:
-    """Return the manifest at *ws_root* if a live instance holds the lock.
+def _live_runs(ws_root: Path) -> list[Manifest]:
+    """Return manifests of live runs under the workspace container *ws_root*.
 
-    Returns ``None`` when the manifest is missing, malformed, or the
-    sibling lock is not currently held (i.e. stale manifest from a
-    crashed instance). ``paths`` is read-only, so we never reap stale
-    manifests here; ``transport-matters list`` handles that.
+    Read-only: probes each run's lock but never reaps. ``paths`` leaves
+    stale-manifest cleanup to ``transport-matters list``.
     """
-    m = read(ws_root / "manifest.json")
-    if m is None:
-        return None
-    if WorkspaceLock.is_held(ws_root):
-        return m
-    return None
+    live: list[Manifest] = []
+    if not ws_root.is_dir():
+        return live
+    for run_dir in sorted(ws_root.iterdir()):
+        if not run_dir.is_dir():
+            continue
+        m = read(run_dir / "manifest.json")
+        if m is not None and WorkspaceLock.is_held(run_dir):
+            live.append(m)
+    return live
+
+
+def _exit_ambiguous_runs(live: list[Manifest]) -> None:
+    """Abort with a list of the live runs sharing one CWD."""
+    typer.secho(
+        f"error: {len(live)} live instances share this directory.",
+        fg=typer.colors.RED,
+        err=True,
+    )
+    _print_run_choices(live)
+    typer.echo(
+        f"Run `{CLI_COMMAND} paths` from inside the session you want, or pass "
+        "a storage path to --workspace.",
+        err=True,
+    )
+    raise typer.Exit(2)
+
+
+def _print_run_choices(manifests: list[Manifest]) -> None:
+    """List each run's id and storage dir on stderr for disambiguation."""
+    for m in manifests:
+        typer.echo(f"  {m.run_id}  {m.storage_dir}", err=True)

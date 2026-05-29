@@ -9,9 +9,9 @@ import pytest
 from typer.testing import CliRunner
 
 from transport_matters import __version__
-from transport_matters.cli import WorkspaceLock, main, manifest_write, workspace_root
+from transport_matters.cli import WorkspaceLock, main, run_root, workspace_root
 
-from ._helpers import _plain, _sample_manifest
+from ._helpers import _plain, _sample_manifest, _write_run_manifest
 
 runner = CliRunner()
 
@@ -32,14 +32,33 @@ def test_paths_text_output_lists_expected_keys(tmp_storage: Path) -> None:
         assert key in result.stdout
 
 
+def test_paths_prefers_storage_dir_env(
+    tmp_storage: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Inside a launched session, ``paths`` reports the env's storage dir.
+
+    A run launched by ``transport-matters claude`` carries its own
+    per-run storage dir in ``TRANSPORT_MATTERS_STORAGE_DIR``; ``paths``
+    must report it verbatim, unambiguous even when sibling runs share the
+    CWD.
+    """
+    run_storage = tmp_path / "ws" / "hash" / "run-xyz"
+    monkeypatch.setenv("TRANSPORT_MATTERS_STORAGE_DIR", str(run_storage))
+    result = runner.invoke(main, ["paths", "--json"])
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.stdout)
+    assert Path(payload["storage"]) == run_storage
+
+
 def test_paths_json_is_valid_and_structured(
     tmp_storage: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Default resolution: workspace storage for the current CWD.
+    """Default resolution: workspace container for the current CWD.
 
-    No live manifest → falls back to ``workspace_root(cwd)`` under the
-    sandboxed ``$HOME`` that ``tmp_storage`` pins.
+    No env storage and no live run → falls back to ``workspace_root(cwd)``
+    under the sandboxed ``$HOME`` that ``tmp_storage`` pins.
     """
+    monkeypatch.delenv("TRANSPORT_MATTERS_STORAGE_DIR", raising=False)
     workdir = tmp_path / "project"
     workdir.mkdir()
     monkeypatch.chdir(workdir)
@@ -57,9 +76,12 @@ def test_paths_works_with_live_lock_in_same_cwd(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """``paths`` is read-only and must not touch the workspace lock."""
+    """``paths`` is read-only and must not touch a run's lock."""
+    monkeypatch.delenv("TRANSPORT_MATTERS_STORAGE_DIR", raising=False)
     monkeypatch.chdir(tmp_path)
-    with WorkspaceLock(workspace_root(tmp_path)):
+    run_dir = run_root(tmp_path, "run-001")
+    run_dir.mkdir(parents=True, exist_ok=True)
+    with WorkspaceLock(run_dir):
         result = runner.invoke(main, ["paths"])
     assert result.exit_code == 0
 
@@ -69,31 +91,57 @@ def test_paths_live_manifest_wins_over_default(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A live manifest with a custom ``storage_dir`` overrides the default.
+    """A live run with a custom ``storage_dir`` overrides the default.
 
     When the user ran ``start --storage-dir /custom`` the manifest
     records the override; ``paths`` must surface that path, not the
-    per-workspace default.
+    workspace container.
     """
+    monkeypatch.delenv("TRANSPORT_MATTERS_STORAGE_DIR", raising=False)
     workdir = tmp_path / "project"
     workdir.mkdir()
     custom_storage = tmp_path / "custom-storage"
     custom_storage.mkdir()
     monkeypatch.chdir(workdir)
-    ws_root = workspace_root(workdir)
-    ws_root.mkdir(parents=True, exist_ok=True)
-    manifest_write(
-        ws_root / "manifest.json",
+    run_dir = _write_run_manifest(
+        workdir,
         _sample_manifest(
             workdir=workdir, storage=custom_storage, pid=12345, proxy_port=5050
         ),
     )
 
-    with WorkspaceLock(ws_root):
+    with WorkspaceLock(run_dir):
         result = runner.invoke(main, ["paths", "--json"])
     assert result.exit_code == 0, result.output
     payload = json.loads(result.stdout)
     assert Path(payload["storage"]) == custom_storage
+
+
+def test_paths_errors_on_multiple_live_runs_in_cwd(
+    tmp_storage: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A bare shell cannot pick among several live runs → actionable error."""
+    monkeypatch.delenv("TRANSPORT_MATTERS_STORAGE_DIR", raising=False)
+    workdir = tmp_path / "project"
+    workdir.mkdir()
+    monkeypatch.chdir(workdir)
+    dir1 = _write_run_manifest(
+        workdir,
+        _sample_manifest(workdir=workdir, storage=tmp_path / "s1", pid=1, run_id="r1"),
+    )
+    dir2 = _write_run_manifest(
+        workdir,
+        _sample_manifest(workdir=workdir, storage=tmp_path / "s2", pid=2, run_id="r2"),
+    )
+
+    with WorkspaceLock(dir1), WorkspaceLock(dir2):
+        result = runner.invoke(main, ["paths"])
+    assert result.exit_code == 2
+    assert "2 live instances" in result.output
+    assert "r1" in result.output
+    assert "r2" in result.output
 
 
 def test_paths_stale_manifest_ignored(
@@ -101,14 +149,13 @@ def test_paths_stale_manifest_ignored(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A manifest without a live lock must not hijack resolution."""
+    """A run manifest without a live lock must not hijack resolution."""
+    monkeypatch.delenv("TRANSPORT_MATTERS_STORAGE_DIR", raising=False)
     workdir = tmp_path / "project"
     workdir.mkdir()
     monkeypatch.chdir(workdir)
-    ws_root = workspace_root(workdir)
-    ws_root.mkdir(parents=True, exist_ok=True)
-    manifest_write(
-        ws_root / "manifest.json",
+    _write_run_manifest(
+        workdir,
         _sample_manifest(
             workdir=workdir,
             storage=tmp_path / "stale-storage",
@@ -120,7 +167,7 @@ def test_paths_stale_manifest_ignored(
     result = runner.invoke(main, ["paths", "--json"])
     assert result.exit_code == 0
     payload = json.loads(result.stdout)
-    assert Path(payload["storage"]) == ws_root
+    assert Path(payload["storage"]) == workspace_root(workdir)
 
 
 def test_paths_respects_transport_matters_cwd_env_over_process_cwd(
@@ -135,6 +182,7 @@ def test_paths_respects_transport_matters_cwd_env_over_process_cwd(
     into a subdirectory — resolution should still target the launching
     workspace, not the subdirectory.
     """
+    monkeypatch.delenv("TRANSPORT_MATTERS_STORAGE_DIR", raising=False)
     launch_dir = tmp_path / "project"
     launch_dir.mkdir()
     subdir = launch_dir / "api"
@@ -172,13 +220,11 @@ def test_paths_workspace_flag_accepts_slug(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """``--workspace slug`` finds the matching workspace via manifest scan."""
+    """``--workspace slug`` finds the matching run via manifest scan."""
     workdir = tmp_path / "projectX"
     workdir.mkdir()
-    ws_root = workspace_root(workdir)
-    ws_root.mkdir(parents=True, exist_ok=True)
-    manifest_write(
-        ws_root / "manifest.json",
+    _write_run_manifest(
+        workdir,
         _sample_manifest(
             workdir=workdir, storage=tmp_storage, pid=9001, proxy_port=5050
         ),
@@ -190,7 +236,7 @@ def test_paths_workspace_flag_accepts_slug(
     other.mkdir()
     monkeypatch.chdir(other)
     # The slug matches the last segment of workdir under tmp_path.
-    slug = ws_root.parent.name  # {slug} dir holds the {hash} subdir
+    slug = workspace_root(workdir).parent.name  # {slug} dir holds the {hash} subdir
     result = runner.invoke(main, ["paths", "--workspace", slug, "--json"])
     assert result.exit_code == 0, result.output
     payload = json.loads(result.stdout)

@@ -96,9 +96,9 @@ def test_read_all_missing_root_returns_empty(tmp_path: Path) -> None:
     assert read_all(tmp_path / "does-not-exist") == []
 
 
-def test_read_all_scans_slug_hash_layout(tmp_path: Path) -> None:
-    a = tmp_path / "slug-a" / "hash-a" / "manifest.json"
-    b = tmp_path / "slug-b" / "hash-b" / "manifest.json"
+def test_read_all_scans_slug_hash_run_layout(tmp_path: Path) -> None:
+    a = tmp_path / "slug-a" / "hash-a" / "run-a" / "manifest.json"
+    b = tmp_path / "slug-b" / "hash-b" / "run-b" / "manifest.json"
     write(a, _sample(pid=1, slug="slug-a"))
     write(b, _sample(pid=2, slug="slug-b"))
     found = read_all(tmp_path)
@@ -106,9 +106,19 @@ def test_read_all_scans_slug_hash_layout(tmp_path: Path) -> None:
     assert pids == [1, 2]
 
 
+def test_read_all_finds_multiple_runs_in_one_workspace(tmp_path: Path) -> None:
+    """Two runs share ``{slug}/{hash}/`` but live in distinct run dirs."""
+    r1 = tmp_path / "slug" / "hash" / "run-1" / "manifest.json"
+    r2 = tmp_path / "slug" / "hash" / "run-2" / "manifest.json"
+    write(r1, _sample(pid=1, slug="slug"))
+    write(r2, _sample(pid=2, slug="slug"))
+    found = read_all(tmp_path)
+    assert sorted(m.pid for m in found) == [1, 2]
+
+
 def test_read_all_skips_malformed(tmp_path: Path) -> None:
-    good = tmp_path / "slug-a" / "hash-a" / "manifest.json"
-    bad = tmp_path / "slug-b" / "hash-b" / "manifest.json"
+    good = tmp_path / "slug-a" / "hash-a" / "run-a" / "manifest.json"
+    bad = tmp_path / "slug-b" / "hash-b" / "run-b" / "manifest.json"
     write(good, _sample(pid=1, slug="slug-a"))
     bad.parent.mkdir(parents=True)
     bad.write_text("{garbage", encoding="utf-8")
@@ -118,11 +128,11 @@ def test_read_all_skips_malformed(tmp_path: Path) -> None:
 
 
 def test_read_all_ignores_files_outside_expected_layout(tmp_path: Path) -> None:
-    # A manifest-looking file at the wrong depth must not be picked up.
-    stray = tmp_path / "manifest.json"
-    write(stray, _sample())
+    # Manifest-looking files at the wrong depth must not be picked up.
+    write(tmp_path / "manifest.json", _sample())
+    write(tmp_path / "slug" / "hash" / "manifest.json", _sample(pid=2))
     # Valid manifest at the expected depth.
-    correct = tmp_path / "slug" / "hash" / "manifest.json"
+    correct = tmp_path / "slug" / "hash" / "run" / "manifest.json"
     write(correct, _sample(pid=99, slug="slug"))
     found = read_all(tmp_path)
     assert [m.pid for m in found] == [99]

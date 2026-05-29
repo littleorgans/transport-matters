@@ -5,11 +5,15 @@ Callers must never treat a present manifest as proof that a process is
 alive; they must probe the sibling ``lock`` with
 ``fcntl.flock(LOCK_EX | LOCK_NB)`` before reporting liveness.
 
-On-disk layout (per workspace)::
+On-disk layout (per run)::
 
-    ~/.transport-matters/workspaces/{slug}/{hash}/
+    ~/.transport-matters/workspaces/{slug}/{hash}/{run_id}/
         lock                # fcntl.flock target (held by live instance)
         manifest.json       # this file — metadata about the live instance
+
+The ``{slug}/{hash}/`` container is shared by every run launched from one
+CWD; each run owns a ``{run_id}/`` subdirectory, so two instances in the
+same CWD never collide.
 
 Schema is a simple JSON object; fields mirror the :class:`Manifest`
 dataclass. ``read`` tolerates missing, malformed, and schema-mismatched
@@ -95,14 +99,15 @@ def read(path: Path) -> Manifest | None:
 def read_all(root: Path) -> list[Manifest]:
     """Return every readable manifest under *root*.
 
-    Scans ``root/*/*/manifest.json`` (the ``{slug}/{hash}/`` layout).
-    Unreadable or malformed manifests are skipped silently — they'll be
-    reaped by the next ``transport-matters list`` that lands on their lock.
+    Scans ``root/*/*/*/manifest.json`` (the ``{slug}/{hash}/{run_id}/``
+    layout). Unreadable or malformed manifests are skipped silently —
+    they'll be reaped by the next ``transport-matters list`` that lands on
+    their lock.
     """
     if not root.is_dir():
         return []
     manifests: list[Manifest] = []
-    for manifest_path in root.glob("*/*/manifest.json"):
+    for manifest_path in root.glob("*/*/*/manifest.json"):
         m = read(manifest_path)
         if m is not None:
             manifests.append(m)

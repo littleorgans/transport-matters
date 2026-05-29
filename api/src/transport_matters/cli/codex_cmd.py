@@ -312,7 +312,6 @@ def run_codex(
     resolve_codex_ca_certificate: Callable[..., Path],
     print_client_banner: Callable[..., None],
     run_client_with_retry: Callable[..., None],
-    print_contention_error: Callable[..., None],
 ) -> None:
     """Execute the `codex` launch lifecycle."""
     reject_passthrough_without_client(
@@ -335,11 +334,12 @@ def run_codex(
         port_in_use=port_in_use,
         allocate_port_pair=allocate_port_pair,
     )
+    run_id = new_run_id()
     resolved_storage = resolve_storage_dir(
         storage_dir=storage_dir,
         working_dir=working_dir,
+        run_id=run_id,
     )
-    run_id = new_run_id()
     codex_passthrough_user = list(codex_passthrough)
 
     with as_file(addon_traversable) as addon_path, contextlib.ExitStack() as stack:
@@ -398,6 +398,5 @@ def run_codex(
             working_dir=working_dir,
             storage_dir=resolved_storage,
             run_id=run_id,
-            on_locked=print_contention_error,
             run_launch=run_launch,
         )

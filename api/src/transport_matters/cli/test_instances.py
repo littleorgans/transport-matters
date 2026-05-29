@@ -13,9 +13,9 @@ from typing import TYPE_CHECKING
 
 from typer.testing import CliRunner
 
-from transport_matters.cli import WorkspaceLock, main, manifest_write, workspace_root
+from transport_matters.cli import WorkspaceLock, main
 
-from ._helpers import _plain, _sample_manifest
+from ._helpers import _plain, _sample_manifest, _write_run_manifest
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -32,14 +32,12 @@ def test_list_empty_prints_friendly_message(tmp_storage: Path) -> None:
 def test_list_shows_live_instance(tmp_storage: Path, tmp_path: Path) -> None:
     workdir = tmp_path / "project"
     workdir.mkdir()
-    ws_root = workspace_root(workdir)
-    ws_root.mkdir(parents=True, exist_ok=True)
     m = _sample_manifest(
         workdir=workdir, storage=tmp_storage, pid=11111, proxy_port=9000, web_port=9001
     )
-    manifest_write(ws_root / "manifest.json", m)
+    run_dir = _write_run_manifest(workdir, m)
 
-    with WorkspaceLock(ws_root):
+    with WorkspaceLock(run_dir):
         result = runner.invoke(main, ["list"])
 
     assert result.exit_code == 0, result.output
@@ -47,19 +45,40 @@ def test_list_shows_live_instance(tmp_storage: Path, tmp_path: Path) -> None:
     assert "9000" in result.output
     assert "9001" in result.output
     assert m.slug in result.output
+    assert m.run_id[:8] in result.output
+
+
+def test_list_shows_multiple_runs_in_one_cwd(tmp_storage: Path, tmp_path: Path) -> None:
+    """K1: two live runs in one CWD are listed separately."""
+    workdir = tmp_path / "project"
+    workdir.mkdir()
+    m1 = _write_run_manifest(
+        workdir,
+        _sample_manifest(workdir=workdir, storage=tmp_storage, pid=11111, run_id="r1"),
+    )
+    m2 = _write_run_manifest(
+        workdir,
+        _sample_manifest(workdir=workdir, storage=tmp_storage, pid=22222, run_id="r2"),
+    )
+
+    with WorkspaceLock(m1), WorkspaceLock(m2):
+        result = runner.invoke(main, ["list", "--json"])
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert {entry["pid"] for entry in payload} == {11111, 22222}
+    assert {entry["run_id"] for entry in payload} == {"r1", "r2"}
 
 
 def test_list_reaps_stale_manifest(tmp_storage: Path, tmp_path: Path) -> None:
     """A manifest whose lock isn't held → transparently removed on list."""
     workdir = tmp_path / "project"
     workdir.mkdir()
-    ws_root = workspace_root(workdir)
-    ws_root.mkdir(parents=True, exist_ok=True)
-    manifest_path = ws_root / "manifest.json"
-    manifest_write(
-        manifest_path,
+    run_dir = _write_run_manifest(
+        workdir,
         _sample_manifest(workdir=workdir, storage=tmp_storage, pid=22222),
     )
+    manifest_path = run_dir / "manifest.json"
     # No lock held — manifest is stale.
 
     result = runner.invoke(main, ["list"])
@@ -70,25 +89,22 @@ def test_list_reaps_stale_manifest(tmp_storage: Path, tmp_path: Path) -> None:
 
 
 def test_list_reap_leaves_lock_file_in_place(tmp_storage: Path, tmp_path: Path) -> None:
-    """Regression: reap must NOT unlink the lock file.
+    """Reap removes only the manifest, never the lock file.
 
-    If ``_reap`` unlinked ``lock`` while process A held the flock on
-    that inode, a subsequent ``start`` (process C) would open the path
-    with ``O_CREAT``, land on a fresh inode, flock it successfully, and
-    end up co-resident with A on the same workspace. Leaving the empty
-    lock file alone keeps inode identity across reaps so the next
-    ``flock`` acquisition is correctly serialised.
+    The run directory also holds captured history, and the lock file is
+    cheap and harmless to keep. No future ``start`` reuses this run's
+    directory (each launch mints a fresh ``run_id``), so the old
+    inode-reuse race that motivated leaving the lock in place cannot
+    occur — but unlinking it would still be pointless churn.
     """
     workdir = tmp_path / "project"
     workdir.mkdir()
-    ws_root = workspace_root(workdir)
-    ws_root.mkdir(parents=True, exist_ok=True)
-    manifest_path = ws_root / "manifest.json"
-    lock_path = ws_root / "lock"
-    manifest_write(
-        manifest_path,
+    run_dir = _write_run_manifest(
+        workdir,
         _sample_manifest(workdir=workdir, storage=tmp_storage, pid=22222),
     )
+    manifest_path = run_dir / "manifest.json"
+    lock_path = run_dir / "lock"
     # Create the lock file so we can observe its inode — do NOT hold it.
     lock_path.touch()
     inode_before = lock_path.stat().st_ino
@@ -103,10 +119,8 @@ def test_list_reap_leaves_lock_file_in_place(tmp_storage: Path, tmp_path: Path) 
 def test_list_json_returns_live_instances(tmp_storage: Path, tmp_path: Path) -> None:
     workdir = tmp_path / "project"
     workdir.mkdir()
-    ws_root = workspace_root(workdir)
-    ws_root.mkdir(parents=True, exist_ok=True)
-    manifest_write(
-        ws_root / "manifest.json",
+    run_dir = _write_run_manifest(
+        workdir,
         _sample_manifest(
             workdir=workdir,
             storage=tmp_storage,
@@ -116,7 +130,7 @@ def test_list_json_returns_live_instances(tmp_storage: Path, tmp_path: Path) -> 
         ),
     )
 
-    with WorkspaceLock(ws_root):
+    with WorkspaceLock(run_dir):
         result = runner.invoke(main, ["list", "--json"])
 
     assert result.exit_code == 0
@@ -128,6 +142,7 @@ def test_list_json_returns_live_instances(tmp_storage: Path, tmp_path: Path) -> 
     assert entry["proxy_port"] == 7000
     assert entry["web_port"] == 7001
     assert entry["cwd"] == str(workdir)
+    assert entry["run_id"] == "run-001"
 
 
 def test_list_json_empty_is_empty_array(tmp_storage: Path) -> None:
