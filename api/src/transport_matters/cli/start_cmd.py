@@ -14,44 +14,18 @@ from .identity import CLI_COMMAND
 from .launch_runtime import (
     build_launch_env,
     build_managed_child_env,
-    new_run_id,
+    build_mitmdump_argv,
+    prepare_launch,
+    print_invocation,
     reject_passthrough_without_client,
-    resolve_client_binary,
-    resolve_launch_ports,
-    resolve_mitmdump_or_exit,
-    resolve_storage_dir,
-    resolve_working_dir,
     run_with_workspace_manifest,
 )
 from .net import loopback_http_url
 from .runner import ManagedClient
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Sequence
     from importlib.abc import Traversable
-
-
-def _resolve_claude_path(
-    *,
-    claude_bin: Path | None,
-    no_claude: bool,
-    which: Callable[[str], str | None],
-) -> str | None:
-    """Resolve the Claude binary or exit with an actionable hint."""
-    return resolve_client_binary(
-        name="claude",
-        bin_override=claude_bin,
-        disabled=no_claude,
-        which=which,
-        not_found_hint=(
-            "Install Claude Code, or point at an existing install:\n"
-            "  npm install -g @anthropic-ai/claude-code\n"
-            "  # or\n"
-            f"  {CLI_COMMAND} claude --claude-bin /path/to/claude\n"
-            "  # or run proxy-only:\n"
-            f"  {CLI_COMMAND} claude --no-claude"
-        ),
-    )
 
 
 def _validate_upstream(upstream: str) -> None:
@@ -82,7 +56,7 @@ def _build_start_invocation(
     resolved_storage: Path,
     run_id: str,
     claude_path: str | None,
-    claude_passthrough_user: list[str],
+    claude_passthrough_user: Sequence[str],
     no_claude: bool,
     no_system_prompt: bool,
     debug: bool,
@@ -114,19 +88,13 @@ def _build_start_invocation(
             web_port=web_port,
             run_id=run_id,
         )
-        argv = [
-            mitmdump,
-            "--mode",
-            f"reverse:{upstream}",
-            "--listen-host",
-            "127.0.0.1",
-            "--listen-port",
-            str(proxy_port),
-            "-s",
-            str(addon_path),
-        ]
-        if not debug:
-            argv.extend(["--set", "termlog_verbosity=warn"])
+        argv = build_mitmdump_argv(
+            mitmdump=mitmdump,
+            mode=f"reverse:{upstream}",
+            proxy_port=proxy_port,
+            addon_path=addon_path,
+            debug=debug,
+        )
 
         client = None
         if claude_path is not None:
@@ -176,40 +144,41 @@ def run_start(
         flag="--no-claude",
     )
 
-    addon_traversable = require_addon()
-    mitmdump = resolve_mitmdump_or_exit(resolve_mitmdump=resolve_mitmdump)
-    claude_path = _resolve_claude_path(
-        claude_bin=claude_bin,
-        no_claude=no_claude,
-        which=which,
-    )
-    _validate_upstream(upstream)
-
-    working_dir = resolve_working_dir(directory)
-    proxy_port, web_port, proxy_user_supplied, web_user_supplied = resolve_launch_ports(
+    prepared = prepare_launch(
+        passthrough=claude_passthrough,
+        directory=directory,
         proxy_port=proxy_port,
         web_port=web_port,
+        storage_dir=storage_dir,
+        client_name="claude",
+        bin_override=claude_bin,
+        client_disabled=no_claude,
+        not_found_hint=(
+            "Install Claude Code, or point at an existing install:\n"
+            "  npm install -g @anthropic-ai/claude-code\n"
+            "  # or\n"
+            f"  {CLI_COMMAND} claude --claude-bin /path/to/claude\n"
+            "  # or run proxy-only:\n"
+            f"  {CLI_COMMAND} claude --no-claude"
+        ),
+        require_addon=require_addon,
+        resolve_mitmdump=resolve_mitmdump,
+        which=which,
         port_in_use=port_in_use,
         allocate_port_pair=allocate_port_pair,
+        validate_after_client_resolution=lambda: _validate_upstream(upstream),
     )
-    run_id = new_run_id()
-    resolved_storage = resolve_storage_dir(
-        storage_dir=storage_dir,
-        working_dir=working_dir,
-        run_id=run_id,
-    )
-    claude_passthrough_user = list(claude_passthrough)
 
-    with as_file(addon_traversable) as addon_path:
+    with as_file(prepared.addon_traversable) as addon_path:
         build_invocation = _build_start_invocation(
             addon_path=addon_path,
-            mitmdump=mitmdump,
+            mitmdump=prepared.mitmdump,
             upstream=upstream,
-            working_dir=working_dir,
-            resolved_storage=resolved_storage,
-            run_id=run_id,
-            claude_path=claude_path,
-            claude_passthrough_user=claude_passthrough_user,
+            working_dir=prepared.working_dir,
+            resolved_storage=prepared.resolved_storage,
+            run_id=prepared.run_id,
+            claude_path=prepared.client_path,
+            claude_passthrough_user=prepared.passthrough_user,
             no_claude=no_claude,
             no_system_prompt=no_system_prompt,
             debug=debug,
@@ -218,11 +187,11 @@ def run_start(
         )
 
         if print_command:
-            mitmdump_argv, _env, client = build_invocation(proxy_port, web_port)
-            typer.echo(" ".join(mitmdump_argv))
-            if client is not None:
-                typer.echo(" ".join(client.argv))
-            raise typer.Exit(0)
+            print_invocation(
+                build_invocation=build_invocation,
+                proxy_port=prepared.proxy_port,
+                web_port=prepared.web_port,
+            )
 
         def run_launch(write_manifest_for: Callable[[int, int], None]) -> None:
             def print_banner_for(proxy_port: int, web_port: int) -> None:
@@ -230,24 +199,24 @@ def run_start(
                     proxy_port=proxy_port,
                     web_port=web_port,
                     upstream=upstream,
-                    working_dir=working_dir,
+                    working_dir=prepared.working_dir,
                     no_claude=no_claude,
                 )
 
             run_client_with_retry(
-                proxy_port=proxy_port,
-                web_port=web_port,
-                proxy_user_supplied=proxy_user_supplied,
-                web_user_supplied=web_user_supplied,
+                proxy_port=prepared.proxy_port,
+                web_port=prepared.web_port,
+                proxy_user_supplied=prepared.proxy_user_supplied,
+                web_user_supplied=prepared.web_user_supplied,
                 build_invocation=build_invocation,
                 print_banner_for=print_banner_for,
                 write_manifest_for=write_manifest_for,
-                resolved_storage=resolved_storage,
+                resolved_storage=prepared.resolved_storage,
             )
 
         run_with_workspace_manifest(
-            working_dir=working_dir,
-            storage_dir=resolved_storage,
-            run_id=run_id,
+            working_dir=prepared.working_dir,
+            storage_dir=prepared.resolved_storage,
+            run_id=prepared.run_id,
             run_launch=run_launch,
         )
