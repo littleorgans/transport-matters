@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal, TypedDict
 
 from transport_matters import breakpoint as bp
@@ -28,6 +29,8 @@ from transport_matters.flow_state import (
 from transport_matters.request_diff import outbound_request_if_changed
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from mitmproxy import http
 
     from transport_matters.ir import InternalRequest
@@ -44,6 +47,22 @@ class TrackFields(TypedDict):
     track_display_name: str | None
     track_role: Literal["parent", "subagent"] | None
     spawn_anchor: SpawnAnchor | None
+
+
+@dataclass(frozen=True)
+class _PauseHooks:
+    auth_headers: dict[str, str] | None = None
+    provisional_exchange_id: str | None = None
+    after_broadcast: Callable[[], None] | None = None
+
+
+@dataclass(frozen=True)
+class _PauseOutcome:
+    pf: bp.PausedFlow
+    final_ir: InternalRequest | None = None
+    mutated_manually: bool = False
+    audit: OverrideAudit | None = None
+    release_payload: bytes | None = None
 
 
 def resolve_paused_flow(
@@ -178,6 +197,75 @@ def _flow_track_fields(flow: http.HTTPFlow) -> TrackFields:
     }
 
 
+async def _run_pause(
+    *,
+    flow: http.HTTPFlow,
+    adapter: Any,  # Any: adapter protocol has no shared base
+    original_ir: InternalRequest,
+    curated_ir: InternalRequest,
+    audit: OverrideAudit | None,
+    transport: Literal["http", "websocket"],
+    log_label: str,
+    timeout_label: str,
+    prepare_pause: Callable[[], _PauseHooks] | None = None,
+) -> _PauseOutcome | None:
+    logger.info("%s %s waiting for serializer", log_label, flow.id)
+    async with bp.pause_serializer():
+        logger.info("%s %s acquired serializer, pausing", log_label, flow.id)
+        hooks = prepare_pause() if prepare_pause is not None else _PauseHooks()
+        paused_at_ms = int(time.time() * 1000)
+        track_fields = _flow_track_fields(flow)
+        event = await bp.pause(
+            flow,
+            original_ir,
+            curated_ir,
+            transport=transport,
+            audit=audit,
+            auth_headers=hooks.auth_headers,
+            **track_fields,
+        )
+        broadcast.emit(
+            _paused_event_payload(
+                flow_id=flow.id,
+                transport=transport,
+                original_ir=original_ir,
+                curated_ir=curated_ir,
+                audit=audit,
+                paused_at_ms=paused_at_ms,
+                provisional_exchange_id=hooks.provisional_exchange_id,
+                **track_fields,
+            )
+        )
+        if hooks.after_broadcast is not None:
+            hooks.after_broadcast()
+        settings = get_settings()
+        try:
+            await asyncio.wait_for(event.wait(), timeout=settings.breakpoint_timeout_s)
+        except TimeoutError:
+            logger.warning(
+                "%s (%.0fs) for flow %s, auto-releasing",
+                timeout_label,
+                settings.breakpoint_timeout_s,
+                flow.id,
+            )
+
+        pf = await bp.pop_paused(flow.id)
+    if pf is None:
+        return None
+    if pf.dropped:
+        return _PauseOutcome(pf=pf)
+
+    final_ir, mutated_manually, final_audit = resolve_paused_flow(pf)
+    release_payload = _release_payload(pf, adapter, final_ir)
+    return _PauseOutcome(
+        pf=pf,
+        final_ir=final_ir,
+        mutated_manually=mutated_manually,
+        audit=final_audit,
+        release_payload=release_payload,
+    )
+
+
 async def handle_breakpoint(
     flow: http.HTTPFlow,
     adapter: Any,  # Any: adapter protocol has no shared base
@@ -189,33 +277,13 @@ async def handle_breakpoint(
     """Pause at breakpoint, await user action, rewrite request in place."""
     from mitmproxy.http import Response as MitmResponse
 
-    logger.info("BREAKPOINT %s waiting for serializer", flow.id)
-    async with bp.pause_serializer():
-        logger.info("BREAKPOINT %s acquired serializer, pausing", flow.id)
+    def prepare_http_pause() -> _PauseHooks:
         auth = _relevant_auth_headers(flow.request.headers)
-        paused_at_ms = int(time.time() * 1000)
-        track_fields = _flow_track_fields(flow)
-        event = await bp.pause(
-            flow,
-            original_ir,
-            curated_ir,
-            transport="http",
-            audit=audit,
-            auth_headers=auth,
-            **track_fields,
-        )
-        broadcast.emit(
-            _paused_event_payload(
-                flow_id=flow.id,
-                transport="http",
-                original_ir=original_ir,
-                curated_ir=curated_ir,
-                audit=audit,
-                paused_at_ms=paused_at_ms,
-                **track_fields,
-            )
-        )
-        if counter is not None:
+
+        if counter is None:
+            return _PauseHooks(auth_headers=auth)
+
+        def after_broadcast() -> None:
             asyncio.create_task(
                 fire_pause_count(
                     flow.id,
@@ -224,21 +292,24 @@ async def handle_breakpoint(
                     auth,
                 )
             )
-        settings = get_settings()
-        try:
-            await asyncio.wait_for(event.wait(), timeout=settings.breakpoint_timeout_s)
-        except TimeoutError:
-            logger.warning(
-                "Breakpoint timeout (%.0fs) for flow %s, auto-releasing",
-                settings.breakpoint_timeout_s,
-                flow.id,
-            )
 
-        pf = await bp.pop_paused(flow.id)
-    if pf is None:
+        return _PauseHooks(auth_headers=auth, after_broadcast=after_broadcast)
+
+    outcome = await _run_pause(
+        flow=flow,
+        adapter=adapter,
+        original_ir=original_ir,
+        curated_ir=curated_ir,
+        audit=audit,
+        transport="http",
+        log_label="BREAKPOINT",
+        timeout_label="Breakpoint timeout",
+        prepare_pause=prepare_http_pause,
+    )
+    if outcome is None:
         return
 
-    if pf.dropped:
+    if outcome.pf.dropped:
         update_request_flow_state(flow, dropped=True)
         flow.response = MitmResponse.make(
             400,
@@ -247,15 +318,14 @@ async def handle_breakpoint(
         )
         return
 
-    final_ir, mutated_manually, final_audit = resolve_paused_flow(pf)
-    release = _release_payload(pf, adapter, final_ir)
-    if release is not None:
-        flow.request.set_text(release.decode())
+    assert outcome.final_ir is not None
+    if outcome.release_payload is not None:
+        flow.request.set_text(outcome.release_payload.decode())
     update_request_flow_state(
         flow,
-        curated_request_ir=final_ir,
-        audit=final_audit,
-        mutated_manually=mutated_manually,
+        curated_request_ir=outcome.final_ir,
+        audit=outcome.audit,
+        mutated_manually=outcome.mutated_manually,
     )
 
 
@@ -267,51 +337,31 @@ async def handle_websocket_breakpoint(
     curated_ir: InternalRequest,
     audit: OverrideAudit | None,
 ) -> None:
-    logger.info("CODEX BREAKPOINT %s waiting for serializer", flow.id)
-    async with bp.pause_serializer():
-        logger.info("CODEX BREAKPOINT %s acquired serializer, pausing", flow.id)
+    def prepare_websocket_pause() -> _PauseHooks:
         transport_state = get_codex_transport_state(flow)
-        paused_at_ms = int(time.time() * 1000)
-        track_fields = _flow_track_fields(flow)
-        event = await bp.pause(
-            flow,
-            original_ir,
-            curated_ir,
-            transport="websocket",
-            audit=audit,
-            **track_fields,
-        )
-        broadcast.emit(
-            _paused_event_payload(
-                flow_id=flow.id,
-                transport="websocket",
-                original_ir=original_ir,
-                curated_ir=curated_ir,
-                audit=audit,
-                paused_at_ms=paused_at_ms,
-                provisional_exchange_id=(
-                    transport_state.provisional_exchange_id
-                    if transport_state is not None
-                    else None
-                ),
-                **track_fields,
+        return _PauseHooks(
+            provisional_exchange_id=(
+                transport_state.provisional_exchange_id
+                if transport_state is not None
+                else None
             )
         )
-        settings = get_settings()
-        try:
-            await asyncio.wait_for(event.wait(), timeout=settings.breakpoint_timeout_s)
-        except TimeoutError:
-            logger.warning(
-                "Codex breakpoint timeout (%.0fs) for flow %s, auto-releasing",
-                settings.breakpoint_timeout_s,
-                flow.id,
-            )
 
-        pf = await bp.pop_paused(flow.id)
-    if pf is None:
+    outcome = await _run_pause(
+        flow=flow,
+        adapter=adapter,
+        original_ir=original_ir,
+        curated_ir=curated_ir,
+        audit=audit,
+        transport="websocket",
+        log_label="CODEX BREAKPOINT",
+        timeout_label="Codex breakpoint timeout",
+        prepare_pause=prepare_websocket_pause,
+    )
+    if outcome is None:
         return
 
-    if pf.dropped:
+    if outcome.pf.dropped:
         _clear_codex_breakpoint_lifecycle(flow)
         mark_codex_initial_request_dropped(flow)
         await _delete_codex_provisional_exchange(flow)
@@ -320,17 +370,16 @@ async def handle_websocket_breakpoint(
 
     _record_codex_breakpoint_release(
         flow,
-        paused_at_ms=pf.paused_at_ms,
+        paused_at_ms=outcome.pf.paused_at_ms,
         released_at_ms=int(time.time() * 1000),
     )
-    final_ir, mutated_manually, final_audit = resolve_paused_flow(pf)
-    release = _release_payload(pf, adapter, final_ir)
-    if release is not None:
-        message.content = release
+    assert outcome.final_ir is not None
+    if outcome.release_payload is not None:
+        message.content = outcome.release_payload
     update_request_flow_state(
         flow,
-        curated_request_ir=final_ir,
-        audit=final_audit,
-        mutated_manually=mutated_manually,
+        curated_request_ir=outcome.final_ir,
+        audit=outcome.audit,
+        mutated_manually=outcome.mutated_manually,
     )
     await _rewrite_codex_provisional_exchange(flow, force_replay=True)
