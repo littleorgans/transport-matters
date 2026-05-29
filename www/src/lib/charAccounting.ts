@@ -11,6 +11,7 @@ type JsonRecord = Record<string, unknown>;
 
 const MAX_DECIMAL_INTEGER_FLOAT = 1e21;
 const EXPONENT_PATTERN = /e([+-]?)(0*)(\d+)$/;
+const PYTHON_EXPONENT_DECIMAL_THRESHOLD = 1e-4;
 
 function codePointLength(value: string): number {
   return Array.from(value).length;
@@ -37,7 +38,25 @@ function normalizeExponent(value: string): string {
     });
 }
 
-function canonicalNumber(value: number): string {
+function decimalFractionToExponent(value: string): string {
+  const sign = value.startsWith("-") ? "-" : "";
+  const unsigned = sign === "" ? value : value.slice(1);
+  const match = /^0\.(0*)(\d+)$/.exec(unsigned);
+  if (match === null) return value;
+
+  const [, zeroes = "", digits = ""] = match;
+  const coefficientDigits = digits.replace(/0+$/, "");
+  if (coefficientDigits === "") return "0";
+  const coefficient =
+    coefficientDigits.length === 1
+      ? coefficientDigits
+      : `${coefficientDigits.charAt(0)}.${coefficientDigits.slice(1)}`;
+  return `${sign}${coefficient}e-${zeroes.length + 1}`;
+}
+
+function canonicalNumber(value: number | bigint): string {
+  // Native JSON.parse/res.json lose unsafe integer precision; exact lexemes must arrive as BigInt.
+  if (typeof value === "bigint") return value.toString();
   if (!Number.isFinite(value)) {
     throw new Error("non-finite numbers are not valid char-accounting JSON");
   }
@@ -47,6 +66,9 @@ function canonicalNumber(value: number): string {
   const json = JSON.stringify(value);
   if (json === undefined) {
     throw new Error("unsupported char-accounting JSON number");
+  }
+  if (Math.abs(value) < PYTHON_EXPONENT_DECIMAL_THRESHOLD && !json.includes("e")) {
+    return decimalFractionToExponent(json);
   }
   return normalizeExponent(json);
 }
@@ -66,7 +88,7 @@ function isRecord(value: unknown): value is JsonRecord {
 export function canonicalJson(value: unknown): string {
   if (value === null) return "null";
   if (typeof value === "string") return canonicalString(value);
-  if (typeof value === "number") return canonicalNumber(value);
+  if (typeof value === "number" || typeof value === "bigint") return canonicalNumber(value);
   if (typeof value === "boolean") return value ? "true" : "false";
   if (Array.isArray(value)) {
     return `[${value.map((item) => canonicalJson(item)).join(",")}]`;

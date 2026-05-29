@@ -73,6 +73,7 @@ def _canonical_number(value: int | float) -> str:
         raise ValueError("non-finite numbers are not valid char-accounting JSON")
     if value.is_integer() and abs(value) < _MAX_DECIMAL_INTEGER_FLOAT:
         return str(int(value))
+    # TypeScript mirrors Python's exponent threshold for small decimal floats.
     return _canonical_exponent(
         json.dumps(value, allow_nan=False, ensure_ascii=False, separators=(",", ":"))
     )

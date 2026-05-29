@@ -59,6 +59,20 @@ class TestAuditAggregate:
         block_adapter: TypeAdapter[ContentBlock] = TypeAdapter(ContentBlock)
 
         assert canonical_json(fixture["numbers"]) == expected["numbers_json"]
+        for number_case in fixture["number_cases"]:
+            raw_value = number_case["value"]
+            value = int(raw_value) if number_case["kind"] == "int" else float(raw_value)
+            assert canonical_json(value) == number_case["expected"], number_case[
+                "label"
+            ]
+        for residual_case in fixture["production_number_residual_cases"]:
+            assert (
+                canonical_json(json.loads(residual_case["json"]))
+                == residual_case["python_expected"]
+            ), residual_case["label"]
+            assert (
+                residual_case["python_expected"] != residual_case["typescript_expected"]
+            ), residual_case["label"]
         assert (
             canonical_json(fixture["tool"]["input_schema"])
             == expected["tool_input_schema_json"]

@@ -4,8 +4,24 @@ import { describe, expect, it } from "vitest";
 import type { ContentBlock, InternalRequest, ToolDef } from "../types";
 import { canonicalBlockJson, canonicalJson, countCharsParts, toolChars } from "./charAccounting";
 
+interface NumberCase {
+  label: string;
+  kind: "float" | "int";
+  value: string;
+  expected: string;
+}
+
+interface ProductionNumberResidualCase {
+  label: string;
+  json: string;
+  python_expected: string;
+  typescript_expected: string;
+}
+
 interface Fixture {
   numbers: unknown;
+  number_cases: NumberCase[];
+  production_number_residual_cases: ProductionNumberResidualCase[];
   tool: ToolDef;
   blocks: Record<string, ContentBlock>;
   internal_request: InternalRequest;
@@ -33,6 +49,18 @@ describe("char accounting", () => {
     const fixture = loadFixture();
 
     expect(canonicalJson(fixture.numbers)).toBe(fixture.expected.numbers_json);
+    for (const numberCase of fixture.number_cases) {
+      const value = numberCase.kind === "int" ? BigInt(numberCase.value) : Number(numberCase.value);
+      expect(`${numberCase.label}\t${canonicalJson(value)}`).toBe(
+        `${numberCase.label}\t${numberCase.expected}`,
+      );
+    }
+    for (const residualCase of fixture.production_number_residual_cases) {
+      expect(`${residualCase.label}\t${canonicalJson(JSON.parse(residualCase.json))}`).toBe(
+        `${residualCase.label}\t${residualCase.typescript_expected}`,
+      );
+      expect(residualCase.typescript_expected).not.toBe(residualCase.python_expected);
+    }
     expect(canonicalJson(fixture.tool.input_schema)).toBe(fixture.expected.tool_input_schema_json);
     expect(toolChars(fixture.tool)).toBe(fixture.expected.tool_chars);
 
