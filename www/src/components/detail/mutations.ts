@@ -4,25 +4,7 @@ import {
   parseToolName,
   parseToolResultId,
 } from "../../lib/overrideTargets";
-import type {
-  ContentBlock,
-  InternalRequest,
-  Message,
-  Override,
-  OverrideAuditEntry,
-} from "../../types";
-import {
-  DISPLAY_TARGET,
-  EFFORT_TARGET,
-  getBudget,
-  getDisplay,
-  getEffort,
-  getThinkingMode,
-  readThinkingDict,
-  SAMPLING_TARGETS,
-  samplingValuesEqual,
-  THINKING_TARGET,
-} from "../editor/samplingShared";
+import type { ContentBlock, InternalRequest, Message, OverrideAuditEntry } from "../../types";
 
 /**
  * Structured diff between the original request IR and the curated IR the
@@ -272,65 +254,6 @@ export function detectSystemPartMutationsStructural(
   }
 
   return mutations;
-}
-
-function encodeReadOnlyOverrideValue(value: unknown): string | boolean | number | null {
-  if (typeof value === "number" || typeof value === "boolean") return value;
-  if (value === null) return "null";
-  return JSON.stringify(value);
-}
-
-export function detectSamplingOverridesStructural(
-  original: InternalRequest | undefined,
-  curated: InternalRequest | undefined,
-): Override[] {
-  const overrides: Override[] = [];
-  if (!original || !curated) return overrides;
-
-  for (const field of Object.keys(SAMPLING_TARGETS) as Array<keyof typeof SAMPLING_TARGETS>) {
-    const originalValue = original.sampling[field];
-    const curatedValue = curated.sampling[field];
-    if (!samplingValuesEqual(field, originalValue, curatedValue)) {
-      overrides.push({
-        kind: "sampling_set",
-        target: SAMPLING_TARGETS[field],
-        value: encodeReadOnlyOverrideValue(curatedValue),
-      });
-    }
-  }
-
-  const originalThinkingMode = getThinkingMode(original.provider_extras);
-  const curatedThinkingMode = getThinkingMode(curated.provider_extras);
-  const originalBudget = getBudget(original.provider_extras);
-  const curatedBudget = getBudget(curated.provider_extras);
-  if (
-    originalThinkingMode !== curatedThinkingMode ||
-    (curatedThinkingMode === "enabled" && originalBudget !== curatedBudget)
-  ) {
-    overrides.push({
-      kind: "provider_extras_set",
-      target: THINKING_TARGET,
-      value: encodeReadOnlyOverrideValue(readThinkingDict(curated.provider_extras)),
-    });
-  }
-
-  if (getDisplay(original.provider_extras) !== getDisplay(curated.provider_extras)) {
-    overrides.push({
-      kind: "provider_extras_set",
-      target: DISPLAY_TARGET,
-      value: encodeReadOnlyOverrideValue(getDisplay(curated.provider_extras)),
-    });
-  }
-
-  if (getEffort(original.provider_extras) !== getEffort(curated.provider_extras)) {
-    overrides.push({
-      kind: "provider_extras_set",
-      target: EFFORT_TARGET,
-      value: encodeReadOnlyOverrideValue(getEffort(curated.provider_extras)),
-    });
-  }
-
-  return overrides;
 }
 
 export function detectToolMutationsStructural(
