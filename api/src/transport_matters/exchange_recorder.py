@@ -43,6 +43,7 @@ from transport_matters.storage.base import (
     StorageBackend,
     TransportArtifacts,
 )
+from transport_matters.storage.disk_layout import DiskStorageLayout
 from transport_matters.track_manager import (
     TrackAssignment,
     assignment_index_fields,
@@ -56,6 +57,7 @@ if TYPE_CHECKING:
     from transport_matters.flow_state import RequestFlowState
 
 logger = logging.getLogger(__name__)
+_STORAGE_LAYOUT = DiskStorageLayout()
 
 
 async def _persist_exchange(
@@ -288,7 +290,6 @@ async def _persist_unparsed_exchange(
         storage = await get_storage()
         exchange_id = str(uuid.uuid4())
         ts = datetime.now(UTC)
-        ts_slug = ts.strftime("%Y%m%dT%H%M%S")
         run_id = get_settings().run_id
         entry = IndexEntry(
             id=exchange_id,
@@ -296,7 +297,7 @@ async def _persist_unparsed_exchange(
             ts=ts,
             provider=ir.provider,
             model=ir.model,
-            path=f"exchanges/{ts_slug}-{exchange_id[:8]}/",
+            path=_STORAGE_LAYOUT.exchange_index_path_for(exchange_id, ts=ts),
             req=req_stats,
         )
         artifacts = ExchangeArtifacts(request_raw=raw, request_ir=ir)
@@ -423,7 +424,6 @@ async def _persist_http_exchange(
                 exchange_id,
             )
 
-    ts_slug = ts.strftime("%Y%m%dT%H%M%S")
     run_id = get_settings().run_id
     track_assignment = _persist_track_assignment(
         run_id, request_state, res_ir, exchange_id=exchange_id
@@ -434,7 +434,7 @@ async def _persist_http_exchange(
         ts=ts,
         provider=ir.provider,
         model=ir.model,
-        path=f"exchanges/{ts_slug}-{exchange_id[:8]}/",
+        path=_STORAGE_LAYOUT.exchange_index_path_for(exchange_id, ts=ts),
         req=req_stats,
         pipeline=pipeline_stats,
         res=res_stats,
@@ -493,7 +493,6 @@ async def _persist_http_provisional_exchange(
 
     exchange_id = str(uuid.uuid4())
     ts = datetime.now(UTC)
-    ts_slug = ts.strftime("%Y%m%dT%H%M%S")
     run_id = get_settings().run_id
     track_assignment = _persist_track_assignment(
         run_id, request_state, None, exchange_id=exchange_id
@@ -504,7 +503,7 @@ async def _persist_http_provisional_exchange(
         ts=ts,
         provider=ir.provider,
         model=ir.model,
-        path=f"exchanges/{ts_slug}-{exchange_id[:8]}/",
+        path=_STORAGE_LAYOUT.exchange_index_path_for(exchange_id, ts=ts),
         req=req_stats,
         pipeline=pipeline_stats,
         mutated_manually=request_state.mutated_manually,

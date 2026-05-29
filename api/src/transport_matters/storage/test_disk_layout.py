@@ -23,6 +23,17 @@ def test_exchange_dir_uses_existing_timestamp_and_short_id_format(
     )
 
     assert exchange_dir == tmp_path / "20250601T120000Z-abcdef01"
+    assert (
+        layout.exchange_dir_name(
+            "abcdef01-1234",
+            ts=datetime(2025, 6, 1, 12, 0, tzinfo=UTC),
+        )
+        == exchange_dir.name
+    )
+    assert layout.exchange_index_path_for(
+        "abcdef01-1234",
+        ts=datetime(2025, 6, 1, 12, 0, tzinfo=UTC),
+    ) == layout.exchange_index_path(exchange_dir.name)
 
 
 def test_short_id_helpers_keep_exchange_id_and_dir_name_semantics(

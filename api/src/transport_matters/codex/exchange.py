@@ -52,6 +52,7 @@ from transport_matters.storage import (
     ResStats,
 )
 from transport_matters.storage.base import ExchangeArtifacts
+from transport_matters.storage.disk_layout import DiskStorageLayout
 from transport_matters.track_manager import assignment_index_fields, get_track_manager
 
 if TYPE_CHECKING:
@@ -61,6 +62,7 @@ if TYPE_CHECKING:
     from transport_matters.codex.derivation import CodexDerivedTurnArtifacts
 
 logger = logging.getLogger(__name__)
+_STORAGE_LAYOUT = DiskStorageLayout()
 
 
 def _codex_turn_allocation(state: Any | None) -> CodexContinuityAllocation | None:
@@ -99,7 +101,6 @@ async def _persist_codex_provisional_exchange(flow: http.HTTPFlow) -> str | None
     allocation = _codex_turn_allocation(state)
     turn_index = _codex_turn_index(state)
     ts = datetime.now(UTC)
-    ts_slug = ts.strftime("%Y%m%dT%H%M%S")
     derived = (
         _replay_codex_derived_artifacts(
             flow,
@@ -122,7 +123,7 @@ async def _persist_codex_provisional_exchange(flow: http.HTTPFlow) -> str | None
         ts=ts,
         provider=ir.provider,
         model=ir.model,
-        path=f"exchanges/{ts_slug}-{exchange_id[:8]}/",
+        path=_STORAGE_LAYOUT.exchange_index_path_for(exchange_id, ts=ts),
         req=req_stats,
         pipeline=pipeline_stats,
         codex_turn=(
@@ -225,7 +226,6 @@ async def _persist_codex_exchange(
 
     exchange_id = str(uuid.uuid4())
     ts = datetime.now(UTC)
-    ts_slug = ts.strftime("%Y%m%dT%H%M%S")
     allocation = _codex_turn_allocation(state)
     turn_index = _codex_turn_index(state)
     derived = (
@@ -250,7 +250,7 @@ async def _persist_codex_exchange(
         ts=ts,
         provider=ir.provider,
         model=ir.model,
-        path=f"exchanges/{ts_slug}-{exchange_id[:8]}/",
+        path=_STORAGE_LAYOUT.exchange_index_path_for(exchange_id, ts=ts),
         req=req_stats,
         pipeline=pipeline_stats,
         res=res_stats,
@@ -530,14 +530,13 @@ async def _persist_codex_handshake_failure(flow: http.HTTPFlow) -> None:
 
     exchange_id = str(uuid.uuid4())
     ts = datetime.now(UTC)
-    ts_slug = ts.strftime("%Y%m%dT%H%M%S")
     entry = IndexEntry(
         id=exchange_id,
         run_id=get_settings().run_id,
         ts=ts,
         provider="codex",
         model=ir.model,
-        path=f"exchanges/{ts_slug}-{exchange_id[:8]}/",
+        path=_STORAGE_LAYOUT.exchange_index_path_for(exchange_id, ts=ts),
         req=req_stats,
         res=res_stats,
     )

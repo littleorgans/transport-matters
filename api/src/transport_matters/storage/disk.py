@@ -33,6 +33,7 @@ from transport_matters.transport_redaction import redact_transport_artifacts
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
+    from datetime import datetime
     from pathlib import Path
 
 
@@ -224,7 +225,7 @@ class DiskStorageBackend(DiskStorageRecoveryMixin, StorageBackend):
         self, entry: IndexEntry, artifacts: ExchangeArtifacts
     ) -> None:
         artifacts.validate_codex_derived_artifacts()
-        final_dir, tmp_dir = self._prepare_exchange_write(entry.id, artifacts)
+        final_dir, tmp_dir = self._prepare_exchange_write(entry.id, now=entry.ts)
         backup_dir: Path | None = None
 
         try:
@@ -359,7 +360,7 @@ class DiskStorageBackend(DiskStorageRecoveryMixin, StorageBackend):
         self, exchange_id: str, artifacts: ExchangeArtifacts
     ) -> None:
         artifacts.validate_codex_derived_artifacts()
-        final_dir, tmp_dir = self._prepare_exchange_write(exchange_id, artifacts)
+        final_dir, tmp_dir = self._prepare_exchange_write(exchange_id)
         try:
             await self._write_exchange_files(tmp_dir, artifacts)
             backup_dir = await self._activate_exchange_dir(tmp_dir, final_dir)
@@ -502,9 +503,9 @@ class DiskStorageBackend(DiskStorageRecoveryMixin, StorageBackend):
         return self._layout.find_exchange_dir(exchange_id)
 
     def _prepare_exchange_write(
-        self, exchange_id: str, artifacts: ExchangeArtifacts
+        self, exchange_id: str, *, now: datetime | None = None
     ) -> tuple[Path, Path]:
-        final_dir = self._layout.exchange_dir_for_write(exchange_id)
+        final_dir = self._layout.exchange_dir_for_write(exchange_id, now=now)
         tmp_dir = self._layout.tmp_exchange_dir(final_dir)
         shutil.rmtree(tmp_dir, ignore_errors=True)
         tmp_dir.mkdir(parents=True, exist_ok=True)
