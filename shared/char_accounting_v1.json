@@ -1,0 +1,264 @@
+{
+  "numbers": {
+    "float_fraction": 1.5,
+    "float_integer": 1.0,
+    "int": 1,
+    "large_integer_float": 1e+20
+  },
+  "tool": {
+    "name": "mcp__demo__run",
+    "description": "Run émoji 😄",
+    "input_schema": {
+      "alpha": [
+        "é",
+        "😄",
+        1,
+        1.0,
+        1.5,
+        1e+20
+      ],
+      "numeric": {
+        "float_fraction": 1.5,
+        "float_integer": 1.0,
+        "int": 1,
+        "large_integer_float": 1e+20
+      },
+      "zeta": {
+        "inner_b": 2,
+        "inner_a": 1.0
+      }
+    },
+    "provider_data": {
+      "ignored": true
+    }
+  },
+  "blocks": {
+    "text": {
+      "type": "text",
+      "text": "hi é 😄",
+      "provider_data": {
+        "raw": {
+          "z": 1,
+          "a": {
+            "emoji": "😄",
+            "accent": "é"
+          }
+        }
+      }
+    },
+    "tool_use": {
+      "type": "tool_use",
+      "id": "tu-1",
+      "name": "run",
+      "input": {
+        "z": 1.0,
+        "a": {
+          "b": 2,
+          "a": 1.5
+        }
+      },
+      "provider_data": null
+    },
+    "tool_result": {
+      "type": "tool_result",
+      "tool_use_id": "tu-1",
+      "content": [
+        {
+          "type": "text",
+          "text": "x",
+          "provider_data": null
+        },
+        {
+          "type": "image",
+          "source": {
+            "z": "last",
+            "a": "first"
+          },
+          "provider_data": null
+        }
+      ],
+      "is_error": false,
+      "provider_data": {
+        "raw": {
+          "beta": 2,
+          "alpha": 1
+        }
+      }
+    },
+    "thinking": {
+      "type": "thinking",
+      "text": "think 😄",
+      "provider_data": null
+    },
+    "image": {
+      "type": "image",
+      "source": {
+        "mime": "image/png",
+        "data": "abc"
+      },
+      "provider_data": null
+    },
+    "unknown": {
+      "type": "unknown",
+      "raw": {
+        "z": 1,
+        "a": 2
+      }
+    }
+  },
+  "internal_request": {
+    "model": "demo-model",
+    "provider": "anthropic",
+    "system": [
+      {
+        "type": "text",
+        "text": "system é 😄",
+        "cache_hint": null,
+        "provider_data": null
+      }
+    ],
+    "tools": [
+      {
+        "name": "mcp__demo__run",
+        "description": "Run émoji 😄",
+        "input_schema": {
+          "alpha": [
+            "é",
+            "😄",
+            1,
+            1.0,
+            1.5,
+            1e+20
+          ],
+          "numeric": {
+            "float_fraction": 1.5,
+            "float_integer": 1.0,
+            "int": 1,
+            "large_integer_float": 1e+20
+          },
+          "zeta": {
+            "inner_b": 2,
+            "inner_a": 1.0
+          }
+        },
+        "provider_data": {
+          "ignored": true
+        }
+      }
+    ],
+    "messages": [
+      {
+        "role": "user",
+        "content": [
+          {
+            "type": "text",
+            "text": "hi é 😄",
+            "provider_data": {
+              "raw": {
+                "z": 1,
+                "a": {
+                  "emoji": "😄",
+                  "accent": "é"
+                }
+              }
+            }
+          },
+          {
+            "type": "tool_use",
+            "id": "tu-1",
+            "name": "run",
+            "input": {
+              "z": 1.0,
+              "a": {
+                "b": 2,
+                "a": 1.5
+              }
+            },
+            "provider_data": null
+          },
+          {
+            "type": "tool_result",
+            "tool_use_id": "tu-1",
+            "content": [
+              {
+                "type": "text",
+                "text": "x",
+                "provider_data": null
+              },
+              {
+                "type": "image",
+                "source": {
+                  "z": "last",
+                  "a": "first"
+                },
+                "provider_data": null
+              }
+            ],
+            "is_error": false,
+            "provider_data": {
+              "raw": {
+                "beta": 2,
+                "alpha": 1
+              }
+            }
+          },
+          {
+            "type": "thinking",
+            "text": "think 😄",
+            "provider_data": null
+          },
+          {
+            "type": "image",
+            "source": {
+              "mime": "image/png",
+              "data": "abc"
+            },
+            "provider_data": null
+          },
+          {
+            "type": "unknown",
+            "raw": {
+              "z": 1,
+              "a": 2
+            }
+          }
+        ],
+        "provider_data": null
+      }
+    ],
+    "sampling": {
+      "max_tokens": 1024,
+      "temperature": null,
+      "top_p": null,
+      "top_k": null,
+      "stop_sequences": []
+    },
+    "metadata": {
+      "session_id": null,
+      "device_id": null,
+      "account_id": null,
+      "provider_metadata": {}
+    },
+    "stream": false,
+    "provider_extras": {}
+  },
+  "expected": {
+    "numbers_json": "{\"float_fraction\":1.5,\"float_integer\":1,\"int\":1,\"large_integer_float\":100000000000000000000}",
+    "tool_input_schema_json": "{\"alpha\":[\"é\",\"😄\",1,1,1.5,100000000000000000000],\"numeric\":{\"float_fraction\":1.5,\"float_integer\":1,\"int\":1,\"large_integer_float\":100000000000000000000},\"zeta\":{\"inner_a\":1,\"inner_b\":2}}",
+    "tool_chars": 210,
+    "blocks": {
+      "text": "{\"type\":\"text\",\"text\":\"hi é 😄\",\"provider_data\":{\"raw\":{\"a\":{\"accent\":\"é\",\"emoji\":\"😄\"},\"z\":1}}}",
+      "tool_use": "{\"type\":\"tool_use\",\"id\":\"tu-1\",\"name\":\"run\",\"input\":{\"a\":{\"a\":1.5,\"b\":2},\"z\":1},\"provider_data\":null}",
+      "tool_result": "{\"type\":\"tool_result\",\"tool_use_id\":\"tu-1\",\"content\":[{\"type\":\"text\",\"text\":\"x\",\"provider_data\":null},{\"type\":\"image\",\"source\":{\"a\":\"first\",\"z\":\"last\"},\"provider_data\":null}],\"is_error\":false,\"provider_data\":{\"raw\":{\"alpha\":1,\"beta\":2}}}",
+      "thinking": "{\"type\":\"thinking\",\"text\":\"think 😄\",\"provider_data\":null}",
+      "image": "{\"type\":\"image\",\"source\":{\"data\":\"abc\",\"mime\":\"image/png\"},\"provider_data\":null}",
+      "unknown": "{\"type\":\"unknown\",\"raw\":{\"a\":2,\"z\":1}}"
+    },
+    "parts": {
+      "system": 10,
+      "tools": 210,
+      "messages": 607,
+      "total": 827
+    }
+  }
+}

@@ -2,14 +2,27 @@
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 import pytest
+from pydantic import TypeAdapter
 
 from transport_matters.ir import (
+    ContentBlock,
+    InternalRequest,
     Message,
     SystemPart,
     TextBlock,
+    ToolDef,
     ToolResultBlock,
     ToolUseBlock,
+)
+from transport_matters.override_audit import (
+    canonical_block_json,
+    canonical_json,
+    count_chars_parts,
+    tool_chars,
 )
 from transport_matters.overrides import Override, apply_overrides, get_store
 from transport_matters.test_override_support import TOOL_BASH, TOOL_READ, make_ir
@@ -36,6 +49,44 @@ class TestAuditAggregate:
         assert result == ir
         assert audit.entries == []
         assert audit.chars_before == audit.chars_after
+
+    def test_shared_char_accounting_fixture_matches_contract(self) -> None:
+        fixture_path = (
+            Path(__file__).resolve().parents[3] / "shared" / "char_accounting_v1.json"
+        )
+        fixture = json.loads(fixture_path.read_text(encoding="utf-8"))
+        expected = fixture["expected"]
+        block_adapter: TypeAdapter[ContentBlock] = TypeAdapter(ContentBlock)
+
+        assert canonical_json(fixture["numbers"]) == expected["numbers_json"]
+        assert (
+            canonical_json(fixture["tool"]["input_schema"])
+            == expected["tool_input_schema_json"]
+        )
+        tool = ToolDef.model_validate(fixture["tool"])
+        assert tool_chars(tool) == expected["tool_chars"]
+
+        for name, block in fixture["blocks"].items():
+            parsed = block_adapter.validate_python(block)
+            assert canonical_block_json(parsed) == expected["blocks"][name]
+
+        ir = InternalRequest.model_validate(fixture["internal_request"])
+        system, tools, messages = count_chars_parts(ir)
+        assert {
+            "system": system,
+            "tools": tools,
+            "messages": messages,
+            "total": system + tools + messages,
+        } == expected["parts"]
+
+    def test_canonical_json_sorts_keys_by_code_point(self) -> None:
+        assert canonical_json({"\ue000": 1, "😀": 2}) == '{"\ue000":1,"😀":2}'
+
+    def test_canonical_json_rejects_non_finite_numbers(self) -> None:
+        with pytest.raises(ValueError, match="non-finite"):
+            canonical_json(float("nan"))
+        with pytest.raises(ValueError, match="non-finite"):
+            canonical_json(float("inf"))
 
 
 class TestAuditCuratedValue:

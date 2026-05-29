@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useEditableOverride } from "../../hooks/useEditableOverride";
+import { toolChars } from "../../lib/charAccounting";
 import { hasOverride, overrideValue } from "../../lib/overrides";
 import type { Override, ToolDef } from "../../types";
 import { SizeDelta } from "../detail/atoms";
@@ -45,10 +46,6 @@ function groupTools<T extends { name: string }>(tools: T[]): [string, T[]][] {
   });
 }
 
-function toolCharCount(t: ToolDef): number {
-  return t.name.length + t.description.length + JSON.stringify(t.input_schema).length;
-}
-
 function displayName(name: string): string {
   const idx = name.indexOf("__");
   return idx >= 0 ? name.slice(idx + 2) : name;
@@ -60,7 +57,7 @@ function buildEditorGroups(tools: ToolDef[]): EditorToolGroup[] {
     return {
       prefix,
       tools: sorted,
-      totalChars: sorted.reduce((sum, t) => sum + toolCharCount(t), 0),
+      totalChars: sorted.reduce((sum, t) => sum + toolChars(t), 0),
     };
   });
 }
@@ -115,10 +112,8 @@ function ToolRow({
   // edited the description. Rebuild the char count with the live text so
   // the number tracks the textarea instead of freezing at the pre-edit
   // value. SizeDelta collapses to the raw number when current === original.
-  const baseToolChars = toolCharCount(tool);
-  const currentToolChars = isModified
-    ? tool.name.length + localText.length + JSON.stringify(tool.input_schema).length
-    : baseToolChars;
+  const baseToolChars = toolChars(tool);
+  const currentToolChars = isModified ? toolChars(tool, localText) : baseToolChars;
 
   return (
     <div className={`transition-opacity ${checked ? "" : "opacity-40"}`}>
