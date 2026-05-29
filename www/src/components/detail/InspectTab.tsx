@@ -1,4 +1,10 @@
 import { useCollapsibleSet } from "../../hooks/useCollapsibleSet";
+import {
+  messageBlockTarget,
+  systemTarget,
+  toolResultTarget,
+  toolTarget,
+} from "../../lib/overrideTargets";
 import type {
   CodexDerivedArtifactsDiagnostic,
   CodexDerivedArtifactsState,
@@ -93,9 +99,9 @@ function buildSyntheticOverrides(
       : [];
   for (const m of systemMutations) {
     if (m.kind === "deleted") {
-      batch.push({ kind: "system_part_toggle", target: `system:${m.index}`, value: false });
+      batch.push({ kind: "system_part_toggle", target: systemTarget(m.index), value: false });
     } else if (m.curatedText !== undefined) {
-      batch.push({ kind: "system_part_text", target: `system:${m.index}`, value: m.curatedText });
+      batch.push({ kind: "system_part_text", target: systemTarget(m.index), value: m.curatedText });
     }
   }
 
@@ -106,11 +112,11 @@ function buildSyntheticOverrides(
       : [];
   for (const m of toolMutations) {
     if (m.kind === "disabled") {
-      batch.push({ kind: "tool_toggle", target: `tool:${m.name}`, value: false });
+      batch.push({ kind: "tool_toggle", target: toolTarget(m.name), value: false });
     } else if (m.curatedDescription !== undefined) {
       batch.push({
         kind: "tool_description",
-        target: `tool:${m.name}`,
+        target: toolTarget(m.name),
         value: m.curatedDescription,
       });
     }
@@ -122,7 +128,7 @@ function buildSyntheticOverrides(
       ? detectMessageMutationsStructural(original, curated)
       : [];
   for (const m of messageMutations) {
-    const target = `msg:${m.msgIdx}:blk:${m.blkIdx}`;
+    const target = messageBlockTarget(m.msgIdx, m.blkIdx);
     if (m.kind === "disabled") {
       batch.push({ kind: "message_block_toggle", target, value: false });
     } else if (m.curatedText !== undefined) {
@@ -135,7 +141,7 @@ function buildSyntheticOverrides(
     for (const mutation of toolResultMutations) {
       batch.push({
         kind: "truncate_tool_result",
-        target: `toolresult:${mutation.toolUseId}`,
+        target: toolResultTarget(mutation.toolUseId),
         value: mutation.curatedText,
       });
     }

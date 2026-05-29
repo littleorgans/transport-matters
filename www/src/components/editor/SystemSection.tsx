@@ -1,6 +1,7 @@
 import { useCollapsibleSet } from "../../hooks/useCollapsibleSet";
 import { useEditableOverride } from "../../hooks/useEditableOverride";
 import { truncatePreview } from "../../lib/formatting";
+import { systemTarget } from "../../lib/overrideTargets";
 import { useUIStore } from "../../stores/uiStore";
 import type { Override, SystemPart } from "../../types";
 import { CompositeEditableRow, MasterBar, SECTION_TONE, SizeDelta } from "../detail/atoms";
@@ -36,7 +37,7 @@ function SystemPartRow({
   onToggleExpanded: () => void;
   readOnly?: boolean;
 }) {
-  const target = `system:${index}`;
+  const target = systemTarget(index);
   const {
     checked,
     isModified,

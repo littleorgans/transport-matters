@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useEditableOverride } from "../../hooks/useEditableOverride";
 import { toolChars } from "../../lib/charAccounting";
 import { hasOverride, overrideValue } from "../../lib/overrides";
+import { toolTarget } from "../../lib/overrideTargets";
 import type { Override, ToolDef } from "../../types";
 import { SizeDelta } from "../detail/atoms";
 import { Toggle } from "../Toggle";
@@ -62,6 +63,21 @@ function buildEditorGroups(tools: ToolDef[]): EditorToolGroup[] {
   });
 }
 
+function bulkToggle(
+  tools: ToolDef[],
+  overrides: Override[],
+  value: boolean | null,
+  include: (tool: ToolDef) => boolean = () => true,
+): Override[] {
+  return tools
+    .filter((tool) => {
+      if (!include(tool)) return false;
+      const current = overrideValue<boolean>(overrides, "tool_toggle", toolTarget(tool.name));
+      return value === null ? current === false : current !== false;
+    })
+    .map((tool) => ({ kind: "tool_toggle" as const, target: toolTarget(tool.name), value }));
+}
+
 function ToolRow({
   tool,
   overrides,
@@ -75,7 +91,7 @@ function ToolRow({
   allExpanded: boolean;
   readOnly?: boolean;
 }) {
-  const target = `tool:${tool.name}`;
+  const target = toolTarget(tool.name);
   const {
     checked,
     isModified,
@@ -188,25 +204,21 @@ function ToolGroupSection({
   // section-wide Expand All toggle).
   const [collapsed, setCollapsed] = useState(true);
   const checkedCount = group.tools.filter(
-    (t) => overrideValue<boolean>(overrides, "tool_toggle", `tool:${t.name}`) !== false,
+    (t) => overrideValue<boolean>(overrides, "tool_toggle", toolTarget(t.name)) !== false,
   ).length;
   const overrideCount = group.tools.filter(
     (t) =>
-      hasOverride(overrides, "tool_toggle", `tool:${t.name}`) ||
-      hasOverride(overrides, "tool_description", `tool:${t.name}`),
+      hasOverride(overrides, "tool_toggle", toolTarget(t.name)) ||
+      hasOverride(overrides, "tool_description", toolTarget(t.name)),
   ).length;
 
   const groupAll = () => {
-    const batch: Override[] = group.tools
-      .filter((t) => overrideValue<boolean>(overrides, "tool_toggle", `tool:${t.name}`) === false)
-      .map((t) => ({ kind: "tool_toggle" as const, target: `tool:${t.name}`, value: null }));
+    const batch = bulkToggle(group.tools, overrides, null);
     if (batch.length) onOverride(batch);
   };
 
   const groupNone = () => {
-    const batch: Override[] = group.tools
-      .filter((t) => overrideValue<boolean>(overrides, "tool_toggle", `tool:${t.name}`) !== false)
-      .map((t) => ({ kind: "tool_toggle" as const, target: `tool:${t.name}`, value: false }));
+    const batch = bulkToggle(group.tools, overrides, false);
     if (batch.length) onOverride(batch);
   };
 
@@ -301,27 +313,17 @@ export function ToolsSection({
   const overrideLabel = overrideCountLabel(totalOverrides, readOnly);
 
   const checkAll = () => {
-    const batch: Override[] = tools
-      .filter((t) => overrideValue<boolean>(overrides, "tool_toggle", `tool:${t.name}`) === false)
-      .map((t) => ({ kind: "tool_toggle" as const, target: `tool:${t.name}`, value: null }));
+    const batch = bulkToggle(tools, overrides, null);
     if (batch.length) onOverride(batch);
   };
 
   const uncheckAll = () => {
-    const batch: Override[] = tools
-      .filter((t) => overrideValue<boolean>(overrides, "tool_toggle", `tool:${t.name}`) !== false)
-      .map((t) => ({ kind: "tool_toggle" as const, target: `tool:${t.name}`, value: false }));
+    const batch = bulkToggle(tools, overrides, false);
     if (batch.length) onOverride(batch);
   };
 
   const dropAllMcp = () => {
-    const batch: Override[] = tools
-      .filter(
-        (t) =>
-          t.name.includes("__") &&
-          overrideValue<boolean>(overrides, "tool_toggle", `tool:${t.name}`) !== false,
-      )
-      .map((t) => ({ kind: "tool_toggle" as const, target: `tool:${t.name}`, value: false }));
+    const batch = bulkToggle(tools, overrides, false, (tool) => tool.name.includes("__"));
     if (batch.length) onOverride(batch);
   };
 

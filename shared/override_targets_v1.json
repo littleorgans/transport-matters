@@ -1,0 +1,101 @@
+{
+  "builders": {
+    "tool": [
+      { "value": "Read", "target": "tool:Read" },
+      { "value": "", "target": "tool:" },
+      { "value": "server:tool", "target": "tool:server:tool" }
+    ],
+    "system": [
+      { "index": 0, "target": "system:0" },
+      { "index": 10, "target": "system:10" },
+      { "index": -3, "target": "system:-3" }
+    ],
+    "tool_result": [
+      { "value": "tu-1", "target": "toolresult:tu-1" },
+      { "value": "", "target": "toolresult:" },
+      { "value": "tu:with:colon", "target": "toolresult:tu:with:colon" }
+    ],
+    "sampling": [
+      { "value": "max_tokens", "target": "sampling:max_tokens" },
+      { "value": "", "target": "sampling:" },
+      { "value": "nested:field", "target": "sampling:nested:field" }
+    ],
+    "provider_extras": [
+      { "value": "thinking", "target": "provider_extras:thinking" },
+      { "value": "thinking.display", "target": "provider_extras:thinking.display" },
+      { "value": "", "target": "provider_extras:" },
+      { "value": "nested:key", "target": "provider_extras:nested:key" }
+    ],
+    "message_block": [
+      { "msg_idx": 0, "blk_idx": 1, "target": "msg:0:blk:1" },
+      { "msg_idx": 10, "blk_idx": 0, "target": "msg:10:blk:0" },
+      { "msg_idx": -3, "blk_idx": 10, "target": "msg:-3:blk:10" }
+    ]
+  },
+  "parsers": {
+    "tool": [
+      { "target": "tool:Read", "value": "Read" },
+      { "target": "tool:", "value": "" },
+      { "target": "tool:server:tool", "value": "server:tool" },
+      { "target": "system:Read", "value": null }
+    ],
+    "system": [
+      { "target": "system:0", "value": 0 },
+      { "target": "system:10", "value": 10 },
+      { "target": "system:-3", "value": -3 },
+      { "target": "system:007", "value": null },
+      { "target": "system:00", "value": null },
+      { "target": "system:-0", "value": null },
+      { "target": "system: 5", "value": null },
+      { "target": "system:5 ", "value": null },
+      { "target": "system:+4", "value": null },
+      { "target": "system:1_000", "value": null },
+      { "target": "system:12abc", "value": null },
+      { "target": "system:0x10", "value": null },
+      { "target": "system:१२", "value": null },
+      { "target": "system:3.0", "value": null },
+      { "target": "system:", "value": null },
+      { "target": "system", "value": null },
+      { "target": "tool:1", "value": null }
+    ],
+    "tool_result": [
+      { "target": "toolresult:tu-1", "value": "tu-1" },
+      { "target": "toolresult:", "value": "" },
+      { "target": "toolresult:tu:with:colon", "value": "tu:with:colon" },
+      { "target": "tool:tu-1", "value": null }
+    ],
+    "sampling": [
+      { "target": "sampling:max_tokens", "value": "max_tokens" },
+      { "target": "sampling:", "value": "" },
+      { "target": "sampling:nested:field", "value": "nested:field" },
+      { "target": "provider_extras:max_tokens", "value": null }
+    ],
+    "provider_extras": [
+      { "target": "provider_extras:thinking", "value": "thinking" },
+      { "target": "provider_extras:thinking.display", "value": "thinking.display" },
+      { "target": "provider_extras:", "value": "" },
+      { "target": "provider_extras:nested:key", "value": "nested:key" },
+      { "target": "sampling:thinking", "value": null }
+    ],
+    "message_block": [
+      { "target": "msg:0:blk:1", "value": [0, 1] },
+      { "target": "msg:10:blk:0", "value": [10, 0] },
+      { "target": "msg:-3:blk:10", "value": [-3, 10] },
+      { "target": "msg:007:blk:1", "value": null },
+      { "target": "msg:00:blk:1", "value": null },
+      { "target": "msg:-0:blk:1", "value": null },
+      { "target": "msg:0:blk:007", "value": null },
+      { "target": "msg:0:blk:00", "value": null },
+      { "target": "msg:0:blk:-0", "value": null },
+      { "target": "msg: 5:blk:0", "value": null },
+      { "target": "msg:+4:blk:0", "value": null },
+      { "target": "msg:1_000:blk:0", "value": null },
+      { "target": "msg:१२:blk:0", "value": null },
+      { "target": "msg:3.0:blk:0", "value": null },
+      { "target": "msg:0:blk:", "value": null },
+      { "target": "msg:0:block:1", "value": null },
+      { "target": "msg:0:blk:1:extra", "value": null },
+      { "target": "msg:0", "value": null }
+    ]
+  }
+}

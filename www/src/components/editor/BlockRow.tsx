@@ -1,6 +1,7 @@
 import { useEditableOverride } from "../../hooks/useEditableOverride";
 import { ColorizedPre } from "../../lib/colorizeLine";
 import { overrideValue } from "../../lib/overrides";
+import { messageBlockTarget, toolResultTarget } from "../../lib/overrideTargets";
 import type { ContentBlock, Override } from "../../types";
 import { CompositeEditableRow, SizeDelta } from "../detail/atoms";
 import { blockSummary } from "../detail/ContentBlocks";
@@ -8,10 +9,6 @@ import { TextOverrideEditor } from "./TextOverrideEditor";
 
 function blockSize(block: ContentBlock): number {
   return JSON.stringify(block).length;
-}
-
-function blockTarget(msgIdx: number, blkIdx: number): string {
-  return `msg:${msgIdx}:blk:${blkIdx}`;
 }
 
 export function BlockRow({
@@ -38,13 +35,14 @@ export function BlockRow({
    */
   readOnly?: boolean;
 }) {
-  const target = blockTarget(msgIdx, blkIdx);
+  const target = messageBlockTarget(msgIdx, blkIdx);
   const isText = block.type === "text";
-  const toolResultTarget = block.type === "tool_result" ? `toolresult:${block.tool_use_id}` : null;
+  const toolResultOverrideTarget =
+    block.type === "tool_result" ? toolResultTarget(block.tool_use_id) : null;
   const toolResultOverride =
-    toolResultTarget === null
+    toolResultOverrideTarget === null
       ? undefined
-      : overrideValue<string | number>(overrides, "truncate_tool_result", toolResultTarget);
+      : overrideValue<string | number>(overrides, "truncate_tool_result", toolResultOverrideTarget);
   const toolResultCuratedText =
     typeof toolResultOverride === "string" ? toolResultOverride : undefined;
 

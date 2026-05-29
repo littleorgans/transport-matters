@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { useCollapsibleSet } from "../../hooks/useCollapsibleSet";
 import { overrideValue } from "../../lib/overrides";
+import { messageBlockTarget, toolResultTarget } from "../../lib/overrideTargets";
 import { useUIStore } from "../../stores/uiStore";
 import type { Message, Override } from "../../types";
 import { MasterBar, SECTION_TONE } from "../detail/atoms";
@@ -22,13 +23,9 @@ interface MessagesSectionProps {
   readOnly?: boolean;
 }
 
-function blockTarget(msgIdx: number, blkIdx: number): string {
-  return `msg:${msgIdx}:blk:${blkIdx}`;
-}
-
-function toolResultTarget(message: Message, blkIdx: number): string | null {
+function toolResultBlockTarget(message: Message, blkIdx: number): string | null {
   const block = message.content[blkIdx];
-  return block?.type === "tool_result" ? `toolresult:${block.tool_use_id}` : null;
+  return block?.type === "tool_result" ? toolResultTarget(block.tool_use_id) : null;
 }
 
 /**
@@ -46,9 +43,9 @@ function buildPairMap(messages: Message[]): Map<string, string> {
   messages.forEach((msg, m) => {
     msg.content.forEach((block, b) => {
       if (block.type === "tool_use") {
-        useLoc.set(block.id, blockTarget(m, b));
+        useLoc.set(block.id, messageBlockTarget(m, b));
       } else if (block.type === "tool_result") {
-        resultLoc.set(block.tool_use_id, blockTarget(m, b));
+        resultLoc.set(block.tool_use_id, messageBlockTarget(m, b));
       }
     });
   });
@@ -113,8 +110,8 @@ function MessageCard({
   const tone = SECTION_TONE[message.role];
 
   const modifiedCount = message.content.filter((_block, blkIdx) => {
-    const target = blockTarget(msgIdx, blkIdx);
-    const truncateTarget = toolResultTarget(message, blkIdx);
+    const target = messageBlockTarget(msgIdx, blkIdx);
+    const truncateTarget = toolResultBlockTarget(message, blkIdx);
     return (
       overrideValue<string>(overrides, "message_text", target) !== undefined ||
       overrideValue<boolean>(overrides, "message_block_toggle", target) === false ||

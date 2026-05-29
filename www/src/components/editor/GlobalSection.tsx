@@ -1,4 +1,5 @@
 import { overrideValue } from "../../lib/overrides";
+import { messageBlockTarget } from "../../lib/overrideTargets";
 import type { ContentBlock, Message, Override } from "../../types";
 
 /**
@@ -25,15 +26,11 @@ interface GlobalSectionProps {
   onOverride: (batch: Override[]) => void;
 }
 
-function blockTarget(msgIdx: number, blkIdx: number): string {
-  return `msg:${msgIdx}:blk:${blkIdx}`;
-}
-
 function findTargets(messages: Message[], types: readonly ContentBlock["type"][]): string[] {
   const targets: string[] = [];
   messages.forEach((msg, m) => {
     msg.content.forEach((block, b) => {
-      if (types.includes(block.type)) targets.push(blockTarget(m, b));
+      if (types.includes(block.type)) targets.push(messageBlockTarget(m, b));
     });
   });
   return targets;
