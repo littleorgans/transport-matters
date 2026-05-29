@@ -2,8 +2,9 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./app";
+import { makeEntry } from "./components/__test-utils__/exchangeList";
 import { useUIStore } from "./stores/uiStore";
-import type { IndexEntry, PausedFlow } from "./types";
+import type { PausedFlow } from "./types";
 
 let eventSourceUrls: string[];
 
@@ -17,30 +18,6 @@ function makeJsonResponse(data: unknown): Response {
     status: 200,
     headers: { "Content-Type": "application/json" },
   });
-}
-
-function makeEntry(id: string, runId: string, overrides: Partial<IndexEntry> = {}) {
-  return {
-    id,
-    run_id: runId,
-    ts: new Date().toISOString(),
-    provider: "anthropic",
-    model: "anthropic/claude-sonnet-4-20250514",
-    path: `exchanges/${id}/`,
-    req: {
-      system_parts: 0,
-      system_chars: 0,
-      tools_count: 1,
-      tools_chars: 12,
-      messages_count: 1,
-      messages_chars: 42,
-      total_chars: 54,
-    },
-    pipeline: null,
-    res: null,
-    mutated_manually: false,
-    ...overrides,
-  };
 }
 
 beforeEach(() => {
@@ -72,12 +49,16 @@ beforeEach(() => {
         );
       }
       if (url.includes("include_history=true")) {
-        return Promise.resolve(makeJsonResponse([makeEntry("history-1", "run-old")]));
+        return Promise.resolve(
+          makeJsonResponse([
+            makeEntry({ id: "history-1", run_id: "run-old", path: "exchanges/history-1/" }),
+          ]),
+        );
       }
       if (url.endsWith("/api/exchanges/history-1")) {
         return Promise.resolve(
           makeJsonResponse({
-            entry: makeEntry("history-1", "run-old"),
+            entry: makeEntry({ id: "history-1", run_id: "run-old", path: "exchanges/history-1/" }),
             request_ir: {
               model: "anthropic/claude-sonnet-4-20250514",
               provider: "anthropic",
@@ -187,17 +168,26 @@ describe("App", () => {
 
   it("anchors a paused subagent track from app state before its spawning exchange", async () => {
     const liveRows = [
-      makeEntry("parent-pre", "run-current", {
+      makeEntry({
+        id: "parent-pre",
+        run_id: "run-current",
+        path: "exchanges/parent-pre/",
         track_id: "run-current",
         track_role: "parent",
         ts: "2026-04-26T00:00:00.000Z",
       }),
-      makeEntry("parent-spawn", "run-current", {
+      makeEntry({
+        id: "parent-spawn",
+        run_id: "run-current",
+        path: "exchanges/parent-spawn/",
         track_id: "run-current",
         track_role: "parent",
         ts: "2026-04-26T00:01:00.000Z",
       }),
-      makeEntry("parent-post", "run-current", {
+      makeEntry({
+        id: "parent-post",
+        run_id: "run-current",
+        path: "exchanges/parent-post/",
         track_id: "run-current",
         track_role: "parent",
         ts: "2026-04-26T00:02:00.000Z",
@@ -315,10 +305,18 @@ describe("App", () => {
           );
         }
         if (url.includes("include_history=true")) {
-          return Promise.resolve(makeJsonResponse([makeEntry("history-1", "run-old")]));
+          return Promise.resolve(
+            makeJsonResponse([
+              makeEntry({ id: "history-1", run_id: "run-old", path: "exchanges/history-1/" }),
+            ]),
+          );
         }
         if (url.startsWith("/api/exchanges?")) {
-          return Promise.resolve(makeJsonResponse([makeEntry("live-1", "run-current")]));
+          return Promise.resolve(
+            makeJsonResponse([
+              makeEntry({ id: "live-1", run_id: "run-current", path: "exchanges/live-1/" }),
+            ]),
+          );
         }
         return Promise.resolve(makeJsonResponse({}));
       }),

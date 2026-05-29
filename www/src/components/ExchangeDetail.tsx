@@ -3,6 +3,7 @@ import { startTransition, useDeferredValue, useEffect, useState } from "react";
 import { fetchExchange } from "../api";
 import { useMeta } from "../hooks/useMeta";
 import { displayCwd, displayModel } from "../lib/formatting";
+import { exchangeKey } from "../lib/queryKeys";
 import { useUIStore } from "../stores/uiStore";
 import type { ExchangeDetail as ExchangeDetailPayload, TransportDiagnostic } from "../types";
 import { CodexTransportPanel } from "./detail/CodexTransportPanel";
@@ -172,7 +173,7 @@ export function ExchangeDetail({ id }: ExchangeDetailProps) {
     isLoading,
     error,
   } = useQuery({
-    queryKey: ["exchange", id],
+    queryKey: exchangeKey(id),
     queryFn: () => fetchExchange(id),
     retry: false,
   });

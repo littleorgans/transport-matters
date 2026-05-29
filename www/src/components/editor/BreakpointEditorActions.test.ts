@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { exchangeKey } from "../../lib/queryKeys";
 import type { PausedFlow } from "../../types";
 import { getExchangeDetailQueryKey, getReleasedFlowCompletion } from "./BreakpointEditorActions";
 
@@ -15,7 +16,7 @@ describe("BreakpointEditor action boundaries", () => {
         ...pausedFlow,
         provisional_exchange_id: "exchange-provisional-1",
       }),
-    ).toEqual(["exchange", "exchange-provisional-1"]);
+    ).toEqual(exchangeKey("exchange-provisional-1"));
   });
 
   it("waits for stream completion after an HTTP release", () => {

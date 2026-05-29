@@ -1,6 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { apiUrl } from "../api";
+import { exchangesPrefix } from "../lib/queryKeys";
 import { useUIStore } from "../stores/uiStore";
 import { applyExchangeStreamEvent } from "./exchangeStreamEvents";
 
@@ -25,7 +26,7 @@ export function useExchangeStream({ baseUrl }: UseExchangeStreamOptions = {}): {
   const hasConnected = useRef(false);
   useEffect(() => {
     if (connected && hasConnected.current) {
-      queryClient.invalidateQueries({ queryKey: ["exchanges"] });
+      queryClient.invalidateQueries({ queryKey: exchangesPrefix });
     }
     if (connected) hasConnected.current = true;
   }, [connected, queryClient]);

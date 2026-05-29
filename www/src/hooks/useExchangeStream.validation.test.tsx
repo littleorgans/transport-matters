@@ -1,5 +1,6 @@
 import { renderHook } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import { exchangeKey, exchangesKey, turnContentKey } from "../lib/queryKeys";
 import { useUIStore } from "../stores/uiStore";
 import type { IndexEntry } from "../types";
 import { useExchangeStream } from "./useExchangeStream";
@@ -35,7 +36,7 @@ describe("useExchangeStream SSE validation", () => {
       req: { total_chars: 1 },
     });
 
-    expect(qc.getQueryData<IndexEntry[]>(["exchanges", false])?.[0]?.id).toBe("exchange-live-new");
+    expect(qc.getQueryData<IndexEntry[]>(exchangesKey(false))?.[0]?.id).toBe("exchange-live-new");
     expect(useUIStore.getState().selectedId).toBe("manual-selection");
   });
 
@@ -58,9 +59,9 @@ describe("useExchangeStream SSE validation", () => {
     fireSSE({ type: "exchange_deleted", id: "exchange-live-1" });
 
     expect(useUIStore.getState().selectedId).toBeNull();
-    expect(qc.getQueryData(["exchanges", false])).toEqual([]);
+    expect(qc.getQueryData(exchangesKey(false))).toEqual([]);
     expect(removeSpy).toHaveBeenCalledWith({
-      queryKey: ["turn-content", "exchange-live-1"],
+      queryKey: turnContentKey("exchange-live-1"),
       exact: true,
     });
   });
@@ -81,10 +82,10 @@ describe("useExchangeStream SSE validation", () => {
     });
 
     expect(invalidateSpy).toHaveBeenCalledWith({
-      queryKey: ["exchange", "exchange-live-2"],
+      queryKey: exchangeKey("exchange-live-2"),
     });
     expect(invalidateSpy).toHaveBeenCalledWith({
-      queryKey: ["turn-content", "exchange-live-2"],
+      queryKey: turnContentKey("exchange-live-2"),
     });
   });
 
@@ -112,7 +113,7 @@ describe("useExchangeStream SSE validation", () => {
       },
     });
 
-    const rows = qc.getQueryData<IndexEntry[]>(["exchanges", false]);
+    const rows = qc.getQueryData<IndexEntry[]>(exchangesKey(false));
     expect(rows?.[0]?.codex_turn?.status).toBe("open");
     expect(rows?.[0]?.codex_turn?.message_range_end).toBe(4);
   });
@@ -136,7 +137,7 @@ describe("useExchangeStream SSE validation", () => {
       req: { total_chars: 1 },
     });
 
-    const rows = qc.getQueryData<IndexEntry[]>(["exchanges", false]);
+    const rows = qc.getQueryData<IndexEntry[]>(exchangesKey(false));
     expect(rows?.[0]).toMatchObject({
       run_id: "run-1",
       track_id: "agent-1",
@@ -170,7 +171,7 @@ describe("useExchangeStream SSE validation", () => {
       req: { total_chars: 1 },
     });
 
-    const rows = qc.getQueryData<IndexEntry[]>(["exchanges", false]);
+    const rows = qc.getQueryData<IndexEntry[]>(exchangesKey(false));
     expect(rows?.[0]).toMatchObject({
       spawn_anchor: {
         track_spawn_exchange_id: "exchange-parent-7",
@@ -182,7 +183,7 @@ describe("useExchangeStream SSE validation", () => {
 
   it("propagates nested spawn anchors into the history cache when present", () => {
     const { qc, wrapper } = makeWrapper();
-    qc.setQueryData<IndexEntry[]>(["exchanges", true], []);
+    qc.setQueryData<IndexEntry[]>(exchangesKey(true), []);
 
     renderHook(() => useExchangeStream(), { wrapper });
 
@@ -204,9 +205,9 @@ describe("useExchangeStream SSE validation", () => {
       req: { total_chars: 1 },
     });
 
-    const live = qc.getQueryData<IndexEntry[]>(["exchanges", false]);
+    const live = qc.getQueryData<IndexEntry[]>(exchangesKey(false));
     expect(live?.[0]?.spawn_anchor?.track_spawn_tool_use_id).toBe("toolu_child_b");
-    const history = qc.getQueryData<IndexEntry[]>(["exchanges", true]);
+    const history = qc.getQueryData<IndexEntry[]>(exchangesKey(true));
     expect(history?.[0]).toMatchObject({
       spawn_anchor: {
         track_spawn_exchange_id: "exchange-parent-9",
@@ -230,7 +231,7 @@ describe("useExchangeStream SSE validation", () => {
       req: { total_chars: 1 },
     });
 
-    const rows = qc.getQueryData<IndexEntry[]>(["exchanges", false]);
+    const rows = qc.getQueryData<IndexEntry[]>(exchangesKey(false));
     expect(rows?.[0]?.spawn_anchor).toBeNull();
   });
 
@@ -248,7 +249,7 @@ describe("useExchangeStream SSE validation", () => {
       req: { total_chars: 1 },
     });
 
-    const rows = qc.getQueryData<IndexEntry[]>(["exchanges", false]);
+    const rows = qc.getQueryData<IndexEntry[]>(exchangesKey(false));
     expect(rows?.[0]?.track_role).toBeNull();
   });
 
@@ -276,7 +277,7 @@ describe("useExchangeStream SSE validation", () => {
       },
     });
 
-    const rows = qc.getQueryData<IndexEntry[]>(["exchanges", false]);
+    const rows = qc.getQueryData<IndexEntry[]>(exchangesKey(false));
     expect(rows).toHaveLength(1);
     expect(rows?.[0]?.id).toBe("exchange-live-codex-malformed");
     expect(rows?.[0]?.codex_turn).toBeNull();
@@ -325,7 +326,7 @@ describe("useExchangeStream SSE validation", () => {
       },
     });
 
-    let rows = qc.getQueryData<IndexEntry[]>(["exchanges", false]);
+    let rows = qc.getQueryData<IndexEntry[]>(exchangesKey(false));
     expect(rows).toHaveLength(1);
     expect(rows?.[0]?.codex_turn?.status).toBe("open");
     expect(rows?.[0]?.codex_turn?.message_range_end).toBe(4);
@@ -360,7 +361,7 @@ describe("useExchangeStream SSE validation", () => {
       },
     });
 
-    rows = qc.getQueryData<IndexEntry[]>(["exchanges", false]);
+    rows = qc.getQueryData<IndexEntry[]>(exchangesKey(false));
     expect(rows).toHaveLength(1);
     expect(rows?.[0]?.res?.stop_reason).toBe("failed");
     expect(rows?.[0]?.codex_turn?.status).toBe("failed");
@@ -428,7 +429,7 @@ describe("useExchangeStream SSE validation", () => {
       },
     });
 
-    const rows = qc.getQueryData<IndexEntry[]>(["exchanges", false]);
+    const rows = qc.getQueryData<IndexEntry[]>(exchangesKey(false));
     expect(rows).toHaveLength(1);
     expect(rows?.[0]?.track_role).toBe("subagent");
     expect(rows?.[0]?.codex_turn?.status).toBe("completed");

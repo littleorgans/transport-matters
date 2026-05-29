@@ -1,5 +1,13 @@
 import { diffLines } from "diff";
-import { type Ref, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  type ReactNode,
+  type Ref,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { inputClass } from "../detail/atoms";
 
 // Single-panel editor for text overrides across the Breakpoint editor
@@ -39,6 +47,82 @@ interface TextOverrideEditorProps {
   readOnly?: boolean;
 }
 
+type EditorView = "edit" | "diff";
+type DiffPart = ReturnType<typeof diffLines>[number];
+
+function DiffPre({ parts }: { parts: DiffPart[] | null }) {
+  return (
+    <pre className="bg-canvas p-3 text-[12px] whitespace-pre-wrap border border-edge font-mono">
+      {parts?.map((part, i) => {
+        const key = `${i}-${part.value.slice(0, 16)}`;
+        if (part.added) {
+          return (
+            <ins key={key} className="bg-sage/15 text-sage no-underline">
+              {part.value}
+            </ins>
+          );
+        }
+        if (part.removed) {
+          return (
+            <del key={key} className="bg-rose/15 text-rose decoration-rose/70">
+              {part.value}
+            </del>
+          );
+        }
+        return (
+          <span key={key} className="text-txt-3">
+            {part.value}
+          </span>
+        );
+      })}
+    </pre>
+  );
+}
+
+function EditDiffTabBar({
+  view,
+  onView,
+  trailing,
+}: {
+  view: EditorView;
+  onView: (view: EditorView) => void;
+  trailing?: ReactNode;
+}) {
+  return (
+    <div role="tablist" className="flex items-stretch border-y border-edge">
+      <button
+        type="button"
+        role="tab"
+        aria-selected={view === "edit"}
+        onClick={(e) => {
+          e.stopPropagation();
+          onView("edit");
+        }}
+        className={`cursor-pointer px-4 py-2 text-[11px] font-medium uppercase tracking-[0.14em] transition-all duration-150 ${
+          view === "edit" ? "tab-pressed text-txt" : "tab-rest text-txt-3 hover:text-txt-2"
+        }`}
+      >
+        Edit
+      </button>
+      <button
+        type="button"
+        role="tab"
+        aria-selected={view === "diff"}
+        onClick={(e) => {
+          e.stopPropagation();
+          onView("diff");
+        }}
+        className={`cursor-pointer px-4 py-2 text-[11px] font-medium uppercase tracking-[0.14em] transition-all duration-150 ${
+          view === "diff" ? "tab-pressed text-txt" : "tab-rest text-txt-3 hover:text-txt-2"
+        }`}
+      >
+        Diff
+      </button>
+      {trailing}
+    </div>
+  );
+}
+
 export function TextOverrideEditor({
   original,
   value,
@@ -49,7 +133,7 @@ export function TextOverrideEditor({
   onReset,
   readOnly,
 }: TextOverrideEditorProps) {
-  const [view, setView] = useState<"edit" | "diff">("edit");
+  const [view, setView] = useState<EditorView>("edit");
 
   // When modifications clear — user clicked RESET, or the override
   // was dropped externally — snap the tab back to EDIT so the next
@@ -86,188 +170,41 @@ export function TextOverrideEditor({
     el.style.height = `${el.scrollHeight}px`;
   }, [value, view, readOnly]);
 
-  // Read-only mode. When the part/tool is unmodified, skip the tab bar
-  // entirely — we'd just be showing EDIT twice in a row with identical
-  // content. When modified, show EDIT|DIFF but not RESET.
-  if (readOnly) {
-    const readOnlyTextarea = (
-      <textarea
-        ref={localRef}
-        className={inputClass}
-        value={value}
-        readOnly
-        // Preserve visible whitespace/newlines but don't auto-wrap; the
-        // container width and field-sizing do the rest.
-        onChange={() => {}}
-      />
-    );
-
-    if (!isModified) {
-      return readOnlyTextarea;
-    }
-
-    return (
-      <div>
-        <div role="tablist" className="flex items-stretch border-y border-edge">
-          <button
-            type="button"
-            role="tab"
-            aria-selected={view === "edit"}
-            onClick={(e) => {
-              e.stopPropagation();
-              setView("edit");
-            }}
-            className={`cursor-pointer px-4 py-2 text-[11px] font-medium uppercase tracking-[0.14em] transition-all duration-150 ${
-              view === "edit" ? "tab-pressed text-txt" : "tab-rest text-txt-3 hover:text-txt-2"
-            }`}
-          >
-            Edit
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={view === "diff"}
-            onClick={(e) => {
-              e.stopPropagation();
-              setView("diff");
-            }}
-            className={`cursor-pointer px-4 py-2 text-[11px] font-medium uppercase tracking-[0.14em] transition-all duration-150 ${
-              view === "diff" ? "tab-pressed text-txt" : "tab-rest text-txt-3 hover:text-txt-2"
-            }`}
-          >
-            Diff
-          </button>
-        </div>
-        {view === "edit" ? (
-          readOnlyTextarea
-        ) : (
-          <pre className="bg-canvas p-3 text-[12px] whitespace-pre-wrap border border-edge font-mono">
-            {parts?.map((part, i) => {
-              const key = `${i}-${part.value.slice(0, 16)}`;
-              if (part.added) {
-                return (
-                  <ins key={key} className="bg-sage/15 text-sage no-underline">
-                    {part.value}
-                  </ins>
-                );
-              }
-              if (part.removed) {
-                return (
-                  <del key={key} className="bg-rose/15 text-rose decoration-rose/70">
-                    {part.value}
-                  </del>
-                );
-              }
-              return (
-                <span key={key} className="text-txt-3">
-                  {part.value}
-                </span>
-              );
-            })}
-          </pre>
-        )}
-      </div>
-    );
-  }
+  const textarea = (
+    <textarea
+      ref={readOnly ? localRef : textareaRef}
+      className={inputClass}
+      value={value}
+      readOnly={readOnly}
+      onChange={readOnly ? undefined : (e) => onChange(e.target.value)}
+      onBlur={readOnly ? undefined : onBlur}
+    />
+  );
 
   if (!isModified) {
-    return (
-      <textarea
-        ref={textareaRef}
-        className={inputClass}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        onBlur={onBlur}
-      />
-    );
+    return textarea;
   }
+
+  const trailing = readOnly ? undefined : (
+    <div className="flex flex-1 tab-rest items-center justify-end pr-3">
+      <button
+        type="button"
+        aria-label="Reset text override"
+        onClick={(e) => {
+          e.stopPropagation();
+          onReset();
+        }}
+        className="label cursor-pointer text-txt-3 transition-colors hover:text-amber"
+      >
+        reset
+      </button>
+    </div>
+  );
 
   return (
     <div>
-      {/* Tab bar — mirrors the BreakpointEditor main tab bar
-          (``tab-pressed`` / ``tab-rest``) but at 11px so the nested
-          scope reads as per-row, not competing with the page tabs.
-          RESET floats to the right edge inside the same strip. */}
-      <div role="tablist" className="flex items-stretch border-y border-edge">
-        <button
-          type="button"
-          role="tab"
-          aria-selected={view === "edit"}
-          onClick={(e) => {
-            e.stopPropagation();
-            setView("edit");
-          }}
-          className={`cursor-pointer px-4 py-2 text-[11px] font-medium uppercase tracking-[0.14em] transition-all duration-150 ${
-            view === "edit" ? "tab-pressed text-txt" : "tab-rest text-txt-3 hover:text-txt-2"
-          }`}
-        >
-          Edit
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={view === "diff"}
-          onClick={(e) => {
-            e.stopPropagation();
-            setView("diff");
-          }}
-          className={`cursor-pointer px-4 py-2 text-[11px] font-medium uppercase tracking-[0.14em] transition-all duration-150 ${
-            view === "diff" ? "tab-pressed text-txt" : "tab-rest text-txt-3 hover:text-txt-2"
-          }`}
-        >
-          Diff
-        </button>
-        <div className="flex flex-1 tab-rest items-center justify-end pr-3">
-          <button
-            type="button"
-            aria-label="Reset text override"
-            onClick={(e) => {
-              e.stopPropagation();
-              onReset();
-            }}
-            className="label cursor-pointer text-txt-3 transition-colors hover:text-amber"
-          >
-            reset
-          </button>
-        </div>
-      </div>
-      {view === "edit" ? (
-        <textarea
-          ref={textareaRef}
-          className={inputClass}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          onBlur={onBlur}
-        />
-      ) : (
-        <pre className="bg-canvas p-3 text-[12px] whitespace-pre-wrap border border-edge font-mono">
-          {parts?.map((part, i) => {
-            // Stable-enough key within a single render. Parts are
-            // regenerated each time inputs change, so React reconciles
-            // by position anyway; we just need local uniqueness.
-            const key = `${i}-${part.value.slice(0, 16)}`;
-            if (part.added) {
-              return (
-                <ins key={key} className="bg-sage/15 text-sage no-underline">
-                  {part.value}
-                </ins>
-              );
-            }
-            if (part.removed) {
-              return (
-                <del key={key} className="bg-rose/15 text-rose decoration-rose/70">
-                  {part.value}
-                </del>
-              );
-            }
-            return (
-              <span key={key} className="text-txt-3">
-                {part.value}
-              </span>
-            );
-          })}
-        </pre>
-      )}
+      <EditDiffTabBar view={view} onView={setView} trailing={trailing} />
+      {view === "edit" ? textarea : <DiffPre parts={parts} />}
     </div>
   );
 }

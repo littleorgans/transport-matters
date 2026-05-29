@@ -1,5 +1,6 @@
 import { QueryClient } from "@tanstack/react-query";
 import { describe, expect, it } from "vitest";
+import { exchangesKey } from "../lib/queryKeys";
 import { useUIStore } from "../stores/uiStore";
 import type { IndexEntry } from "../types";
 import { applyExchangeStreamEvent } from "./exchangeStreamEvents";
@@ -25,7 +26,7 @@ describe("exchange stream event application", () => {
       },
     );
 
-    expect(queryClient.getQueryData<IndexEntry[]>(["exchanges", false])?.[0]?.id).toBe(
+    expect(queryClient.getQueryData<IndexEntry[]>(exchangesKey(false))?.[0]?.id).toBe(
       "exchange-boundary-1",
     );
   });

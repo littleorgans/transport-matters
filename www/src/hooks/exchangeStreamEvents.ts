@@ -1,5 +1,6 @@
 import type { QueryClient } from "@tanstack/react-query";
 import { MAX_ENTRIES } from "../api";
+import { exchangeKey, exchangesKey, turnContentKey } from "../lib/queryKeys";
 import { useUIStore } from "../stores/uiStore";
 import type { CodexTurnListSummary, IndexEntry, PausedFlow, SpawnAnchor } from "../types";
 
@@ -226,15 +227,27 @@ function buildExchangeEntry(data: {
   };
 }
 
+function mutateExchangeLists(
+  queryClient: QueryClient,
+  transform: (entries: IndexEntry[]) => IndexEntry[],
+) {
+  queryClient.setQueryData<IndexEntry[]>(exchangesKey(false), (prev = []) => transform(prev));
+  queryClient.setQueriesData<IndexEntry[]>({ queryKey: exchangesKey(true) }, (prev) =>
+    prev ? transform(prev) : prev,
+  );
+}
+
+function dropExchangeDetail(queryClient: QueryClient, id: string) {
+  queryClient.removeQueries({ queryKey: exchangeKey(id), exact: true });
+  queryClient.removeQueries({ queryKey: turnContentKey(id), exact: true });
+}
+
 function upsertExchangeCache(queryClient: QueryClient, entry: IndexEntry) {
-  queryClient.setQueryData<IndexEntry[]>(["exchanges", false], (prev = []) =>
+  mutateExchangeLists(queryClient, (prev) =>
     [entry, ...prev.filter((e) => e.id !== entry.id)].slice(0, MAX_ENTRIES),
   );
-  queryClient.setQueriesData<IndexEntry[]>({ queryKey: ["exchanges", true] }, (prev) =>
-    prev ? [entry, ...prev.filter((e) => e.id !== entry.id)].slice(0, MAX_ENTRIES) : prev,
-  );
-  void queryClient.invalidateQueries({ queryKey: ["exchange", entry.id] });
-  void queryClient.invalidateQueries({ queryKey: ["turn-content", entry.id] });
+  void queryClient.invalidateQueries({ queryKey: exchangeKey(entry.id) });
+  void queryClient.invalidateQueries({ queryKey: turnContentKey(entry.id) });
 }
 
 function applyExchangeEvent(data: Record<string, unknown>, context: ExchangeStreamEventContext) {
@@ -258,14 +271,8 @@ function applyExchangeDeletedEvent(
   context: ExchangeStreamEventContext,
 ) {
   if (!isValidExchangeDeletedEvent(data)) return;
-  context.queryClient.setQueryData<IndexEntry[]>(["exchanges", false], (prev = []) =>
-    prev.filter((entry) => entry.id !== data.id),
-  );
-  context.queryClient.setQueriesData<IndexEntry[]>({ queryKey: ["exchanges", true] }, (prev) =>
-    prev?.filter((entry) => entry.id !== data.id),
-  );
-  context.queryClient.removeQueries({ queryKey: ["exchange", data.id], exact: true });
-  context.queryClient.removeQueries({ queryKey: ["turn-content", data.id], exact: true });
+  mutateExchangeLists(context.queryClient, (prev) => prev.filter((entry) => entry.id !== data.id));
+  dropExchangeDetail(context.queryClient, data.id);
   if (useUIStore.getState().selectedId === data.id) {
     context.setSelectedId(null);
   }

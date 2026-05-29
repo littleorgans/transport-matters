@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { fetchExchanges, MAX_ENTRIES } from "../api";
+import { exchangesKey } from "../lib/queryKeys";
 import type {
   ExchangeTrack,
   ExchangeTrackStub,
@@ -174,7 +175,7 @@ export function useExchanges(
   isLoading: boolean;
 } {
   const { data: exchanges = [], isLoading } = useQuery({
-    queryKey: ["exchanges", includeHistory],
+    queryKey: exchangesKey(includeHistory),
     queryFn: () =>
       fetchExchanges(MAX_ENTRIES, 0, includeHistory).then((data) =>
         data.slice().reverse().slice(0, MAX_ENTRIES),
