@@ -20,6 +20,7 @@ from .launch_runtime import (
     managed_child_shell_env_excludes,
     new_run_id,
     reject_passthrough_without_client,
+    resolve_client_binary,
     resolve_launch_ports,
     resolve_mitmdump_or_exit,
     resolve_storage_dir,
@@ -47,26 +48,18 @@ def _resolve_codex_path(
     which: Callable[[str], str | None],
 ) -> str | None:
     """Resolve the Codex binary or exit with an actionable hint."""
-    if no_codex:
-        return None
-
-    codex_path = str(codex_bin) if codex_bin is not None else which("codex")
-    if codex_path is not None:
-        return codex_path
-
-    typer.secho(
-        "error: `codex` was not found on PATH.",
-        fg=typer.colors.RED,
-        err=True,
+    return resolve_client_binary(
+        name="codex",
+        bin_override=codex_bin,
+        disabled=no_codex,
+        which=which,
+        not_found_hint=(
+            "Install Codex, or point at an existing binary:\n"
+            f"  {CLI_COMMAND} codex --codex-bin /path/to/codex\n"
+            "  # or run proxy-only:\n"
+            f"  {CLI_COMMAND} codex --no-codex"
+        ),
     )
-    typer.echo(
-        "Install Codex, or point at an existing binary:\n"
-        f"  {CLI_COMMAND} codex --codex-bin /path/to/codex\n"
-        "  # or run proxy-only:\n"
-        f"  {CLI_COMMAND} codex --no-codex",
-        err=True,
-    )
-    raise typer.Exit(2)
 
 
 def _resolve_codex_ca_certificate_or_exit(

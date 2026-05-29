@@ -153,6 +153,31 @@ def _which_runnable(
     return None
 
 
+def resolve_client_binary(
+    *,
+    name: str,
+    bin_override: Path | None,
+    disabled: bool,
+    which: Callable[[str], str | None],
+    not_found_hint: str,
+) -> str | None:
+    """Resolve a managed client binary or exit with caller-specific guidance."""
+    if disabled:
+        return None
+
+    client_path = str(bin_override) if bin_override is not None else which(name)
+    if client_path is not None:
+        return client_path
+
+    typer.secho(
+        f"error: `{name}` was not found on PATH.",
+        fg=typer.colors.RED,
+        err=True,
+    )
+    typer.echo(not_found_hint, err=True)
+    raise typer.Exit(2)
+
+
 def resolve_mitmdump_executable(
     *,
     which: WhichFunction = shutil.which,

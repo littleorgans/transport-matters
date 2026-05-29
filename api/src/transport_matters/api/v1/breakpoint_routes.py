@@ -48,6 +48,18 @@ def _scope_for_paused_flow(pf: bp.PausedFlow) -> OverrideScope:
     return normalize_scope((pf.run_id, pf.track_id or pf.run_id))
 
 
+def _flow_not_found(flow_id: str) -> NotFoundError:
+    return NotFoundError(f"Flow {flow_id} is not paused or has already been resolved")
+
+
+async def _require_paused_flow(flow_id: str) -> bp.PausedFlow:
+    paused = await bp.get_paused()
+    pf = paused.get(flow_id)
+    if pf is None:
+        raise _flow_not_found(flow_id)
+    return pf
+
+
 async def _recount_tokens(pf: bp.PausedFlow) -> int | None:
     """Fire /v1/messages/count_tokens for a paused flow's current curated IR.
 
@@ -132,12 +144,7 @@ async def get_paused_flow(flow_id: str) -> PausedFlowDetail:
     Used by the frontend to hydrate the breakpoint overlay after a browser
     refresh, when the SSE "paused" event has already been missed.
     """
-    paused = await bp.get_paused()
-    pf = paused.get(flow_id)
-    if pf is None:
-        raise NotFoundError(
-            f"Flow {flow_id} is not paused or has already been resolved"
-        )
+    pf = await _require_paused_flow(flow_id)
     provisional_exchange_id = None
     if pf.transport == "websocket" and pf.flow is not None:
         state = get_codex_transport_state(pf.flow)
@@ -179,10 +186,7 @@ async def disarm_breakpoint() -> dict[str, str]:
 
 @router.post("/release/{flow_id}")
 async def release_flow(flow_id: str, ir: InternalRequest) -> dict[str, str]:
-    paused = await bp.get_paused()
-    pf = paused.get(flow_id)
-    if pf is None:
-        raise NotFoundError(f"Flow {flow_id} not found or already resolved")
+    pf = await _require_paused_flow(flow_id)
     if ir.provider != pf.original_ir.provider:
         raise HTTPException(
             status_code=422,
@@ -194,20 +198,17 @@ async def release_flow(flow_id: str, ir: InternalRequest) -> dict[str, str]:
     payload = _validated_release_payload(ir)
     ok = await bp.release(flow_id, ir, release_payload=payload)
     if not ok:
-        raise NotFoundError(f"Flow {flow_id} not found or already resolved")
+        raise _flow_not_found(flow_id)
     return {"status": "released"}
 
 
 @router.post("/release-unmodified/{flow_id}")
 async def release_flow_unmodified(flow_id: str) -> dict[str, str]:
-    paused = await bp.get_paused()
-    pf = paused.get(flow_id)
-    if pf is None:
-        raise NotFoundError(f"Flow {flow_id} not found or already resolved")
+    pf = await _require_paused_flow(flow_id)
     payload = _validated_release_payload(pf.curated_ir)
     ok = await bp.release(flow_id, release_payload=payload)
     if not ok:
-        raise NotFoundError(f"Flow {flow_id} not found or already resolved")
+        raise _flow_not_found(flow_id)
     return {"status": "released"}
 
 
@@ -228,12 +229,7 @@ async def re_audit_flow(flow_id: str) -> ReAuditResponse:
     audit in place. Then re-fires count_tokens so the editor's "before"
     chip reflects the new structure.
     """
-    paused = await bp.get_paused()
-    pf = paused.get(flow_id)
-    if pf is None:
-        raise NotFoundError(
-            f"Flow {flow_id} is not paused or has already been resolved"
-        )
+    pf = await _require_paused_flow(flow_id)
 
     store = get_store()
 
@@ -261,7 +257,7 @@ async def re_audit_flow(flow_id: str) -> ReAuditResponse:
 async def drop_flow(flow_id: str) -> dict[str, str]:
     ok = await bp.drop(flow_id)
     if not ok:
-        raise NotFoundError(f"Flow {flow_id} not found or already resolved")
+        raise _flow_not_found(flow_id)
     return {"status": "dropped"}
 
 

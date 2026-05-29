@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from typing import Any
 
 from transport_matters.codex.protocol import (
@@ -29,6 +28,7 @@ from transport_matters.ir import (
     UsageStats,
 )
 from transport_matters.model_ids import normalise_model
+from transport_matters.sse import iter_sse_data_objects
 
 
 def parse_codex_response_sse(
@@ -61,20 +61,7 @@ def _parse_sse_event_payloads(raw_body: bytes) -> list[dict[str, Any]]:
     a partial or noisy stream still yields whatever events parsed
     successfully.
     """
-    payloads: list[dict[str, Any]] = []
-    for line in raw_body.decode(errors="replace").splitlines():
-        if not line.startswith("data:"):
-            continue
-        body = line[5:].strip()
-        if body in ("", "[DONE]"):
-            continue
-        try:
-            payload: Any = json.loads(body)  # Any: untyped SSE JSON
-        except json.JSONDecodeError:
-            continue
-        if isinstance(payload, dict):
-            payloads.append(payload)
-    return payloads
+    return list(iter_sse_data_objects(raw_body))
 
 
 def parse_codex_response_payloads(

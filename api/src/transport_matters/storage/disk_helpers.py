@@ -42,6 +42,9 @@ class DiskStorageFileOpsMixin:
     _io_executor: Executor
 
     async def _write_entry_json(self, path: Path, entry: IndexEntry) -> None:
+        self._atomic_write_model_json(path, entry)
+
+    def _atomic_write_model_json(self, path: Path, model: Any) -> None:
         with tempfile.NamedTemporaryFile(
             mode="w",
             encoding="utf-8",
@@ -51,7 +54,7 @@ class DiskStorageFileOpsMixin:
             delete=False,
         ) as tmp:
             tmp_path = Path(tmp.name)
-            tmp.write(entry.model_dump_json(indent=2))
+            tmp.write(model.model_dump_json(indent=2))
         tmp_path.replace(path)
 
     async def _activate_exchange_dir(
@@ -193,17 +196,7 @@ class DiskStorageFileOpsMixin:
         path: Path,
         transport: TransportArtifacts,
     ) -> None:
-        with tempfile.NamedTemporaryFile(
-            mode="w",
-            encoding="utf-8",
-            dir=path.parent,
-            prefix=f"{path.name}.",
-            suffix=".tmp",
-            delete=False,
-        ) as tmp:
-            tmp_path = Path(tmp.name)
-            tmp.write(transport.model_dump_json(indent=2))
-        tmp_path.replace(path)
+        self._atomic_write_model_json(path, transport)
 
 
 class DiskStorageRecoveryMixin(DiskStorageFileOpsMixin):

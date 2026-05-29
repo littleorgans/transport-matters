@@ -36,6 +36,7 @@ from transport_matters.ir import (
     UnknownBlock,
 )
 from transport_matters.model_ids import denormalise_model
+from transport_matters.provider_data import restore_provider_data
 
 
 def serialize_codex_request(ir: InternalRequest) -> bytes:
@@ -248,8 +249,7 @@ def _tool_result_kind(block: ToolResultBlock) -> str:
 
 def _thinking_to_dict(block: ThinkingBlock) -> dict[str, Any]:
     payload: dict[str, Any] = {"type": "reasoning"}
-    if block.provider_data:
-        payload.update(block.provider_data)
+    restore_provider_data(payload, block)
     payload["summary"] = (
         [{"type": "summary_text", "text": block.text}] if block.text else []
     )

@@ -16,6 +16,7 @@ from .launch_runtime import (
     build_managed_child_env,
     new_run_id,
     reject_passthrough_without_client,
+    resolve_client_binary,
     resolve_launch_ports,
     resolve_mitmdump_or_exit,
     resolve_storage_dir,
@@ -37,28 +38,20 @@ def _resolve_claude_path(
     which: Callable[[str], str | None],
 ) -> str | None:
     """Resolve the Claude binary or exit with an actionable hint."""
-    if no_claude:
-        return None
-
-    claude_path = str(claude_bin) if claude_bin is not None else which("claude")
-    if claude_path is not None:
-        return claude_path
-
-    typer.secho(
-        "error: `claude` was not found on PATH.",
-        fg=typer.colors.RED,
-        err=True,
+    return resolve_client_binary(
+        name="claude",
+        bin_override=claude_bin,
+        disabled=no_claude,
+        which=which,
+        not_found_hint=(
+            "Install Claude Code, or point at an existing install:\n"
+            "  npm install -g @anthropic-ai/claude-code\n"
+            "  # or\n"
+            f"  {CLI_COMMAND} claude --claude-bin /path/to/claude\n"
+            "  # or run proxy-only:\n"
+            f"  {CLI_COMMAND} claude --no-claude"
+        ),
     )
-    typer.echo(
-        "Install Claude Code, or point at an existing install:\n"
-        "  npm install -g @anthropic-ai/claude-code\n"
-        "  # or\n"
-        f"  {CLI_COMMAND} claude --claude-bin /path/to/claude\n"
-        "  # or run proxy-only:\n"
-        f"  {CLI_COMMAND} claude --no-claude",
-        err=True,
-    )
-    raise typer.Exit(2)
 
 
 def _validate_upstream(upstream: str) -> None:
