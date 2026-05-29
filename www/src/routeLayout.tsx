@@ -5,6 +5,7 @@ import { BreakpointEditor } from "./components/editor/BreakpointEditor";
 import { RouteRail } from "./components/RouteRail";
 import { OverlaysView } from "./components/routes/OverlaysView";
 import { RecallView } from "./components/routes/RecallView";
+import { RouteAtmosphere } from "./components/routes/RouteAtmosphere";
 import { TraceView } from "./components/routes/TraceView";
 import { TransportMattersIcon } from "./components/TransportMattersIcon";
 import type { Route } from "./stores/uiStore";
@@ -87,31 +88,26 @@ function WaitingScreen({
   onShowHistory,
 }: WaitingScreenProps) {
   return (
-    <div className="h-screen bg-canvas text-txt relative overflow-hidden">
-      <div className="absolute inset-0 flex items-center justify-center text-edge-subtle opacity-30 pointer-events-none">
-        <TransportMattersIcon className="spin-gentle h-[90vh] w-[90vh]" />
+    <RouteAtmosphere fullScreen>
+      <div className="flex flex-col items-center gap-3">
+        <TransportMattersIcon className="h-[64px] w-[64px] text-txt shrink-0" />
+        <h1 className="text-[14px] font-semibold tracking-[0.18em] text-txt uppercase">
+          Transport Matters
+        </h1>
+        <span className="label">Waiting for exchanges</span>
       </div>
-      <div className="absolute inset-0 flex flex-col items-center justify-center gap-6">
-        <div className="flex flex-col items-center gap-3">
-          <TransportMattersIcon className="h-[64px] w-[64px] text-txt shrink-0" />
-          <h1 className="text-[14px] font-semibold tracking-[0.18em] text-txt uppercase">
-            Transport Matters
-          </h1>
-          <span className="label">Waiting for exchanges</span>
-        </div>
-        <ConnectionDot connected={connected} />
-        <div className="flex items-center gap-4">
-          <ArmToggle mode={mode} onToggle={onToggleArm} error={breakpointError} />
-          <button
-            type="button"
-            onClick={onShowHistory}
-            className="btn border border-edge bg-surface px-3.5 py-1.5 text-[12px] font-semibold uppercase tracking-[0.18em] text-txt-3 transition-colors hover:bg-raised hover:text-txt"
-          >
-            Show history
-          </button>
-        </div>
+      <ConnectionDot connected={connected} />
+      <div className="flex items-center gap-4">
+        <ArmToggle mode={mode} onToggle={onToggleArm} error={breakpointError} />
+        <button
+          type="button"
+          onClick={onShowHistory}
+          className="btn border border-edge bg-surface px-3.5 py-1.5 text-[12px] font-semibold uppercase tracking-[0.18em] text-txt-3 transition-colors hover:bg-raised hover:text-txt"
+        >
+          Show history
+        </button>
       </div>
-    </div>
+    </RouteAtmosphere>
   );
 }
 

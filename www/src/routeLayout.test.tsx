@@ -28,10 +28,11 @@ function renderLayout(overrides: Partial<RouteLayoutProps> = {}) {
 
 describe("RouteLayout", () => {
   it("renders the waiting screen from prepared shell state", () => {
-    renderLayout();
+    const { container } = renderLayout();
 
     expect(screen.getByRole("heading", { name: "Transport Matters" })).toBeInTheDocument();
-    expect(screen.getAllByRole("img", { name: "Transport Matters" })).toHaveLength(2);
+    expect(screen.getAllByRole("img", { name: "Transport Matters" })).toHaveLength(1);
+    expect(container.querySelector("[aria-hidden] .spin-gentle")).toBeInTheDocument();
     expect(screen.getByText("Waiting for exchanges")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Show history" })).toBeInTheDocument();
   });
