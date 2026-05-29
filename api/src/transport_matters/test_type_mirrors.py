@@ -11,24 +11,7 @@ PY_IR = Path(__file__).with_name("ir.py")
 PY_OVERRIDES = Path(__file__).with_name("overrides.py")
 TS_TYPES = REPO_ROOT / "www" / "src" / "types.ts"
 
-BLOCK_MODELS = frozenset(
-    {
-        "TextBlock",
-        "ToolUseBlock",
-        "ToolResultBlock",
-        "ThinkingBlock",
-        "ImageBlock",
-        "UnknownBlock",
-    },
-)
-
-MIRRORED_MODELS = (
-    "TextBlock",
-    "ToolUseBlock",
-    "ToolResultBlock",
-    "ThinkingBlock",
-    "ImageBlock",
-    "UnknownBlock",
+NON_BLOCK_MIRRORED_MODELS = (
     "SystemPart",
     "ToolDef",
     "Message",
@@ -67,10 +50,12 @@ def test_override_kind_values_match() -> None:
 
 
 def test_ir_model_field_sets_match() -> None:
-    py_fields = _py_model_fields(PY_IR.read_text())
-    ts_fields = _ts_interface_fields(TS_TYPES.read_text())
+    py_source = PY_IR.read_text()
+    mirrored_models = _mirrored_model_names(py_source)
+    py_fields = _py_model_fields(py_source, mirrored_models)
+    ts_fields = _ts_interface_fields(TS_TYPES.read_text(), mirrored_models)
 
-    for model_name in MIRRORED_MODELS:
+    for model_name in mirrored_models:
         assert set(ts_fields[model_name]) == set(py_fields[model_name]), model_name
 
 
@@ -82,8 +67,10 @@ def test_content_block_union_matches_python_ir() -> None:
 
 
 def test_targeted_type_mirror_contracts() -> None:
-    py_fields = _py_model_fields(PY_IR.read_text())
-    ts_fields = _ts_interface_fields(TS_TYPES.read_text())
+    py_source = PY_IR.read_text()
+    mirrored_models = _mirrored_model_names(py_source)
+    py_fields = _py_model_fields(py_source, mirrored_models)
+    ts_fields = _ts_interface_fields(TS_TYPES.read_text(), mirrored_models)
 
     assert _field(ts_fields, "Message", "role").type == "string"
     assert "provider_data" not in ts_fields["UnknownBlock"]
@@ -122,11 +109,22 @@ def _py_literal_values(source: str, name: str) -> list[str]:
     raise AssertionError(f"Missing Python literal assignment {name}")
 
 
-def _py_model_fields(source: str) -> dict[str, dict[str, str]]:
+def _mirrored_model_names(source: str) -> tuple[str, ...]:
+    return (
+        *_py_assignment_block_sequence(source, "ContentBlock"),
+        *NON_BLOCK_MIRRORED_MODELS,
+    )
+
+
+def _py_model_fields(
+    source: str,
+    model_names: tuple[str, ...],
+) -> dict[str, dict[str, str]]:
     tree = ast.parse(source)
     fields: dict[str, dict[str, str]] = {}
+    model_set = set(model_names)
     for node in tree.body:
-        if not isinstance(node, ast.ClassDef) or node.name not in MIRRORED_MODELS:
+        if not isinstance(node, ast.ClassDef) or node.name not in model_set:
             continue
         fields[node.name] = {
             statement.target.id: ast.get_source_segment(source, statement.annotation)
@@ -139,10 +137,16 @@ def _py_model_fields(source: str) -> dict[str, dict[str, str]]:
 
 
 def _py_assignment_blocks(source: str, name: str) -> set[str]:
+    return set(_py_assignment_block_sequence(source, name))
+
+
+def _py_assignment_block_sequence(source: str, name: str) -> tuple[str, ...]:
     tree = ast.parse(source)
     for node in tree.body:
         if _is_assignment_to(node, name):
-            return _block_names(ast.get_source_segment(source, node.value) or "")
+            return _block_name_sequence(
+                ast.get_source_segment(source, node.value) or ""
+            )
     raise AssertionError(f"Missing Python assignment {name}")
 
 
@@ -152,9 +156,12 @@ def _is_assignment_to(node: ast.stmt, name: str) -> TypeGuard[ast.Assign]:
     )
 
 
-def _ts_interface_fields(source: str) -> dict[str, dict[str, TsField]]:
+def _ts_interface_fields(
+    source: str,
+    model_names: tuple[str, ...],
+) -> dict[str, dict[str, TsField]]:
     fields: dict[str, dict[str, TsField]] = {}
-    for name in MIRRORED_MODELS:
+    for name in model_names:
         body = _ts_declaration_body(source, "interface", name)
         fields[name] = {}
         for line in body.splitlines():
@@ -222,7 +229,11 @@ def _py_field_blocks(
 
 
 def _block_names(source: str) -> set[str]:
-    return set(re.findall(r"\b[A-Z][A-Za-z]+Block\b", source)) & BLOCK_MODELS
+    return set(_block_name_sequence(source))
+
+
+def _block_name_sequence(source: str) -> tuple[str, ...]:
+    return tuple(dict.fromkeys(re.findall(r"\b[A-Z][A-Za-z]+Block\b", source)))
 
 
 def _normalize_ts_type(source: str) -> str:
