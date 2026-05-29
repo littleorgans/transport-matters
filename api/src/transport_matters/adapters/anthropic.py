@@ -28,6 +28,9 @@ from transport_matters.ir import (
     UnknownBlock,
     UsageStats,
 )
+from transport_matters.model_ids import denormalise_model, normalise_model
+
+ANTHROPIC_MODEL_PREFIX = "anthropic/"
 
 # Top-level keys that are explicitly mapped into IR fields.
 _MAPPED_REQUEST_KEYS = frozenset(
@@ -74,9 +77,9 @@ class AnthropicAdapter(ProviderAdapter):
         data: dict[str, Any] = json.loads(raw_body)  # Any: raw JSON
 
         model = (
-            self._normalise_model(data["model"])
+            normalise_model(data["model"], ANTHROPIC_MODEL_PREFIX)
             if data.get("model")
-            else "anthropic/unknown"
+            else f"{ANTHROPIC_MODEL_PREFIX}unknown"
         )
         system = self._parse_system(data.get("system", []))
         tools = self._parse_tools(data.get("tools", []))
@@ -107,7 +110,7 @@ class AnthropicAdapter(ProviderAdapter):
         data: dict[str, Any] = {}  # Any: building raw JSON
 
         # model: strip provider prefix
-        data["model"] = self._denormalise_model(ir.model)
+        data["model"] = denormalise_model(ir.model, ANTHROPIC_MODEL_PREFIX)
 
         # system
         if ir.system:
@@ -172,9 +175,9 @@ class AnthropicAdapter(ProviderAdapter):
         return InternalResponse(
             id=data.get("id", ""),
             model=(
-                self._normalise_model(data["model"])
+                normalise_model(data["model"], ANTHROPIC_MODEL_PREFIX)
                 if data.get("model")
-                else "anthropic/unknown"
+                else f"{ANTHROPIC_MODEL_PREFIX}unknown"
             ),
             provider="anthropic",
             stop_reason=data.get("stop_reason"),
@@ -261,7 +264,11 @@ class AnthropicAdapter(ProviderAdapter):
         parsed_blocks = self._parse_response_content(content_blocks)
         return InternalResponse(
             id=msg_id,
-            model=self._normalise_model(model) if model else "anthropic/unknown",
+            model=(
+                normalise_model(model, ANTHROPIC_MODEL_PREFIX)
+                if model
+                else f"{ANTHROPIC_MODEL_PREFIX}unknown"
+            ),
             provider="anthropic",
             stop_reason=stop_reason,
             usage=usage,
@@ -269,18 +276,6 @@ class AnthropicAdapter(ProviderAdapter):
         )
 
     # ── private helpers ─────────────────────────────────────────────
-
-    @staticmethod
-    def _normalise_model(model: str) -> str:
-        if model.startswith("anthropic/"):
-            return model
-        return f"anthropic/{model}"
-
-    @staticmethod
-    def _denormalise_model(model: str) -> str:
-        if model.startswith("anthropic/"):
-            return model[len("anthropic/") :]
-        return model
 
     # -- system --
 
