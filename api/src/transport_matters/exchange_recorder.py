@@ -6,7 +6,7 @@ import json
 import logging
 import uuid
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, TypedDict
 
 from transport_matters import broadcast
 from transport_matters.client_version import detect_client_version
@@ -55,9 +55,18 @@ if TYPE_CHECKING:
 
     from transport_matters.codex.derivation_contract import CodexDerivedTurnArtifacts
     from transport_matters.flow_state import RequestFlowState
+    from transport_matters.overrides import OverrideAudit
 
 logger = logging.getLogger(__name__)
 _STORAGE_LAYOUT = DiskStorageLayout()
+
+
+class _RequestArtifactFields(TypedDict):
+    request_raw: bytes
+    request_ir: InternalRequest
+    request_curated_raw: bytes | None
+    request_curated_ir: InternalRequest | None
+    request_audit: OverrideAudit | None
 
 
 async def _persist_exchange(
@@ -110,6 +119,101 @@ def _codex_http_transport_artifacts(
         raw_response=raw_response,
         ts=ts,
     )
+
+
+def build_request_artifacts(
+    adapter: Any,
+    raw_req: bytes,
+    ir: InternalRequest,
+    curated_ir: InternalRequest,
+    audit: OverrideAudit | None,
+) -> _RequestArtifactFields:
+    return {
+        "request_raw": raw_req,
+        "request_ir": ir,
+        "request_curated_raw": outbound_request_if_changed(adapter, ir, curated_ir),
+        "request_curated_ir": _persistable_curated_ir(curated_ir, ir),
+        "request_audit": audit,
+    }
+
+
+def _extract_response(
+    flow: http.HTTPFlow,
+    adapter: Any,
+    exchange_id: str,
+) -> tuple[bytes, InternalResponse | None, ResStats | None]:
+    res_text = flow.response.get_text() if flow.response else None
+    raw_res = res_text.encode() if res_text else b""
+    content_type = (
+        flow.response.headers.get("content-type", "") if flow.response else ""
+    )
+    res_ir, res_stats = _parse_response_ir(adapter, raw_res, content_type, exchange_id)
+    return raw_res, res_ir, _tag_http_error_status(res_stats, flow, raw_res)
+
+
+def _derive_codex_http(
+    flow: http.HTTPFlow,
+    request_state: RequestFlowState,
+    exchange_id: str,
+    raw_res: bytes,
+    ts: datetime,
+) -> tuple[
+    TransportArtifacts | None,
+    CodexDerivedTurnArtifacts | None,
+    CodexTurnListSummary | None,
+]:
+    ir = request_state.request_ir
+    if ir.provider != "codex":
+        return None, None, None
+
+    from transport_matters.codex.http_derivation import derive_codex_http_turn
+
+    raw_req = request_state.raw_request
+    derived = derive_codex_http_turn(
+        exchange_id=exchange_id,
+        raw_request=raw_req,
+        raw_response=raw_res,
+        request_headers=request_state.codex_request_headers,
+        model=ir.model,
+        ts=ts,
+    )
+    return (
+        _codex_http_transport_artifacts(
+            flow,
+            raw_request=raw_req,
+            raw_response=raw_res,
+            ts=ts,
+        ),
+        derived,
+        _codex_turn_list_summary(derived),
+    )
+
+
+async def _stamped_pipeline_stats(
+    flow: http.HTTPFlow,
+    request_state: RequestFlowState,
+    token_counter: TokenCountingClient | None,
+    exchange_id: str,
+) -> PipelineStats | None:
+    pipeline_stats = build_pipeline_stats(request_state.audit)
+    if pipeline_stats is None or token_counter is None:
+        return pipeline_stats
+    try:
+        auth = _relevant_auth_headers(flow.request.headers)
+        return await stamp_pipeline_tokens(
+            pipeline_stats,
+            request_state.request_ir,
+            request_state.curated_request_ir,
+            request_state.adapter,
+            token_counter,
+            auth,
+        )
+    except Exception:
+        logger.exception(
+            "count_tokens stamp failed for %s, leaving tokens unset",
+            exchange_id,
+        )
+        return pipeline_stats
 
 
 def emit_exchange(
@@ -378,51 +482,14 @@ async def _persist_http_exchange(
     audit = request_state.audit
     exchange_id = str(uuid.uuid4())
     ts = datetime.now(UTC)
-    res_text = flow.response.get_text() if flow.response else None
-    raw_res = res_text.encode() if res_text else b""
-    content_type = (
-        flow.response.headers.get("content-type", "") if flow.response else ""
+    raw_res, res_ir, res_stats = _extract_response(flow, adapter, exchange_id)
+    transport, codex_derived, codex_turn = _derive_codex_http(
+        flow, request_state, exchange_id, raw_res, ts
     )
-    res_ir, res_stats = _parse_response_ir(adapter, raw_res, content_type, exchange_id)
-    res_stats = _tag_http_error_status(res_stats, flow, raw_res)
-    codex_derived: CodexDerivedTurnArtifacts | None = None
-    transport: TransportArtifacts | None = None
-    if ir.provider == "codex":
-        from transport_matters.codex.http_derivation import derive_codex_http_turn
-
-        transport = _codex_http_transport_artifacts(
-            flow,
-            raw_request=raw_req,
-            raw_response=raw_res,
-            ts=ts,
-        )
-        codex_derived = derive_codex_http_turn(
-            exchange_id=exchange_id,
-            raw_request=raw_req,
-            raw_response=raw_res,
-            request_headers=request_state.codex_request_headers,
-            model=ir.model,
-            ts=ts,
-        )
-    codex_turn_summary = _codex_turn_list_summary(codex_derived)
     req_stats = build_req_stats(curated_ir)
-    pipeline_stats = build_pipeline_stats(audit)
-    if pipeline_stats is not None and token_counter is not None:
-        try:
-            auth = _relevant_auth_headers(flow.request.headers)
-            pipeline_stats = await stamp_pipeline_tokens(
-                pipeline_stats,
-                ir,
-                curated_ir,
-                adapter,
-                token_counter,
-                auth,
-            )
-        except Exception:
-            logger.exception(
-                "count_tokens stamp failed for %s, leaving tokens unset",
-                exchange_id,
-            )
+    pipeline_stats = await _stamped_pipeline_stats(
+        flow, request_state, token_counter, exchange_id
+    )
 
     run_id = get_settings().run_id
     track_assignment = _persist_track_assignment(
@@ -438,16 +505,12 @@ async def _persist_http_exchange(
         req=req_stats,
         pipeline=pipeline_stats,
         res=res_stats,
-        codex_turn=codex_turn_summary,
+        codex_turn=codex_turn,
         mutated_manually=request_state.mutated_manually,
         **assignment_index_fields(track_assignment),
     )
     artifacts = ExchangeArtifacts(
-        request_raw=raw_req,
-        request_ir=ir,
-        request_curated_raw=outbound_request_if_changed(adapter, ir, curated_ir),
-        request_curated_ir=_persistable_curated_ir(curated_ir, ir),
-        request_audit=audit,
+        **build_request_artifacts(adapter, raw_req, ir, curated_ir, audit),
         response_raw=raw_res or None,
         response_ir=res_ir,
         transport=transport,
@@ -467,7 +530,7 @@ async def _persist_http_exchange(
         request_state.mutated_manually,
         pipeline_stats,
         flow_id=flow.id,
-        codex_turn=codex_turn_summary,
+        codex_turn=codex_turn,
         **assignment_index_fields(track_assignment),
     )
     return True
@@ -510,11 +573,7 @@ async def _persist_http_provisional_exchange(
         **assignment_index_fields(track_assignment),
     )
     artifacts = ExchangeArtifacts(
-        request_raw=raw_req,
-        request_ir=ir,
-        request_curated_raw=outbound_request_if_changed(adapter, ir, curated_ir),
-        request_curated_ir=_persistable_curated_ir(curated_ir, ir),
-        request_audit=audit,
+        **build_request_artifacts(adapter, raw_req, ir, curated_ir, audit),
     )
     if not await _persist_exchange(storage, entry, artifacts):
         return None
@@ -579,51 +638,14 @@ async def _finalize_http_provisional_exchange(
     raw_req = request_state.raw_request
     curated_ir = request_state.curated_request_ir
     audit = request_state.audit
-    res_text = flow.response.get_text() if flow.response else None
-    raw_res = res_text.encode() if res_text else b""
-    content_type = (
-        flow.response.headers.get("content-type", "") if flow.response else ""
+    raw_res, res_ir, res_stats = _extract_response(flow, adapter, exchange_id)
+    transport, codex_derived, codex_turn = _derive_codex_http(
+        flow, request_state, exchange_id, raw_res, existing_entry.ts
     )
-    res_ir, res_stats = _parse_response_ir(adapter, raw_res, content_type, exchange_id)
-    res_stats = _tag_http_error_status(res_stats, flow, raw_res)
-    codex_derived: CodexDerivedTurnArtifacts | None = None
-    transport: TransportArtifacts | None = None
-    if ir.provider == "codex":
-        from transport_matters.codex.http_derivation import derive_codex_http_turn
-
-        transport = _codex_http_transport_artifacts(
-            flow,
-            raw_request=request_state.raw_request,
-            raw_response=raw_res,
-            ts=existing_entry.ts,
-        )
-        codex_derived = derive_codex_http_turn(
-            exchange_id=exchange_id,
-            raw_request=request_state.raw_request,
-            raw_response=raw_res,
-            request_headers=request_state.codex_request_headers,
-            model=ir.model,
-            ts=existing_entry.ts,
-        )
-    codex_turn_summary = _codex_turn_list_summary(codex_derived)
     req_stats = build_req_stats(curated_ir)
-    pipeline_stats = build_pipeline_stats(audit)
-    if pipeline_stats is not None and token_counter is not None:
-        try:
-            auth = _relevant_auth_headers(flow.request.headers)
-            pipeline_stats = await stamp_pipeline_tokens(
-                pipeline_stats,
-                ir,
-                curated_ir,
-                adapter,
-                token_counter,
-                auth,
-            )
-        except Exception:
-            logger.exception(
-                "count_tokens stamp failed for %s, leaving tokens unset",
-                exchange_id,
-            )
+    pipeline_stats = await _stamped_pipeline_stats(
+        flow, request_state, token_counter, exchange_id
+    )
 
     run_id = existing_entry.run_id
     _persist_track_assignment(run_id, request_state, res_ir, exchange_id=exchange_id)
@@ -632,18 +654,14 @@ async def _finalize_http_provisional_exchange(
             "req": req_stats,
             "res": res_stats,
             "pipeline": pipeline_stats,
-            "codex_turn": codex_turn_summary,
+            "codex_turn": codex_turn,
             "mutated_manually": request_state.mutated_manually,
         }
     )
     existing_artifacts = await storage.read_exchange(exchange_id)
     artifacts = existing_artifacts.model_copy(
         update={
-            "request_raw": raw_req,
-            "request_ir": ir,
-            "request_curated_raw": outbound_request_if_changed(adapter, ir, curated_ir),
-            "request_curated_ir": _persistable_curated_ir(curated_ir, ir),
-            "request_audit": audit,
+            **build_request_artifacts(adapter, raw_req, ir, curated_ir, audit),
             "response_raw": raw_res or None,
             "response_ir": res_ir,
             "transport": transport,
@@ -667,7 +685,7 @@ async def _finalize_http_provisional_exchange(
         request_state.mutated_manually,
         pipeline_stats,
         flow_id=flow.id,
-        codex_turn=codex_turn_summary,
+        codex_turn=codex_turn,
         track_id=entry.track_id,
         parent_track_id=entry.parent_track_id,
         track_display_name=entry.track_display_name,

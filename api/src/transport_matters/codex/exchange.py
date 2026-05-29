@@ -27,7 +27,7 @@ from transport_matters.exchange_recorder import (
     _persist_exchange,
     _persist_track_assignment,
     _persist_unparsed_exchange,
-    _persistable_curated_ir,
+    build_request_artifacts,
     emit_exchange,
 )
 from transport_matters.exchange_stats import (
@@ -43,7 +43,6 @@ from transport_matters.ir import (
     SamplingParams,
     TextBlock,
 )
-from transport_matters.request_diff import outbound_request_if_changed
 from transport_matters.storage import (
     CodexTurnListSummary,
     IndexEntry,
@@ -135,11 +134,7 @@ async def _persist_codex_provisional_exchange(flow: http.HTTPFlow) -> str | None
         **assignment_index_fields(track_assignment),
     )
     artifacts = ExchangeArtifacts(
-        request_raw=raw_req,
-        request_ir=ir,
-        request_curated_raw=outbound_request_if_changed(adapter, ir, curated_ir),
-        request_curated_ir=_persistable_curated_ir(curated_ir, ir),
-        request_audit=audit,
+        **build_request_artifacts(adapter, raw_req, ir, curated_ir, audit),
         transport=transport,
         events=derived.events if derived is not None else None,
         turn=derived.turn if derived is not None else None,
@@ -263,11 +258,7 @@ async def _persist_codex_exchange(
         **assignment_index_fields(track_assignment),
     )
     artifacts = ExchangeArtifacts(
-        request_raw=raw_req,
-        request_ir=ir,
-        request_curated_raw=outbound_request_if_changed(adapter, ir, curated_ir),
-        request_curated_ir=_persistable_curated_ir(curated_ir, ir),
-        request_audit=audit,
+        **build_request_artifacts(adapter, raw_req, ir, curated_ir, audit),
         response_ir=res_ir,
         transport=transport,
         events=derived.events if derived is not None else None,
