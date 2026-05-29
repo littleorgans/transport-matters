@@ -34,6 +34,12 @@ NULLABLE_PROVIDER_MODELS = (
 )
 
 NULLABLE_RECORD = "Record<string, unknown> | null"
+OPTIONAL_MIRRORED_FIELDS = frozenset(
+    (
+        *((model_name, "provider_data") for model_name in NULLABLE_PROVIDER_MODELS),
+        ("SystemPart", "cache_hint"),
+    )
+)
 
 
 @dataclass(frozen=True)
@@ -57,6 +63,9 @@ def test_ir_model_field_sets_match() -> None:
 
     for model_name in mirrored_models:
         assert set(ts_fields[model_name]) == set(py_fields[model_name]), model_name
+        assert _canonical_ts_fields(ts_fields[model_name]) == _canonical_py_fields(
+            py_fields[model_name]
+        ), model_name
 
 
 def test_content_block_union_matches_python_ir() -> None:
@@ -75,14 +84,9 @@ def test_targeted_type_mirror_contracts() -> None:
     assert _field(ts_fields, "Message", "role").type == "string"
     assert "provider_data" not in ts_fields["UnknownBlock"]
 
-    for model_name in NULLABLE_PROVIDER_MODELS:
-        field = _field(ts_fields, model_name, "provider_data")
+    for model_name, field_name in OPTIONAL_MIRRORED_FIELDS:
+        field = _field(ts_fields, model_name, field_name)
         assert field == TsField(type=NULLABLE_RECORD, optional=True)
-
-    assert _field(ts_fields, "SystemPart", "cache_hint") == TsField(
-        type=NULLABLE_RECORD,
-        optional=True,
-    )
     assert _field_blocks(ts_fields, "ToolResultBlock", "content") == _py_field_blocks(
         py_fields,
         "ToolResultBlock",
@@ -238,3 +242,101 @@ def _block_name_sequence(source: str) -> tuple[str, ...]:
 
 def _normalize_ts_type(source: str) -> str:
     return re.sub(r"\s+", " ", source.strip())
+
+
+def _canonical_py_fields(
+    fields: dict[str, str],
+) -> dict[str, str]:
+    return {
+        field_name: _canonical_py_type(field_type)
+        for field_name, field_type in fields.items()
+    }
+
+
+def _canonical_ts_fields(
+    fields: dict[str, TsField],
+) -> dict[str, str]:
+    return {
+        field_name: _canonical_ts_type(field.type)
+        for field_name, field in fields.items()
+    }
+
+
+def _canonical_ts_type(source: str) -> str:
+    normalized = re.sub(r"\s+", " ", source.strip())
+    union_members = _split_top_level_union(normalized)
+    if len(union_members) > 1:
+        return " | ".join(_canonical_ts_type(member) for member in union_members)
+
+    array_short_match = re.fullmatch(
+        r"(?P<inner>[A-Za-z_][A-Za-z0-9_]*)\[\]", normalized
+    )
+    if array_short_match is not None:
+        return f"Array<{_canonical_ts_type(array_short_match.group('inner'))}>"
+
+    array_match = re.fullmatch(r"Array<(?P<inner>.*)>", normalized)
+    if array_match is not None:
+        return f"Array<{_canonical_ts_type(array_match.group('inner'))}>"
+
+    record_match = re.fullmatch(r"Record<string, (?P<value>.*)>", normalized)
+    if record_match is not None:
+        return f"Record<string, {_canonical_ts_type(record_match.group('value'))}>"
+
+    return normalized
+
+
+def _canonical_py_type(source: str) -> str:
+    source = re.sub(r"\s+", " ", source.strip())
+    return " | ".join(
+        _canonical_py_union_member(member) for member in _split_top_level_union(source)
+    )
+
+
+def _canonical_py_union_member(source: str) -> str:
+    if source == "None":
+        return "null"
+    if source == "Any":
+        return "unknown"
+
+    literal_match = re.fullmatch(r'Literal\[(?P<value>"[^"]+")\]', source)
+    if literal_match is not None:
+        return literal_match.group("value")
+
+    list_match = re.fullmatch(r"(?:list|Sequence)\[(?P<inner>.*)\]", source)
+    if list_match is not None:
+        return f"Array<{_canonical_py_type(list_match.group('inner'))}>"
+
+    record_match = re.fullmatch(r"dict\[str, (?P<value>.*)\]", source)
+    if record_match is not None:
+        return f"Record<string, {_canonical_py_type(record_match.group('value'))}>"
+
+    return {
+        "str": "string",
+        "bool": "boolean",
+        "int": "number",
+        "float": "number",
+        "dict[str, Any]": "Record<string, unknown>",
+    }.get(source, source)
+
+
+def _split_top_level_union(source: str) -> list[str]:
+    members: list[str] = []
+    start = 0
+    square_depth = 0
+    angle_depth = 0
+
+    for index, char in enumerate(source):
+        if char == "[":
+            square_depth += 1
+        elif char == "]":
+            square_depth -= 1
+        elif char == "<":
+            angle_depth += 1
+        elif char == ">":
+            angle_depth -= 1
+        elif char == "|" and square_depth == 0 and angle_depth == 0:
+            members.append(source[start:index].strip())
+            start = index + 1
+
+    members.append(source[start:].strip())
+    return members
