@@ -33,7 +33,7 @@ import typer
 
 from transport_matters import __version__
 from transport_matters.lock import WorkspaceLock
-from transport_matters.manifest import Manifest, read
+from transport_matters.manifest import Manifest, read, read_all
 from transport_matters.storage_roots import default_workspaces_root
 from transport_matters.workspace import workspace_root
 
@@ -102,9 +102,31 @@ def _resolve_storage(selector: str | None) -> Path:
     # is a slug. ``os.sep`` handles both POSIX and Windows uniformly,
     # and ``~`` catches the common home-relative case on any platform.
     if os.sep in selector or selector.startswith("~"):
-        return _storage_for_cwd(Path(selector).expanduser())
+        candidate = Path(selector).expanduser()
+        # A path that names a known run's storage dir resolves to that run
+        # directly — exactly the value the same-CWD ambiguity error prints,
+        # so it must round-trip. Match recorded manifests (not a tree-prefix
+        # or manifest-in-dir check) so it also covers --storage-dir runs whose
+        # data lives outside the workspaces tree.
+        if _names_known_storage(candidate):
+            return candidate
+        return _storage_for_cwd(candidate)
 
     return _storage_for_slug(selector)
+
+
+def _names_known_storage(candidate: Path) -> bool:
+    """True if *candidate* is the ``storage_dir`` of any recorded run.
+
+    Scans every manifest (live or stale, across all workspaces) and compares
+    resolved paths, so a storage dir supplied to ``--workspace`` is recognised
+    regardless of whether it lives inside the workspaces tree.
+    """
+    target = candidate.resolve(strict=False)
+    return any(
+        Path(m.storage_dir).resolve(strict=False) == target
+        for m in read_all(_workspaces_root())
+    )
 
 
 def _storage_for_cwd(cwd: Path) -> Path:
@@ -198,8 +220,9 @@ def _exit_ambiguous_runs(live: list[Manifest]) -> None:
     )
     _print_run_choices(live)
     typer.echo(
-        f"Run `{CLI_COMMAND} paths` from inside the session you want, or pass "
-        "a storage path to --workspace.",
+        f"Re-run with `{CLI_COMMAND} paths --workspace <storage-dir>` using one "
+        f"of the dirs above, or run `{CLI_COMMAND} paths` from inside the "
+        "session you want.",
         err=True,
     )
     raise typer.Exit(2)

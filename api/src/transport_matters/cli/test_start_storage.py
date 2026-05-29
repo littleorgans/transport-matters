@@ -68,6 +68,35 @@ def test_start_same_cwd_runs_get_disjoint_storage(
     assert Path(storage_a).parent == Path(storage_b).parent == workspace_root(workdir)
 
 
+def test_start_nested_session_does_not_inherit_storage_dir(
+    tmp_storage: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    spy_run_client_children: MagicMock,
+) -> None:
+    """A launch from inside an existing session must not adopt the parent's
+    storage dir. ``TRANSPORT_MATTERS_STORAGE_DIR`` is inherited by managed
+    children (and read by ``paths`` env-first), but it must NOT auto-populate
+    a nested launch's ``--storage-dir``, or the nested run would silently
+    co-reside in the parent's store once K1 removed the workspace lock.
+    """
+    monkeypatch.setattr("transport_matters.cli.shutil.which", _which_all())
+    monkeypatch.setattr("transport_matters.cli._port_in_use", lambda _: False)
+    parent_storage = tmp_path / "parent-run"
+    parent_storage.mkdir()
+    monkeypatch.setenv("TRANSPORT_MATTERS_STORAGE_DIR", str(parent_storage))
+
+    workdir = tmp_path / "project"
+    workdir.mkdir()
+    result = runner.invoke(main, ["claude", str(workdir), "--no-system-prompt"])
+    assert result.exit_code == 0, result.output
+    env = spy_run_client_children.call_args.kwargs["client"].env
+    run_id = env["TRANSPORT_MATTERS_RUN_ID"]
+    storage = env["TRANSPORT_MATTERS_STORAGE_DIR"]
+    assert storage != str(parent_storage)
+    assert storage == str(workspace_root(workdir) / run_id)
+
+
 def test_start_explicit_storage_dir_overrides_workspace_root(
     tmp_storage: Path,
     tmp_path: Path,

@@ -255,7 +255,10 @@ def claude(
         typer.Option(
             "--storage-dir",
             "-d",
-            envvar="TRANSPORT_MATTERS_STORAGE_DIR",
+            # No envvar: a launch must not inherit a parent session's
+            # TRANSPORT_MATTERS_STORAGE_DIR as its --storage-dir, or nested
+            # runs would co-reside in the parent's store. The addon (pydantic
+            # settings) and `paths` env-first still read the env var directly.
             help=(
                 "Directory for captured exchanges, rules, and the index. "
                 "Defaults to `~/.transport-matters`."
@@ -384,7 +387,10 @@ def codex(
         typer.Option(
             "--storage-dir",
             "-d",
-            envvar="TRANSPORT_MATTERS_STORAGE_DIR",
+            # No envvar: a launch must not inherit a parent session's
+            # TRANSPORT_MATTERS_STORAGE_DIR as its --storage-dir, or nested
+            # runs would co-reside in the parent's store. The addon (pydantic
+            # settings) and `paths` env-first still read the env var directly.
             help=(
                 "Directory for captured exchanges, rules, and the index. "
                 "Defaults to `~/.transport-matters`."

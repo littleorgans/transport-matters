@@ -215,6 +215,36 @@ def test_paths_workspace_flag_accepts_directory(
     assert Path(payload["storage"]) == workspace_root(cwd_b)
 
 
+def test_paths_workspace_flag_resolves_a_runs_storage_dir(
+    tmp_storage: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`--workspace <storage_dir>` resolves to that run — the exact value the
+    same-CWD ambiguity error prints, so it round-trips. Must work for explicit
+    `--storage-dir` runs whose storage lives OUTSIDE the workspaces tree.
+    """
+    monkeypatch.delenv("TRANSPORT_MATTERS_STORAGE_DIR", raising=False)
+    workdir = tmp_path / "project"
+    workdir.mkdir()
+    store_a = tmp_path / "explicit-a"
+    store_a.mkdir()
+    store_b = tmp_path / "explicit-b"
+    store_b.mkdir()
+    _write_run_manifest(
+        workdir,
+        _sample_manifest(workdir=workdir, storage=store_a, pid=1, run_id="r1"),
+    )
+    _write_run_manifest(
+        workdir,
+        _sample_manifest(workdir=workdir, storage=store_b, pid=2, run_id="r2"),
+    )
+
+    result = runner.invoke(main, ["paths", "--workspace", str(store_b), "--json"])
+    assert result.exit_code == 0, result.output
+    assert Path(json.loads(result.stdout)["storage"]) == store_b
+
+
 def test_paths_workspace_flag_accepts_slug(
     tmp_storage: Path,
     tmp_path: Path,
