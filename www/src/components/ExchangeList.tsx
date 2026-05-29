@@ -1,7 +1,6 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useMemo, useRef, useState } from "react";
-import { buildExchangeTrackTree } from "../hooks/useExchanges";
-import type { ExchangeTrack, ExchangeTrackStub, IndexEntry } from "../types";
+import type { ExchangeTrack, IndexEntry } from "../types";
 import { ExchangeTurnCard } from "./ExchangeTurnCard";
 import { projectAnchoredRows } from "./exchangeListRows";
 import { Toggle } from "./Toggle";
@@ -9,8 +8,7 @@ import { TrackHeader } from "./TrackHeader";
 
 interface ExchangeListProps {
   exchanges: IndexEntry[];
-  trackTree?: ExchangeTrack[];
-  trackStubs?: ExchangeTrackStub[];
+  trackTree: ExchangeTrack[];
   currentRunId: string | null;
   includeHistory: boolean;
   onIncludeHistoryChange: (next: boolean) => void;
@@ -25,7 +23,6 @@ interface ExchangeListProps {
 const TRACK_ROW_HEIGHT = 92;
 const EXCHANGE_ROW_HEIGHT = 250;
 const EMPTY_TRACK_IDS: string[] = [];
-const EMPTY_TRACK_STUBS: ExchangeTrackStub[] = [];
 const IGNORE_COLLAPSED_TRACK_TOGGLE = () => {};
 
 function findTrack(tracks: ExchangeTrack[], trackId: string): ExchangeTrack | null {
@@ -139,7 +136,6 @@ function ExchangeListEmptyState({ includeHistory }: { includeHistory: boolean })
 export function ExchangeList({
   exchanges,
   trackTree,
-  trackStubs = EMPTY_TRACK_STUBS,
   currentRunId,
   includeHistory,
   onIncludeHistoryChange,
@@ -153,14 +149,10 @@ export function ExchangeList({
   const historyCount = currentRunId
     ? exchanges.filter((entry) => entry.run_id !== currentRunId).length
     : 0;
-  const tree = useMemo(
-    () => trackTree ?? buildExchangeTrackTree(exchanges, trackStubs),
-    [exchanges, trackStubs, trackTree],
-  );
   const collapsedTrackSet = useMemo(() => new Set(collapsedTrackIds), [collapsedTrackIds]);
   const rows = useMemo(
-    () => projectAnchoredRows(tree, collapsedTrackSet),
-    [tree, collapsedTrackSet],
+    () => projectAnchoredRows(trackTree, collapsedTrackSet),
+    [trackTree, collapsedTrackSet],
   );
 
   const virtualizer = useVirtualizer({
@@ -174,7 +166,7 @@ export function ExchangeList({
     getItemKey: (index) => rows[index]?.key ?? index,
   });
   const focusTrack = (trackId: string) => {
-    const entry = focusEntryForTrack(tree, trackId);
+    const entry = focusEntryForTrack(trackTree, trackId);
     if (entry) onSelect(entry.id);
   };
 

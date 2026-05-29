@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { makeEntry } from "./__test-utils__/exchangeList";
-import { ExchangeList } from "./ExchangeList";
+import { ExchangeListWithTrackTree as ExchangeList } from "./__test-utils__/exchangeListHarness";
 
 function rowTestIds(): string[] {
   return Array.from(

@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import type { ComponentProps } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { makeEntry } from "./__test-utils__/exchangeList";
-import { ExchangeList } from "./ExchangeList";
+import { ExchangeListWithTrackTree as ExchangeList } from "./__test-utils__/exchangeListHarness";
 
 describe("ExchangeList — track tree", () => {
   it("treats root tracks as structural containers and renders root exchanges flush", () => {
