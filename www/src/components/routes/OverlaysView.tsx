@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useMeta } from "../../hooks/useMeta";
-import { pluralize } from "../../lib/formatting";
+import { formatRelativeAge, pluralize } from "../../lib/formatting";
 import { type Overlay, UNKNOWN_CWD, useOverlaysStore } from "../../stores/overlaysStore";
 import type { Override, OverrideKind } from "../../types";
 import { RouteAtmosphere, RouteBackdrop } from "./RouteAtmosphere";
@@ -72,21 +72,6 @@ function summarizeOverrides(overrides: Override[]): string {
     parts.push(pluralize(n, label.singular, label.plural));
   }
   return parts.join(", ");
-}
-
-function formatCreatedAt(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  const now = Date.now();
-  const diffMs = now - d.getTime();
-  const minute = 60_000;
-  const hour = 60 * minute;
-  const day = 24 * hour;
-  if (diffMs < minute) return "just now";
-  if (diffMs < hour) return `${Math.floor(diffMs / minute)}m ago`;
-  if (diffMs < day) return `${Math.floor(diffMs / hour)}h ago`;
-  if (diffMs < 7 * day) return `${Math.floor(diffMs / day)}d ago`;
-  return d.toISOString().slice(0, 10);
 }
 
 function EmptyState() {
@@ -289,7 +274,7 @@ function ListState({ overlays }: { overlays: Overlay[] }) {
                   )}
                 </div>
                 <span className="label metric-num tabular-nums text-txt-3 shrink-0">
-                  {formatCreatedAt(overlay.createdAt)}
+                  {formatRelativeAge(overlay.createdAt)}
                 </span>
                 <button
                   type="button"

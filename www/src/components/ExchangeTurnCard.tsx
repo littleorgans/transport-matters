@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useTurnContent } from "../hooks/useTurnContent";
 import { agentRailStyle, type DepthRailStyle } from "../lib/agentPalette";
-import { contextTokens, displayModel } from "../lib/formatting";
+import { contextTokens, displayModel, formatRelativeAge } from "../lib/formatting";
 import type { CodexTurnListSummary, IndexEntry } from "../types";
 import { ExchangePreview } from "./ExchangePreview";
 
@@ -35,17 +35,6 @@ const TOKEN_SEGMENTS = [
   { delay: "440ms", key: "segment-08" },
   { delay: "495ms", key: "segment-09" },
 ] as const;
-
-function formatRelativeTime(ts: string): string {
-  const diff = Date.now() - new Date(ts).getTime();
-  const seconds = Math.floor(diff / 1000);
-  if (seconds < 60) return `${seconds}s ago`;
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  return new Date(ts).toLocaleDateString();
-}
 
 function formatElapsedTime(ts: string): string {
   const diff = Math.max(0, Date.now() - new Date(ts).getTime());
@@ -329,7 +318,7 @@ export function ExchangeTurnCard({
             data-testid={`exchange-time-${entry.id}`}
             className="metric-num shrink-0 border border-edge-strong bg-canvas/35 px-3 py-1.5 text-[12px] uppercase text-txt-2"
           >
-            {isClaudePending ? formatElapsedTime(entry.ts) : formatRelativeTime(entry.ts)}
+            {isClaudePending ? formatElapsedTime(entry.ts) : formatRelativeAge(entry.ts)}
           </span>
         </span>
 

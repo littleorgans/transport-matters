@@ -30,6 +30,24 @@ export function truncatePreview(text: string, maxPreview = PREVIEW_MAX): string 
   return text.length <= maxPreview ? text : `${text.slice(0, maxPreview)}…`;
 }
 
+export function formatRelativeAge(ts: string, nowMs = Date.now()): string {
+  const parsed = new Date(ts);
+  if (Number.isNaN(parsed.getTime())) return ts;
+
+  const diffMs = Math.max(0, nowMs - parsed.getTime());
+  const minute = 60_000;
+  const hour = 60 * minute;
+  const day = 24 * hour;
+  if (diffMs < minute) return "just now";
+  if (diffMs < hour) return `${Math.floor(diffMs / minute)}m ago`;
+  if (diffMs < day) return `${Math.floor(diffMs / hour)}h ago`;
+  if (diffMs < 7 * day) return `${Math.floor(diffMs / day)}d ago`;
+
+  // Use the UTC ISO calendar date so every caller shares one deterministic
+  // >=7d fallback independent of browser locale and local timezone.
+  return parsed.toISOString().slice(0, 10);
+}
+
 /**
  * Compact working-directory label for narrow metadata rails.
  *
