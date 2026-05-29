@@ -41,12 +41,7 @@ from transport_matters.lock import WorkspaceLock, WorkspaceLocked
 from transport_matters.manifest import Manifest
 from transport_matters.manifest import write as manifest_write
 from transport_matters.supervisor import SIGNAL_EXIT, ProcessSupervisor
-from transport_matters.workspace import (
-    run_root,
-    workspace_id,
-    workspace_root,
-    workspace_storage,
-)
+from transport_matters.workspace import run_root, workspace_id, workspace_root
 
 from .banner import _print_banner, _print_client_banner
 from .codex_cmd import run_codex
@@ -85,7 +80,6 @@ __all__ = [
     "user_supplied_system_prompt",
     "workspace_id",
     "workspace_root",
-    "workspace_storage",
 ]
 
 

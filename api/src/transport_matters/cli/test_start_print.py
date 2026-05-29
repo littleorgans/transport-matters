@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING
 
 from typer.testing import CliRunner
 
-from transport_matters.cli import main
+from transport_matters.cli import main, workspace_root
 
 from ._helpers import _which_all, _which_by_name
 
@@ -32,6 +32,26 @@ def test_start_print_command_does_not_spawn(
     assert "reverse:https://api.anthropic.com" in result.stdout
     assert "--listen-port" in result.stdout
     spy_run_client_children.assert_not_called()
+
+
+def test_start_print_command_does_not_create_workspace_run_dir(
+    tmp_storage: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    spy_run_client_children: MagicMock,
+) -> None:
+    monkeypatch.setattr("transport_matters.cli.shutil.which", _which_all())
+    monkeypatch.setattr("transport_matters.cli._port_in_use", lambda _: False)
+    monkeypatch.delenv("TRANSPORT_MATTERS_STORAGE_DIR", raising=False)
+    workdir = tmp_path / "project"
+    workdir.mkdir()
+
+    result = runner.invoke(main, ["claude", str(workdir), "--print-command"])
+
+    assert result.exit_code == 0, result.output
+    assert "mitmdump" in result.stdout
+    spy_run_client_children.assert_not_called()
+    assert not workspace_root(workdir).exists()
 
 
 def test_start_prefers_same_environment_mitmdump(

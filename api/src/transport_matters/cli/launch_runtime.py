@@ -18,11 +18,7 @@ from transport_matters import __version__
 from transport_matters.lock import WorkspaceLock
 from transport_matters.manifest import Manifest
 from transport_matters.manifest import write as manifest_write
-from transport_matters.workspace import (
-    run_root,
-    workspace_id,
-    workspace_storage,
-)
+from transport_matters.workspace import run_root, workspace_id
 
 from .identity import CLI_COMMAND, PRODUCT_LABEL
 from .ports import PortAllocationError
@@ -286,15 +282,18 @@ def resolve_launch_ports(
 def resolve_storage_dir(
     *, storage_dir: Path | None, working_dir: Path, run_id: str
 ) -> Path:
-    """Resolve the storage root for the launch.
+    """Resolve the storage root path for the launch without creating it.
 
     An explicit ``--storage-dir`` is caller-owned and used verbatim. The
     default is the per-run directory ``{slug}/{hash}/{run_id}/``, so two
-    instances launched from the same CWD get isolated storage roots.
+    instances launched from the same CWD get isolated storage roots. Real
+    launches create the default path when the per-run lock is acquired;
+    ``--print-command`` only needs the path string and must not mint an empty
+    run directory.
     """
     if storage_dir is not None:
         return storage_dir
-    return workspace_storage(working_dir, run_id)
+    return run_root(working_dir, run_id)
 
 
 def resolve_mitmdump_or_exit(
