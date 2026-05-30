@@ -109,14 +109,17 @@ class TestMeta:
             "websocket_artifacts": False,
             "http_fallback_artifacts": False,
         }
+        assert list(claude["capabilities"]) == list(base_capabilities)
         assert claude["capabilities"] == base_capabilities
 
         codex = harnesses["codex"]
         assert codex["proxy_mode"] == "explicit"
         assert codex["trust_requirement"] == "codex_ca_certificate"
-        assert codex["capabilities"] == base_capabilities | {
+        codex_capabilities = base_capabilities | {
             "transport_diagnostics": True,
             "codex_turn_telemetry": True,
             "websocket_artifacts": True,
             "http_fallback_artifacts": True,
         }
+        assert list(codex["capabilities"]) == list(codex_capabilities)
+        assert codex["capabilities"] == codex_capabilities

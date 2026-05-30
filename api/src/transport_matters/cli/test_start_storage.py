@@ -168,7 +168,7 @@ def test_start_flows_run_id_into_child_envs(
     assert mitm_run_id == claude_run_id
 
 
-def test_start_writes_workspace_storage_into_manifest(
+def test_start_writes_run_root_storage_into_manifest(
     tmp_storage: Path,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

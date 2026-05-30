@@ -46,7 +46,7 @@ _ROOT_HELP = dedent(f"""\
     Environment
       TRANSPORT_MATTERS_PROXY_PORT       pin proxy port (default: kernel-allocated)
       TRANSPORT_MATTERS_WEB_PORT         pin web UI port (default: kernel-allocated)
-      TRANSPORT_MATTERS_STORAGE_DIR      data dir (default ~/.transport-matters/)
+      TRANSPORT_MATTERS_STORAGE_DIR      addon/paths/doctor data dir; launches use per-run storage
       TRANSPORT_MATTERS_UPSTREAM_URL     upstream API (default https://api.anthropic.com)
 
     Options

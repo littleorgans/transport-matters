@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { useMeta } from "../../hooks/useMeta";
+import { formatRelativeAge, pluralize } from "../../lib/formatting";
 import { type Overlay, UNKNOWN_CWD, useOverlaysStore } from "../../stores/overlaysStore";
 import type { Override, OverrideKind } from "../../types";
-import { TransportMattersIcon } from "../TransportMattersIcon";
+import { RouteAtmosphere, RouteBackdrop } from "./RouteAtmosphere";
 
 const RESOLVING_CWD_LABEL = "resolving workspace\u2026";
 
@@ -68,60 +69,20 @@ function summarizeOverrides(overrides: Override[]): string {
     const n = counts.get(kind) ?? 0;
     if (n === 0) continue;
     const label = KIND_LABELS[kind];
-    parts.push(`${n} ${n === 1 ? label.singular : label.plural}`);
+    parts.push(pluralize(n, label.singular, label.plural));
   }
   return parts.join(", ");
 }
 
-function formatCreatedAt(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  const now = Date.now();
-  const diffMs = now - d.getTime();
-  const minute = 60_000;
-  const hour = 60 * minute;
-  const day = 24 * hour;
-  if (diffMs < minute) return "just now";
-  if (diffMs < hour) return `${Math.floor(diffMs / minute)}m ago`;
-  if (diffMs < day) return `${Math.floor(diffMs / hour)}h ago`;
-  if (diffMs < 7 * day) return `${Math.floor(diffMs / day)}d ago`;
-  return d.toISOString().slice(0, 10);
-}
-
-function Atmosphere() {
-  return (
-    <div
-      aria-hidden
-      className="absolute inset-0 flex items-center justify-center text-edge-subtle opacity-30 pointer-events-none"
-    >
-      <TransportMattersIcon className="spin-gentle h-[90vh] w-[90vh]" />
-    </div>
-  );
-}
-
 function EmptyState() {
   return (
-    <div className="relative h-full overflow-hidden">
-      <Atmosphere />
-      <div className="absolute inset-0 flex flex-col items-center justify-center gap-7 px-8 text-center">
-        <div className="flex flex-col items-center gap-4">
-          <TransportMattersIcon className="h-[64px] w-[64px] text-txt shrink-0" />
-          <h2 className="text-[18px] font-semibold tracking-[0.22em] text-txt uppercase">
-            Overlays
-          </h2>
-          <span className="label text-[12px]">Persistent transforms</span>
-        </div>
-        <p className="max-w-[500px] text-[14px] leading-[1.7] text-txt-3">
-          Overlays are declarative rules that reshape every exchange captured by this proxy. Start
-          by editing a paused request in the breakpoint form, then press SAVE AS OVERLAY to turn
-          that edit into something reusable.
-        </p>
-        <div className="flex items-center gap-2 text-[12px] uppercase tracking-[0.22em] text-amber">
-          <span aria-hidden className="h-1 w-1 rounded-full bg-amber" />
-          <span>Save a breakpoint edit to begin</span>
-        </div>
-      </div>
-    </div>
+    <RouteAtmosphere
+      title="Overlays"
+      label="Persistent transforms"
+      body="Overlays are declarative rules that reshape every exchange captured by this proxy. Start by editing a paused request in the breakpoint form, then press SAVE AS OVERLAY to turn that edit into something reusable."
+      footer="Save a breakpoint edit to begin"
+      accent="amber"
+    />
   );
 }
 
@@ -194,7 +155,7 @@ function DraftState({ draft }: { draft: Overlay }) {
 
   return (
     <div className="relative h-full overflow-hidden">
-      <Atmosphere />
+      <RouteBackdrop />
       <div className="absolute inset-0 flex items-center justify-center px-8">
         <div className="card w-full max-w-[520px] p-6 space-y-5">
           <div className="flex items-center gap-3">
@@ -313,7 +274,7 @@ function ListState({ overlays }: { overlays: Overlay[] }) {
                   )}
                 </div>
                 <span className="label metric-num tabular-nums text-txt-3 shrink-0">
-                  {formatCreatedAt(overlay.createdAt)}
+                  {formatRelativeAge(overlay.createdAt)}
                 </span>
                 <button
                   type="button"

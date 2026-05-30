@@ -15,7 +15,6 @@ semantics stay on the provider adapters and captured IR provider fields.
 
 from __future__ import annotations
 
-from dataclasses import asdict
 from pathlib import Path
 
 from fastapi import APIRouter
@@ -23,6 +22,7 @@ from pydantic import BaseModel
 
 from transport_matters.config import get_settings
 from transport_matters.harnesses import (
+    HarnessCapabilities,
     HarnessDescriptor,
     HarnessPassThroughPolicy,
     HarnessProxyMode,
@@ -33,20 +33,6 @@ from transport_matters.harnesses import (
 from transport_matters.workspace import workspace_id as _workspace_id
 
 router = APIRouter()
-
-
-class HarnessCapabilitiesResponse(BaseModel):
-    startup_probe: bool
-    disposable_probe: bool
-    overlay_before_work: bool
-    tool_schema_overlay: bool
-    provider_extras_controls: bool
-    replay: bool
-    fork: bool
-    transport_diagnostics: bool
-    codex_turn_telemetry: bool
-    websocket_artifacts: bool
-    http_fallback_artifacts: bool
 
 
 class HarnessDescriptorResponse(BaseModel):
@@ -60,7 +46,7 @@ class HarnessDescriptorResponse(BaseModel):
     trust_requirement: HarnessTrustRequirement
     shell_environment_policy: HarnessShellEnvironmentPolicy
     pass_through_policy: HarnessPassThroughPolicy
-    capabilities: HarnessCapabilitiesResponse
+    capabilities: HarnessCapabilities
 
     @classmethod
     def from_descriptor(
@@ -77,7 +63,7 @@ class HarnessDescriptorResponse(BaseModel):
             trust_requirement=descriptor.trust_requirement,
             shell_environment_policy=descriptor.shell_environment_policy,
             pass_through_policy=descriptor.pass_through_policy,
-            capabilities=HarnessCapabilitiesResponse(**asdict(descriptor.capabilities)),
+            capabilities=descriptor.capabilities,
         )
 
 

@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { fetchExchanges, MAX_ENTRIES } from "../api";
+import { exchangesKey } from "../lib/queryKeys";
 import type {
   ExchangeTrack,
   ExchangeTrackStub,
@@ -33,11 +34,16 @@ function statusForTrack(exchanges: IndexEntry[], fallback: TrackStatus): TrackSt
   return fallback === "closed" ? "closed" : "live";
 }
 
+function compareIsoDesc(aTs: string | null | undefined, bTs: string | null | undefined): number {
+  if (!aTs || !bTs) return 0;
+  const aMs = new Date(aTs).getTime();
+  const bMs = new Date(bTs).getTime();
+  if (Number.isNaN(aMs) || Number.isNaN(bMs) || aMs === bMs) return 0;
+  return bMs - aMs;
+}
+
 function compareTs(a: IndexEntry, b: IndexEntry): number {
-  const aTs = new Date(a.ts).getTime();
-  const bTs = new Date(b.ts).getTime();
-  if (Number.isNaN(aTs) || Number.isNaN(bTs) || aTs === bTs) return 0;
-  return bTs - aTs;
+  return compareIsoDesc(a.ts, b.ts);
 }
 
 function adoptAnchor(track: ExchangeTrack, source: SpawnAnchor | null | undefined): void {
@@ -144,11 +150,8 @@ export function buildExchangeTrackTree(
   const compareTrack = (a: ExchangeTrack, b: ExchangeTrack) => {
     const aTs = a.exchanges[0]?.ts;
     const bTs = b.exchanges[0]?.ts;
-    if (aTs && bTs) {
-      const aMs = new Date(aTs).getTime();
-      const bMs = new Date(bTs).getTime();
-      if (!Number.isNaN(aMs) && !Number.isNaN(bMs) && aMs !== bMs) return bMs - aMs;
-    }
+    const tsOrder = compareIsoDesc(aTs, bTs);
+    if (tsOrder !== 0) return tsOrder;
     if (aTs && !bTs) return -1;
     if (!aTs && bTs) return 1;
     const aOrder = drafts.get(a.track_id)?.order ?? 0;
@@ -174,7 +177,7 @@ export function useExchanges(
   isLoading: boolean;
 } {
   const { data: exchanges = [], isLoading } = useQuery({
-    queryKey: ["exchanges", includeHistory],
+    queryKey: exchangesKey(includeHistory),
     queryFn: () =>
       fetchExchanges(MAX_ENTRIES, 0, includeHistory).then((data) =>
         data.slice().reverse().slice(0, MAX_ENTRIES),

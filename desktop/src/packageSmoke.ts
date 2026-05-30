@@ -27,13 +27,15 @@ export interface PackageSmokeOptions {
   timeoutMs?: number;
 }
 
+export type PackagedChildProcess = Pick<EventEmitter, "once"> & {
+  kill?: (signal?: NodeJS.Signals) => boolean;
+};
+
 export type SpawnPackagedExecutable = (
   command: string,
   args: string[],
   options: SpawnOptions & { env: NodeJS.ProcessEnv },
-) => Pick<EventEmitter, "once"> & {
-  kill?: (signal?: NodeJS.Signals) => boolean;
-};
+) => PackagedChildProcess;
 
 const DEFAULT_TIMEOUT_MS = 15_000;
 
@@ -140,12 +142,7 @@ function readSmokeStatus(markerPath: string): PackageSmokeResult["status"] {
   return marker.status;
 }
 
-function waitForExit(
-  child: Pick<EventEmitter, "once"> & {
-    kill?: (signal?: NodeJS.Signals) => boolean;
-  },
-  timeoutMs: number,
-): Promise<void> {
+function waitForExit(child: PackagedChildProcess, timeoutMs: number): Promise<void> {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
       child.kill?.("SIGTERM");

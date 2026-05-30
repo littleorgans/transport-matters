@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any, Literal
 
 from transport_matters.codex.events import CodexOpenAssistantItem, CodexOpenToolCall
@@ -9,6 +10,7 @@ from transport_matters.codex.json_utils import compact_json
 
 type CodexTerminalStatus = Literal["completed", "failed"]
 
+CODEX_MODEL_PREFIX = "codex/"
 CODEX_TURN_START_EVENT_TYPE = "response.create"
 CODEX_OUTPUT_ITEM_ADDED_EVENT_TYPE = "response.output_item.added"
 CODEX_OUTPUT_ITEM_DONE_EVENT_TYPE = "response.output_item.done"
@@ -29,12 +31,23 @@ CODEX_INTERRUPTED_STATUS = "interrupted"
 CODEX_MESSAGE_ITEM_TYPE = "message"
 CODEX_NORMAL_CLOSE_CODES = frozenset({1000, 1001})
 CODEX_REASONING_ITEM_TYPE = "reasoning"
+CODEX_INPUT_TEXT_TYPE = "input_text"
+CODEX_OUTPUT_TEXT_TYPE = "output_text"
+CODEX_TEXT_TYPE = "text"
+CODEX_REFUSAL_TYPE = "refusal"
+CODEX_IMAGE_TYPE = "input_image"
+CODEX_INPUT_TEXT_TYPES = frozenset({CODEX_INPUT_TEXT_TYPE, CODEX_TEXT_TYPE})
+CODEX_OUTPUT_TEXT_TYPES = frozenset({CODEX_OUTPUT_TEXT_TYPE, CODEX_TEXT_TYPE})
+CODEX_PRESERVED_TEXT_TYPES = (
+    CODEX_INPUT_TEXT_TYPES | CODEX_OUTPUT_TEXT_TYPES | frozenset({CODEX_REFUSAL_TYPE})
+)
 CODEX_TOOL_CALL_ITEM_TYPES = frozenset(
     {"function_call", "custom_tool_call", "tool_search_call"}
 )
 CODEX_TOOL_OUTPUT_ITEM_TYPES = frozenset(
     {"function_call_output", "custom_tool_call_output", "tool_search_output"}
 )
+RAW_TOOL_ARGUMENTS_KEY = "__raw_arguments__"
 
 
 def codex_payload_event_type(payload: object) -> str | None:
@@ -245,6 +258,31 @@ def codex_tool_call_arguments_text(item: dict[str, Any]) -> str:
     return compact_json(arguments)
 
 
+def decode_tool_arguments(value: object) -> dict[str, Any]:
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+        except json.JSONDecodeError:
+            return {RAW_TOOL_ARGUMENTS_KEY: value}
+        if isinstance(parsed, dict):
+            return parsed
+        return {"value": parsed}
+    return {"value": value}
+
+
+def codex_text_from_content_entry(entry: dict[str, Any]) -> str | None:
+    entry_type = entry.get("type")
+    text = entry.get("text")
+    if entry_type in CODEX_OUTPUT_TEXT_TYPES and isinstance(text, str):
+        return text
+    refusal = entry.get("refusal")
+    if entry_type == CODEX_REFUSAL_TYPE and isinstance(refusal, str):
+        return refusal
+    return None
+
+
 def codex_assistant_item_text(item: dict[str, Any]) -> str:
     content = item.get("content")
     if not isinstance(content, list):
@@ -253,12 +291,9 @@ def codex_assistant_item_text(item: dict[str, Any]) -> str:
     for entry in content:
         if not isinstance(entry, dict):
             continue
-        entry_type = entry.get("type")
-        if entry_type in {"output_text", "text"} and isinstance(entry.get("text"), str):
-            parts.append(entry["text"])
-            continue
-        if entry_type == "refusal" and isinstance(entry.get("refusal"), str):
-            parts.append(entry["refusal"])
+        text = codex_text_from_content_entry(entry)
+        if text is not None:
+            parts.append(text)
     return "".join(parts)
 
 

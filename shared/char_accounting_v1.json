@@ -1,0 +1,373 @@
+{
+  "numbers": {
+    "float_fraction": 1.5,
+    "float_integer": 1.0,
+    "float_large_integer_1e16": 1e+16,
+    "float_negative_small": -0.000015,
+    "float_small_1e_minus_4": 0.0001,
+    "float_small_1e_minus_5": 0.00001,
+    "float_small_1e_minus_6": 0.000001,
+    "float_small_1_5e_minus_5": 0.000015,
+    "float_small_9_9e_minus_5": 0.000099,
+    "int": 1,
+    "int_2_pow_53": 9007199254740992,
+    "int_2_pow_53_plus_2": 9007199254740994,
+    "large_integer_float": 1e+20
+  },
+  "number_cases": [
+    {
+      "label": "1e-4",
+      "kind": "float",
+      "value": "1e-4",
+      "expected": "0.0001"
+    },
+    {
+      "label": "9.9e-5",
+      "kind": "float",
+      "value": "9.9e-5",
+      "expected": "9.9e-5"
+    },
+    {
+      "label": "1e-5",
+      "kind": "float",
+      "value": "1e-5",
+      "expected": "1e-5"
+    },
+    {
+      "label": "1.5e-5",
+      "kind": "float",
+      "value": "1.5e-5",
+      "expected": "1.5e-5"
+    },
+    {
+      "label": "1e-6",
+      "kind": "float",
+      "value": "1e-6",
+      "expected": "1e-6"
+    },
+    {
+      "label": "0.7",
+      "kind": "float",
+      "value": "0.7",
+      "expected": "0.7"
+    },
+    {
+      "label": "1.0",
+      "kind": "float",
+      "value": "1.0",
+      "expected": "1"
+    },
+    {
+      "label": "1",
+      "kind": "int",
+      "value": "1",
+      "expected": "1"
+    },
+    {
+      "label": "-1.5e-5",
+      "kind": "float",
+      "value": "-1.5e-5",
+      "expected": "-1.5e-5"
+    },
+    {
+      "label": "1e16",
+      "kind": "float",
+      "value": "1e16",
+      "expected": "10000000000000000"
+    },
+    {
+      "label": "1e20",
+      "kind": "float",
+      "value": "1e20",
+      "expected": "100000000000000000000"
+    },
+    {
+      "label": "2**53",
+      "kind": "int",
+      "value": "9007199254740992",
+      "expected": "9007199254740992"
+    },
+    {
+      "label": "2**53+2",
+      "kind": "int",
+      "value": "9007199254740994",
+      "expected": "9007199254740994"
+    },
+    {
+      "label": "9007199254740993",
+      "kind": "int",
+      "value": "9007199254740993",
+      "expected": "9007199254740993"
+    }
+  ],
+  "production_number_residual_cases": [
+    {
+      "label": "json integer above 2^53",
+      "json": "9007199254740993",
+      "python_expected": "9007199254740993",
+      "typescript_expected": "9007199254740992"
+    },
+    {
+      "label": "json integer-valued float above 2^53",
+      "json": "1.2345678901234568e20",
+      "python_expected": "123456789012345683968",
+      "typescript_expected": "123456789012345680000"
+    }
+  ],
+  "tool": {
+    "name": "mcp__demo__run",
+    "description": "Run émoji 😄",
+    "input_schema": {
+      "alpha": [
+        "é",
+        "😄",
+        1,
+        1.0,
+        1.5,
+        1e+20
+      ],
+      "numeric": {
+        "float_fraction": 1.5,
+        "float_integer": 1.0,
+        "int": 1,
+        "large_integer_float": 1e+20
+      },
+      "zeta": {
+        "inner_b": 2,
+        "inner_a": 1.0
+      }
+    },
+    "provider_data": {
+      "ignored": true
+    }
+  },
+  "blocks": {
+    "text": {
+      "type": "text",
+      "text": "hi é 😄",
+      "provider_data": {
+        "raw": {
+          "z": 1,
+          "a": {
+            "emoji": "😄",
+            "accent": "é"
+          }
+        }
+      }
+    },
+    "tool_use": {
+      "type": "tool_use",
+      "id": "tu-1",
+      "name": "run",
+      "input": {
+        "z": 1.0,
+        "a": {
+          "b": 2,
+          "a": 1.5
+        }
+      },
+      "provider_data": null
+    },
+    "tool_result": {
+      "type": "tool_result",
+      "tool_use_id": "tu-1",
+      "content": [
+        {
+          "type": "text",
+          "text": "x",
+          "provider_data": null
+        },
+        {
+          "type": "image",
+          "source": {
+            "z": "last",
+            "a": "first"
+          },
+          "provider_data": null
+        }
+      ],
+      "is_error": false,
+      "provider_data": {
+        "raw": {
+          "beta": 2,
+          "alpha": 1
+        }
+      }
+    },
+    "thinking": {
+      "type": "thinking",
+      "text": "think 😄",
+      "provider_data": null
+    },
+    "image": {
+      "type": "image",
+      "source": {
+        "mime": "image/png",
+        "data": "abc"
+      },
+      "provider_data": null
+    },
+    "unknown": {
+      "type": "unknown",
+      "raw": {
+        "z": 1,
+        "a": 2
+      }
+    }
+  },
+  "internal_request": {
+    "model": "demo-model",
+    "provider": "anthropic",
+    "system": [
+      {
+        "type": "text",
+        "text": "system é 😄",
+        "cache_hint": null,
+        "provider_data": null
+      }
+    ],
+    "tools": [
+      {
+        "name": "mcp__demo__run",
+        "description": "Run émoji 😄",
+        "input_schema": {
+          "alpha": [
+            "é",
+            "😄",
+            1,
+            1.0,
+            1.5,
+            1e+20
+          ],
+          "numeric": {
+            "float_fraction": 1.5,
+            "float_integer": 1.0,
+            "int": 1,
+            "large_integer_float": 1e+20
+          },
+          "zeta": {
+            "inner_b": 2,
+            "inner_a": 1.0
+          }
+        },
+        "provider_data": {
+          "ignored": true
+        }
+      }
+    ],
+    "messages": [
+      {
+        "role": "user",
+        "content": [
+          {
+            "type": "text",
+            "text": "hi é 😄",
+            "provider_data": {
+              "raw": {
+                "z": 1,
+                "a": {
+                  "emoji": "😄",
+                  "accent": "é"
+                }
+              }
+            }
+          },
+          {
+            "type": "tool_use",
+            "id": "tu-1",
+            "name": "run",
+            "input": {
+              "z": 1.0,
+              "a": {
+                "b": 2,
+                "a": 1.5
+              }
+            },
+            "provider_data": null
+          },
+          {
+            "type": "tool_result",
+            "tool_use_id": "tu-1",
+            "content": [
+              {
+                "type": "text",
+                "text": "x",
+                "provider_data": null
+              },
+              {
+                "type": "image",
+                "source": {
+                  "z": "last",
+                  "a": "first"
+                },
+                "provider_data": null
+              }
+            ],
+            "is_error": false,
+            "provider_data": {
+              "raw": {
+                "beta": 2,
+                "alpha": 1
+              }
+            }
+          },
+          {
+            "type": "thinking",
+            "text": "think 😄",
+            "provider_data": null
+          },
+          {
+            "type": "image",
+            "source": {
+              "mime": "image/png",
+              "data": "abc"
+            },
+            "provider_data": null
+          },
+          {
+            "type": "unknown",
+            "raw": {
+              "z": 1,
+              "a": 2
+            }
+          }
+        ],
+        "provider_data": null
+      }
+    ],
+    "sampling": {
+      "max_tokens": 1024,
+      "temperature": null,
+      "top_p": null,
+      "top_k": null,
+      "stop_sequences": []
+    },
+    "metadata": {
+      "session_id": null,
+      "device_id": null,
+      "account_id": null,
+      "provider_metadata": {}
+    },
+    "stream": false,
+    "provider_extras": {}
+  },
+  "expected": {
+    "numbers_json": "{\"float_fraction\":1.5,\"float_integer\":1,\"float_large_integer_1e16\":10000000000000000,\"float_negative_small\":-1.5e-5,\"float_small_1_5e_minus_5\":1.5e-5,\"float_small_1e_minus_4\":0.0001,\"float_small_1e_minus_5\":1e-5,\"float_small_1e_minus_6\":1e-6,\"float_small_9_9e_minus_5\":9.9e-5,\"int\":1,\"int_2_pow_53\":9007199254740992,\"int_2_pow_53_plus_2\":9007199254740994,\"large_integer_float\":100000000000000000000}",
+    "tool_input_schema_json": "{\"alpha\":[\"é\",\"😄\",1,1,1.5,100000000000000000000],\"numeric\":{\"float_fraction\":1.5,\"float_integer\":1,\"int\":1,\"large_integer_float\":100000000000000000000},\"zeta\":{\"inner_a\":1,\"inner_b\":2}}",
+    "tool_chars": 210,
+    "blocks": {
+      "text": "{\"type\":\"text\",\"text\":\"hi é 😄\",\"provider_data\":{\"raw\":{\"a\":{\"accent\":\"é\",\"emoji\":\"😄\"},\"z\":1}}}",
+      "tool_use": "{\"type\":\"tool_use\",\"id\":\"tu-1\",\"name\":\"run\",\"input\":{\"a\":{\"a\":1.5,\"b\":2},\"z\":1},\"provider_data\":null}",
+      "tool_result": "{\"type\":\"tool_result\",\"tool_use_id\":\"tu-1\",\"content\":[{\"type\":\"text\",\"text\":\"x\",\"provider_data\":null},{\"type\":\"image\",\"source\":{\"a\":\"first\",\"z\":\"last\"},\"provider_data\":null}],\"is_error\":false,\"provider_data\":{\"raw\":{\"alpha\":1,\"beta\":2}}}",
+      "thinking": "{\"type\":\"thinking\",\"text\":\"think 😄\",\"provider_data\":null}",
+      "image": "{\"type\":\"image\",\"source\":{\"data\":\"abc\",\"mime\":\"image/png\"},\"provider_data\":null}",
+      "unknown": "{\"type\":\"unknown\",\"raw\":{\"a\":2,\"z\":1}}"
+    },
+    "parts": {
+      "system": 10,
+      "tools": 210,
+      "messages": 607,
+      "total": 827
+    }
+  }
+}

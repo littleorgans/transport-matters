@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import UTC, datetime
 from typing import Any, cast
 from unittest.mock import patch
 
@@ -10,6 +11,7 @@ from transport_matters.ir import InternalResponse, TextBlock, UsageStats
 from transport_matters.storage import test_disk as disk_tests
 from transport_matters.storage.base import ExchangeArtifacts, IndexEntry, ResStats
 from transport_matters.storage.disk import DiskStorageBackend
+from transport_matters.storage.disk_layout import DiskStorageLayout
 
 
 @pytest.fixture
@@ -264,6 +266,38 @@ class TestAtomicPersist:
         recovered = await fresh.read_index_entry(exchange_id)
 
         assert recovered == IndexEntry.model_validate(entry.model_dump())
+
+    async def test_staged_delete_recovery_binds_by_canonical_path(
+        self, storage: DiskStorageBackend
+    ) -> None:
+        exchange_id = "persist-recover-path-001"
+        ts = datetime(2025, 6, 1, 12, 0, 0, tzinfo=UTC)
+        layout = DiskStorageLayout(storage.root)
+        entry = disk_tests._make_index_entry(exchange_id).model_copy(
+            update={
+                "ts": ts,
+                "path": layout.exchange_index_path_for(exchange_id, ts=ts),
+            }
+        )
+        artifacts = ExchangeArtifacts(
+            request_raw=b'{"model":"restorable","max_tokens":1024}',
+            request_ir=disk_tests._make_ir(),
+        )
+
+        await storage.persist_exchange(entry, artifacts)
+        live_dir = storage.root / layout.exchange_dir_name(exchange_id, ts=ts)
+        assert live_dir.is_dir()
+        assert entry.path == layout.exchange_index_path(live_dir.name)
+
+        layout.artifact_paths(live_dir).entry.unlink()
+        staged_dir = layout.staged_delete_dir(live_dir)
+        live_dir.rename(staged_dir)
+
+        fresh = DiskStorageBackend(root=str(storage.root))
+        await fresh.read_index_entry(exchange_id)
+
+        assert live_dir.is_dir()
+        assert not staged_dir.exists()
 
     async def test_bootstrap_recovers_legacy_codex_row_without_entry_sidecar(
         self, storage: DiskStorageBackend

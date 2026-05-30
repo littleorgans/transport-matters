@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { makeEntry } from "../components/__test-utils__/exchangeList";
 import type { ExchangeTrackStub, IndexEntry, SpawnAnchor } from "../types";
 import { buildExchangeTrackTree } from "./useExchanges";
 
@@ -7,29 +8,6 @@ function spawnAnchor(exchangeId: string, toolUseId: string, order: number): Spaw
     track_spawn_exchange_id: exchangeId,
     track_spawn_tool_use_id: toolUseId,
     track_spawn_order: order,
-  };
-}
-
-function makeEntry(overrides: Partial<IndexEntry>): IndexEntry {
-  return {
-    id: "entry",
-    ts: "2026-04-26T00:00:00.000Z",
-    provider: "anthropic",
-    model: "claude-opus-4-7",
-    path: "",
-    req: {
-      system_parts: 0,
-      system_chars: 0,
-      tools_count: 0,
-      tools_chars: 0,
-      messages_count: 0,
-      messages_chars: 0,
-      total_chars: 0,
-    },
-    pipeline: null,
-    res: null,
-    mutated_manually: false,
-    ...overrides,
   };
 }
 

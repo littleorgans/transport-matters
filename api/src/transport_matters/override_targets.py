@@ -2,6 +2,34 @@
 
 from __future__ import annotations
 
+import re
+
+_INDEX_RE = re.compile(r"^(0|-?[1-9][0-9]*)$")
+
+
+def tool_target(name: str) -> str:
+    return f"tool:{name}"
+
+
+def system_target(index: int) -> str:
+    return f"system:{index}"
+
+
+def tool_result_target(tool_use_id: str) -> str:
+    return f"toolresult:{tool_use_id}"
+
+
+def sampling_target(field: str) -> str:
+    return f"sampling:{field}"
+
+
+def provider_extras_target(key: str) -> str:
+    return f"provider_extras:{key}"
+
+
+def message_block_target(msg_idx: int, blk_idx: int) -> str:
+    return f"msg:{msg_idx}:blk:{blk_idx}"
+
 
 def parse_prefixed(target: str, prefix: str) -> str | None:
     """Extract the value after ``prefix`` if ``target`` starts with it."""
@@ -13,12 +41,9 @@ def parse_prefixed(target: str, prefix: str) -> str | None:
 def parse_prefixed_int(target: str, prefix: str) -> int | None:
     """Extract an integer value after ``prefix``."""
     raw = parse_prefixed(target, prefix)
-    if raw is None:
+    if raw is None or _INDEX_RE.fullmatch(raw) is None:
         return None
-    try:
-        return int(raw)
-    except ValueError:
-        return None
+    return int(raw)
 
 
 def parse_tool_name(target: str) -> str | None:
@@ -51,17 +76,18 @@ def parse_message_target(target: str) -> tuple[int, int] | None:
     parts = target.split(":")
     if len(parts) != 4 or parts[0] != "msg" or parts[2] != "blk":
         return None
-    try:
-        return int(parts[1]), int(parts[3])
-    except ValueError:
+    if _INDEX_RE.fullmatch(parts[1]) is None or _INDEX_RE.fullmatch(parts[3]) is None:
         return None
+    return int(parts[1]), int(parts[3])
 
 
 def adjust_system_index(original_index: int, removed_indices: set[int]) -> int:
     """Map an original system index to its current position after removals."""
-    return original_index - sum(
-        1 for removed in removed_indices if removed < original_index
-    )
+    return _shift_after_removals(original_index, removed_indices)
+
+
+def _shift_after_removals(index: int, removed: set[int]) -> int:
+    return index - sum(1 for prior in removed if prior < index)
 
 
 def adjust_blk_index(
@@ -76,4 +102,4 @@ def adjust_blk_index(
     removed = removed_blk_indices.get(msg_idx, set())
     if original_blk_idx in removed:
         return None
-    return original_blk_idx - sum(1 for prior in removed if prior < original_blk_idx)
+    return _shift_after_removals(original_blk_idx, removed)

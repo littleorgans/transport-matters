@@ -5,6 +5,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from transport_matters.codex.protocol import (
+    CODEX_IMAGE_TYPE,
+    CODEX_INPUT_TEXT_TYPE,
+    CODEX_OUTPUT_TEXT_TYPE,
+    CODEX_PRESERVED_TEXT_TYPES,
+    CODEX_REFUSAL_TYPE,
+)
+
 
 @dataclass(slots=True)
 class SerializedInputItem:
@@ -229,20 +237,18 @@ def _merge_message_content_item(
 
     raw_type = raw.get("type")
     payload_type = payload.get("type")
-    if payload_type == "input_image" and raw_type == "input_image":
+    if payload_type == CODEX_IMAGE_TYPE and raw_type == CODEX_IMAGE_TYPE:
         merged = dict(raw)
         for key, value in payload.items():
             if key != "type":
                 merged[key] = value
         return merged
-    if payload_type in {"input_text", "output_text"} and raw_type in {
-        "input_text",
-        "output_text",
-        "text",
-        "refusal",
-    }:
+    if (
+        payload_type in {CODEX_INPUT_TEXT_TYPE, CODEX_OUTPUT_TEXT_TYPE}
+        and raw_type in CODEX_PRESERVED_TEXT_TYPES
+    ):
         merged = dict(raw)
-        if raw_type == "refusal":
+        if raw_type == CODEX_REFUSAL_TYPE:
             merged["refusal"] = payload["text"]
             merged.pop("text", None)
         else:

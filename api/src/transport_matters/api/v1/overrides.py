@@ -10,9 +10,8 @@ from transport_matters.ir import (
     InternalRequest,  # noqa: TC001 — FastAPI needs runtime access
 )
 from transport_matters.override_state import (
-    LEGACY_SCOPE_ID,
     OverrideScope,
-    normalize_scope,
+    scope_from_params,
 )
 from transport_matters.overrides import (
     Override,
@@ -53,14 +52,8 @@ class OverrideBatchRequest(BaseModel):
 # ── Helpers ──────────────────────────────────────────────────────
 
 
-def _scope_from_params(run_id: str | None, track_id: str | None) -> OverrideScope:
-    if run_id is None:
-        return normalize_scope((LEGACY_SCOPE_ID, track_id or LEGACY_SCOPE_ID))
-    return normalize_scope((run_id, track_id or run_id))
-
-
 def _paused_scope(pf: bp.PausedFlow) -> OverrideScope:
-    return _scope_from_params(pf.run_id, pf.track_id)
+    return scope_from_params(pf.run_id, pf.track_id)
 
 
 async def _update_scoped_paused_preview(
@@ -108,7 +101,7 @@ async def get_overrides(
     track_id: str | None = Query(default=None),
 ) -> OverrideListResponse:
     store = get_store()
-    scope = _scope_from_params(run_id, track_id)
+    scope = scope_from_params(run_id, track_id)
     return OverrideListResponse(
         overrides=store.get_all(scope=scope),
         enabled=store.is_enabled(scope=scope),
@@ -122,7 +115,7 @@ async def patch_overrides(
     track_id: str | None = Query(default=None),
 ) -> OverrideMutateResponse:
     store = get_store()
-    scope = _scope_from_params(run_id, track_id)
+    scope = scope_from_params(run_id, track_id)
     for override in body.overrides:
         store.upsert(override, scope=scope)
 
@@ -147,7 +140,7 @@ async def delete_overrides(
     if run_id is None and track_id is None:
         store.clear()
     else:
-        store.clear(scope=_scope_from_params(run_id, track_id))
+        store.clear(scope=scope_from_params(run_id, track_id))
     return Response(status_code=204)
 
 
@@ -157,7 +150,7 @@ async def toggle_overrides(
     track_id: str | None = Query(default=None),
 ) -> ToggleResponse:
     store = get_store()
-    scope = _scope_from_params(run_id, track_id)
+    scope = scope_from_params(run_id, track_id)
     store.set_enabled(not store.is_enabled(scope=scope), scope=scope)
 
     audit, curated_ir = await _update_scoped_paused_preview(

@@ -10,7 +10,6 @@ import type {
 import {
   detectMessageMutations,
   detectMessageMutationsStructural,
-  detectSamplingOverridesStructural,
   detectSystemPartMutations,
   detectSystemPartMutationsStructural,
   detectToolMutations,
@@ -491,67 +490,5 @@ describe("detectMessageMutationsStructural", () => {
         makeRequest({ messages: [curated] }),
       ),
     ).toEqual([]);
-  });
-});
-
-describe("detectSamplingOverridesStructural", () => {
-  it("emits sampling_set overrides only for fields whose curated values differ", () => {
-    const original = makeRequest({
-      sampling: {
-        max_tokens: 1024,
-        temperature: null,
-        top_p: null,
-        top_k: null,
-        stop_sequences: [],
-      },
-    });
-    const curated = makeRequest({
-      sampling: {
-        max_tokens: 2048,
-        temperature: 0.2,
-        top_p: null,
-        top_k: null,
-        stop_sequences: ["END"],
-      },
-    });
-
-    expect(detectSamplingOverridesStructural(original, curated)).toEqual([
-      { kind: "sampling_set", target: "sampling:max_tokens", value: 2048 },
-      { kind: "sampling_set", target: "sampling:temperature", value: 0.2 },
-      { kind: "sampling_set", target: "sampling:stop_sequences", value: '["END"]' },
-    ]);
-  });
-
-  it("emits provider_extras_set overrides for thinking, display, and effort differences", () => {
-    const original = makeRequest({
-      provider_extras: {
-        thinking: { type: "adaptive", display: "summarized" },
-        output_config: { effort: "medium" },
-      },
-    });
-    const curated = makeRequest({
-      provider_extras: {
-        thinking: { type: "enabled", budget_tokens: 8192, display: "omitted" },
-        output_config: { effort: "high" },
-      },
-    });
-
-    expect(detectSamplingOverridesStructural(original, curated)).toEqual([
-      {
-        kind: "provider_extras_set",
-        target: "provider_extras:thinking",
-        value: '{"type":"enabled","budget_tokens":8192,"display":"omitted"}',
-      },
-      {
-        kind: "provider_extras_set",
-        target: "provider_extras:thinking.display",
-        value: '"omitted"',
-      },
-      {
-        kind: "provider_extras_set",
-        target: "provider_extras:output_config.effort",
-        value: '"high"',
-      },
-    ]);
   });
 });

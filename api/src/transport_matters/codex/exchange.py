@@ -27,7 +27,7 @@ from transport_matters.exchange_recorder import (
     _persist_exchange,
     _persist_track_assignment,
     _persist_unparsed_exchange,
-    _persistable_curated_ir,
+    build_request_artifacts,
     emit_exchange,
 )
 from transport_matters.exchange_stats import (
@@ -43,7 +43,6 @@ from transport_matters.ir import (
     SamplingParams,
     TextBlock,
 )
-from transport_matters.request_diff import outbound_request_if_changed
 from transport_matters.storage import (
     CodexTurnListSummary,
     IndexEntry,
@@ -52,6 +51,7 @@ from transport_matters.storage import (
     ResStats,
 )
 from transport_matters.storage.base import ExchangeArtifacts
+from transport_matters.storage.disk_layout import DiskStorageLayout
 from transport_matters.track_manager import assignment_index_fields, get_track_manager
 
 if TYPE_CHECKING:
@@ -61,6 +61,7 @@ if TYPE_CHECKING:
     from transport_matters.codex.derivation import CodexDerivedTurnArtifacts
 
 logger = logging.getLogger(__name__)
+_STORAGE_LAYOUT = DiskStorageLayout()
 
 
 def _codex_turn_allocation(state: Any | None) -> CodexContinuityAllocation | None:
@@ -99,7 +100,6 @@ async def _persist_codex_provisional_exchange(flow: http.HTTPFlow) -> str | None
     allocation = _codex_turn_allocation(state)
     turn_index = _codex_turn_index(state)
     ts = datetime.now(UTC)
-    ts_slug = ts.strftime("%Y%m%dT%H%M%S")
     derived = (
         _replay_codex_derived_artifacts(
             flow,
@@ -122,7 +122,7 @@ async def _persist_codex_provisional_exchange(flow: http.HTTPFlow) -> str | None
         ts=ts,
         provider=ir.provider,
         model=ir.model,
-        path=f"exchanges/{ts_slug}-{exchange_id[:8]}/",
+        path=_STORAGE_LAYOUT.exchange_index_path_for(exchange_id, ts=ts),
         req=req_stats,
         pipeline=pipeline_stats,
         codex_turn=(
@@ -134,11 +134,7 @@ async def _persist_codex_provisional_exchange(flow: http.HTTPFlow) -> str | None
         **assignment_index_fields(track_assignment),
     )
     artifacts = ExchangeArtifacts(
-        request_raw=raw_req,
-        request_ir=ir,
-        request_curated_raw=outbound_request_if_changed(adapter, ir, curated_ir),
-        request_curated_ir=_persistable_curated_ir(curated_ir, ir),
-        request_audit=audit,
+        **build_request_artifacts(adapter, raw_req, ir, curated_ir, audit),
         transport=transport,
         events=derived.events if derived is not None else None,
         turn=derived.turn if derived is not None else None,
@@ -225,7 +221,6 @@ async def _persist_codex_exchange(
 
     exchange_id = str(uuid.uuid4())
     ts = datetime.now(UTC)
-    ts_slug = ts.strftime("%Y%m%dT%H%M%S")
     allocation = _codex_turn_allocation(state)
     turn_index = _codex_turn_index(state)
     derived = (
@@ -250,7 +245,7 @@ async def _persist_codex_exchange(
         ts=ts,
         provider=ir.provider,
         model=ir.model,
-        path=f"exchanges/{ts_slug}-{exchange_id[:8]}/",
+        path=_STORAGE_LAYOUT.exchange_index_path_for(exchange_id, ts=ts),
         req=req_stats,
         pipeline=pipeline_stats,
         res=res_stats,
@@ -263,11 +258,7 @@ async def _persist_codex_exchange(
         **assignment_index_fields(track_assignment),
     )
     artifacts = ExchangeArtifacts(
-        request_raw=raw_req,
-        request_ir=ir,
-        request_curated_raw=outbound_request_if_changed(adapter, ir, curated_ir),
-        request_curated_ir=_persistable_curated_ir(curated_ir, ir),
-        request_audit=audit,
+        **build_request_artifacts(adapter, raw_req, ir, curated_ir, audit),
         response_ir=res_ir,
         transport=transport,
         events=derived.events if derived is not None else None,
@@ -530,14 +521,13 @@ async def _persist_codex_handshake_failure(flow: http.HTTPFlow) -> None:
 
     exchange_id = str(uuid.uuid4())
     ts = datetime.now(UTC)
-    ts_slug = ts.strftime("%Y%m%dT%H%M%S")
     entry = IndexEntry(
         id=exchange_id,
         run_id=get_settings().run_id,
         ts=ts,
         provider="codex",
         model=ir.model,
-        path=f"exchanges/{ts_slug}-{exchange_id[:8]}/",
+        path=_STORAGE_LAYOUT.exchange_index_path_for(exchange_id, ts=ts),
         req=req_stats,
         res=res_stats,
     )

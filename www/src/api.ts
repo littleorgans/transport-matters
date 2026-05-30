@@ -68,6 +68,39 @@ async function throwWithDetail(res: Response, fallback: string): Promise<never> 
   throw new Error(fallback);
 }
 
+async function requestJson<T>(
+  path: string,
+  init: RequestInit | undefined,
+  fallback: string,
+  detailAware = false,
+): Promise<T> {
+  const res = await apiTransport.request(path, init);
+  if (!res.ok) {
+    const message = `${fallback}: ${res.status}`;
+    if (detailAware) {
+      await throwWithDetail(res, message);
+    }
+    throw new Error(message);
+  }
+  return (await res.json()) as T;
+}
+
+async function requestVoid(
+  path: string,
+  init: RequestInit | undefined,
+  fallback: string,
+  detailAware = false,
+): Promise<void> {
+  const res = await apiTransport.request(path, init);
+  if (!res.ok) {
+    const message = `${fallback}: ${res.status}`;
+    if (detailAware) {
+      await throwWithDetail(res, message);
+    }
+    throw new Error(message);
+  }
+}
+
 export async function fetchExchanges(
   limit = 50,
   offset = 0,
@@ -80,27 +113,27 @@ export async function fetchExchanges(
   if (includeHistory) {
     params.set("include_history", "true");
   }
-  const res = await apiTransport.request(`/api/exchanges?${params.toString()}`);
-  if (!res.ok) {
-    throw new Error(`Failed to fetch exchanges: ${res.status}`);
-  }
-  return (await res.json()) as IndexEntry[];
+  return requestJson<IndexEntry[]>(
+    `/api/exchanges?${params.toString()}`,
+    undefined,
+    "Failed to fetch exchanges",
+  );
 }
 
 export async function fetchExchange(id: string): Promise<ExchangeDetail> {
-  const res = await apiTransport.request(`/api/exchanges/${encodeURIComponent(id)}`);
-  if (!res.ok) {
-    throw new Error(`Failed to fetch exchange ${id}: ${res.status}`);
-  }
-  return (await res.json()) as ExchangeDetail;
+  return requestJson<ExchangeDetail>(
+    `/api/exchanges/${encodeURIComponent(id)}`,
+    undefined,
+    `Failed to fetch exchange ${id}`,
+  );
 }
 
 export async function fetchTurnContent(id: string): Promise<TurnContent> {
-  const res = await apiTransport.request(`/api/exchanges/${encodeURIComponent(id)}/turn-content`);
-  if (!res.ok) {
-    throw new Error(`Failed to fetch turn content for ${id}: ${res.status}`);
-  }
-  return (await res.json()) as TurnContent;
+  return requestJson<TurnContent>(
+    `/api/exchanges/${encodeURIComponent(id)}/turn-content`,
+    undefined,
+    `Failed to fetch turn content for ${id}`,
+  );
 }
 
 export type PipelineTokensReason =
@@ -132,13 +165,11 @@ export interface PipelineTokensResponse {
  * should keep displaying chars.
  */
 export async function fetchPipelineTokens(id: string): Promise<PipelineTokensResponse> {
-  const res = await apiTransport.request(
+  return requestJson<PipelineTokensResponse>(
     `/api/exchanges/${encodeURIComponent(id)}/pipeline_tokens`,
+    undefined,
+    `Failed to fetch pipeline tokens for ${id}`,
   );
-  if (!res.ok) {
-    throw new Error(`Failed to fetch pipeline tokens for ${id}: ${res.status}`);
-  }
-  return (await res.json()) as PipelineTokensResponse;
 }
 
 // ── Override endpoints ────────────────────────────────────────────
@@ -170,101 +201,99 @@ function overrideScopeQuery(scope?: OverrideScope | null): string {
 }
 
 export async function fetchOverrides(scope?: OverrideScope | null): Promise<OverrideListResponse> {
-  const res = await apiTransport.request(`/api/overrides${overrideScopeQuery(scope)}`);
-  if (!res.ok) {
-    throw new Error(`Failed to fetch overrides: ${res.status}`);
-  }
-  return (await res.json()) as OverrideListResponse;
+  return requestJson<OverrideListResponse>(
+    `/api/overrides${overrideScopeQuery(scope)}`,
+    undefined,
+    "Failed to fetch overrides",
+  );
 }
 
 export async function patchOverrides(
   overrides: Override[],
   scope?: OverrideScope | null,
 ): Promise<OverrideMutateResponse> {
-  const res = await apiTransport.request(`/api/overrides${overrideScopeQuery(scope)}`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ overrides }),
-  });
-  if (!res.ok) {
-    throw new Error(`Failed to patch overrides: ${res.status}`);
-  }
-  return (await res.json()) as OverrideMutateResponse;
+  return requestJson<OverrideMutateResponse>(
+    `/api/overrides${overrideScopeQuery(scope)}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ overrides }),
+    },
+    "Failed to patch overrides",
+  );
 }
 
 export async function clearOverrides(scope?: OverrideScope | null): Promise<void> {
-  const res = await apiTransport.request(`/api/overrides${overrideScopeQuery(scope)}`, {
-    method: "DELETE",
-  });
-  if (!res.ok) {
-    throw new Error(`Failed to clear overrides: ${res.status}`);
-  }
+  await requestVoid(
+    `/api/overrides${overrideScopeQuery(scope)}`,
+    {
+      method: "DELETE",
+    },
+    "Failed to clear overrides",
+  );
 }
 
 export async function toggleOverrides(scope?: OverrideScope | null): Promise<ToggleResponse> {
-  const res = await apiTransport.request(`/api/overrides/toggle${overrideScopeQuery(scope)}`, {
-    method: "POST",
-  });
-  if (!res.ok) {
-    throw new Error(`Failed to toggle overrides: ${res.status}`);
-  }
-  return (await res.json()) as ToggleResponse;
+  return requestJson<ToggleResponse>(
+    `/api/overrides/toggle${overrideScopeQuery(scope)}`,
+    {
+      method: "POST",
+    },
+    "Failed to toggle overrides",
+  );
 }
 
 // ── Breakpoint endpoints ──────────────────────────────────────────
 
 export async function fetchBreakpointStatus(): Promise<BreakpointStatusDetail> {
-  const res = await apiTransport.request("/api/breakpoint/status");
-  if (!res.ok) {
-    throw new Error(`Failed to fetch breakpoint status: ${res.status}`);
-  }
-  return (await res.json()) as BreakpointStatusDetail;
+  return requestJson<BreakpointStatusDetail>(
+    "/api/breakpoint/status",
+    undefined,
+    "Failed to fetch breakpoint status",
+  );
 }
 
 export async function armBreakpoint(): Promise<void> {
-  const res = await apiTransport.request("/api/breakpoint/arm", { method: "POST" });
-  if (!res.ok) {
-    throw new Error(`Failed to arm breakpoint: ${res.status}`);
-  }
+  await requestVoid("/api/breakpoint/arm", { method: "POST" }, "Failed to arm breakpoint");
 }
 
 export async function disarmBreakpoint(): Promise<void> {
-  const res = await apiTransport.request("/api/breakpoint/disarm", { method: "POST" });
-  if (!res.ok) {
-    throw new Error(`Failed to disarm breakpoint: ${res.status}`);
-  }
+  await requestVoid("/api/breakpoint/disarm", { method: "POST" }, "Failed to disarm breakpoint");
 }
 
 export async function releaseFlow(flowId: string, ir: InternalRequest): Promise<void> {
-  const res = await apiTransport.request(`/api/breakpoint/release/${encodeURIComponent(flowId)}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(ir),
-  });
-  if (!res.ok) {
-    await throwWithDetail(res, `Failed to release flow ${flowId}: ${res.status}`);
-  }
+  await requestVoid(
+    `/api/breakpoint/release/${encodeURIComponent(flowId)}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(ir),
+    },
+    `Failed to release flow ${flowId}`,
+    true,
+  );
 }
 
 export async function releaseFlowUnmodified(flowId: string): Promise<void> {
-  const res = await apiTransport.request(
+  await requestVoid(
     `/api/breakpoint/release-unmodified/${encodeURIComponent(flowId)}`,
     {
       method: "POST",
     },
+    `Failed to release flow ${flowId}`,
+    true,
   );
-  if (!res.ok) {
-    await throwWithDetail(res, `Failed to release flow ${flowId}: ${res.status}`);
-  }
 }
 
 export async function dropFlow(flowId: string): Promise<void> {
-  const res = await apiTransport.request(`/api/breakpoint/drop/${encodeURIComponent(flowId)}`, {
-    method: "POST",
-  });
-  if (!res.ok) {
-    await throwWithDetail(res, `Failed to drop flow ${flowId}: ${res.status}`);
-  }
+  await requestVoid(
+    `/api/breakpoint/drop/${encodeURIComponent(flowId)}`,
+    {
+      method: "POST",
+    },
+    `Failed to drop flow ${flowId}`,
+    true,
+  );
 }
 
 export interface ReauditResponse {
@@ -274,21 +303,22 @@ export interface ReauditResponse {
 }
 
 export async function reauditFlow(flowId: string): Promise<ReauditResponse> {
-  const res = await apiTransport.request(`/api/breakpoint/re-audit/${encodeURIComponent(flowId)}`, {
-    method: "POST",
-  });
-  if (!res.ok) {
-    await throwWithDetail(res, `Failed to re-audit flow ${flowId}: ${res.status}`);
-  }
-  return (await res.json()) as ReauditResponse;
+  return requestJson<ReauditResponse>(
+    `/api/breakpoint/re-audit/${encodeURIComponent(flowId)}`,
+    {
+      method: "POST",
+    },
+    `Failed to re-audit flow ${flowId}`,
+    true,
+  );
 }
 
 export async function fetchPausedFlowDetail(flowId: string): Promise<PausedFlow> {
-  const res = await apiTransport.request(`/api/breakpoint/paused/${encodeURIComponent(flowId)}`);
-  if (!res.ok) {
-    throw new Error(`Failed to fetch paused flow ${flowId}: ${res.status}`);
-  }
-  return (await res.json()) as PausedFlow;
+  return requestJson<PausedFlow>(
+    `/api/breakpoint/paused/${encodeURIComponent(flowId)}`,
+    undefined,
+    `Failed to fetch paused flow ${flowId}`,
+  );
 }
 
 // ── Meta endpoint ─────────────────────────────────────────────────
@@ -311,16 +341,12 @@ export interface Meta {
  * ids describe executable clients separately from captured provider fields.
  */
 export async function fetchMeta(): Promise<Meta> {
-  const res = await apiTransport.request("/api/meta");
-  if (!res.ok) {
-    throw new Error(`Failed to fetch meta: ${res.status}`);
-  }
-  const raw = (await res.json()) as {
+  const raw = await requestJson<{
     cwd: string;
     harnesses: HarnessDescriptor[];
     workspace_id: string;
     run_id: string | null;
-  };
+  }>("/api/meta", undefined, "Failed to fetch meta");
   return {
     cwd: raw.cwd,
     harnesses: raw.harnesses,

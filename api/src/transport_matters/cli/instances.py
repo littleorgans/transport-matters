@@ -41,11 +41,6 @@ _TABLE_HEADERS: tuple[str, ...] = (
 _RUN_ID_DISPLAY_LEN = 8
 
 
-def _workspaces_root() -> Path:
-    """Return the workspaces directory under the user's home."""
-    return default_workspaces_root()
-
-
 def _list_instances(*, as_json: bool) -> None:
     """Body of ``transport-matters list``.
 
@@ -53,7 +48,7 @@ def _list_instances(*, as_json: bool) -> None:
     :meth:`WorkspaceLock.is_held`, reaps stale manifests, and prints
     the live ones as a table or JSON.
     """
-    root = _workspaces_root()
+    root = default_workspaces_root()
     manifests = read_all(root)
     live: list[Manifest] = []
     for m in manifests:

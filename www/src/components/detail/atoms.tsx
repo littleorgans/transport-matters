@@ -43,14 +43,6 @@ export const SECTION_TONE: Record<string, { text: string; bg: string }> = {
   response: { text: "text-sage", bg: "bg-sage/5" },
 };
 
-export function SectionRule({ children }: { children: ReactNode }) {
-  return (
-    <div className="section-rule mb-4">
-      <span className="label">{children}</span>
-    </div>
-  );
-}
-
 // Shared header shell for editor rows that share the same composite
 // shape: a toggle on the left, a stack of leading chips (index / type
 // / cached / error — caller decides), a modified dot, a truncating

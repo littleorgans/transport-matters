@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import shutil
 import sysconfig
+from functools import partial
 from importlib.resources import files
 from pathlib import Path  # noqa: TC003
 from typing import TYPE_CHECKING, Annotated
@@ -40,12 +41,7 @@ from transport_matters.lock import WorkspaceLock, WorkspaceLocked
 from transport_matters.manifest import Manifest
 from transport_matters.manifest import write as manifest_write
 from transport_matters.supervisor import SIGNAL_EXIT, ProcessSupervisor
-from transport_matters.workspace import (
-    run_root,
-    workspace_id,
-    workspace_root,
-    workspace_storage,
-)
+from transport_matters.workspace import run_root, workspace_id, workspace_root
 
 from .banner import _print_banner, _print_client_banner
 from .codex_cmd import run_codex
@@ -58,7 +54,7 @@ from .net import _port_in_use, _wait_for_port_ready, validate_port_option
 from .paths import resolve_paths
 from .ports import PortAllocationError, allocate_port_pair
 from .prompt import inject_system_prompt, user_supplied_system_prompt
-from .runner import BindFailure, _run_children, _run_client_with_retry, _run_with_retry
+from .runner import BindFailure, _run_children, _run_client_with_retry
 from .start_cmd import run_start
 from .trust import resolve_codex_ca_certificate
 
@@ -75,7 +71,6 @@ __all__ = [
     "_print_banner",
     "_run_children",
     "_run_client_with_retry",
-    "_run_with_retry",
     "_wait_for_port_ready",
     "allocate_port_pair",
     "inject_system_prompt",
@@ -85,7 +80,6 @@ __all__ = [
     "user_supplied_system_prompt",
     "workspace_id",
     "workspace_root",
-    "workspace_storage",
 ]
 
 
@@ -97,14 +91,6 @@ main = typer.Typer(
     rich_markup_mode=None,
     context_settings={"help_option_names": ["-h", "--help"]},
 )
-
-
-def _resolve_mitmdump() -> str | None:
-    """Prefer the console script from the active Transport Matters environment."""
-    return resolve_mitmdump_executable(
-        which=shutil.which,
-        get_scripts_dir=sysconfig.get_path,
-    )
 
 
 def _split_passthrough(
@@ -323,7 +309,11 @@ def claude(
         debug=debug,
         print_command=print_command,
         require_addon=_require_addon,
-        resolve_mitmdump=_resolve_mitmdump,
+        resolve_mitmdump=partial(
+            resolve_mitmdump_executable,
+            which=shutil.which,
+            get_scripts_dir=sysconfig.get_path,
+        ),
         which=shutil.which,
         port_in_use=_port_in_use,
         allocate_port_pair=allocate_port_pair,
@@ -459,7 +449,11 @@ def codex(
         print_command=print_command,
         require_addon=_require_addon,
         require_force_http_fallback_addon=_require_force_http_fallback_addon,
-        resolve_mitmdump=_resolve_mitmdump,
+        resolve_mitmdump=partial(
+            resolve_mitmdump_executable,
+            which=shutil.which,
+            get_scripts_dir=sysconfig.get_path,
+        ),
         which=shutil.which,
         port_in_use=_port_in_use,
         allocate_port_pair=allocate_port_pair,

@@ -1,3 +1,4 @@
+import { formatCompactChars } from "../../lib/formatting";
 import { HoverCard } from "../HoverCard";
 
 export function CompressionBar({
@@ -10,13 +11,12 @@ export function CompressionBar({
   after: number;
 }) {
   const remaining = Math.max(2, 100 - savedPct);
-  const fmtK = (v: number) => (v >= 1024 ? `${(v / 1024).toFixed(1)}K` : v.toLocaleString());
   return (
     <div className="flex h-2.5 w-full overflow-hidden bg-canvas bar-track">
       <HoverCard
         content={
           <span>
-            <span className="text-lavender">sent</span> {fmtK(after)} ({remaining}%)
+            <span className="text-lavender">sent</span> {formatCompactChars(after)} ({remaining}%)
           </span>
         }
       >
@@ -29,7 +29,8 @@ export function CompressionBar({
         <HoverCard
           content={
             <span>
-              <span className="text-sage">saved</span> {fmtK(before - after)} ({savedPct}%)
+              <span className="text-sage">saved</span> {formatCompactChars(before - after)} (
+              {savedPct}%)
             </span>
           }
         >

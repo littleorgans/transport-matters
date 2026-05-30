@@ -13,7 +13,14 @@ from transport_matters.codex.preserved_raw import (
     materialize_input_items,
     parse_preserved_input_item_raw,
 )
-from transport_matters.codex.protocol import CODEX_TOOL_OUTPUT_ITEM_TYPES
+from transport_matters.codex.protocol import (
+    CODEX_IMAGE_TYPE,
+    CODEX_INPUT_TEXT_TYPE,
+    CODEX_MODEL_PREFIX,
+    CODEX_OUTPUT_TEXT_TYPE,
+    CODEX_TOOL_OUTPUT_ITEM_TYPES,
+    RAW_TOOL_ARGUMENTS_KEY,
+)
 from transport_matters.ir import (
     ContentBlock,
     ImageBlock,
@@ -28,6 +35,8 @@ from transport_matters.ir import (
     ToolUseBlock,
     UnknownBlock,
 )
+from transport_matters.model_ids import denormalise_model
+from transport_matters.provider_data import restore_provider_data
 
 
 def serialize_codex_request(ir: InternalRequest) -> bytes:
@@ -42,7 +51,7 @@ def serialize_codex_request(ir: InternalRequest) -> bytes:
     # through via `provider_extras`, so round-trip parity is preserved.
     if "type" in data:
         data["type"] = str(data["type"])
-    data["model"] = _denormalise_model(ir.model)
+    data["model"] = denormalise_model(ir.model, CODEX_MODEL_PREFIX)
 
     instructions, input_items = _serialize_input(
         ir.system, ir.messages, preserved_input
@@ -72,12 +81,6 @@ def serialize_codex_request(ir: InternalRequest) -> bytes:
     return json.dumps(data, separators=(",", ":"), sort_keys=True).encode()
 
 
-def _denormalise_model(model: str) -> str:
-    if model.startswith("codex/"):
-        return model[len("codex/") :]
-    return model
-
-
 def _serialize_input(
     system: list[SystemPart],
     messages: list[Message],
@@ -92,7 +95,7 @@ def _serialize_input(
         )
         role = provider_data.get("role")
         if role in {"system", "developer"}:
-            content: dict[str, Any] = {"type": "input_text", "text": part.text}
+            content: dict[str, Any] = {"type": CODEX_INPUT_TEXT_TYPE, "text": part.text}
             for key, value in provider_data.items():
                 if key != "role":
                     content[key] = value
@@ -171,10 +174,12 @@ def _message_content_to_dict(
     block: ContentBlock,
 ) -> dict[str, Any]:
     if isinstance(block, TextBlock):
-        text_type = "output_text" if role == "assistant" else "input_text"
+        text_type = (
+            CODEX_OUTPUT_TEXT_TYPE if role == "assistant" else CODEX_INPUT_TEXT_TYPE
+        )
         return {"type": text_type, "text": block.text}
     if isinstance(block, ImageBlock) and role == "user":
-        return {"type": "input_image", **block.source}
+        return {"type": CODEX_IMAGE_TYPE, **block.source}
     if isinstance(block, UnknownBlock):
         # Forward-compat: preserve an unmodeled sub-block verbatim rather than
         # crashing serialization (matches the Anthropic adapter's degradation).
@@ -186,10 +191,10 @@ def _message_content_to_dict(
 
 def _tool_use_to_dict(block: ToolUseBlock) -> dict[str, Any]:
     arguments = block.input
-    if set(arguments) == {"__raw_arguments__"} and isinstance(
-        arguments["__raw_arguments__"], str
+    if set(arguments) == {RAW_TOOL_ARGUMENTS_KEY} and isinstance(
+        arguments[RAW_TOOL_ARGUMENTS_KEY], str
     ):
-        encoded_arguments: object = arguments["__raw_arguments__"]
+        encoded_arguments: object = arguments[RAW_TOOL_ARGUMENTS_KEY]
     else:
         encoded_arguments = json.dumps(arguments, separators=(",", ":"), sort_keys=True)
     return {
@@ -244,8 +249,7 @@ def _tool_result_kind(block: ToolResultBlock) -> str:
 
 def _thinking_to_dict(block: ThinkingBlock) -> dict[str, Any]:
     payload: dict[str, Any] = {"type": "reasoning"}
-    if block.provider_data:
-        payload.update(block.provider_data)
+    restore_provider_data(payload, block)
     payload["summary"] = (
         [{"type": "summary_text", "text": block.text}] if block.text else []
     )

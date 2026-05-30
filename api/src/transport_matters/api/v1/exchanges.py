@@ -111,6 +111,15 @@ async def _resolved_codex_derived_artifacts(
     )
 
 
+async def _load_exchange_or_404(
+    storage: StorageBackend, exchange_id: str
+) -> ExchangeArtifacts:
+    try:
+        return await storage.read_exchange(exchange_id)
+    except FileNotFoundError as exc:
+        raise NotFoundError(detail=f"Exchange {exchange_id} not found") from exc
+
+
 class ExchangeDetailResponse(BaseModel):
     entry: IndexEntry | None
     request_ir: InternalRequest
@@ -153,10 +162,7 @@ async def get_exchange(
     exchange_id: str,
     storage: StorageBackend = Depends(get_storage),
 ) -> ExchangeDetailResponse:
-    try:
-        artifacts = await storage.read_exchange(exchange_id)
-    except FileNotFoundError as exc:
-        raise NotFoundError(detail=f"Exchange {exchange_id} not found") from exc
+    artifacts = await _load_exchange_or_404(storage, exchange_id)
 
     entry = await storage.read_index_entry(exchange_id)
     if entry is None:
@@ -209,10 +215,7 @@ async def get_turn_content(
     exchange_id: str,
     storage: StorageBackend = Depends(get_storage),
 ) -> TurnContentResponse:
-    try:
-        artifacts = await storage.read_exchange(exchange_id)
-    except FileNotFoundError as exc:
-        raise NotFoundError(detail=f"Exchange {exchange_id} not found") from exc
+    artifacts = await _load_exchange_or_404(storage, exchange_id)
 
     if artifacts.response_ir is None:
         response_text = None

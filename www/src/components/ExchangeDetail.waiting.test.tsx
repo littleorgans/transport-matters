@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fetchExchange } from "../api";
+import { exchangeKey } from "../lib/queryKeys";
 import {
   detailResStats,
   makeExchangeDetail,
@@ -68,7 +69,7 @@ describe("ExchangeDetail waiting affordance", () => {
     const client = renderDetail("http-transition");
 
     expect(await screen.findByTestId("exchange-detail-waiting")).toBeInTheDocument();
-    await client.invalidateQueries({ queryKey: ["exchange", "http-transition"] });
+    await client.invalidateQueries({ queryKey: exchangeKey("http-transition") });
     await waitFor(() => expect(screen.queryByTestId("exchange-detail-waiting")).toBeNull());
     expect(screen.getByRole("button", { name: /response/i })).toBeEnabled();
   });

@@ -78,9 +78,10 @@ class DiskStorageLayout:
         self, exchange_id: str, *, now: datetime | None = None
     ) -> Path:
         ts = now or datetime.now(tz=UTC)
-        return (
-            self.root / f"{ts.strftime(_TS_SLUG_FORMAT)}-{self.short_id(exchange_id)}"
-        )
+        return self.root / self.exchange_dir_name(exchange_id, ts=ts)
+
+    def exchange_dir_name(self, exchange_id: str, *, ts: datetime) -> str:
+        return f"{ts.strftime(_TS_SLUG_FORMAT)}-{self.short_id(exchange_id)}"
 
     def find_exchange_dir(self, exchange_id: str) -> Path | None:
         suffix = f"-{self.short_id(exchange_id)}"
@@ -89,8 +90,13 @@ class DiskStorageLayout:
                 return exchange_dir
         return None
 
-    def exchange_dir_for_write(self, exchange_id: str) -> Path:
-        return self.find_exchange_dir(exchange_id) or self.new_exchange_dir(exchange_id)
+    def exchange_dir_for_write(
+        self, exchange_id: str, *, now: datetime | None = None
+    ) -> Path:
+        return self.find_exchange_dir(exchange_id) or self.new_exchange_dir(
+            exchange_id,
+            now=now,
+        )
 
     def tmp_exchange_dir(self, final_dir: Path) -> Path:
         return final_dir.parent / f"{final_dir.name}{_TMP_SUFFIX}"
@@ -109,6 +115,9 @@ class DiskStorageLayout:
 
     def exchange_index_path(self, exchange_dir_name: str) -> str:
         return f"exchanges/{exchange_dir_name}/"
+
+    def exchange_index_path_for(self, exchange_id: str, *, ts: datetime) -> str:
+        return self.exchange_index_path(self.exchange_dir_name(exchange_id, ts=ts))
 
     def should_recover_exchange_dir(self, exchange_dir: Path) -> bool:
         return (
@@ -141,3 +150,6 @@ class DiskStorageLayout:
 
     def short_id(self, exchange_id: str) -> str:
         return exchange_id[:8]
+
+    def short_id_from_dir_name(self, exchange_dir_name: str) -> str:
+        return exchange_dir_name.rsplit("-", 1)[-1]

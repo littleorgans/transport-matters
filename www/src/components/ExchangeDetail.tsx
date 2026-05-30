@@ -2,7 +2,8 @@ import { useQuery } from "@tanstack/react-query";
 import { startTransition, useDeferredValue, useEffect, useState } from "react";
 import { fetchExchange } from "../api";
 import { useMeta } from "../hooks/useMeta";
-import { displayCwd, displayModel } from "../lib/formatting";
+import { displayCwd, displayModel, formatClockTime } from "../lib/formatting";
+import { exchangeKey } from "../lib/queryKeys";
 import { useUIStore } from "../stores/uiStore";
 import type { ExchangeDetail as ExchangeDetailPayload, TransportDiagnostic } from "../types";
 import { CodexTransportPanel } from "./detail/CodexTransportPanel";
@@ -172,7 +173,7 @@ export function ExchangeDetail({ id }: ExchangeDetailProps) {
     isLoading,
     error,
   } = useQuery({
-    queryKey: ["exchange", id],
+    queryKey: exchangeKey(id),
     queryFn: () => fetchExchange(id),
     retry: false,
   });
@@ -216,11 +217,7 @@ export function ExchangeDetail({ id }: ExchangeDetailProps) {
     month: "short",
     day: "numeric",
   });
-  const timeStr = ts.toLocaleTimeString("en-US", {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  });
+  const timeStr = formatClockTime(ts);
 
   return (
     <div className="flex h-full flex-col overflow-hidden fade-in">

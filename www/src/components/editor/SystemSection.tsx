@@ -1,8 +1,11 @@
 import { useCollapsibleSet } from "../../hooks/useCollapsibleSet";
 import { useEditableOverride } from "../../hooks/useEditableOverride";
+import { truncatePreview } from "../../lib/formatting";
+import { systemTarget } from "../../lib/overrideTargets";
 import { useUIStore } from "../../stores/uiStore";
 import type { Override, SystemPart } from "../../types";
 import { CompositeEditableRow, MasterBar, SECTION_TONE, SizeDelta } from "../detail/atoms";
+import { noopOverride, overrideCountLabel } from "./overrideUtils";
 import { TextOverrideEditor } from "./TextOverrideEditor";
 
 interface SystemSectionProps {
@@ -34,7 +37,7 @@ function SystemPartRow({
   onToggleExpanded: () => void;
   readOnly?: boolean;
 }) {
-  const target = `system:${index}`;
+  const target = systemTarget(index);
   const {
     checked,
     isModified,
@@ -58,10 +61,7 @@ function SystemPartRow({
   // messages. Trim so a leading newline doesn't render as a blank
   // stub; collapse to ``(empty)`` when the part is whitespace-only.
   const previewSource = part.text.trim();
-  const preview =
-    previewSource.length === 0
-      ? "(empty)"
-      : previewSource.slice(0, 220) + (previewSource.length > 220 ? "\u2026" : "");
+  const preview = previewSource.length === 0 ? "(empty)" : truncatePreview(previewSource);
 
   return (
     <CompositeEditableRow
@@ -98,12 +98,10 @@ function SystemPartRow({
   );
 }
 
-const NOOP_OVERRIDE = () => {};
-
 export function SystemSection({
   parts,
   overrides = [],
-  onOverride = NOOP_OVERRIDE,
+  onOverride = noopOverride,
   readOnly,
 }: SystemSectionProps) {
   const overrideCount = overrides.filter(
@@ -128,7 +126,7 @@ export function SystemSection({
   // after hooks to respect React's rules-of-hooks ordering.
   if (parts.length === 0) return null;
 
-  const overrideLabel = readOnly ? "modified" : overrideCount === 1 ? "override" : "overrides";
+  const overrideLabel = overrideCountLabel(overrideCount, readOnly);
 
   return (
     <section className="space-y-4">

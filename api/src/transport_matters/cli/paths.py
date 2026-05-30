@@ -16,10 +16,12 @@ Resolution order for the ``storage`` value:
    session is exact and unambiguous even when several runs share the CWD.
 3. Failing that, prefer ``TRANSPORT_MATTERS_CWD`` (then ``Path.cwd()``)
    and scan that workspace container for live runs. Exactly one live run
-   returns its ``storage_dir``; none returns the container root; more
-   than one is an actionable error, because a bare external shell cannot
-   know which run you mean. None of these branches create directories —
-   ``paths`` is read-only.
+   returns its ``storage_dir``. Zero live runs leaves storage unresolved:
+   the static entries still print and the storage-derived ones render as
+   null (exit 0), so a fresh install can locate the package. More than one
+   is not a fault but an ambiguity a bare external shell cannot resolve, so
+   ``paths`` lists the runs and asks you to pick one (exit 2). None of these
+   branches create directories; ``paths`` is read-only.
 """
 
 from __future__ import annotations
@@ -42,11 +44,6 @@ from .identity import CLI_COMMAND
 __all__ = ["resolve_paths"]
 
 
-def _workspaces_root() -> Path:
-    """Return the shared `~/.transport-matters/workspaces/` directory."""
-    return default_workspaces_root()
-
-
 def resolve_paths(*, workspace: str | None, as_json: bool) -> None:
     """Body of ``transport-matters paths``.
 
@@ -59,15 +56,20 @@ def resolve_paths(*, workspace: str | None, as_json: bool) -> None:
     www_path = package_root / "www"
     storage = _resolve_storage(workspace)
 
-    entries = {
+    # The static entries are always knowable from the install; the
+    # storage-derived ones need a resolved session. With no session
+    # ``storage`` is None and those entries render as null (JSON) or
+    # "unresolved" (table) instead of aborting, so a fresh install can
+    # still locate the package, addon, and bundled www.
+    entries: dict[str, str | None] = {
         "version": __version__,
         "package": str(package_root),
         "addon": str(addon_path),
         "www": str(www_path),
-        "storage": str(storage),
-        "exchanges": str(storage / "exchanges"),
-        "rules": str(storage / "rules.json"),
-        "index": str(storage / "index.jsonl"),
+        "storage": str(storage) if storage is not None else None,
+        "exchanges": str(storage / "exchanges") if storage is not None else None,
+        "rules": str(storage / "rules.json") if storage is not None else None,
+        "index": str(storage / "index.jsonl") if storage is not None else None,
     }
 
     if as_json:
@@ -76,13 +78,23 @@ def resolve_paths(*, workspace: str | None, as_json: bool) -> None:
 
     width = max(len(k) for k in entries)
     for key, value in entries.items():
-        typer.echo(f"  {key.ljust(width)}  {value}")
+        typer.echo(
+            f"  {key.ljust(width)}  {value if value is not None else 'unresolved'}"
+        )
+    if storage is None:
+        typer.echo(
+            f"\nNo live session; storage paths are unresolved. Run "
+            f"`{CLI_COMMAND} list` or pass --workspace <slug-or-storage-dir>.",
+            err=True,
+        )
 
 
-def _resolve_storage(selector: str | None) -> Path:
-    """Return the storage path the entries should use.
+def _resolve_storage(selector: str | None) -> Path | None:
+    """Return the storage path the entries should use, or None.
 
-    See the module docstring for the full resolution order.
+    None means there is no live session to resolve on a bare lookup (no
+    selector, no env); ``paths`` then prints the static entries with
+    storage unresolved. See the module docstring for the full order.
     """
     if selector is None:
         # A launched session carries its own run's storage dir in the env,
@@ -96,7 +108,7 @@ def _resolve_storage(selector: str | None) -> Path:
         # launching workspace even if the user has since ``cd``'d into
         # a subdirectory.
         env_cwd = os.environ.get("TRANSPORT_MATTERS_CWD") or None
-        return _storage_for_cwd(Path(env_cwd) if env_cwd else Path.cwd())
+        return _storage_for_cwd(Path(env_cwd) if env_cwd else Path.cwd(), strict=False)
 
     # A path-shaped selector goes through CWD resolution; a bare token
     # is a slug. ``os.sep`` handles both POSIX and Windows uniformly,
@@ -110,7 +122,7 @@ def _resolve_storage(selector: str | None) -> Path:
         # data lives outside the workspaces tree.
         if _names_known_storage(candidate):
             return candidate
-        return _storage_for_cwd(candidate)
+        return _storage_for_cwd(candidate, strict=True)
 
     return _storage_for_slug(selector)
 
@@ -125,26 +137,40 @@ def _names_known_storage(candidate: Path) -> bool:
     target = candidate.resolve(strict=False)
     return any(
         Path(m.storage_dir).resolve(strict=False) == target
-        for m in read_all(_workspaces_root())
+        for m in read_all(default_workspaces_root())
     )
 
 
-def _storage_for_cwd(cwd: Path) -> Path:
-    """Return the storage path for *cwd*.
+def _storage_for_cwd(cwd: Path, *, strict: bool) -> Path | None:
+    """Return the storage path for *cwd*, or None when no live run is found.
 
     Scans the workspace container for live runs. Exactly one live run
     returns its ``storage_dir`` (which may be a ``--storage-dir`` override).
-    None returns the container root — nothing is running here yet. More
-    than one is ambiguous from a bare shell, so error and list them; a
-    launched session never reaches this because its own storage dir is in
-    ``TRANSPORT_MATTERS_STORAGE_DIR``.
+    More than one is ambiguous from a bare shell, so list them and exit.
+    Zero live runs: an explicit ``--workspace <path>`` lookup (*strict*)
+    errors, because the caller asked for that path specifically; the bare
+    lookup returns None so ``paths`` still prints the static entries with
+    storage unresolved. A launched session never reaches this because its
+    own storage dir is in ``TRANSPORT_MATTERS_STORAGE_DIR``.
     """
     ws_root = workspace_root(cwd)
     live = _live_runs(ws_root)
-    if not live:
-        return ws_root
     if len(live) > 1:
         _exit_ambiguous_runs(live)
+    if not live:
+        if not strict:
+            return None
+        typer.secho(
+            f"error: no live Transport Matters instance for {cwd}.",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        typer.echo(
+            f"Start a session, run {CLI_COMMAND} list to see live instances, "
+            "or pass --workspace <slug-or-storage-dir> to inspect a recorded run.",
+            err=True,
+        )
+        raise typer.Exit(2)
     return Path(live[0].storage_dir)
 
 
@@ -158,7 +184,7 @@ def _storage_for_slug(slug: str) -> Path:
     ``{slug}/*/*/manifest.json`` (live or stale, so users can inspect a
     recently-exited instance's paths) but fail loudly on ambiguity.
     """
-    root = _workspaces_root() / slug
+    root = default_workspaces_root() / slug
     candidates: list[Manifest] = []
     if root.is_dir():
         for manifest_path in sorted(root.glob("*/*/manifest.json")):
@@ -180,8 +206,8 @@ def _storage_for_slug(slug: str) -> Path:
         raise typer.Exit(2)
     if len(candidates) > 1:
         typer.secho(
-            f"error: slug {slug!r} matches {len(candidates)} runs.",
-            fg=typer.colors.RED,
+            f"slug {slug!r} matches {len(candidates)} runs — pick one:",
+            fg=typer.colors.YELLOW,
             err=True,
         )
         _print_run_choices(candidates)
@@ -214,8 +240,8 @@ def _live_runs(ws_root: Path) -> list[Manifest]:
 def _exit_ambiguous_runs(live: list[Manifest]) -> None:
     """Abort with a list of the live runs sharing one CWD."""
     typer.secho(
-        f"error: {len(live)} live instances share this directory.",
-        fg=typer.colors.RED,
+        f"{len(live)} live instances share this directory — pick one:",
+        fg=typer.colors.YELLOW,
         err=True,
     )
     _print_run_choices(live)

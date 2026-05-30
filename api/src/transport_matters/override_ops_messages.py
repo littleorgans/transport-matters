@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import json
-
 from transport_matters.ir import (
     ContentBlock,
     InternalRequest,
@@ -12,6 +10,7 @@ from transport_matters.ir import (
     ToolResultBlock,
     ToolUseBlock,
 )
+from transport_matters.override_audit import block_chars, tool_chars
 
 
 def codex_has_tool_result_only_turn(ir: InternalRequest) -> bool:
@@ -31,22 +30,6 @@ def codex_has_tool_result_only_turn(ir: InternalRequest) -> bool:
     return has_tool_result and not has_tool_use
 
 
-def count_chars(ir: InternalRequest) -> int:
-    """Rough character count of the IR payload."""
-    return (
-        sum(len(part.text) for part in ir.system)
-        + sum(
-            len(tool.name) + len(tool.description) + len(json.dumps(tool.input_schema))
-            for tool in ir.tools
-        )
-        + sum(
-            len(block.model_dump_json())
-            for message in ir.messages
-            for block in message.content
-        )
-    )
-
-
 def apply_tool_toggle(
     ir: InternalRequest, tool_name: str, enabled: bool
 ) -> tuple[InternalRequest, int, bool]:
@@ -60,11 +43,7 @@ def apply_tool_toggle(
     for tool in ir.tools:
         if tool.name == tool_name:
             found = True
-            chars_removed += (
-                len(tool.name)
-                + len(tool.description)
-                + len(json.dumps(tool.input_schema))
-            )
+            chars_removed += tool_chars(tool)
         else:
             kept.append(tool)
 
@@ -196,7 +175,7 @@ def apply_message_block_toggle(
         return ir, 0, False
 
     block = message.content[blk_idx]
-    chars_removed = len(block.model_dump_json())
+    chars_removed = block_chars(block)
     new_content = list(message.content)
     new_content.pop(blk_idx)
     new_message = message.model_copy(update={"content": new_content})

@@ -1,8 +1,51 @@
 import type { UsageStats } from "../types";
 
+export const PREVIEW_MAX = 220;
+
 export function displayModel(provider: string, model: string): string {
   const prefix = `${provider}/`;
   return model.startsWith(prefix) ? model.slice(prefix.length) : model;
+}
+
+export function pluralize(count: number, singular: string, plural = `${singular}s`): string {
+  return `${count.toLocaleString()} ${count === 1 ? singular : plural}`;
+}
+
+export function formatCompactChars(value: number): string {
+  return value >= 1024 ? `${(value / 1024).toFixed(1)}K` : value.toLocaleString();
+}
+
+export function formatClockTime(ts: string | Date | null | undefined): string | null {
+  if (!ts) return null;
+  const parsed = ts instanceof Date ? ts : new Date(ts);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed.toLocaleTimeString("en-US", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+}
+
+export function truncatePreview(text: string, maxPreview = PREVIEW_MAX): string {
+  return text.length <= maxPreview ? text : `${text.slice(0, maxPreview)}…`;
+}
+
+export function formatRelativeAge(ts: string, nowMs = Date.now()): string {
+  const parsed = new Date(ts);
+  if (Number.isNaN(parsed.getTime())) return ts;
+
+  const diffMs = Math.max(0, nowMs - parsed.getTime());
+  const minute = 60_000;
+  const hour = 60 * minute;
+  const day = 24 * hour;
+  if (diffMs < minute) return "just now";
+  if (diffMs < hour) return `${Math.floor(diffMs / minute)}m ago`;
+  if (diffMs < day) return `${Math.floor(diffMs / hour)}h ago`;
+  if (diffMs < 7 * day) return `${Math.floor(diffMs / day)}d ago`;
+
+  // Use the UTC ISO calendar date so every caller shares one deterministic
+  // >=7d fallback independent of browser locale and local timezone.
+  return parsed.toISOString().slice(0, 10);
 }
 
 /**
@@ -18,7 +61,6 @@ export function displayCwd(cwd: string): string {
   if (trimmed === "") return cwd || "/";
 
   const parts = trimmed.split(/[\\/]/).filter(Boolean);
-  if (parts.length === 0) return trimmed.startsWith("/") ? "/" : trimmed;
   if (parts.length === 1) return parts[0] ?? trimmed;
   return parts.slice(-2).join("/");
 }

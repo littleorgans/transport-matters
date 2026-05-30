@@ -2,24 +2,17 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 import pytest
 
 from transport_matters.ir import (
-    InternalRequest,
     InternalResponse,
-    Message,
-    RequestMetadata,
-    SamplingParams,
-    TextBlock,
     UsageStats,
 )
+from transport_matters.storage import test_disk as disk_tests
 from transport_matters.storage.base import (
     ExchangeArtifacts,
-    IndexEntry,
-    ReqStats,
     ResStats,
     SpawnAnchor,
 )
@@ -32,37 +25,6 @@ if TYPE_CHECKING:
 @pytest.fixture
 def storage(tmp_path: Path) -> DiskStorageBackend:
     return DiskStorageBackend(root=str(tmp_path))
-
-
-def _make_ir() -> InternalRequest:
-    return InternalRequest(
-        model="anthropic/claude-sonnet-4-20250514",
-        provider="anthropic",
-        system=[],
-        tools=[],
-        messages=[Message(role="user", content=[TextBlock(text="hi")])],
-        sampling=SamplingParams(max_tokens=1024),
-        metadata=RequestMetadata(),
-    )
-
-
-def _make_index_entry(entry_id: str = "ex-001") -> IndexEntry:
-    return IndexEntry(
-        id=entry_id,
-        ts=datetime(2025, 6, 1, 12, 0, 0, tzinfo=UTC),
-        provider="anthropic",
-        model="anthropic/claude-sonnet-4-20250514",
-        path="/v1/messages",
-        req=ReqStats(
-            system_parts=0,
-            system_chars=0,
-            tools_count=0,
-            tools_chars=0,
-            messages_count=1,
-            messages_chars=2,
-            total_chars=2,
-        ),
-    )
 
 
 class TestCacheCreationBackfill:
@@ -84,7 +46,7 @@ class TestCacheCreationBackfill:
         )
         artifacts = ExchangeArtifacts(
             request_raw=b"{}",
-            request_ir=_make_ir(),
+            request_ir=disk_tests._make_ir(),
             response_raw=b"{}",
             response_ir=resp_ir,
         )
@@ -94,7 +56,7 @@ class TestCacheCreationBackfill:
         self, storage: DiskStorageBackend
     ) -> None:
         exchange_id = "aaaa0000-1111-2222-3333-444455556666"
-        entry = _make_index_entry(exchange_id).model_copy(
+        entry = disk_tests._make_index_entry(exchange_id).model_copy(
             update={
                 "res": ResStats(
                     input_tokens=100,
@@ -129,7 +91,7 @@ class TestCacheCreationBackfill:
         self, storage: DiskStorageBackend, tmp_path: Path
     ) -> None:
         exchange_id = "bbbb0000-1111-2222-3333-444455556666"
-        entry = _make_index_entry(exchange_id).model_copy(
+        entry = disk_tests._make_index_entry(exchange_id).model_copy(
             update={"res": ResStats(input_tokens=10, cache_creation_input_tokens=0)}
         )
         await storage.append_index(entry)
@@ -151,7 +113,7 @@ class TestCacheCreationBackfill:
         self, storage: DiskStorageBackend
     ) -> None:
         exchange_id = "cccc0000-1111-2222-3333-444455556666"
-        entry = _make_index_entry(exchange_id).model_copy(
+        entry = disk_tests._make_index_entry(exchange_id).model_copy(
             update={"res": ResStats(input_tokens=5, cache_creation_input_tokens=0)}
         )
         await storage.append_index(entry)
@@ -171,7 +133,7 @@ class TestCacheCreationBackfill:
         self, storage: DiskStorageBackend
     ) -> None:
         exchange_id = "dddd0000-1111-2222-3333-444455556666"
-        entry = _make_index_entry(exchange_id).model_copy(
+        entry = disk_tests._make_index_entry(exchange_id).model_copy(
             update={"res": ResStats(input_tokens=5, cache_creation_input_tokens=0)}
         )
         await storage.append_index(entry)
@@ -189,7 +151,7 @@ class TestCacheCreationBackfill:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         exchange_id = "aaaa0000-1111-2222-3333-444455556666"
-        entry = _make_index_entry(exchange_id).model_copy(
+        entry = disk_tests._make_index_entry(exchange_id).model_copy(
             update={"res": ResStats(input_tokens=10, cache_creation_input_tokens=0)}
         )
         tmp_exchange_dir = tmp_path / "interrupted-aaaa0000"
@@ -234,7 +196,7 @@ class TestSpawnAnchorRoundTrip:
             track_spawn_tool_use_id="toolu_worker",
             track_spawn_order=1,
         )
-        entry = _make_index_entry(exchange_id).model_copy(
+        entry = disk_tests._make_index_entry(exchange_id).model_copy(
             update={
                 "track_id": "toolu_worker",
                 "parent_track_id": "root-track",
@@ -255,7 +217,9 @@ class TestSpawnAnchorRoundTrip:
         self, storage: DiskStorageBackend
     ) -> None:
         exchange_id = "ffff0000-1111-2222-3333-444455556666"
-        entry = _make_index_entry(exchange_id).model_copy(update={"spawn_anchor": None})
+        entry = disk_tests._make_index_entry(exchange_id).model_copy(
+            update={"spawn_anchor": None}
+        )
         await storage.append_index(entry)
 
         storage._index_cache = None

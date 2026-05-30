@@ -1,7 +1,10 @@
 import { useState } from "react";
-import type { InternalRequest } from "../../types";
+import type { CharBreakdown } from "../../lib/charAccounting";
 import { HoverCard } from "../HoverCard";
 import { Toggle } from "../Toggle";
+
+export type { CharBreakdown } from "../../lib/charAccounting";
+export { countCharsParts } from "../../lib/charAccounting";
 
 export interface OverridesFooterProps {
   storedCount: number;
@@ -9,28 +12,6 @@ export interface OverridesFooterProps {
   enabled: boolean;
   onToggle: () => void;
   onClear: () => void;
-}
-
-export interface CharBreakdown {
-  system: number;
-  tools: number;
-  messages: number;
-  total: number;
-}
-
-export function countCharsParts(ir: InternalRequest): CharBreakdown {
-  const system = ir.system.reduce((sum, p) => sum + p.text.length, 0);
-  const tools = ir.tools.reduce(
-    (sum, t) => sum + t.name.length + t.description.length + JSON.stringify(t.input_schema).length,
-    0,
-  );
-  let messages = 0;
-  for (const msg of ir.messages) {
-    for (const block of msg.content) {
-      messages += JSON.stringify(block).length;
-    }
-  }
-  return { system, tools, messages, total: system + tools + messages };
 }
 
 function formatChars(n: number): string {

@@ -1,5 +1,6 @@
 import { renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { turnContentKey } from "../lib/queryKeys";
 import { makeWrapper } from "./useExchangeStream.testSupport";
 import { useTurnContent } from "./useTurnContent";
 
@@ -34,9 +35,9 @@ describe("useTurnContent", () => {
     });
     expect(fetch).toHaveBeenCalledWith("/api/exchanges/ex-001/turn-content");
 
-    const query = qc.getQueryCache().find({ queryKey: ["turn-content", "ex-001"] });
+    const query = qc.getQueryCache().find({ queryKey: turnContentKey("ex-001") });
     const queryOptions = query?.options as { staleTime?: unknown } | undefined;
-    expect(query?.queryKey).toEqual(["turn-content", "ex-001"]);
+    expect(query?.queryKey).toEqual(turnContentKey("ex-001"));
     expect(queryOptions?.staleTime).toBe(Number.POSITIVE_INFINITY);
   });
 

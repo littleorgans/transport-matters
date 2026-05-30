@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 
+from pydantic import BaseModel, ConfigDict
+
 
 class HarnessProxyMode(StrEnum):
     """How mitmproxy is placed between the client and upstream service."""
@@ -33,9 +35,10 @@ class HarnessPassThroughPolicy(StrEnum):
     VERBATIM_AFTER_SEPARATOR = "verbatim_after_separator"
 
 
-@dataclass(frozen=True)
-class HarnessCapabilities:
+class HarnessCapabilities(BaseModel):
     """Feature flags exposed to desktop and web client selection."""
+
+    model_config = ConfigDict(frozen=True)
 
     startup_probe: bool
     disposable_probe: bool

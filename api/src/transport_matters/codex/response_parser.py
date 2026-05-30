@@ -2,18 +2,21 @@
 
 from __future__ import annotations
 
-import json
 from typing import Any
 
 from transport_matters.codex.protocol import (
     CODEX_MESSAGE_ITEM_TYPE,
+    CODEX_MODEL_PREFIX,
     CODEX_OUTPUT_ITEM_DONE_EVENT_TYPE,
     CODEX_OUTPUT_TEXT_DELTA_EVENT_TYPE,
     CODEX_OUTPUT_TEXT_DONE_EVENT_TYPE,
     CODEX_REASONING_ITEM_TYPE,
     CODEX_TERMINAL_EVENT_TYPES,
     CODEX_TOOL_CALL_ITEM_TYPES,
+    codex_reasoning_item_text,
     codex_response_status_reason,
+    codex_text_from_content_entry,
+    decode_tool_arguments,
 )
 from transport_matters.ir import (
     ContentBlock,
@@ -24,6 +27,8 @@ from transport_matters.ir import (
     UnknownBlock,
     UsageStats,
 )
+from transport_matters.model_ids import normalise_model
+from transport_matters.sse import iter_sse_data_objects
 
 
 def parse_codex_response_sse(
@@ -56,20 +61,7 @@ def _parse_sse_event_payloads(raw_body: bytes) -> list[dict[str, Any]]:
     a partial or noisy stream still yields whatever events parsed
     successfully.
     """
-    payloads: list[dict[str, Any]] = []
-    for line in raw_body.decode(errors="replace").splitlines():
-        if not line.startswith("data:"):
-            continue
-        body = line[5:].strip()
-        if body in ("", "[DONE]"):
-            continue
-        try:
-            payload: Any = json.loads(body)  # Any: untyped SSE JSON
-        except json.JSONDecodeError:
-            continue
-        if isinstance(payload, dict):
-            payloads.append(payload)
-    return payloads
+    return list(iter_sse_data_objects(raw_body))
 
 
 def parse_codex_response_payloads(
@@ -159,10 +151,10 @@ def _response_model(
 ) -> str:
     model = None if response_payload is None else response_payload.get("model")
     if isinstance(model, str) and model:
-        return _normalise_model(model)
+        return normalise_model(model, CODEX_MODEL_PREFIX)
     if isinstance(default_model, str) and default_model:
-        return _normalise_model(default_model)
-    return "codex/unknown"
+        return normalise_model(default_model, CODEX_MODEL_PREFIX)
+    return f"{CODEX_MODEL_PREFIX}unknown"
 
 
 def _response_stop_reason(response_payload: dict[str, Any] | None) -> str | None:
@@ -236,33 +228,20 @@ def _message_blocks(item: dict[str, Any]) -> list[ContentBlock]:
         if not isinstance(entry, dict):
             blocks.append(UnknownBlock(raw={"value": entry}))
             continue
-        entry_type = entry.get("type")
-        if entry_type in {"output_text", "text"} and isinstance(entry.get("text"), str):
-            blocks.append(TextBlock(text=entry["text"]))
-            continue
-        if entry_type == "refusal" and isinstance(entry.get("refusal"), str):
-            blocks.append(TextBlock(text=entry["refusal"]))
+        text = codex_text_from_content_entry(entry)
+        if text is not None:
+            blocks.append(TextBlock(text=text))
             continue
         blocks.append(UnknownBlock(raw=entry))
     return blocks
 
 
 def _reasoning_block(item: dict[str, Any]) -> ThinkingBlock:
-    text_parts: list[str] = []
-    summary = item.get("summary")
-    if isinstance(summary, list):
-        for entry in summary:
-            if not isinstance(entry, dict):
-                continue
-            text = entry.get("text")
-            if isinstance(text, str) and text:
-                text_parts.append(text)
-
     provider_data = {
         key: value for key, value in item.items() if key not in {"summary"}
     }
     return ThinkingBlock(
-        text="\n\n".join(text_parts),
+        text=codex_reasoning_item_text(item),
         provider_data=provider_data or None,
     )
 
@@ -280,22 +259,8 @@ def _tool_use_block(item: dict[str, Any]) -> ToolUseBlock | None:
     return ToolUseBlock(
         id=call_id,
         name=name,
-        input=_parse_tool_arguments(arguments),
+        input=decode_tool_arguments(arguments),
     )
-
-
-def _parse_tool_arguments(arguments: object) -> dict[str, Any]:
-    if isinstance(arguments, dict):
-        return arguments
-    if isinstance(arguments, str):
-        try:
-            parsed = json.loads(arguments)
-        except json.JSONDecodeError:
-            return {"__raw_arguments__": arguments}
-        if isinstance(parsed, dict):
-            return parsed
-        return {"value": parsed}
-    return {"value": arguments}
 
 
 def _fallback_text_content(
@@ -310,9 +275,3 @@ def _fallback_text_content(
 
 def _as_int(value: object) -> int:
     return value if isinstance(value, int) else 0
-
-
-def _normalise_model(model: str) -> str:
-    if model.startswith("codex/"):
-        return model
-    return f"codex/{model}"

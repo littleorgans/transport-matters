@@ -3,6 +3,7 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as api from "../../api";
+import { exchangeKey } from "../../lib/queryKeys";
 import { useOverlaysStore } from "../../stores/overlaysStore";
 import { useUIStore } from "../../stores/uiStore";
 import type { InternalRequest, Override, PausedFlow } from "../../types";
@@ -251,7 +252,7 @@ describe("BreakpointEditor — cache invalidation", () => {
 
     await waitFor(() => expect(useUIStore.getState().forwardingFlowId).toBe("flow-abc123"));
     expect(invalidateSpy).toHaveBeenCalledWith({
-      queryKey: ["exchange", mockPausedFlow.flow_id],
+      queryKey: exchangeKey(mockPausedFlow.flow_id),
     });
   });
 
@@ -275,7 +276,7 @@ describe("BreakpointEditor — cache invalidation", () => {
 
     await waitFor(() => expect(api.releaseFlow).toHaveBeenCalled());
     expect(invalidateSpy).toHaveBeenCalledWith({
-      queryKey: ["exchange", "exchange-provisional-3"],
+      queryKey: exchangeKey("exchange-provisional-3"),
     });
   });
 });

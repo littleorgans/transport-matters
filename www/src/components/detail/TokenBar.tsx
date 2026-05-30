@@ -1,4 +1,4 @@
-import { contextTokens } from "../../lib/formatting";
+import { contextTokens, formatCompactChars } from "../../lib/formatting";
 import type { UsageStats } from "../../types";
 import { HoverCard } from "../HoverCard";
 
@@ -21,46 +21,44 @@ export function TokenBar({ usage }: { usage: UsageStats }) {
 
   return (
     <div className="space-y-4">
-      {context > 0 && (
-        <div className="flex h-2.5 w-full overflow-hidden bg-canvas bar-track">
-          {cacheRead > 0 && (
-            <HoverCard
-              content={
-                <span>
-                  <span className="text-teal">cache read</span> {cacheRead.toLocaleString()} tokens
-                  ({cacheReadPct.toFixed(1)}%)
-                </span>
-              }
-            >
-              <div className="h-full bg-teal/70" style={{ width: `${cacheReadPct}%` }} />
-            </HoverCard>
-          )}
-          {cacheCreation > 0 && (
-            <HoverCard
-              content={
-                <span>
-                  <span className="text-lavender">cache write</span>{" "}
-                  {cacheCreation.toLocaleString()} tokens ({cacheCreationPct.toFixed(1)}%)
-                </span>
-              }
-            >
-              <div className="h-full bg-lavender/70" style={{ width: `${cacheCreationPct}%` }} />
-            </HoverCard>
-          )}
-          {input > 0 && (
-            <HoverCard
-              content={
-                <span>
-                  <span className="text-txt">input</span> {input.toLocaleString()} tokens (
-                  {inputPct.toFixed(1)}%)
-                </span>
-              }
-            >
-              <div className="h-full bg-txt-3/60" style={{ width: `${inputPct}%` }} />
-            </HoverCard>
-          )}
-        </div>
-      )}
+      <div className="flex h-2.5 w-full overflow-hidden bg-canvas bar-track">
+        {cacheRead > 0 && (
+          <HoverCard
+            content={
+              <span>
+                <span className="text-teal">cache read</span> {cacheRead.toLocaleString()} tokens (
+                {cacheReadPct.toFixed(1)}%)
+              </span>
+            }
+          >
+            <div className="h-full bg-teal/70" style={{ width: `${cacheReadPct}%` }} />
+          </HoverCard>
+        )}
+        {cacheCreation > 0 && (
+          <HoverCard
+            content={
+              <span>
+                <span className="text-lavender">cache write</span> {cacheCreation.toLocaleString()}{" "}
+                tokens ({cacheCreationPct.toFixed(1)}%)
+              </span>
+            }
+          >
+            <div className="h-full bg-lavender/70" style={{ width: `${cacheCreationPct}%` }} />
+          </HoverCard>
+        )}
+        {input > 0 && (
+          <HoverCard
+            content={
+              <span>
+                <span className="text-txt">input</span> {input.toLocaleString()} tokens (
+                {inputPct.toFixed(1)}%)
+              </span>
+            }
+          >
+            <div className="h-full bg-txt-3/60" style={{ width: `${inputPct}%` }} />
+          </HoverCard>
+        )}
+      </div>
 
       <div className="grid grid-cols-3 gap-4">
         <TokenStat label="cache read" value={cacheRead} tick="bg-teal/70" text="text-teal" />
@@ -92,8 +90,8 @@ export function TokenStat({
   const dim = value === 0;
   const display = dim
     ? "\u2014"
-    : format === "chars" && value >= 1024
-      ? `${(value / 1024).toFixed(1)}K`
+    : format === "chars"
+      ? formatCompactChars(value)
       : value.toLocaleString();
   // "tokens" suffix renders only for the token format and only when we have
   // a real number to label. Chars intentionally stay bare per the convention

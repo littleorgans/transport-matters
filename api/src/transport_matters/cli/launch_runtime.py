@@ -7,6 +7,7 @@ import os
 import shutil
 import sysconfig
 import uuid
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
@@ -17,17 +18,16 @@ from transport_matters import __version__
 from transport_matters.lock import WorkspaceLock
 from transport_matters.manifest import Manifest
 from transport_matters.manifest import write as manifest_write
-from transport_matters.workspace import (
-    run_root,
-    workspace_id,
-    workspace_storage,
-)
+from transport_matters.workspace import run_root, workspace_id
 
 from .identity import CLI_COMMAND, PRODUCT_LABEL
 from .ports import PortAllocationError
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping, Sequence
+    from importlib.abc import Traversable
+
+    from .runner import ManagedClient
 
 
 class WhichFunction(Protocol):
@@ -37,6 +37,21 @@ class WhichFunction(Protocol):
         mode: int = ...,
         path: str | None = ...,
     ) -> str | None: ...
+
+
+@dataclass(frozen=True)
+class LaunchPreparation:
+    addon_traversable: Traversable
+    mitmdump: str
+    client_path: str | None
+    working_dir: Path
+    proxy_port: int
+    web_port: int
+    proxy_user_supplied: bool
+    web_user_supplied: bool
+    run_id: str
+    resolved_storage: Path
+    passthrough_user: tuple[str, ...]
 
 
 _MANAGED_CHILD_PROXY_ENV_KEYS = frozenset(
@@ -153,6 +168,31 @@ def _which_runnable(
     return None
 
 
+def resolve_client_binary(
+    *,
+    name: str,
+    bin_override: Path | None,
+    disabled: bool,
+    which: Callable[[str], str | None],
+    not_found_hint: str,
+) -> str | None:
+    """Resolve a managed client binary or exit with caller-specific guidance."""
+    if disabled:
+        return None
+
+    client_path = str(bin_override) if bin_override is not None else which(name)
+    if client_path is not None:
+        return client_path
+
+    typer.secho(
+        f"error: `{name}` was not found on PATH.",
+        fg=typer.colors.RED,
+        err=True,
+    )
+    typer.echo(not_found_hint, err=True)
+    raise typer.Exit(2)
+
+
 def resolve_mitmdump_executable(
     *,
     which: WhichFunction = shutil.which,
@@ -242,15 +282,18 @@ def resolve_launch_ports(
 def resolve_storage_dir(
     *, storage_dir: Path | None, working_dir: Path, run_id: str
 ) -> Path:
-    """Resolve the storage root for the launch.
+    """Resolve the storage root path for the launch without creating it.
 
     An explicit ``--storage-dir`` is caller-owned and used verbatim. The
     default is the per-run directory ``{slug}/{hash}/{run_id}/``, so two
-    instances launched from the same CWD get isolated storage roots.
+    instances launched from the same CWD get isolated storage roots. Real
+    launches create the default path when the per-run lock is acquired;
+    ``--print-command`` only needs the path string and must not mint an empty
+    run directory.
     """
     if storage_dir is not None:
         return storage_dir
-    return workspace_storage(working_dir, run_id)
+    return run_root(working_dir, run_id)
 
 
 def resolve_mitmdump_or_exit(
@@ -283,6 +326,113 @@ def resolve_mitmdump_or_exit(
 def new_run_id() -> str:
     """Return a fresh run identifier for the current launch."""
     return str(uuid.uuid4())
+
+
+def prepare_launch(
+    *,
+    passthrough: list[str],
+    directory: Path | None,
+    proxy_port: int | None,
+    web_port: int | None,
+    storage_dir: Path | None,
+    client_name: str,
+    bin_override: Path | None,
+    client_disabled: bool,
+    not_found_hint: str,
+    require_addon: Callable[[], Traversable],
+    resolve_mitmdump: Callable[[], str | None],
+    which: Callable[[str], str | None],
+    port_in_use: Callable[[int], bool],
+    allocate_port_pair: Callable[[], tuple[int, int]],
+    validate_after_client_resolution: Callable[[], None] | None = None,
+) -> LaunchPreparation:
+    """Resolve the shared launch state in the legacy command order."""
+    addon_traversable = require_addon()
+    mitmdump = resolve_mitmdump_or_exit(resolve_mitmdump=resolve_mitmdump)
+    client_path = resolve_client_binary(
+        name=client_name,
+        bin_override=bin_override,
+        disabled=client_disabled,
+        which=which,
+        not_found_hint=not_found_hint,
+    )
+    if validate_after_client_resolution is not None:
+        validate_after_client_resolution()
+
+    working_dir = resolve_working_dir(directory)
+    (
+        resolved_proxy_port,
+        resolved_web_port,
+        proxy_user_supplied,
+        web_user_supplied,
+    ) = resolve_launch_ports(
+        proxy_port=proxy_port,
+        web_port=web_port,
+        port_in_use=port_in_use,
+        allocate_port_pair=allocate_port_pair,
+    )
+    run_id = new_run_id()
+    resolved_storage = resolve_storage_dir(
+        storage_dir=storage_dir,
+        working_dir=working_dir,
+        run_id=run_id,
+    )
+
+    return LaunchPreparation(
+        addon_traversable=addon_traversable,
+        mitmdump=mitmdump,
+        client_path=client_path,
+        working_dir=working_dir,
+        proxy_port=resolved_proxy_port,
+        web_port=resolved_web_port,
+        proxy_user_supplied=proxy_user_supplied,
+        web_user_supplied=web_user_supplied,
+        run_id=run_id,
+        resolved_storage=resolved_storage,
+        passthrough_user=tuple(passthrough),
+    )
+
+
+def build_mitmdump_argv(
+    *,
+    mitmdump: str,
+    mode: str,
+    proxy_port: int,
+    addon_path: Path,
+    debug: bool,
+    extra_addons: Sequence[Path] = (),
+) -> list[str]:
+    argv = [
+        mitmdump,
+        "--mode",
+        mode,
+        "--listen-host",
+        "127.0.0.1",
+        "--listen-port",
+        str(proxy_port),
+        "-s",
+        str(addon_path),
+    ]
+    for extra_addon in extra_addons:
+        argv.extend(["-s", str(extra_addon)])
+    if not debug:
+        argv.extend(["--set", "termlog_verbosity=warn"])
+    return argv
+
+
+def print_invocation(
+    *,
+    build_invocation: Callable[
+        [int, int], tuple[list[str], dict[str, str], ManagedClient | None]
+    ],
+    proxy_port: int,
+    web_port: int,
+) -> None:
+    mitmdump_argv, _env, client = build_invocation(proxy_port, web_port)
+    typer.echo(" ".join(mitmdump_argv))
+    if client is not None:
+        typer.echo(" ".join(client.argv))
+    raise typer.Exit(0)
 
 
 def managed_child_shell_env_excludes() -> tuple[str, ...]:

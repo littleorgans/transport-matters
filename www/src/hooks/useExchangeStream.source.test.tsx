@@ -1,5 +1,6 @@
 import { act, renderHook } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
+import { exchangesKey } from "../lib/queryKeys";
 import type { IndexEntry } from "../types";
 import { useExchangeStream } from "./useExchangeStream";
 import { getMockSource, makeWrapper } from "./useExchangeStream.testSupport";
@@ -35,7 +36,7 @@ describe("useExchangeStream browser source", () => {
         }),
       ),
     );
-    expect(qc.getQueryData<IndexEntry[]>(["exchanges", false])?.[0]?.id).toBe(
+    expect(qc.getQueryData<IndexEntry[]>(exchangesKey(false))?.[0]?.id).toBe(
       "stream-source-message",
     );
 

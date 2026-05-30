@@ -1,19 +1,20 @@
+import { providerExtrasTarget, samplingTarget } from "../../lib/overrideTargets";
 import type { SamplingParams } from "../../types";
 
 export type ThinkingMode = "off" | "adaptive" | "enabled";
 export type DisplayMode = "summarized" | "omitted";
 export type EffortLevel = "low" | "medium" | "high" | "max";
 
-export const THINKING_TARGET = "provider_extras:thinking";
-export const DISPLAY_TARGET = "provider_extras:thinking.display";
-export const EFFORT_TARGET = "provider_extras:output_config.effort";
+export const THINKING_TARGET = providerExtrasTarget("thinking");
+export const DISPLAY_TARGET = providerExtrasTarget("thinking.display");
+export const EFFORT_TARGET = providerExtrasTarget("output_config.effort");
 
 export const SAMPLING_TARGETS: Record<keyof SamplingParams, string> = {
-  max_tokens: "sampling:max_tokens",
-  temperature: "sampling:temperature",
-  top_p: "sampling:top_p",
-  top_k: "sampling:top_k",
-  stop_sequences: "sampling:stop_sequences",
+  max_tokens: samplingTarget("max_tokens"),
+  temperature: samplingTarget("temperature"),
+  top_p: samplingTarget("top_p"),
+  top_k: samplingTarget("top_k"),
+  stop_sequences: samplingTarget("stop_sequences"),
 };
 
 export const MIN_BUDGET = 1024;
@@ -55,7 +56,7 @@ export function getEffort(extras: Record<string, unknown>): EffortLevel | null {
   return null;
 }
 
-export function stopSeqsEqual(a: string[], b: string[]): boolean {
+function stopSeqsEqual(a: string[], b: string[]): boolean {
   if (a.length !== b.length) return false;
   for (let i = 0; i < a.length; i++) {
     if (a[i] !== b[i]) return false;

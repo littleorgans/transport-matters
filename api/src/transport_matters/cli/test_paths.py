@@ -8,8 +8,7 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from transport_matters import __version__
-from transport_matters.cli import WorkspaceLock, main, run_root, workspace_root
+from transport_matters.cli import WorkspaceLock, main, workspace_root
 
 from ._helpers import _plain, _sample_manifest, _write_run_manifest
 
@@ -50,25 +49,49 @@ def test_paths_prefers_storage_dir_env(
     assert Path(payload["storage"]) == run_storage
 
 
-def test_paths_json_is_valid_and_structured(
+def test_paths_degrades_without_env_or_live_run(
     tmp_storage: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Default resolution: workspace container for the current CWD.
-
-    No env storage and no live run → falls back to ``workspace_root(cwd)``
-    under the sandboxed ``$HOME`` that ``tmp_storage`` pins.
+    """With no session, ``paths`` still prints the static entries and marks
+    the storage-derived ones null (exit 0), so a fresh install can locate the
+    package/addon/www without starting a session.
     """
     monkeypatch.delenv("TRANSPORT_MATTERS_STORAGE_DIR", raising=False)
     workdir = tmp_path / "project"
     workdir.mkdir()
     monkeypatch.chdir(workdir)
     result = runner.invoke(main, ["paths", "--json"])
-    assert result.exit_code == 0
+    assert result.exit_code == 0, result.output
     payload = json.loads(result.stdout)
-    assert payload["version"] == __version__
-    assert payload["package"].endswith("transport_matters")
-    assert payload["addon"].endswith("addon.py")
-    assert Path(payload["storage"]) == workspace_root(workdir)
+    # Static entries always resolve from the install.
+    assert payload["version"]
+    assert payload["package"]
+    assert payload["addon"]
+    assert payload["www"]
+    # Storage-derived entries are null with no live session.
+    assert payload["storage"] is None
+    assert payload["exchanges"] is None
+    assert payload["rules"] is None
+    assert payload["index"] is None
+
+
+def test_paths_text_marks_storage_unresolved_without_session(
+    tmp_storage: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Table mode with no session: static rows print, storage rows read
+    ``unresolved``, and a one-line note explains how to resolve them. No
+    error framing, exit 0.
+    """
+    monkeypatch.delenv("TRANSPORT_MATTERS_STORAGE_DIR", raising=False)
+    workdir = tmp_path / "project"
+    workdir.mkdir()
+    monkeypatch.chdir(workdir)
+    result = runner.invoke(main, ["paths"])
+    assert result.exit_code == 0, result.output
+    assert "package" in result.output
+    assert "unresolved" in result.output
+    assert "No live session" in result.output
+    assert "error:" not in result.output.lower()
 
 
 def test_paths_works_with_live_lock_in_same_cwd(
@@ -79,11 +102,18 @@ def test_paths_works_with_live_lock_in_same_cwd(
     """``paths`` is read-only and must not touch a run's lock."""
     monkeypatch.delenv("TRANSPORT_MATTERS_STORAGE_DIR", raising=False)
     monkeypatch.chdir(tmp_path)
-    run_dir = run_root(tmp_path, "run-001")
-    run_dir.mkdir(parents=True, exist_ok=True)
+    storage = tmp_path / "run-storage"
+    storage.mkdir()
+    run_dir = _write_run_manifest(
+        tmp_path,
+        _sample_manifest(
+            workdir=tmp_path, storage=storage, pid=12345, run_id="run-001"
+        ),
+    )
     with WorkspaceLock(run_dir):
         result = runner.invoke(main, ["paths"])
-    assert result.exit_code == 0
+    assert result.exit_code == 0, result.output
+    assert str(storage) in result.output
 
 
 def test_paths_live_manifest_wins_over_default(
@@ -117,12 +147,14 @@ def test_paths_live_manifest_wins_over_default(
     assert Path(payload["storage"]) == custom_storage
 
 
-def test_paths_errors_on_multiple_live_runs_in_cwd(
+def test_paths_prompts_to_disambiguate_multiple_live_runs_in_cwd(
     tmp_storage: Path,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A bare shell cannot pick among several live runs → actionable error."""
+    """Several live runs in one CWD is the supported K1 state, not a fault:
+    a bare shell cannot pick among them, so ``paths`` lists them and asks
+    the user to pick one (exit 2, no error framing)."""
     monkeypatch.delenv("TRANSPORT_MATTERS_STORAGE_DIR", raising=False)
     workdir = tmp_path / "project"
     workdir.mkdir()
@@ -140,6 +172,8 @@ def test_paths_errors_on_multiple_live_runs_in_cwd(
         result = runner.invoke(main, ["paths"])
     assert result.exit_code == 2
     assert "2 live instances" in result.output
+    assert "pick one" in result.output
+    assert "error:" not in result.output.lower()
     assert "r1" in result.output
     assert "r2" in result.output
 
@@ -163,11 +197,13 @@ def test_paths_stale_manifest_ignored(
             proxy_port=5050,
         ),
     )
-    # No lock held → manifest is stale.
+    # No lock held, so the manifest is stale and cannot identify storage.
+    # The stale run must not be adopted; with no live session, storage
+    # degrades to null rather than erroring or leaking the stale path.
     result = runner.invoke(main, ["paths", "--json"])
-    assert result.exit_code == 0
-    payload = json.loads(result.stdout)
-    assert Path(payload["storage"]) == workspace_root(workdir)
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout)["storage"] is None
+    assert "stale-storage" not in result.output
 
 
 def test_paths_respects_transport_matters_cwd_env_over_process_cwd(
@@ -187,13 +223,21 @@ def test_paths_respects_transport_matters_cwd_env_over_process_cwd(
     launch_dir.mkdir()
     subdir = launch_dir / "api"
     subdir.mkdir()
+    storage = tmp_path / "launch-storage"
+    run_dir = _write_run_manifest(
+        launch_dir,
+        _sample_manifest(
+            workdir=launch_dir, storage=storage, pid=1, run_id="run-launch"
+        ),
+    )
     monkeypatch.chdir(subdir)
     monkeypatch.setenv("TRANSPORT_MATTERS_CWD", str(launch_dir))
 
-    result = runner.invoke(main, ["paths", "--json"])
+    with WorkspaceLock(run_dir):
+        result = runner.invoke(main, ["paths", "--json"])
     assert result.exit_code == 0, result.output
     payload = json.loads(result.stdout)
-    assert Path(payload["storage"]) == workspace_root(launch_dir)
+    assert Path(payload["storage"]) == storage
     # Double-check: the subdir would have produced a different storage.
     assert Path(payload["storage"]) != workspace_root(subdir)
 
@@ -208,11 +252,17 @@ def test_paths_workspace_flag_accepts_directory(
     cwd_a.mkdir()
     cwd_b = tmp_path / "b"
     cwd_b.mkdir()
+    storage = tmp_path / "storage-b"
+    run_dir = _write_run_manifest(
+        cwd_b,
+        _sample_manifest(workdir=cwd_b, storage=storage, pid=1, run_id="run-b"),
+    )
     monkeypatch.chdir(cwd_a)
-    result = runner.invoke(main, ["paths", "--workspace", str(cwd_b), "--json"])
+    with WorkspaceLock(run_dir):
+        result = runner.invoke(main, ["paths", "--workspace", str(cwd_b), "--json"])
     assert result.exit_code == 0, result.output
     payload = json.loads(result.stdout)
-    assert Path(payload["storage"]) == workspace_root(cwd_b)
+    assert Path(payload["storage"]) == storage
 
 
 def test_paths_workspace_flag_resolves_a_runs_storage_dir(
@@ -282,6 +332,23 @@ def test_paths_workspace_flag_unknown_slug_errors(
     result = runner.invoke(main, ["paths", "--workspace", "no-such-slug"])
     assert result.exit_code == 2
     assert "no workspace matching" in result.output
+
+
+def test_paths_workspace_path_without_live_run_errors(
+    tmp_storage: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An explicit ``--workspace <path>`` with no live run errors (strict):
+    the caller named a specific path, so unlike the bare lookup it does not
+    silently degrade to unresolved storage.
+    """
+    monkeypatch.delenv("TRANSPORT_MATTERS_STORAGE_DIR", raising=False)
+    empty = tmp_path / "no-runs-here"
+    empty.mkdir()
+    result = runner.invoke(main, ["paths", "--workspace", str(empty), "--json"])
+    assert result.exit_code == 2
+    assert "no live Transport Matters instance" in result.output
 
 
 def test_paths_help_renders() -> None:

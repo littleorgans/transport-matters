@@ -1,22 +1,10 @@
-import type {
-  ContentBlock,
-  InternalRequest,
-  Message,
-  Override,
-  OverrideAuditEntry,
-} from "../../types";
 import {
-  DISPLAY_TARGET,
-  EFFORT_TARGET,
-  getBudget,
-  getDisplay,
-  getEffort,
-  getThinkingMode,
-  readThinkingDict,
-  SAMPLING_TARGETS,
-  samplingValuesEqual,
-  THINKING_TARGET,
-} from "../editor/samplingShared";
+  parseMessageTarget,
+  parseSystemIndex,
+  parseToolName,
+  parseToolResultId,
+} from "../../lib/overrideTargets";
+import type { ContentBlock, InternalRequest, Message, OverrideAuditEntry } from "../../types";
 
 /**
  * Structured diff between the original request IR and the curated IR the
@@ -82,27 +70,6 @@ export interface ToolResultMutation {
 
 // ── Audit-driven detectors (primary path) ────────────────────────
 
-function parseSystemTarget(target: string): number | null {
-  if (!target.startsWith("system:")) return null;
-  const raw = target.slice("system:".length);
-  const parsed = Number.parseInt(raw, 10);
-  return Number.isNaN(parsed) ? null : parsed;
-}
-
-function parseToolTarget(target: string): string | null {
-  return target.startsWith("tool:") ? target.slice("tool:".length) : null;
-}
-
-function parseMessageTarget(target: string): { msgIdx: number; blkIdx: number } | null {
-  // Shape: "msg:${m}:blk:${b}" — four colon-separated segments.
-  const parts = target.split(":");
-  if (parts.length !== 4 || parts[0] !== "msg" || parts[2] !== "blk") return null;
-  const msgIdx = Number.parseInt(parts[1] ?? "", 10);
-  const blkIdx = Number.parseInt(parts[3] ?? "", 10);
-  if (Number.isNaN(msgIdx) || Number.isNaN(blkIdx)) return null;
-  return { msgIdx, blkIdx };
-}
-
 export function detectSystemPartMutations(
   audit: OverrideAuditEntry[] | undefined,
 ): SystemPartMutation[] {
@@ -113,14 +80,14 @@ export function detectSystemPartMutations(
     if (!entry.applied) continue;
 
     if (entry.kind === "system_part_toggle") {
-      const index = parseSystemTarget(entry.target);
+      const index = parseSystemIndex(entry.target);
       if (index === null) continue;
       // Server applies this kind only when disabling (toggle=true is a
       // noop in ``_apply_system_part_toggle``), so an applied audit
       // entry of this kind unambiguously means the part was dropped.
       mutations.push({ index, kind: "deleted" });
     } else if (entry.kind === "system_part_text") {
-      const index = parseSystemTarget(entry.target);
+      const index = parseSystemIndex(entry.target);
       if (index === null) continue;
       if (entry.curated_value === null) continue;
       mutations.push({ index, kind: "edited", curatedText: entry.curated_value });
@@ -138,11 +105,11 @@ export function detectToolMutations(audit: OverrideAuditEntry[] | undefined): To
     if (!entry.applied) continue;
 
     if (entry.kind === "tool_toggle") {
-      const name = parseToolTarget(entry.target);
+      const name = parseToolName(entry.target);
       if (name === null) continue;
       mutations.push({ name, kind: "disabled" });
     } else if (entry.kind === "tool_description") {
-      const name = parseToolTarget(entry.target);
+      const name = parseToolName(entry.target);
       if (name === null) continue;
       if (entry.curated_value === null) continue;
       mutations.push({
@@ -223,9 +190,8 @@ export function detectToolResultMutations(
     if (!entry.applied || entry.kind !== "truncate_tool_result") {
       continue;
     }
-    if (!entry.target.startsWith("toolresult:")) continue;
-
-    const toolUseId = entry.target.slice("toolresult:".length);
+    const toolUseId = parseToolResultId(entry.target);
+    if (toolUseId === null) continue;
     if (toolUseId.length === 0) continue;
 
     const originalText = findToolResultText(original, toolUseId);
@@ -288,65 +254,6 @@ export function detectSystemPartMutationsStructural(
   }
 
   return mutations;
-}
-
-function encodeReadOnlyOverrideValue(value: unknown): string | boolean | number | null {
-  if (typeof value === "number" || typeof value === "boolean") return value;
-  if (value === null) return "null";
-  return JSON.stringify(value);
-}
-
-export function detectSamplingOverridesStructural(
-  original: InternalRequest | undefined,
-  curated: InternalRequest | undefined,
-): Override[] {
-  const overrides: Override[] = [];
-  if (!original || !curated) return overrides;
-
-  for (const field of Object.keys(SAMPLING_TARGETS) as Array<keyof typeof SAMPLING_TARGETS>) {
-    const originalValue = original.sampling[field];
-    const curatedValue = curated.sampling[field];
-    if (!samplingValuesEqual(field, originalValue, curatedValue)) {
-      overrides.push({
-        kind: "sampling_set",
-        target: SAMPLING_TARGETS[field],
-        value: encodeReadOnlyOverrideValue(curatedValue),
-      });
-    }
-  }
-
-  const originalThinkingMode = getThinkingMode(original.provider_extras);
-  const curatedThinkingMode = getThinkingMode(curated.provider_extras);
-  const originalBudget = getBudget(original.provider_extras);
-  const curatedBudget = getBudget(curated.provider_extras);
-  if (
-    originalThinkingMode !== curatedThinkingMode ||
-    (curatedThinkingMode === "enabled" && originalBudget !== curatedBudget)
-  ) {
-    overrides.push({
-      kind: "provider_extras_set",
-      target: THINKING_TARGET,
-      value: encodeReadOnlyOverrideValue(readThinkingDict(curated.provider_extras)),
-    });
-  }
-
-  if (getDisplay(original.provider_extras) !== getDisplay(curated.provider_extras)) {
-    overrides.push({
-      kind: "provider_extras_set",
-      target: DISPLAY_TARGET,
-      value: encodeReadOnlyOverrideValue(getDisplay(curated.provider_extras)),
-    });
-  }
-
-  if (getEffort(original.provider_extras) !== getEffort(curated.provider_extras)) {
-    overrides.push({
-      kind: "provider_extras_set",
-      target: EFFORT_TARGET,
-      value: encodeReadOnlyOverrideValue(getEffort(curated.provider_extras)),
-    });
-  }
-
-  return overrides;
 }
 
 export function detectToolMutationsStructural(

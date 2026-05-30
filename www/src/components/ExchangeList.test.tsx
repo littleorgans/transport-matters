@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useTurnContent } from "../hooks/useTurnContent";
 import type { IndexEntry } from "../types";
 import { legacyClaudeRes, makeEntry } from "./__test-utils__/exchangeList";
-import { ExchangeList } from "./ExchangeList";
+import { ExchangeListWithTrackTree as ExchangeList } from "./__test-utils__/exchangeListHarness";
 
 const turnContentById = vi.hoisted(() => new Map<string, unknown>());
 

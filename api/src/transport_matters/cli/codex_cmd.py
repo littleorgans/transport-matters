@@ -17,13 +17,11 @@ from .identity import CLI_COMMAND, PRODUCT_LABEL
 from .launch_runtime import (
     build_launch_env,
     build_managed_child_env,
+    build_mitmdump_argv,
     managed_child_shell_env_excludes,
-    new_run_id,
+    prepare_launch,
+    print_invocation,
     reject_passthrough_without_client,
-    resolve_launch_ports,
-    resolve_mitmdump_or_exit,
-    resolve_storage_dir,
-    resolve_working_dir,
     run_with_workspace_manifest,
 )
 from .net import loopback_http_url
@@ -38,35 +36,6 @@ from .trust import (
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping, Sequence
     from importlib.abc import Traversable
-
-
-def _resolve_codex_path(
-    *,
-    codex_bin: Path | None,
-    no_codex: bool,
-    which: Callable[[str], str | None],
-) -> str | None:
-    """Resolve the Codex binary or exit with an actionable hint."""
-    if no_codex:
-        return None
-
-    codex_path = str(codex_bin) if codex_bin is not None else which("codex")
-    if codex_path is not None:
-        return codex_path
-
-    typer.secho(
-        "error: `codex` was not found on PATH.",
-        fg=typer.colors.RED,
-        err=True,
-    )
-    typer.echo(
-        "Install Codex, or point at an existing binary:\n"
-        f"  {CLI_COMMAND} codex --codex-bin /path/to/codex\n"
-        "  # or run proxy-only:\n"
-        f"  {CLI_COMMAND} codex --no-codex",
-        err=True,
-    )
-    raise typer.Exit(2)
 
 
 def _resolve_codex_ca_certificate_or_exit(
@@ -185,7 +154,7 @@ def _build_codex_invocation(
     resolved_storage: Path,
     run_id: str,
     codex_path: str | None,
-    codex_passthrough_user: list[str],
+    codex_passthrough_user: Sequence[str],
     codex_ca_certificate: str | None,
     debug: bool,
 ) -> Callable[[int, int], tuple[list[str], dict[str, str], ManagedClient | None]]:
@@ -205,21 +174,17 @@ def _build_codex_invocation(
 
         proxy_url = loopback_http_url(proxy_port)
 
-        argv = [
-            mitmdump,
-            "--mode",
-            "regular",
-            "--listen-host",
-            "127.0.0.1",
-            "--listen-port",
-            str(proxy_port),
-            "-s",
-            str(addon_path),
-        ]
+        extra_addons: tuple[Path, ...] = ()
         if force_http_fallback_addon_path is not None:
-            argv.extend(["-s", str(force_http_fallback_addon_path)])
-        if not debug:
-            argv.extend(["--set", "termlog_verbosity=warn"])
+            extra_addons = (force_http_fallback_addon_path,)
+        argv = build_mitmdump_argv(
+            mitmdump=mitmdump,
+            mode="regular",
+            proxy_port=proxy_port,
+            addon_path=addon_path,
+            debug=debug,
+            extra_addons=extra_addons,
+        )
 
         client = None
         if codex_path is not None:
@@ -320,29 +285,32 @@ def run_codex(
         flag="--no-codex",
     )
 
-    addon_traversable = require_addon()
-    mitmdump = resolve_mitmdump_or_exit(resolve_mitmdump=resolve_mitmdump)
-    codex_path = _resolve_codex_path(
-        codex_bin=codex_bin,
-        no_codex=no_codex,
-        which=which,
-    )
-    working_dir = resolve_working_dir(directory)
-    proxy_port, web_port, proxy_user_supplied, web_user_supplied = resolve_launch_ports(
+    prepared = prepare_launch(
+        passthrough=codex_passthrough,
+        directory=directory,
         proxy_port=proxy_port,
         web_port=web_port,
+        storage_dir=storage_dir,
+        client_name="codex",
+        bin_override=codex_bin,
+        client_disabled=no_codex,
+        not_found_hint=(
+            "Install Codex, or point at an existing binary:\n"
+            f"  {CLI_COMMAND} codex --codex-bin /path/to/codex\n"
+            "  # or run proxy-only:\n"
+            f"  {CLI_COMMAND} codex --no-codex"
+        ),
+        require_addon=require_addon,
+        resolve_mitmdump=resolve_mitmdump,
+        which=which,
         port_in_use=port_in_use,
         allocate_port_pair=allocate_port_pair,
     )
-    run_id = new_run_id()
-    resolved_storage = resolve_storage_dir(
-        storage_dir=storage_dir,
-        working_dir=working_dir,
-        run_id=run_id,
-    )
-    codex_passthrough_user = list(codex_passthrough)
 
-    with as_file(addon_traversable) as addon_path, contextlib.ExitStack() as stack:
+    with (
+        as_file(prepared.addon_traversable) as addon_path,
+        contextlib.ExitStack() as stack,
+    ):
         force_http_fallback_addon_path: Path | None = None
         if force_http_fallback:
             force_http_fallback_traversable = require_force_http_fallback_addon()
@@ -350,7 +318,7 @@ def run_codex(
                 stack.enter_context(as_file(force_http_fallback_traversable))
             )
         codex_ca_certificate = None
-        if codex_path is not None:
+        if prepared.client_path is not None:
             codex_ca_certificate = _resolve_codex_ca_certificate_or_exit(
                 stack=stack,
                 print_command=print_command,
@@ -361,33 +329,33 @@ def run_codex(
         build_invocation = _build_codex_invocation(
             addon_path=addon_path,
             force_http_fallback_addon_path=force_http_fallback_addon_path,
-            mitmdump=mitmdump,
-            working_dir=working_dir,
-            resolved_storage=resolved_storage,
-            run_id=run_id,
-            codex_path=codex_path,
-            codex_passthrough_user=codex_passthrough_user,
+            mitmdump=prepared.mitmdump,
+            working_dir=prepared.working_dir,
+            resolved_storage=prepared.resolved_storage,
+            run_id=prepared.run_id,
+            codex_path=prepared.client_path,
+            codex_passthrough_user=prepared.passthrough_user,
             codex_ca_certificate=codex_ca_certificate,
             debug=debug,
         )
 
         if print_command:
-            mitmdump_argv, _env, client = build_invocation(proxy_port, web_port)
-            typer.echo(" ".join(mitmdump_argv))
-            if client is not None:
-                typer.echo(" ".join(client.argv))
-            raise typer.Exit(0)
+            print_invocation(
+                build_invocation=build_invocation,
+                proxy_port=prepared.proxy_port,
+                web_port=prepared.web_port,
+            )
 
         def run_launch(write_manifest_for: Callable[[int, int], None]) -> None:
             _run_codex_launch(
-                proxy_port=proxy_port,
-                web_port=web_port,
-                proxy_user_supplied=proxy_user_supplied,
-                web_user_supplied=web_user_supplied,
+                proxy_port=prepared.proxy_port,
+                web_port=prepared.web_port,
+                proxy_user_supplied=prepared.proxy_user_supplied,
+                web_user_supplied=prepared.web_user_supplied,
                 no_codex=no_codex,
                 codex_ca_certificate=codex_ca_certificate,
-                working_dir=working_dir,
-                resolved_storage=resolved_storage,
+                working_dir=prepared.working_dir,
+                resolved_storage=prepared.resolved_storage,
                 build_invocation=build_invocation,
                 print_client_banner=print_client_banner,
                 run_client_with_retry=run_client_with_retry,
@@ -395,8 +363,8 @@ def run_codex(
             )
 
         run_with_workspace_manifest(
-            working_dir=working_dir,
-            storage_dir=resolved_storage,
-            run_id=run_id,
+            working_dir=prepared.working_dir,
+            storage_dir=prepared.resolved_storage,
+            run_id=prepared.run_id,
             run_launch=run_launch,
         )

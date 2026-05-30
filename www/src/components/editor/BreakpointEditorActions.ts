@@ -2,6 +2,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { dropFlow, reauditFlow, releaseFlow, releaseFlowUnmodified } from "../../api";
 import { useOverrides } from "../../hooks/useOverrides";
+import { exchangeKey } from "../../lib/queryKeys";
 import { useUIStore } from "../../stores/uiStore";
 import type { InternalRequest, Override, OverrideAudit, PausedFlow } from "../../types";
 
@@ -31,7 +32,7 @@ interface UseBreakpointEditorActionsResult {
 }
 
 export function getExchangeDetailQueryKey(pausedFlow: PausedFlow): readonly ["exchange", string] {
-  return ["exchange", pausedFlow.provisional_exchange_id ?? pausedFlow.flow_id];
+  return exchangeKey(pausedFlow.provisional_exchange_id ?? pausedFlow.flow_id);
 }
 
 export function getReleasedFlowCompletion(pausedFlow: PausedFlow): ReleasedFlowCompletion {

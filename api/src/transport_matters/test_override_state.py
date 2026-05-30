@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 
+from transport_matters.override_state import LEGACY_SCOPE_ID, scope_from_params
 from transport_matters.overrides import Override, OverrideStore, get_store
 
 
@@ -12,6 +13,27 @@ def _reset_store() -> None:
     store = get_store()
     store.clear()
     store.enabled = True
+
+
+class TestScopeFromParams:
+    @pytest.mark.parametrize(
+        ("run_id", "track_id", "expected"),
+        [
+            (None, None, (LEGACY_SCOPE_ID, LEGACY_SCOPE_ID)),
+            (None, "agent-1", (LEGACY_SCOPE_ID, "agent-1")),
+            ("run-1", None, ("run-1", "run-1")),
+            ("run-1", "agent-1", ("run-1", "agent-1")),
+            ("", "", (LEGACY_SCOPE_ID, LEGACY_SCOPE_ID)),
+            ("run-1", "", ("run-1", "run-1")),
+        ],
+    )
+    def test_legacy_and_track_fallbacks(
+        self,
+        run_id: str | None,
+        track_id: str | None,
+        expected: tuple[str, str],
+    ) -> None:
+        assert scope_from_params(run_id, track_id) == expected
 
 
 class TestOverrideStore:

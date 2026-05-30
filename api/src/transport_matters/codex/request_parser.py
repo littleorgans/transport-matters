@@ -3,9 +3,18 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from typing import Any
 
-from transport_matters.codex.protocol import CODEX_TOOL_OUTPUT_ITEM_TYPES
+from transport_matters.codex.protocol import (
+    CODEX_IMAGE_TYPE,
+    CODEX_INPUT_TEXT_TYPES,
+    CODEX_MODEL_PREFIX,
+    CODEX_OUTPUT_TEXT_TYPES,
+    CODEX_REFUSAL_TYPE,
+    CODEX_TOOL_OUTPUT_ITEM_TYPES,
+    decode_tool_arguments,
+)
 from transport_matters.ir import (
     ContentBlock,
     ImageBlock,
@@ -21,6 +30,10 @@ from transport_matters.ir import (
     ToolUseBlock,
     UnknownBlock,
 )
+from transport_matters.model_ids import normalise_model
+
+_ContentParseResult = tuple[ContentBlock, bool]
+_ContentHandler = Callable[[dict[str, Any]], _ContentParseResult | None]
 
 MAPPED_REQUEST_KEYS = frozenset(
     {
@@ -64,7 +77,7 @@ def parse_codex_request(raw_body: bytes) -> InternalRequest:
         extras["input_item_raw"] = input_item_raw
 
     return InternalRequest(
-        model=_normalise_model(str(data.get("model", "unknown"))),
+        model=normalise_model(str(data.get("model", "unknown")), CODEX_MODEL_PREFIX),
         provider="codex",
         system=system,
         tools=_parse_tools(data.get("tools", [])),
@@ -74,12 +87,6 @@ def parse_codex_request(raw_body: bytes) -> InternalRequest:
         stream=bool(data.get("stream", False)),
         provider_extras=extras,
     )
-
-
-def _normalise_model(model: str) -> str:
-    if model.startswith("codex/"):
-        return model
-    return f"codex/{model}"
 
 
 def _parse_instructions(raw: object) -> list[SystemPart]:
@@ -194,7 +201,7 @@ def _parse_system_message_item(
         if not isinstance(entry, dict):
             continue
         entry_type = entry.get("type")
-        if entry_type in {"input_text", "text"} and isinstance(entry.get("text"), str):
+        if entry_type in CODEX_INPUT_TEXT_TYPES and isinstance(entry.get("text"), str):
             provider_data: dict[str, Any] = {"role": item["role"]}
             extra = set(entry) - {"type", "text"}
             if extra:
@@ -203,7 +210,12 @@ def _parse_system_message_item(
     return parts, True
 
 
-def _parse_user_content(raw_content: object) -> tuple[list[ContentBlock], bool]:
+def _parse_content(
+    raw_content: object,
+    *,
+    text_types: frozenset[str],
+    extra_block_handlers: tuple[_ContentHandler, ...],
+) -> tuple[list[ContentBlock], bool]:
     if isinstance(raw_content, str):
         return [TextBlock(text=raw_content)], False
     if not isinstance(raw_content, list):
@@ -217,13 +229,19 @@ def _parse_user_content(raw_content: object) -> tuple[list[ContentBlock], bool]:
             keep_raw = True
             continue
         item_type = item.get("type")
-        if item_type in {"input_text", "text"} and isinstance(item.get("text"), str):
+        if item_type in text_types and isinstance(item.get("text"), str):
             blocks.append(TextBlock(text=item["text"]))
             if set(item) - {"type", "text"}:
                 keep_raw = True
-        elif item_type == "input_image":
-            source = {key: value for key, value in item.items() if key != "type"}
-            blocks.append(ImageBlock(source=source))
+            continue
+        for handler in extra_block_handlers:
+            result = handler(item)
+            if result is None:
+                continue
+            block, block_keep_raw = result
+            blocks.append(block)
+            keep_raw = keep_raw or block_keep_raw
+            break
         else:
             blocks.append(UnknownBlock(raw=item))
             keep_raw = True
@@ -231,51 +249,45 @@ def _parse_user_content(raw_content: object) -> tuple[list[ContentBlock], bool]:
 
 
 def _parse_assistant_content(raw_content: object) -> tuple[list[ContentBlock], bool]:
-    if isinstance(raw_content, str):
-        return [TextBlock(text=raw_content)], False
-    if not isinstance(raw_content, list):
-        return [UnknownBlock(raw={"content": raw_content})], True
+    return _parse_content(
+        raw_content,
+        text_types=CODEX_OUTPUT_TEXT_TYPES,
+        extra_block_handlers=(_parse_assistant_extra_block,),
+    )
 
-    blocks: list[ContentBlock] = []
-    keep_raw = False
-    for item in raw_content:
-        if not isinstance(item, dict):
-            blocks.append(UnknownBlock(raw={"value": item}))
-            keep_raw = True
-            continue
-        item_type = item.get("type")
-        if item_type in {"output_text", "text"} and isinstance(item.get("text"), str):
-            blocks.append(TextBlock(text=item["text"]))
-            if set(item) - {"type", "text"}:
-                keep_raw = True
-        elif item_type == "refusal" and isinstance(item.get("refusal"), str):
-            blocks.append(TextBlock(text=item["refusal"]))
-            if set(item) - {"type", "refusal"}:
-                keep_raw = True
-        else:
-            blocks.append(UnknownBlock(raw=item))
-            keep_raw = True
-    return blocks, keep_raw
+
+def _parse_user_content(raw_content: object) -> tuple[list[ContentBlock], bool]:
+    return _parse_content(
+        raw_content,
+        text_types=CODEX_INPUT_TEXT_TYPES,
+        extra_block_handlers=(_parse_user_extra_block,),
+    )
+
+
+def _parse_user_extra_block(item: dict[str, Any]) -> _ContentParseResult | None:
+    if item.get("type") != CODEX_IMAGE_TYPE:
+        return None
+    source = {key: value for key, value in item.items() if key != "type"}
+    return ImageBlock(source=source), False
+
+
+def _parse_assistant_extra_block(item: dict[str, Any]) -> _ContentParseResult | None:
+    if item.get("type") != CODEX_REFUSAL_TYPE or not isinstance(
+        item.get("refusal"), str
+    ):
+        return None
+    return TextBlock(text=item["refusal"]), bool(set(item) - {"type", "refusal"})
 
 
 def _parse_function_call(item: dict[str, Any]) -> Message:
     arguments = item.get("arguments", "{}")
-    if isinstance(arguments, str):
-        try:
-            loaded = json.loads(arguments)
-        except json.JSONDecodeError:
-            loaded = {"__raw_arguments__": arguments}
-    else:
-        loaded = arguments
-
-    parsed_arguments = loaded if isinstance(loaded, dict) else {"value": loaded}
     return Message(
         role="assistant",
         content=[
             ToolUseBlock(
                 id=str(item.get("call_id", item.get("id", "tool_call"))),
                 name=str(item.get("name", "function_call")),
-                input=parsed_arguments,
+                input=decode_tool_arguments(arguments),
             )
         ],
     )

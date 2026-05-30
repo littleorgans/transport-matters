@@ -56,6 +56,29 @@ def test_codex_print_command_uses_explicit_proxy_mode(
     )
 
 
+def test_codex_print_command_does_not_create_workspace_run_dir(
+    tmp_storage: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    spy_run_client_children: MagicMock,
+) -> None:
+    monkeypatch.setattr(
+        "transport_matters.cli.shutil.which",
+        _which_by_name({"mitmdump": "/bin/mitmdump", "codex": "/bin/codex"}),
+    )
+    monkeypatch.setattr("transport_matters.cli._port_in_use", lambda _: False)
+    monkeypatch.delenv("TRANSPORT_MATTERS_STORAGE_DIR", raising=False)
+    workdir = tmp_path / "project"
+    workdir.mkdir()
+
+    result = runner.invoke(main, ["codex", str(workdir), "--print-command"])
+
+    assert result.exit_code == 0, result.output
+    assert "mitmdump" in result.stdout
+    spy_run_client_children.assert_not_called()
+    assert not workspace_root(workdir).exists()
+
+
 def test_codex_sets_proxy_env_on_managed_child(
     tmp_storage: Path,
     tmp_path: Path,
