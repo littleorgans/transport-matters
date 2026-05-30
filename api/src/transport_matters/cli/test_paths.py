@@ -122,12 +122,14 @@ def test_paths_live_manifest_wins_over_default(
     assert Path(payload["storage"]) == custom_storage
 
 
-def test_paths_errors_on_multiple_live_runs_in_cwd(
+def test_paths_prompts_to_disambiguate_multiple_live_runs_in_cwd(
     tmp_storage: Path,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A bare shell cannot pick among several live runs → actionable error."""
+    """Several live runs in one CWD is the supported K1 state, not a fault:
+    a bare shell cannot pick among them, so ``paths`` lists them and asks
+    the user to pick one (exit 2, no error framing)."""
     monkeypatch.delenv("TRANSPORT_MATTERS_STORAGE_DIR", raising=False)
     workdir = tmp_path / "project"
     workdir.mkdir()
@@ -145,6 +147,8 @@ def test_paths_errors_on_multiple_live_runs_in_cwd(
         result = runner.invoke(main, ["paths"])
     assert result.exit_code == 2
     assert "2 live instances" in result.output
+    assert "pick one" in result.output
+    assert "error:" not in result.output.lower()
     assert "r1" in result.output
     assert "r2" in result.output
 

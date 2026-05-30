@@ -16,9 +16,11 @@ Resolution order for the ``storage`` value:
    session is exact and unambiguous even when several runs share the CWD.
 3. Failing that, prefer ``TRANSPORT_MATTERS_CWD`` (then ``Path.cwd()``)
    and scan that workspace container for live runs. Exactly one live run
-   returns its ``storage_dir``. None or more than one is an actionable
-   error, because a bare external shell cannot know which run you mean.
-   None of these branches create directories; ``paths`` is read-only.
+   returns its ``storage_dir``. None is an error (nothing to inspect);
+   more than one is not a fault but an ambiguity a bare external shell
+   cannot resolve, so ``paths`` lists the runs and asks you to pick one
+   (exit 2). None of these branches create directories; ``paths`` is
+   read-only.
 """
 
 from __future__ import annotations
@@ -185,8 +187,8 @@ def _storage_for_slug(slug: str) -> Path:
         raise typer.Exit(2)
     if len(candidates) > 1:
         typer.secho(
-            f"error: slug {slug!r} matches {len(candidates)} runs.",
-            fg=typer.colors.RED,
+            f"slug {slug!r} matches {len(candidates)} runs — pick one:",
+            fg=typer.colors.YELLOW,
             err=True,
         )
         _print_run_choices(candidates)
@@ -219,8 +221,8 @@ def _live_runs(ws_root: Path) -> list[Manifest]:
 def _exit_ambiguous_runs(live: list[Manifest]) -> None:
     """Abort with a list of the live runs sharing one CWD."""
     typer.secho(
-        f"error: {len(live)} live instances share this directory.",
-        fg=typer.colors.RED,
+        f"{len(live)} live instances share this directory — pick one:",
+        fg=typer.colors.YELLOW,
         err=True,
     )
     _print_run_choices(live)
