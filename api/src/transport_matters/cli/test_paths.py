@@ -49,24 +49,49 @@ def test_paths_prefers_storage_dir_env(
     assert Path(payload["storage"]) == run_storage
 
 
-def test_paths_errors_without_env_or_live_run(
+def test_paths_degrades_without_env_or_live_run(
     tmp_storage: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Default resolution fails loudly when no run identifies a storage dir.
-
-    After per-run storage, the workspace container is not itself a storage dir.
-    A bare shell must not render empty ``exchanges`` / ``rules`` paths.
+    """With no session, ``paths`` still prints the static entries and marks
+    the storage-derived ones null (exit 0), so a fresh install can locate the
+    package/addon/www without starting a session.
     """
     monkeypatch.delenv("TRANSPORT_MATTERS_STORAGE_DIR", raising=False)
     workdir = tmp_path / "project"
     workdir.mkdir()
     monkeypatch.chdir(workdir)
     result = runner.invoke(main, ["paths", "--json"])
-    assert result.exit_code == 2
-    assert "no live Transport Matters instance" in result.output
-    assert "run transport-matters list" in result.output
-    assert "--workspace <slug-or-storage-dir>" in result.output
-    assert result.stdout == ""
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.stdout)
+    # Static entries always resolve from the install.
+    assert payload["version"]
+    assert payload["package"]
+    assert payload["addon"]
+    assert payload["www"]
+    # Storage-derived entries are null with no live session.
+    assert payload["storage"] is None
+    assert payload["exchanges"] is None
+    assert payload["rules"] is None
+    assert payload["index"] is None
+
+
+def test_paths_text_marks_storage_unresolved_without_session(
+    tmp_storage: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Table mode with no session: static rows print, storage rows read
+    ``unresolved``, and a one-line note explains how to resolve them. No
+    error framing, exit 0.
+    """
+    monkeypatch.delenv("TRANSPORT_MATTERS_STORAGE_DIR", raising=False)
+    workdir = tmp_path / "project"
+    workdir.mkdir()
+    monkeypatch.chdir(workdir)
+    result = runner.invoke(main, ["paths"])
+    assert result.exit_code == 0, result.output
+    assert "package" in result.output
+    assert "unresolved" in result.output
+    assert "No live session" in result.output
+    assert "error:" not in result.output.lower()
 
 
 def test_paths_works_with_live_lock_in_same_cwd(
@@ -173,9 +198,11 @@ def test_paths_stale_manifest_ignored(
         ),
     )
     # No lock held, so the manifest is stale and cannot identify storage.
+    # The stale run must not be adopted; with no live session, storage
+    # degrades to null rather than erroring or leaking the stale path.
     result = runner.invoke(main, ["paths", "--json"])
-    assert result.exit_code == 2
-    assert "no live Transport Matters instance" in result.output
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout)["storage"] is None
     assert "stale-storage" not in result.output
 
 
@@ -305,6 +332,23 @@ def test_paths_workspace_flag_unknown_slug_errors(
     result = runner.invoke(main, ["paths", "--workspace", "no-such-slug"])
     assert result.exit_code == 2
     assert "no workspace matching" in result.output
+
+
+def test_paths_workspace_path_without_live_run_errors(
+    tmp_storage: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An explicit ``--workspace <path>`` with no live run errors (strict):
+    the caller named a specific path, so unlike the bare lookup it does not
+    silently degrade to unresolved storage.
+    """
+    monkeypatch.delenv("TRANSPORT_MATTERS_STORAGE_DIR", raising=False)
+    empty = tmp_path / "no-runs-here"
+    empty.mkdir()
+    result = runner.invoke(main, ["paths", "--workspace", str(empty), "--json"])
+    assert result.exit_code == 2
+    assert "no live Transport Matters instance" in result.output
 
 
 def test_paths_help_renders() -> None:
