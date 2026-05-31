@@ -10,6 +10,7 @@ from urllib.parse import urlparse
 
 import typer
 
+from .home_seed import seed_home_dir
 from .identity import CLI_COMMAND
 from .launch_runtime import (
     CLIENT_NAME_CLAUDE,
@@ -197,6 +198,16 @@ def run_start(
                 build_invocation=build_invocation,
                 proxy_port=prepared.proxy_port,
                 web_port=prepared.web_port,
+            )
+        if (
+            not print_command
+            and home_dir is not None
+            and prepared.client_path is not None
+        ):
+            seed_home_dir(
+                CLIENT_NAME_CLAUDE,
+                home_dir=home_dir,
+                working_dir=prepared.working_dir,
             )
 
         def run_launch(write_manifest_for: Callable[[int, int], None]) -> None:

@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING
 
 import typer
 
+from .home_seed import seed_home_dir
 from .identity import CLI_COMMAND, PRODUCT_LABEL
 from .launch_runtime import (
     CLIENT_NAME_CODEX,
@@ -350,6 +351,16 @@ def run_codex(
                 build_invocation=build_invocation,
                 proxy_port=prepared.proxy_port,
                 web_port=prepared.web_port,
+            )
+        if (
+            not print_command
+            and home_dir is not None
+            and prepared.client_path is not None
+        ):
+            seed_home_dir(
+                CLIENT_NAME_CODEX,
+                home_dir=home_dir,
+                working_dir=prepared.working_dir,
             )
 
         def run_launch(write_manifest_for: Callable[[int, int], None]) -> None:
