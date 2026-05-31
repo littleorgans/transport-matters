@@ -70,13 +70,18 @@ def test_codex_print_command_does_not_create_workspace_run_dir(
     monkeypatch.delenv("TRANSPORT_MATTERS_STORAGE_DIR", raising=False)
     workdir = tmp_path / "project"
     workdir.mkdir()
+    home_dir = tmp_path / "codex-home"
 
-    result = runner.invoke(main, ["codex", str(workdir), "--print-command"])
+    result = runner.invoke(
+        main,
+        ["codex", str(workdir), "--home-dir", str(home_dir), "--print-command"],
+    )
 
     assert result.exit_code == 0, result.output
     assert "mitmdump" in result.stdout
     spy_run_client_children.assert_not_called()
     assert not workspace_root(workdir).exists()
+    assert not home_dir.exists()
 
 
 def test_codex_sets_proxy_env_on_managed_child(
@@ -130,6 +135,88 @@ def test_codex_sets_proxy_env_on_managed_child(
     assert "localhost" in client.env["NO_PROXY"]
     assert "127.0.0.1" in client.env["NO_PROXY"]
     assert kwargs["mitmdump_argv"][:3] == ["/bin/mitmdump", "--mode", "regular"]
+
+
+def test_codex_home_dir_sets_codex_home_manifest_and_keeps_ca(
+    tmp_storage: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    spy_run_client_children: MagicMock,
+) -> None:
+    monkeypatch.setattr(
+        "transport_matters.cli.shutil.which",
+        _which_by_name({"mitmdump": "/bin/mitmdump", "codex": "/bin/codex"}),
+    )
+    monkeypatch.setattr("transport_matters.cli._port_in_use", lambda _: False)
+    monkeypatch.setenv("CODEX_HOME", "/parent/codex")
+    monkeypatch.chdir(tmp_path)
+    bundle_path = tmp_path / "ca.pem"
+    bundle_path.write_text("bundle", encoding="utf-8")
+    monkeypatch.setattr(
+        "transport_matters.cli.resolve_codex_ca_certificate",
+        lambda *, env, bundle_dir: bundle_path,
+    )
+    captured: dict[str, Any] = {}
+
+    def _capture_manifest(**kwargs: Any) -> None:
+        client = kwargs["client"]
+        assert client is not None
+        manifest_path = (
+            workspace_root(client.cwd)
+            / client.env["TRANSPORT_MATTERS_RUN_ID"]
+            / "manifest.json"
+        )
+        captured["raw"] = json.loads(manifest_path.read_text(encoding="utf-8"))
+
+    spy_run_client_children.side_effect = _capture_manifest
+
+    workdir = tmp_path / "project"
+    workdir.mkdir()
+    result = runner.invoke(
+        main,
+        [
+            "codex",
+            str(workdir),
+            "--home-dir",
+            "homes/codex",
+            "--proxy-port",
+            "9000",
+            "--web-port",
+            "9001",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    expected_home = (tmp_path / "homes" / "codex").resolve()
+    assert expected_home.is_dir()
+    client_env = spy_run_client_children.call_args.kwargs["client"].env
+    assert client_env["CODEX_HOME"] == str(expected_home)
+    assert client_env["CODEX_CA_CERTIFICATE"] == str(bundle_path)
+    assert captured["raw"]["home_dir"] == str(expected_home)
+
+
+def test_codex_unset_home_dir_omits_codex_home(
+    tmp_storage: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    spy_run_client_children: MagicMock,
+) -> None:
+    monkeypatch.setattr(
+        "transport_matters.cli.shutil.which",
+        _which_by_name({"mitmdump": "/bin/mitmdump", "codex": "/bin/codex"}),
+    )
+    monkeypatch.setattr("transport_matters.cli._port_in_use", lambda _: False)
+    monkeypatch.delenv("CODEX_HOME", raising=False)
+    bundle_path = tmp_path / "ca.pem"
+    bundle_path.write_text("bundle", encoding="utf-8")
+    monkeypatch.setattr(
+        "transport_matters.cli.resolve_codex_ca_certificate",
+        lambda *, env, bundle_dir: bundle_path,
+    )
+
+    result = runner.invoke(main, ["codex", "."])
+    assert result.exit_code == 0, result.output
+    client_env = spy_run_client_children.call_args.kwargs["client"].env
+    assert "CODEX_HOME" not in client_env
 
 
 def test_codex_writes_workspace_manifest_visible_to_managed_child(
