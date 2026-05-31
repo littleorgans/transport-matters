@@ -4,16 +4,19 @@ import json
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+import pytest
 from typer.testing import CliRunner
 
 from transport_matters.cli import main, workspace_root
+from transport_matters.cli.launch_runtime import (
+    CLIENT_NAME_CLAUDE,
+    build_managed_child_env,
+)
 
 from ._helpers import _which_all
 
 if TYPE_CHECKING:
     from unittest.mock import MagicMock
-
-    import pytest
 
 runner = CliRunner()
 
@@ -166,6 +169,113 @@ def test_start_flows_run_id_into_child_envs(
     assert isinstance(claude_run_id, str)
     assert claude_run_id
     assert mitm_run_id == claude_run_id
+
+
+def test_start_home_dir_sets_claude_config_dir_and_manifest(
+    tmp_storage: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    spy_run_client_children: MagicMock,
+) -> None:
+    monkeypatch.setattr("transport_matters.cli.shutil.which", _which_all())
+    monkeypatch.setattr("transport_matters.cli._port_in_use", lambda _: False)
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", "/parent/claude")
+    monkeypatch.chdir(tmp_path)
+    captured: dict[str, Any] = {}
+
+    def _capture_manifest(**kwargs: Any) -> None:
+        client = kwargs["client"]
+        assert client is not None
+        manifest_path = (
+            workspace_root(client.cwd)
+            / client.env["TRANSPORT_MATTERS_RUN_ID"]
+            / "manifest.json"
+        )
+        captured["raw"] = json.loads(manifest_path.read_text(encoding="utf-8"))
+
+    spy_run_client_children.side_effect = _capture_manifest
+
+    workdir = tmp_path / "project"
+    workdir.mkdir()
+    result = runner.invoke(
+        main,
+        [
+            "claude",
+            str(workdir),
+            "--home-dir",
+            "homes/claude",
+            "--no-system-prompt",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    expected_home = (tmp_path / "homes" / "claude").resolve()
+    assert expected_home.is_dir()
+    client_env = spy_run_client_children.call_args.kwargs["client"].env
+    assert client_env["CLAUDE_CONFIG_DIR"] == str(expected_home)
+    assert captured["raw"]["home_dir"] == str(expected_home)
+
+
+def test_start_unset_home_dir_omits_claude_config_dir(
+    tmp_storage: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    spy_run_client_children: MagicMock,
+) -> None:
+    monkeypatch.setattr("transport_matters.cli.shutil.which", _which_all())
+    monkeypatch.setattr("transport_matters.cli._port_in_use", lambda _: False)
+    monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)
+
+    workdir = tmp_path / "project"
+    workdir.mkdir()
+    result = runner.invoke(main, ["claude", str(workdir), "--no-system-prompt"])
+    assert result.exit_code == 0, result.output
+    client_env = spy_run_client_children.call_args.kwargs["client"].env
+    assert "CLAUDE_CONFIG_DIR" not in client_env
+
+
+def test_start_print_command_home_dir_does_not_create_dir(
+    tmp_storage: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    spy_run_client_children: MagicMock,
+) -> None:
+    monkeypatch.setattr("transport_matters.cli.shutil.which", _which_all())
+    monkeypatch.setattr("transport_matters.cli._port_in_use", lambda _: False)
+    home_dir = tmp_path / "claude-home"
+    workdir = tmp_path / "project"
+    workdir.mkdir()
+
+    result = runner.invoke(
+        main,
+        [
+            "claude",
+            str(workdir),
+            "--home-dir",
+            str(home_dir),
+            "--no-system-prompt",
+            "--print-command",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    spy_run_client_children.assert_not_called()
+    assert not home_dir.exists()
+
+
+def test_managed_child_home_dir_preserves_unset_and_fails_unmapped() -> None:
+    base = {"CLAUDE_CONFIG_DIR": "/parent/claude"}
+
+    assert build_managed_child_env(base)["CLAUDE_CONFIG_DIR"] == "/parent/claude"
+    assert (
+        build_managed_child_env(
+            base,
+            client_name=CLIENT_NAME_CLAUDE,
+            home_dir=Path("/tmp/managed-claude"),
+        )["CLAUDE_CONFIG_DIR"]
+        == "/tmp/managed-claude"
+    )
+    with pytest.raises(ValueError, match="unmapped managed client home dir"):
+        build_managed_child_env(base, client_name="unknown", home_dir=Path("/tmp/x"))
 
 
 def test_start_writes_run_root_storage_into_manifest(

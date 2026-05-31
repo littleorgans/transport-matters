@@ -15,6 +15,7 @@ import typer
 
 from .identity import CLI_COMMAND, PRODUCT_LABEL
 from .launch_runtime import (
+    CLIENT_NAME_CODEX,
     build_launch_env,
     build_managed_child_env,
     build_mitmdump_argv,
@@ -153,6 +154,7 @@ def _build_codex_invocation(
     working_dir: Path,
     resolved_storage: Path,
     run_id: str,
+    home_dir: Path | None,
     codex_path: str | None,
     codex_passthrough_user: Sequence[str],
     codex_ca_certificate: str | None,
@@ -190,11 +192,13 @@ def _build_codex_invocation(
         if codex_path is not None:
             client_env = build_managed_child_env(
                 env,
+                client_name=CLIENT_NAME_CODEX,
+                home_dir=home_dir,
                 proxy_url=proxy_url,
                 codex_ca_certificate=codex_ca_certificate,
             )
             client = ManagedClient(
-                name="codex",
+                name=CLIENT_NAME_CODEX,
                 display_name="Codex",
                 argv=[
                     codex_path,
@@ -263,6 +267,7 @@ def run_codex(
     proxy_port: int | None,
     web_port: int | None,
     storage_dir: Path | None,
+    home_dir: Path | None,
     codex_bin: Path | None,
     no_codex: bool,
     debug: bool,
@@ -291,7 +296,7 @@ def run_codex(
         proxy_port=proxy_port,
         web_port=web_port,
         storage_dir=storage_dir,
-        client_name="codex",
+        client_name=CLIENT_NAME_CODEX,
         bin_override=codex_bin,
         client_disabled=no_codex,
         not_found_hint=(
@@ -333,6 +338,7 @@ def run_codex(
             working_dir=prepared.working_dir,
             resolved_storage=prepared.resolved_storage,
             run_id=prepared.run_id,
+            home_dir=home_dir,
             codex_path=prepared.client_path,
             codex_passthrough_user=prepared.passthrough_user,
             codex_ca_certificate=codex_ca_certificate,
@@ -366,5 +372,6 @@ def run_codex(
             working_dir=prepared.working_dir,
             storage_dir=prepared.resolved_storage,
             run_id=prepared.run_id,
+            home_dir=home_dir,
             run_launch=run_launch,
         )

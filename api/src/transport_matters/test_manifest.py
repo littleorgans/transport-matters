@@ -58,6 +58,19 @@ def test_write_is_json_formatted(tmp_path: Path) -> None:
     assert "manicure" + "_version" not in payload
 
 
+def test_read_missing_home_dir_defaults_none(tmp_path: Path) -> None:
+    path = tmp_path / "manifest.json"
+    write(path, _sample())
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload.pop("home_dir")
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    loaded = read(path)
+
+    assert loaded is not None
+    assert loaded.home_dir is None
+
+
 # --------------------------------------------------------------------------- #
 # Tolerating bad input                                                        #
 # --------------------------------------------------------------------------- #

@@ -116,6 +116,14 @@ _MANAGED_CHILD_TRUST_ENV_KEYS = frozenset(
 
 _LOOPBACK_NO_PROXY = "127.0.0.1,localhost"
 
+CLIENT_NAME_CLAUDE = "claude"
+CLIENT_NAME_CODEX = "codex"
+
+_HOME_DIR_ENV_BY_CLIENT = {
+    CLIENT_NAME_CLAUDE: "CLAUDE_CONFIG_DIR",
+    CLIENT_NAME_CODEX: "CODEX_HOME",
+}
+
 
 def _candidate_has_missing_shebang_interpreter(candidate: Path) -> bool:
     try:
@@ -461,6 +469,8 @@ def build_launch_env(
 def build_managed_child_env(
     base_env: Mapping[str, str],
     *,
+    client_name: str | None = None,
+    home_dir: Path | None = None,
     proxy_url: str | None = None,
     codex_ca_certificate: str | None = None,
     extra_env: Mapping[str, str] | None = None,
@@ -493,6 +503,16 @@ def build_managed_child_env(
 
     if codex_ca_certificate is not None:
         env["CODEX_CA_CERTIFICATE"] = codex_ca_certificate
+    if home_dir is not None:
+        if client_name is None:
+            raise ValueError(f"unmapped managed client home dir: {client_name!r}")
+        try:
+            env_key = _HOME_DIR_ENV_BY_CLIENT[client_name]
+        except KeyError as exc:
+            raise ValueError(
+                f"unmapped managed client home dir: {client_name!r}"
+            ) from exc
+        env[env_key] = str(home_dir)
     if extra_env is not None:
         env.update(extra_env)
     return env
@@ -503,6 +523,7 @@ def run_with_workspace_manifest(
     working_dir: Path,
     storage_dir: Path,
     run_id: str,
+    home_dir: Path | None = None,
     run_launch: Callable[[Callable[[int, int], None]], None],
 ) -> None:
     """Acquire the per-run lock, manage the manifest, and run the launch.
@@ -531,6 +552,7 @@ def run_with_workspace_manifest(
                     transport_matters_version=__version__,
                     slug=wid.slug,
                     hash=wid.hash,
+                    home_dir=str(home_dir) if home_dir is not None else None,
                 ),
             )
 

@@ -51,6 +51,7 @@ class Manifest:
     transport_matters_version: str
     slug: str
     hash: str
+    home_dir: str | None = None
 
 
 def write(path: Path, manifest: Manifest) -> None:

@@ -12,6 +12,7 @@ import typer
 
 from .identity import CLI_COMMAND
 from .launch_runtime import (
+    CLIENT_NAME_CLAUDE,
     build_launch_env,
     build_managed_child_env,
     build_mitmdump_argv,
@@ -55,6 +56,7 @@ def _build_start_invocation(
     working_dir: Path,
     resolved_storage: Path,
     run_id: str,
+    home_dir: Path | None,
     claude_path: str | None,
     claude_passthrough_user: Sequence[str],
     no_claude: bool,
@@ -100,10 +102,12 @@ def _build_start_invocation(
         if claude_path is not None:
             client_env = build_managed_child_env(
                 env,
+                client_name=CLIENT_NAME_CLAUDE,
+                home_dir=home_dir,
                 extra_env={"ANTHROPIC_BASE_URL": loopback_http_url(proxy_port)},
             )
             client = ManagedClient(
-                name="claude",
+                name=CLIENT_NAME_CLAUDE,
                 display_name="Claude",
                 argv=[claude_path, *passthrough],
                 env=client_env,
@@ -122,6 +126,7 @@ def run_start(
     web_port: int | None,
     upstream: str,
     storage_dir: Path | None,
+    home_dir: Path | None,
     claude_bin: Path | None,
     no_claude: bool,
     no_system_prompt: bool,
@@ -150,7 +155,7 @@ def run_start(
         proxy_port=proxy_port,
         web_port=web_port,
         storage_dir=storage_dir,
-        client_name="claude",
+        client_name=CLIENT_NAME_CLAUDE,
         bin_override=claude_bin,
         client_disabled=no_claude,
         not_found_hint=(
@@ -177,6 +182,7 @@ def run_start(
             working_dir=prepared.working_dir,
             resolved_storage=prepared.resolved_storage,
             run_id=prepared.run_id,
+            home_dir=home_dir,
             claude_path=prepared.client_path,
             claude_passthrough_user=prepared.passthrough_user,
             no_claude=no_claude,
@@ -218,5 +224,6 @@ def run_start(
             working_dir=prepared.working_dir,
             storage_dir=prepared.resolved_storage,
             run_id=prepared.run_id,
+            home_dir=home_dir,
             run_launch=run_launch,
         )

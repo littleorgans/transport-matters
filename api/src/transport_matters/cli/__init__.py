@@ -162,6 +162,26 @@ def _version_callback(value: bool) -> None:
         raise typer.Exit()
 
 
+def _resolve_home_dir_option(home_dir: Path | None, *, create: bool) -> Path | None:
+    """Resolve ``--home-dir`` once before child cwd changes can affect it."""
+    if home_dir is None:
+        return None
+    resolved = home_dir.expanduser().resolve()
+    if not create:
+        return resolved
+    try:
+        resolved.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        typer.secho(
+            f"error: could not create home directory: {resolved}",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        typer.echo(f"  {exc}", err=True)
+        raise typer.Exit(2) from exc
+    return resolved
+
+
 @main.callback()
 def _root(
     _version: Annotated[
@@ -254,6 +274,19 @@ def claude(
             resolve_path=True,
         ),
     ] = None,
+    home_dir: Annotated[
+        Path | None,
+        typer.Option(
+            "--home-dir",
+            help=(
+                "Directory for Claude Code config and transcripts. "
+                "Defaults to Claude Code's native home."
+            ),
+            file_okay=False,
+            dir_okay=True,
+            resolve_path=False,
+        ),
+    ] = None,
     claude_bin: Annotated[
         Path | None,
         typer.Option(
@@ -296,6 +329,10 @@ def claude(
 ) -> None:
     """Start the Transport Matters workbench: proxy + Claude Code."""
     directory, claude_passthrough = _split_passthrough(ctx, directory)
+    resolved_home_dir = _resolve_home_dir_option(
+        home_dir,
+        create=not print_command,
+    )
     run_start(
         directory=directory,
         claude_passthrough=claude_passthrough,
@@ -303,6 +340,7 @@ def claude(
         web_port=web_port,
         upstream=upstream,
         storage_dir=storage_dir,
+        home_dir=resolved_home_dir,
         claude_bin=claude_bin,
         no_claude=no_claude,
         no_system_prompt=no_system_prompt,
@@ -390,6 +428,19 @@ def codex(
             resolve_path=True,
         ),
     ] = None,
+    home_dir: Annotated[
+        Path | None,
+        typer.Option(
+            "--home-dir",
+            help=(
+                "Directory for Codex config and transcripts. "
+                "Defaults to Codex's native home."
+            ),
+            file_okay=False,
+            dir_okay=True,
+            resolve_path=False,
+        ),
+    ] = None,
     codex_bin: Annotated[
         Path | None,
         typer.Option(
@@ -436,12 +487,17 @@ def codex(
 ) -> None:
     """Start the Transport Matters workbench: proxy + Codex."""
     directory, codex_passthrough = _split_passthrough(ctx, directory)
+    resolved_home_dir = _resolve_home_dir_option(
+        home_dir,
+        create=not print_command,
+    )
     run_codex(
         directory=directory,
         codex_passthrough=codex_passthrough,
         proxy_port=proxy_port,
         web_port=web_port,
         storage_dir=storage_dir,
+        home_dir=resolved_home_dir,
         codex_bin=codex_bin,
         no_codex=no_codex,
         debug=debug,
