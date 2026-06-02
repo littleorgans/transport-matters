@@ -12,6 +12,7 @@ import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import type { EventEmitter } from "node:events";
+import { ENV } from "./env.js";
 
 export interface PackageSmokeResult {
   executablePath: string;
@@ -89,8 +90,8 @@ function buildSmokeEnv(
 ): NodeJS.ProcessEnv {
   return {
     ...env,
-    TRANSPORT_MATTERS_DESKTOP_PACKAGE_SMOKE: "1",
-    TRANSPORT_MATTERS_DESKTOP_SMOKE_FILE: markerPath,
+    [ENV.DESKTOP_PACKAGE_SMOKE]: "1",
+    [ENV.DESKTOP_SMOKE_FILE]: markerPath,
   };
 }
 

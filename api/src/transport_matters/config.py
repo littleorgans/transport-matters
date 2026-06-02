@@ -3,6 +3,7 @@ from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from transport_matters.env_keys import ENV_PREFIX
 from transport_matters.storage_roots import default_storage_root
 
 
@@ -18,7 +19,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
-        env_prefix="TRANSPORT_MATTERS_",
+        env_prefix=ENV_PREFIX,
         extra="ignore",
     )
 

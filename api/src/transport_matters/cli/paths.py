@@ -31,7 +31,7 @@ from pathlib import Path
 
 import typer
 
-from transport_matters import __version__
+from transport_matters import __version__, env_keys
 from transport_matters.lock import WorkspaceLock
 from transport_matters.manifest import Manifest, read, read_all
 from transport_matters.storage_roots import default_workspaces_root
@@ -96,14 +96,14 @@ def _resolve_storage(selector: str | None) -> Path | None:
         # A launched session carries its own run's storage dir in the env,
         # which is exact and survives the same-CWD multi-run case. Empty
         # string is treated as unset.
-        env_storage = os.environ.get("TRANSPORT_MATTERS_STORAGE_DIR") or None
+        env_storage = os.environ.get(env_keys.STORAGE_DIR) or None
         if env_storage:
             return Path(env_storage)
         # TRANSPORT_MATTERS_CWD wins over Path.cwd() so a paths lookup from a
         # Claude session spawned by ``transport-matters claude`` resolves to the
         # launching workspace even if the user has since ``cd``'d into
         # a subdirectory.
-        env_cwd = os.environ.get("TRANSPORT_MATTERS_CWD") or None
+        env_cwd = os.environ.get(env_keys.CWD) or None
         return _storage_for_cwd(Path(env_cwd) if env_cwd else Path.cwd(), strict=False)
 
     # A path-shaped selector goes through CWD resolution; a bare token

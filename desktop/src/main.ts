@@ -13,6 +13,7 @@ import {
   type LaunchedBackendProcess,
 } from "./backendProcess.js";
 import { waitForBackendHealth } from "./backendHealth.js";
+import { ENV } from "./env.js";
 import {
   DEFAULT_WEB_PORT,
   createHostedWindow,
@@ -78,10 +79,10 @@ export function resolveBackendStartupOptions(
   cwd = process.cwd(),
 ): BackendStartupOptions {
   return {
-    client: resolveBackendClient(env.TRANSPORT_MATTERS_DESKTOP_CLIENT),
+    client: resolveBackendClient(env[ENV.DESKTOP_CLIENT]),
     env: { ...env },
-    proxyPort: resolvePort(env.TRANSPORT_MATTERS_PROXY_PORT, DEFAULT_PROXY_PORT),
-    webPort: resolvePort(env.TRANSPORT_MATTERS_WEB_PORT, DEFAULT_WEB_PORT),
+    proxyPort: resolvePort(env[ENV.PROXY_PORT], DEFAULT_PROXY_PORT),
+    webPort: resolvePort(env[ENV.WEB_PORT], DEFAULT_WEB_PORT),
     workspaceDir: cwd,
   };
 }
@@ -197,9 +198,10 @@ export function registerDesktopPackageSmoke(
     const rendererUrl = rendererUrlForPort(DEFAULT_WEB_PORT);
     createWindow({ rendererUrl });
 
-    if (env.TRANSPORT_MATTERS_DESKTOP_SMOKE_FILE !== undefined) {
+    const smokeFile = env[ENV.DESKTOP_SMOKE_FILE];
+    if (smokeFile !== undefined) {
       writeFile(
-        env.TRANSPORT_MATTERS_DESKTOP_SMOKE_FILE,
+        smokeFile,
         JSON.stringify(
           {
             rendererUrl,
@@ -218,7 +220,7 @@ export function registerDesktopPackageSmoke(
 export function registerDesktopLifecycleFromEnv(
   env: NodeJS.ProcessEnv = process.env,
 ): void {
-  if (env.TRANSPORT_MATTERS_DESKTOP_PACKAGE_SMOKE === "1") {
+  if (env[ENV.DESKTOP_PACKAGE_SMOKE] === "1") {
     registerDesktopPackageSmoke({ env });
     return;
   }
