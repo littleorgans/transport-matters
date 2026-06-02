@@ -34,7 +34,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterable
     from importlib.resources.abc import Traversable
 
-from transport_matters import __version__
+from transport_matters import __version__, env_keys
 from transport_matters.lock import WorkspaceLock, WorkspaceLocked
 from transport_matters.manifest import Manifest
 from transport_matters.manifest import write as manifest_write
@@ -223,7 +223,7 @@ def claude(
         typer.Option(
             "--proxy-port",
             "-p",
-            envvar="TRANSPORT_MATTERS_PROXY_PORT",
+            envvar=env_keys.PROXY_PORT,
             help=("Port for the reverse-proxy listener (default: kernel-allocated free port)."),
             show_default=False,
             callback=validate_port_option,
@@ -234,7 +234,7 @@ def claude(
         typer.Option(
             "--web-port",
             "-w",
-            envvar="TRANSPORT_MATTERS_WEB_PORT",
+            envvar=env_keys.WEB_PORT,
             help=("Port for the embedded web UI (default: kernel-allocated free port)."),
             show_default=False,
             callback=validate_port_option,
@@ -245,7 +245,7 @@ def claude(
         typer.Option(
             "--upstream",
             "-u",
-            envvar="TRANSPORT_MATTERS_UPSTREAM_URL",
+            envvar=env_keys.UPSTREAM_URL,
             help="Upstream provider base URL (reverse proxy target).",
         ),
     ] = "https://api.anthropic.com",
@@ -381,7 +381,7 @@ def codex(
         typer.Option(
             "--proxy-port",
             "-p",
-            envvar="TRANSPORT_MATTERS_PROXY_PORT",
+            envvar=env_keys.PROXY_PORT,
             help=("Port for the explicit-proxy listener (default: kernel-allocated free port)."),
             show_default=False,
             callback=validate_port_option,
@@ -392,7 +392,7 @@ def codex(
         typer.Option(
             "--web-port",
             "-w",
-            envvar="TRANSPORT_MATTERS_WEB_PORT",
+            envvar=env_keys.WEB_PORT,
             help=("Port for the embedded web UI (default: kernel-allocated free port)."),
             show_default=False,
             callback=validate_port_option,

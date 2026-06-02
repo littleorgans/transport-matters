@@ -1,6 +1,7 @@
 import { spawn as spawnChildProcess } from "node:child_process";
 import type { SpawnOptions } from "node:child_process";
 import type { EventEmitter } from "node:events";
+import { ENV } from "./env.js";
 
 export const SUPPORTED_BACKEND_CLIENTS = ["claude", "codex"] as const;
 export type BackendClient = (typeof SUPPORTED_BACKEND_CLIENTS)[number];
@@ -81,8 +82,8 @@ export function buildBackendLaunch(
     cwd: options.workspaceDir,
     env: {
       ...options.env,
-      TRANSPORT_MATTERS_PROXY_PORT: proxyPort,
-      TRANSPORT_MATTERS_WEB_PORT: webPort,
+      [ENV.PROXY_PORT]: proxyPort,
+      [ENV.WEB_PORT]: webPort,
     },
   };
 }

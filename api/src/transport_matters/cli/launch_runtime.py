@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Protocol
 
 import typer
 
-from transport_matters import __version__
+from transport_matters import __version__, env_keys
 from transport_matters.lock import WorkspaceLock
 from transport_matters.manifest import Manifest
 from transport_matters.manifest import write as manifest_write
@@ -452,11 +452,11 @@ def build_launch_env(
 ) -> dict[str, str]:
     """Return the shared runtime environment for a launch attempt."""
     env = os.environ.copy()
-    env["TRANSPORT_MATTERS_STORAGE_DIR"] = str(storage_dir)
-    env["TRANSPORT_MATTERS_WEB_PORT"] = str(web_port)
-    env["TRANSPORT_MATTERS_PROXY_PORT"] = str(proxy_port)
-    env["TRANSPORT_MATTERS_RUN_ID"] = run_id
-    env["TRANSPORT_MATTERS_CWD"] = str(working_dir)
+    env[env_keys.STORAGE_DIR] = str(storage_dir)
+    env[env_keys.WEB_PORT] = str(web_port)
+    env[env_keys.PROXY_PORT] = str(proxy_port)
+    env[env_keys.RUN_ID] = run_id
+    env[env_keys.CWD] = str(working_dir)
     return env
 
 
