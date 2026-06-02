@@ -42,9 +42,7 @@ class TestToolToggle:
 
     def test_missing_tool_skips_silently(self) -> None:
         ir = make_ir(tools=[TOOL_BASH])
-        overrides = [
-            Override(kind="tool_toggle", target="tool:nonexistent", value=False)
-        ]
+        overrides = [Override(kind="tool_toggle", target="tool:nonexistent", value=False)]
         result, audit = apply_overrides(overrides, ir)
         assert len(result.tools) == 1
         assert audit.entries[0].applied is False
@@ -66,19 +64,15 @@ class TestToolDescription:
 
     def test_missing_tool_skips(self) -> None:
         ir = make_ir(tools=[TOOL_BASH])
-        overrides = [
-            Override(kind="tool_description", target="tool:missing", value="new desc")
-        ]
-        result, audit = apply_overrides(overrides, ir)
+        overrides = [Override(kind="tool_description", target="tool:missing", value="new desc")]
+        _result, audit = apply_overrides(overrides, ir)
         assert audit.entries[0].applied is False
 
 
 class TestSystemPartToggle:
     def test_disable_system_part(self) -> None:
         ir = make_ir(system=[SystemPart(text="part-0"), SystemPart(text="part-1")])
-        overrides = [
-            Override(kind="system_part_toggle", target="system:0", value=False)
-        ]
+        overrides = [Override(kind="system_part_toggle", target="system:0", value=False)]
         result, audit = apply_overrides(overrides, ir)
         assert len(result.system) == 1
         assert result.system[0].text == "part-1"
@@ -88,14 +82,12 @@ class TestSystemPartToggle:
     def test_enable_system_part_noop(self) -> None:
         ir = make_ir(system=[SystemPart(text="part-0")])
         overrides = [Override(kind="system_part_toggle", target="system:0", value=True)]
-        result, audit = apply_overrides(overrides, ir)
+        result, _audit = apply_overrides(overrides, ir)
         assert len(result.system) == 1
 
     def test_out_of_range_skips(self) -> None:
         ir = make_ir(system=[SystemPart(text="only")])
-        overrides = [
-            Override(kind="system_part_toggle", target="system:5", value=False)
-        ]
+        overrides = [Override(kind="system_part_toggle", target="system:5", value=False)]
         result, audit = apply_overrides(overrides, ir)
         assert len(result.system) == 1
         assert audit.entries[0].applied is False
@@ -104,11 +96,7 @@ class TestSystemPartToggle:
 class TestSystemPartText:
     def test_rewrite_text(self) -> None:
         ir = make_ir(system=[SystemPart(text="original text")])
-        overrides = [
-            Override(
-                kind="system_part_text", target="system:0", value="replacement text"
-            )
-        ]
+        overrides = [Override(kind="system_part_text", target="system:0", value="replacement text")]
         result, audit = apply_overrides(overrides, ir)
         assert result.system[0].text == "replacement text"
         assert audit.entries[0].applied is True
@@ -116,7 +104,7 @@ class TestSystemPartText:
     def test_out_of_range_skips(self) -> None:
         ir = make_ir(system=[])
         overrides = [Override(kind="system_part_text", target="system:0", value="new")]
-        result, audit = apply_overrides(overrides, ir)
+        _result, audit = apply_overrides(overrides, ir)
         assert audit.entries[0].applied is False
 
 
@@ -129,18 +117,14 @@ class TestTruncateToolResult:
             ),
             Message(
                 role="user",
-                content=[
-                    ToolResultBlock(tool_use_id="tu-1", content=[TextBlock(text=text)])
-                ],
+                content=[ToolResultBlock(tool_use_id="tu-1", content=[TextBlock(text=text)])],
             ),
         ]
         return make_ir(messages=messages)
 
     def test_truncates_long_result(self) -> None:
         ir = self._ir_with_tool_result("a" * 5000)
-        overrides = [
-            Override(kind="truncate_tool_result", target="toolresult:tu-1", value=100)
-        ]
+        overrides = [Override(kind="truncate_tool_result", target="toolresult:tu-1", value=100)]
         result, audit = apply_overrides(overrides, ir)
 
         user_msg = result.messages[1]
@@ -152,9 +136,7 @@ class TestTruncateToolResult:
 
     def test_short_result_untouched(self) -> None:
         ir = self._ir_with_tool_result("short")
-        overrides = [
-            Override(kind="truncate_tool_result", target="toolresult:tu-1", value=100)
-        ]
+        overrides = [Override(kind="truncate_tool_result", target="toolresult:tu-1", value=100)]
         result, _ = apply_overrides(overrides, ir)
         user_msg = result.messages[1]
         tr_block = user_msg.content[0]
@@ -164,18 +146,14 @@ class TestTruncateToolResult:
     def test_missing_tool_use_id_skips(self) -> None:
         ir = self._ir_with_tool_result()
         overrides = [
-            Override(
-                kind="truncate_tool_result", target="toolresult:nonexistent", value=100
-            )
+            Override(kind="truncate_tool_result", target="toolresult:nonexistent", value=100)
         ]
         _, audit = apply_overrides(overrides, ir)
         assert audit.entries[0].applied is False
 
     def test_zero_value_not_applied(self) -> None:
         ir = self._ir_with_tool_result("a" * 5000)
-        overrides = [
-            Override(kind="truncate_tool_result", target="toolresult:tu-1", value=0)
-        ]
+        overrides = [Override(kind="truncate_tool_result", target="toolresult:tu-1", value=0)]
         result, audit = apply_overrides(overrides, ir)
         assert audit.entries[0].applied is False
         user_msg = result.messages[1]
@@ -185,9 +163,7 @@ class TestTruncateToolResult:
 
     def test_negative_value_not_applied(self) -> None:
         ir = self._ir_with_tool_result("a" * 5000)
-        overrides = [
-            Override(kind="truncate_tool_result", target="toolresult:tu-1", value=-1)
-        ]
+        overrides = [Override(kind="truncate_tool_result", target="toolresult:tu-1", value=-1)]
         result, audit = apply_overrides(overrides, ir)
         assert audit.entries[0].applied is False
         user_msg = result.messages[1]
@@ -205,9 +181,7 @@ class TestMessageBlockToggle:
             ),
         ]
         ir = make_ir(messages=messages)
-        overrides = [
-            Override(kind="message_block_toggle", target="msg:0:blk:1", value=False)
-        ]
+        overrides = [Override(kind="message_block_toggle", target="msg:0:blk:1", value=False)]
         result, audit = apply_overrides(overrides, ir)
         assert len(result.messages[0].content) == 1
         assert result.messages[0].content[0].text == "keep"  # type: ignore[union-attr]
@@ -217,9 +191,7 @@ class TestMessageBlockToggle:
     def test_enable_block_is_noop(self) -> None:
         messages = [Message(role="user", content=[TextBlock(text="hello")])]
         ir = make_ir(messages=messages)
-        overrides = [
-            Override(kind="message_block_toggle", target="msg:0:blk:0", value=True)
-        ]
+        overrides = [Override(kind="message_block_toggle", target="msg:0:blk:0", value=True)]
         result, audit = apply_overrides(overrides, ir)
         assert len(result.messages[0].content) == 1
         assert audit.entries[0].applied is True
@@ -227,17 +199,13 @@ class TestMessageBlockToggle:
 
     def test_missing_block_skips(self) -> None:
         ir = make_ir()
-        overrides = [
-            Override(kind="message_block_toggle", target="msg:0:blk:99", value=False)
-        ]
+        overrides = [Override(kind="message_block_toggle", target="msg:0:blk:99", value=False)]
         _, audit = apply_overrides(overrides, ir)
         assert audit.entries[0].applied is False
 
     def test_missing_message_skips(self) -> None:
         ir = make_ir()
-        overrides = [
-            Override(kind="message_block_toggle", target="msg:99:blk:0", value=False)
-        ]
+        overrides = [Override(kind="message_block_toggle", target="msg:99:blk:0", value=False)]
         _, audit = apply_overrides(overrides, ir)
         assert audit.entries[0].applied is False
 
@@ -269,9 +237,7 @@ class TestMessageText:
             Message(role="assistant", content=[TextBlock(text="response")]),
         ]
         ir = make_ir(messages=messages)
-        overrides = [
-            Override(kind="message_text", target="msg:0:blk:0", value="modified")
-        ]
+        overrides = [Override(kind="message_text", target="msg:0:blk:0", value="modified")]
         result, audit = apply_overrides(overrides, ir)
         assert result.messages[0].content[0].text == "modified"  # type: ignore[union-attr]
         assert audit.entries[0].applied is True

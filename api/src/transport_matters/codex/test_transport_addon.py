@@ -28,12 +28,8 @@ async def test_addon_websocket_message_applies_pipeline_to_initial_frame() -> No
     store.upsert(Override(kind="system_part_text", target="system:0", value="patched"))
 
     addon.websocket_start(flow)
-    original = (
-        b'{"type":"response.create","model":"gpt-5-codex","instructions":"original"}'
-    )
-    flow.websocket.messages.append(
-        websocket.WebSocketMessage(Opcode.TEXT, True, original)
-    )
+    original = b'{"type":"response.create","model":"gpt-5-codex","instructions":"original"}'
+    flow.websocket.messages.append(websocket.WebSocketMessage(Opcode.TEXT, True, original))
 
     await addon.websocket_message(flow)
 
@@ -71,8 +67,7 @@ async def test_addon_websocket_message_pauses_and_rewrites_on_release() -> None:
         edited_ir = pf.curated_ir.model_copy(
             update={
                 "system": [
-                    part.model_copy(update={"text": "edited"})
-                    for part in pf.curated_ir.system
+                    part.model_copy(update={"text": "edited"}) for part in pf.curated_ir.system
                 ]
             }
         )
@@ -155,9 +150,7 @@ async def test_addon_websocket_message_persists_provisional_codex_exchange() -> 
     assert artifacts.turn.started_at == artifacts.transport.messages[0].ts
 
 
-async def test_addon_websocket_message_derives_session_from_current_codex_headers() -> (
-    None
-):
+async def test_addon_websocket_message_derives_session_from_current_codex_headers() -> None:
     addon = TransportMattersAddon()
     flow = _codex_flow()
     assert flow.websocket is not None
@@ -272,9 +265,7 @@ async def test_addon_websocket_message_advances_provisional_codex_exchange_on_se
     assert artifacts.turn.cursor.next_message_index == 2
 
 
-async def test_addon_websocket_message_projects_open_tool_activity_into_list_summary() -> (
-    None
-):
+async def test_addon_websocket_message_projects_open_tool_activity_into_list_summary() -> None:
     addon = TransportMattersAddon()
     flow = _codex_flow()
     assert flow.websocket is not None
@@ -352,9 +343,7 @@ async def test_addon_websocket_message_projects_open_tool_activity_into_list_sum
     assert finalized_entry.codex_turn.tool_calls == 1
 
 
-async def test_addon_websocket_message_keeps_provisional_exchange_visible_while_paused() -> (
-    None
-):
+async def test_addon_websocket_message_keeps_provisional_exchange_visible_while_paused() -> None:
     addon = TransportMattersAddon()
     flow = _codex_flow()
     assert flow.websocket is not None

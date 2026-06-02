@@ -208,9 +208,7 @@ class TestPatchOverrides:
         other = await client.get("/api/overrides?run_id=run-1&track_id=agent-2")
         assert other.json()["overrides"] == []
 
-    async def test_upsert_updates_matching_paused_scope(
-        self, client: AsyncClient
-    ) -> None:
+    async def test_upsert_updates_matching_paused_scope(self, client: AsyncClient) -> None:
         event = asyncio.Event()
         first = bp.PausedFlow(
             flow=None,  # type: ignore[arg-type]
@@ -307,9 +305,7 @@ class TestToggle:
         assert response.json()["enabled"] is True
 
     async def test_toggle_is_scoped(self, client: AsyncClient) -> None:
-        response = await client.post(
-            "/api/overrides/toggle?run_id=run-1&track_id=agent-1"
-        )
+        response = await client.post("/api/overrides/toggle?run_id=run-1&track_id=agent-1")
 
         assert response.status_code == 200
         assert response.json()["enabled"] is False
@@ -318,9 +314,7 @@ class TestToggle:
 
     async def test_toggle_with_paused_flow(self, client: AsyncClient) -> None:
         # Add an override first
-        get_store().upsert(
-            Override(kind="system_part_toggle", target="system:0", value=False)
-        )
+        get_store().upsert(Override(kind="system_part_toggle", target="system:0", value=False))
 
         event = asyncio.Event()
         bp._paused["flow-t"] = bp.PausedFlow(
@@ -344,9 +338,7 @@ class TestBypassPreview:
 
     async def test_patch_bypass_returns_identity(self, client: AsyncClient) -> None:
         store = get_store()
-        store.upsert(
-            Override(kind="system_part_toggle", target="system:0", value=False)
-        )
+        store.upsert(Override(kind="system_part_toggle", target="system:0", value=False))
         store.enabled = False
 
         event = asyncio.Event()
@@ -372,9 +364,7 @@ class TestBypassPreview:
 
     async def test_toggle_off_bypasses_overrides(self, client: AsyncClient) -> None:
         store = get_store()
-        store.upsert(
-            Override(kind="system_part_toggle", target="system:0", value=False)
-        )
+        store.upsert(Override(kind="system_part_toggle", target="system:0", value=False))
 
         event = asyncio.Event()
         pf = bp.PausedFlow(

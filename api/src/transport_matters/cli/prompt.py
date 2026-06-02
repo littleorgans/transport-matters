@@ -53,9 +53,7 @@ def user_supplied_system_prompt(passthrough: list[str]) -> bool:
     return False
 
 
-def inject_system_prompt(
-    passthrough: list[str], *, proxy_port: int, web_port: int
-) -> list[str]:
+def inject_system_prompt(passthrough: list[str], *, proxy_port: int, web_port: int) -> list[str]:
     """Prepend ``--append-system-prompt {message}`` to *passthrough*.
 
     Returns a new list — the input is not mutated. Caller is responsible

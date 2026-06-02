@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 import pytest
 from pydantic import ValidationError
 
@@ -47,9 +49,7 @@ def _derive_incrementally(
                 cursor=cursor,
                 operator_facts=(replay_request.operator_facts if offset == 0 else ()),
                 close=(
-                    replay_request.close
-                    if stop == len(replay_request.transport_messages)
-                    else None
+                    replay_request.close if stop == len(replay_request.transport_messages) else None
                 ),
                 started_at=started_at,
                 text_chars=text_chars,
@@ -74,7 +74,7 @@ def _derive_incrementally(
 def test_incremental_advance_requires_open_cursor_boundary() -> None:
     with pytest.raises(
         ValidationError,
-        match="incremental advance must begin at cursor.next_message_index",
+        match=re.escape("incremental advance must begin at cursor.next_message_index"),
     ):
         CodexIncrementalAdvanceRequest(
             context=make_context(),
@@ -91,14 +91,14 @@ def test_incremental_advance_requires_open_cursor_boundary() -> None:
             ],
         )
 
-    with pytest.raises(ValueError, match="cursor.next_seq must be >= 1"):
+    with pytest.raises(ValueError, match=re.escape("cursor.next_seq must be >= 1")):
         codex_next_event_seq(make_cursor(next_seq=0))
 
 
 def test_incremental_advance_rejects_terminal_cursor() -> None:
     with pytest.raises(
         ValidationError,
-        match="incremental advance cannot resume from a terminal cursor",
+        match=re.escape("incremental advance cannot resume from a terminal cursor"),
     ):
         CodexIncrementalAdvanceRequest(
             context=make_context(),
@@ -162,6 +162,4 @@ def test_incremental_advance_serializes_identically_to_replay(
     assert incremental_events == replay_events, (
         f"{scenario} incremental events diverged from replay"
     )
-    assert incremental_turn == replay_turn, (
-        f"{scenario} incremental turn diverged from replay"
-    )
+    assert incremental_turn == replay_turn, f"{scenario} incremental turn diverged from replay"

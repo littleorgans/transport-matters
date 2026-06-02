@@ -34,7 +34,7 @@ import typer
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
-    from importlib.abc import Traversable
+    from importlib.resources.abc import Traversable
 
 from transport_matters import __version__
 from transport_matters.lock import WorkspaceLock, WorkspaceLocked
@@ -226,10 +226,7 @@ def claude(
             "--proxy-port",
             "-p",
             envvar="TRANSPORT_MATTERS_PROXY_PORT",
-            help=(
-                "Port for the reverse-proxy listener "
-                "(default: kernel-allocated free port)."
-            ),
+            help=("Port for the reverse-proxy listener (default: kernel-allocated free port)."),
             show_default=False,
             callback=validate_port_option,
         ),
@@ -240,9 +237,7 @@ def claude(
             "--web-port",
             "-w",
             envvar="TRANSPORT_MATTERS_WEB_PORT",
-            help=(
-                "Port for the embedded web UI (default: kernel-allocated free port)."
-            ),
+            help=("Port for the embedded web UI (default: kernel-allocated free port)."),
             show_default=False,
             callback=validate_port_option,
         ),
@@ -389,10 +384,7 @@ def codex(
             "--proxy-port",
             "-p",
             envvar="TRANSPORT_MATTERS_PROXY_PORT",
-            help=(
-                "Port for the explicit-proxy listener "
-                "(default: kernel-allocated free port)."
-            ),
+            help=("Port for the explicit-proxy listener (default: kernel-allocated free port)."),
             show_default=False,
             callback=validate_port_option,
         ),
@@ -403,9 +395,7 @@ def codex(
             "--web-port",
             "-w",
             envvar="TRANSPORT_MATTERS_WEB_PORT",
-            help=(
-                "Port for the embedded web UI (default: kernel-allocated free port)."
-            ),
+            help=("Port for the embedded web UI (default: kernel-allocated free port)."),
             show_default=False,
             callback=validate_port_option,
         ),
@@ -432,10 +422,7 @@ def codex(
         Path | None,
         typer.Option(
             "--home-dir",
-            help=(
-                "Directory for Codex config and transcripts. "
-                "Defaults to Codex's native home."
-            ),
+            help=("Directory for Codex config and transcripts. Defaults to Codex's native home."),
             file_okay=False,
             dir_okay=True,
             resolve_path=False,

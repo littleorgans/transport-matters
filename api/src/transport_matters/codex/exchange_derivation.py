@@ -48,9 +48,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 _CODEX_BREAKPOINT_PAUSED_AT_MS_KEY = "transport_matters_codex_breakpoint_paused_at_ms"
-_CODEX_BREAKPOINT_RELEASED_AT_MS_KEY = (
-    "transport_matters_codex_breakpoint_released_at_ms"
-)
+_CODEX_BREAKPOINT_RELEASED_AT_MS_KEY = "transport_matters_codex_breakpoint_released_at_ms"
 
 
 def _clear_codex_breakpoint_lifecycle(flow: http.HTTPFlow) -> None:
@@ -83,9 +81,7 @@ def _codex_session_id(
     flow: http.HTTPFlow,
     request_state: Any,
 ) -> str | None:
-    session_id = codex_session_id_from_request_metadata(
-        request_state.request_ir.metadata
-    )
+    session_id = codex_session_id_from_request_metadata(request_state.request_ir.metadata)
     if session_id is not None:
         return session_id
     return codex_session_id_from_header_lookup(flow.request.headers.get)
@@ -106,9 +102,7 @@ def _codex_replay_context(
     existing_turn: CodexTurnSummary | None,
 ) -> CodexTurnDerivationContext | None:
     session_id = (
-        continuity.session_id
-        if continuity is not None
-        else _codex_session_id(flow, request_state)
+        continuity.session_id if continuity is not None else _codex_session_id(flow, request_state)
     )
     if session_id is None:
         return None
@@ -390,11 +384,7 @@ async def _rewrite_codex_provisional_exchange(
                 exchange_id=exchange_id,
                 request_state=request_state,
                 transport=transport,
-                turn_index=(
-                    existing_turn.turn_index
-                    if existing_turn is not None
-                    else turn_index
-                ),
+                turn_index=(existing_turn.turn_index if existing_turn is not None else turn_index),
                 continuity=allocation,
                 existing_turn=existing_turn,
             )

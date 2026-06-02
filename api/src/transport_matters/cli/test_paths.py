@@ -106,9 +106,7 @@ def test_paths_works_with_live_lock_in_same_cwd(
     storage.mkdir()
     run_dir = _write_run_manifest(
         tmp_path,
-        _sample_manifest(
-            workdir=tmp_path, storage=storage, pid=12345, run_id="run-001"
-        ),
+        _sample_manifest(workdir=tmp_path, storage=storage, pid=12345, run_id="run-001"),
     )
     with WorkspaceLock(run_dir):
         result = runner.invoke(main, ["paths"])
@@ -135,9 +133,7 @@ def test_paths_live_manifest_wins_over_default(
     monkeypatch.chdir(workdir)
     run_dir = _write_run_manifest(
         workdir,
-        _sample_manifest(
-            workdir=workdir, storage=custom_storage, pid=12345, proxy_port=5050
-        ),
+        _sample_manifest(workdir=workdir, storage=custom_storage, pid=12345, proxy_port=5050),
     )
 
     with WorkspaceLock(run_dir):
@@ -226,9 +222,7 @@ def test_paths_respects_transport_matters_cwd_env_over_process_cwd(
     storage = tmp_path / "launch-storage"
     run_dir = _write_run_manifest(
         launch_dir,
-        _sample_manifest(
-            workdir=launch_dir, storage=storage, pid=1, run_id="run-launch"
-        ),
+        _sample_manifest(workdir=launch_dir, storage=storage, pid=1, run_id="run-launch"),
     )
     monkeypatch.chdir(subdir)
     monkeypatch.setenv("TRANSPORT_MATTERS_CWD", str(launch_dir))
@@ -305,9 +299,7 @@ def test_paths_workspace_flag_accepts_slug(
     workdir.mkdir()
     _write_run_manifest(
         workdir,
-        _sample_manifest(
-            workdir=workdir, storage=tmp_storage, pid=9001, proxy_port=5050
-        ),
+        _sample_manifest(workdir=workdir, storage=tmp_storage, pid=9001, proxy_port=5050),
     )
 
     # Run from an unrelated CWD to ensure the slug lookup, not the CWD

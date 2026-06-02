@@ -36,19 +36,11 @@ class TrackAssignment:
 
     @property
     def track_spawn_exchange_id(self) -> str | None:
-        return (
-            self.spawn_anchor.track_spawn_exchange_id
-            if self.spawn_anchor is not None
-            else None
-        )
+        return self.spawn_anchor.track_spawn_exchange_id if self.spawn_anchor is not None else None
 
     @property
     def track_spawn_tool_use_id(self) -> str | None:
-        return (
-            self.spawn_anchor.track_spawn_tool_use_id
-            if self.spawn_anchor is not None
-            else None
-        )
+        return self.spawn_anchor.track_spawn_tool_use_id if self.spawn_anchor is not None else None
 
     @property
     def track_spawn_order(self) -> int | None:
@@ -261,9 +253,7 @@ class TrackManager:
             spawn_order=spawn_order,
         )
 
-    def _resolve_tool_results(
-        self, state: RunTrackState, request: InternalRequest
-    ) -> str | None:
+    def _resolve_tool_results(self, state: RunTrackState, request: InternalRequest) -> str | None:
         parent_track_ids: set[str] = set()
         owner_track_ids: set[str] = set()
         stale_owner_seen = False
@@ -314,9 +304,7 @@ class TrackManager:
             return
 
         payload = _json_payload(result)
-        agent_id = (
-            _string_or_none(payload.get("agent_id")) if payload is not None else None
-        )
+        agent_id = _string_or_none(payload.get("agent_id")) if payload is not None else None
         if agent_id is None:
             state.open_spawns.pop(pending.spawn_id, None)
             return
@@ -385,9 +373,7 @@ class TrackManager:
         unassigned = [
             track.track_id
             for track in state.tracks.values()
-            if track.role == "subagent"
-            and track.status != "closed"
-            and track.signature is None
+            if track.role == "subagent" and track.status != "closed" and track.signature is None
         ]
         if unassigned:
             return self._assignment(state, unassigned[0])
@@ -417,8 +403,7 @@ class TrackManager:
                 parents = {
                     state.tracks[target].parent_track_id
                     for target in targets
-                    if target in state.tracks
-                    and state.tracks[target].parent_track_id is not None
+                    if target in state.tracks and state.tracks[target].parent_track_id is not None
                 }
                 if len(parents) == 1:
                     return parents.pop()
@@ -517,10 +502,7 @@ def _codex_subagent_track_id(request: InternalRequest) -> str | None:
     if request.provider != "codex":
         return None
     metadata = request.metadata.provider_metadata
-    if (
-        "x-openai-subagent" not in metadata
-        and "x-codex-parent-thread-id" not in metadata
-    ):
+    if "x-openai-subagent" not in metadata and "x-codex-parent-thread-id" not in metadata:
         return None
     window_id = _string_or_none(metadata.get("x-codex-window-id"))
     if window_id:
@@ -537,9 +519,7 @@ def _codex_subagent_track_id(request: InternalRequest) -> str | None:
     return _string_or_none(payload.get("session_id"))
 
 
-def _codex_display_name_for_track(
-    request: InternalRequest, track_id: str
-) -> str | None:
+def _codex_display_name_for_track(request: InternalRequest, track_id: str) -> str | None:
     metadata = request.metadata.provider_metadata
     window_id = _string_or_none(metadata.get("x-codex-window-id"))
     if window_id and window_id.split(":", maxsplit=1)[0] == track_id:

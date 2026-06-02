@@ -109,9 +109,7 @@ def _make_open_turn() -> CodexTurnSummary:
         cursor=CodexDerivationCursor(
             next_message_index=1,
             next_seq=2,
-            open_assistant_items={
-                "msg_01": CodexOpenAssistantItem(text="partial assistant text")
-            },
+            open_assistant_items={"msg_01": CodexOpenAssistantItem(text="partial assistant text")},
             open_tool_calls={},
             terminal_seen=False,
         ),

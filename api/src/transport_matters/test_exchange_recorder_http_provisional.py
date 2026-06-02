@@ -139,9 +139,7 @@ def _make_response_body() -> dict[str, object]:
 
 
 @pytest.fixture(autouse=True)
-def _reset_runtime_state(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> Generator[None]:
+def _reset_runtime_state(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Generator[None]:
     yield from reset_exchange_recorder_runtime_state(tmp_path, monkeypatch)
 
 
@@ -224,9 +222,7 @@ def _make_noop_state() -> RequestFlowState:
             "model": "claude-3-5-sonnet",
             "system": [{"type": "text", "text": "same system"}],
             "max_tokens": 1024,
-            "messages": [
-                {"role": "user", "content": [{"type": "text", "text": "hello"}]}
-            ],
+            "messages": [{"role": "user", "content": [{"type": "text", "text": "hello"}]}],
         }
     ).encode()
     return RequestFlowState(
@@ -341,15 +337,11 @@ async def test_codex_http_derivation_receives_request_header_snapshot(
     assert calls[0]["request_headers"] == fresh_state.codex_request_headers
 
     provisional_state = _make_codex_state()
-    exchange_id = await recorder._persist_http_provisional_exchange(
-        flow, provisional_state
-    )
+    exchange_id = await recorder._persist_http_provisional_exchange(flow, provisional_state)
     assert exchange_id is not None
     provisional_state.provisional_exchange_id = exchange_id
 
-    finalized = await recorder._finalize_http_provisional_exchange(
-        flow, provisional_state, None
-    )
+    finalized = await recorder._finalize_http_provisional_exchange(flow, provisional_state, None)
 
     assert finalized is True
     assert calls[1]["request_headers"] == provisional_state.codex_request_headers
@@ -360,9 +352,7 @@ async def test_finalize_http_provisional_exchange_updates_pending_row_in_place(
 ) -> None:
     state = _make_state()
     flow = cast("http.HTTPFlow", _Flow())
-    track_calls: list[
-        tuple[str | None, RequestFlowState, InternalResponse | None, str | None]
-    ] = []
+    track_calls: list[tuple[str | None, RequestFlowState, InternalResponse | None, str | None]] = []
 
     def fake_track_assignment(
         run_id: str | None,
@@ -513,9 +503,7 @@ async def test_finalize_http_provisional_exchange_returns_false_for_missing_entr
     assert await storage.read_index(limit=10, offset=0) == []
 
 
-async def test_finalize_http_provisional_exchange_skips_token_stamping_without_counter() -> (
-    None
-):
+async def test_finalize_http_provisional_exchange_skips_token_stamping_without_counter() -> None:
     state = _make_state()
     flow = cast("http.HTTPFlow", _Flow())
     exchange_id = await recorder._persist_http_provisional_exchange(flow, state)
@@ -738,9 +726,7 @@ def test_tag_http_error_status_preserves_parsed_usage() -> None:
     flow = types.SimpleNamespace(
         response=types.SimpleNamespace(status_code=429),
     )
-    parsed = ResStats(
-        stop_reason="end_turn", input_tokens=10, output_tokens=5, text_chars=3
-    )
+    parsed = ResStats(stop_reason="end_turn", input_tokens=10, output_tokens=5, text_chars=3)
     tagged = recorder._tag_http_error_status(parsed, cast("http.HTTPFlow", flow), b"{}")
     assert tagged is not None
     assert tagged.stop_reason == "http_429"
@@ -755,7 +741,4 @@ def test_tag_http_error_status_noop_on_success() -> None:
 
     flow = types.SimpleNamespace(response=types.SimpleNamespace(status_code=200))
     parsed = ResStats(stop_reason="end_turn", input_tokens=10)
-    assert (
-        recorder._tag_http_error_status(parsed, cast("http.HTTPFlow", flow), b"{}")
-        is parsed
-    )
+    assert recorder._tag_http_error_status(parsed, cast("http.HTTPFlow", flow), b"{}") is parsed

@@ -31,9 +31,7 @@ MINIMAL_REQUEST: dict[str, Any] = {
 
 WITH_TOOLS_REQUEST: dict[str, Any] = {
     "max_tokens": 4096,
-    "messages": [
-        {"role": "user", "content": [{"type": "text", "text": "Read /tmp/foo"}]}
-    ],
+    "messages": [{"role": "user", "content": [{"type": "text", "text": "Read /tmp/foo"}]}],
     "model": "claude-sonnet-4-20250514",
     "tools": [
         {
@@ -258,17 +256,13 @@ class TestRoundTrip:
         result = adapter.outbound_request(ir)
         assert json.loads(result) == _normalise(WITH_EXTRAS_REQUEST)
 
-    def test_block_level_extras_survive_round_trip(
-        self, adapter: AnthropicAdapter
-    ) -> None:
+    def test_block_level_extras_survive_round_trip(self, adapter: AnthropicAdapter) -> None:
         raw = json.dumps(WITH_BLOCK_EXTRAS_REQUEST, sort_keys=True).encode()
         ir = adapter.inbound_request(raw)
         result = adapter.outbound_request(ir)
         assert json.loads(result) == _normalise(WITH_BLOCK_EXTRAS_REQUEST)
 
-    def test_tool_result_extras_survive_round_trip(
-        self, adapter: AnthropicAdapter
-    ) -> None:
+    def test_tool_result_extras_survive_round_trip(self, adapter: AnthropicAdapter) -> None:
         raw = json.dumps(WITH_TOOL_RESULT_EXTRAS_REQUEST, sort_keys=True).encode()
         ir = adapter.inbound_request(raw)
         result = adapter.outbound_request(ir)
@@ -436,9 +430,7 @@ class TestForwardCompat:
     (e.g. Claude Code 2.1.154 inlining a {"role":"system"} message).
     """
 
-    def test_unknown_message_role_passes_through(
-        self, adapter: AnthropicAdapter
-    ) -> None:
+    def test_unknown_message_role_passes_through(self, adapter: AnthropicAdapter) -> None:
         raw = json.dumps(
             {
                 "model": "claude-opus-4-8",
@@ -453,9 +445,7 @@ class TestForwardCompat:
         assert ir.messages[0].role == "system"
         assert ir.messages[1].role == "user"
 
-    def test_missing_message_role_defaults_to_user(
-        self, adapter: AnthropicAdapter
-    ) -> None:
+    def test_missing_message_role_defaults_to_user(self, adapter: AnthropicAdapter) -> None:
         raw = json.dumps(
             {
                 "model": "m",
@@ -466,9 +456,7 @@ class TestForwardCompat:
         ir = adapter.inbound_request(raw)
         assert ir.messages[0].role == "user"
 
-    def test_text_block_missing_text_degrades_to_unknown(
-        self, adapter: AnthropicAdapter
-    ) -> None:
+    def test_text_block_missing_text_degrades_to_unknown(self, adapter: AnthropicAdapter) -> None:
         raw = json.dumps(
             {
                 "model": "m",
@@ -479,9 +467,7 @@ class TestForwardCompat:
         ir = adapter.inbound_request(raw)
         assert ir.messages[0].content[0].type == "unknown"
 
-    def test_tool_use_missing_input_degrades_to_unknown(
-        self, adapter: AnthropicAdapter
-    ) -> None:
+    def test_tool_use_missing_input_degrades_to_unknown(self, adapter: AnthropicAdapter) -> None:
         raw = json.dumps(
             {
                 "model": "m",
@@ -528,9 +514,7 @@ class TestForwardCompat:
         ir = adapter.inbound_request(raw)
         assert ir.messages[0].content[0].type == "unknown"
 
-    def test_tool_result_unknown_subblock_shape_degrades(
-        self, adapter: AnthropicAdapter
-    ) -> None:
+    def test_tool_result_unknown_subblock_shape_degrades(self, adapter: AnthropicAdapter) -> None:
         raw = json.dumps(
             {
                 "model": "m",
@@ -560,9 +544,7 @@ class TestForwardCompat:
                 "model": "m",
                 "max_tokens": 16,
                 "system": "You are helpful.",
-                "messages": [
-                    {"role": "user", "content": [{"type": "text", "text": "x"}]}
-                ],
+                "messages": [{"role": "user", "content": [{"type": "text", "text": "x"}]}],
             }
         ).encode()
         ir = adapter.inbound_request(raw)
@@ -574,9 +556,7 @@ class TestForwardCompat:
             {
                 "model": "m",
                 "max_tokens": 16,
-                "messages": [
-                    {"role": "user", "content": [{"type": "text", "text": "x"}]}
-                ],
+                "messages": [{"role": "user", "content": [{"type": "text", "text": "x"}]}],
                 "tools": [{"type": "web_search_20250305", "name": "web_search"}],
             }
         ).encode()
@@ -587,9 +567,7 @@ class TestForwardCompat:
         raw = json.dumps(
             {
                 "max_tokens": 16,
-                "messages": [
-                    {"role": "user", "content": [{"type": "text", "text": "x"}]}
-                ],
+                "messages": [{"role": "user", "content": [{"type": "text", "text": "x"}]}],
             }
         ).encode()
         ir = adapter.inbound_request(raw)
@@ -599,17 +577,13 @@ class TestForwardCompat:
         raw = json.dumps(
             {
                 "model": "m",
-                "messages": [
-                    {"role": "user", "content": [{"type": "text", "text": "x"}]}
-                ],
+                "messages": [{"role": "user", "content": [{"type": "text", "text": "x"}]}],
             }
         ).encode()
         ir = adapter.inbound_request(raw)
         assert ir.sampling.max_tokens == 0
 
-    def test_error_response_body_does_not_crash(
-        self, adapter: AnthropicAdapter
-    ) -> None:
+    def test_error_response_body_does_not_crash(self, adapter: AnthropicAdapter) -> None:
         raw = json.dumps(
             {"type": "error", "error": {"type": "rate_limit_error", "message": "slow"}}
         ).encode()
@@ -630,19 +604,13 @@ class TestForwardCompatContentShapes:
             }
         ).encode()
 
-    def test_tool_result_null_content_degrades_block(
-        self, adapter: AnthropicAdapter
-    ) -> None:
+    def test_tool_result_null_content_degrades_block(self, adapter: AnthropicAdapter) -> None:
         raw = self._req([{"type": "tool_result", "tool_use_id": "t", "content": None}])
         ir = adapter.inbound_request(raw)
         assert ir.messages[0].content[0].type == "unknown"
 
-    def test_tool_result_dict_content_degrades_block(
-        self, adapter: AnthropicAdapter
-    ) -> None:
-        raw = self._req(
-            [{"type": "tool_result", "tool_use_id": "t", "content": {"weird": 1}}]
-        )
+    def test_tool_result_dict_content_degrades_block(self, adapter: AnthropicAdapter) -> None:
+        raw = self._req([{"type": "tool_result", "tool_use_id": "t", "content": {"weird": 1}}])
         ir = adapter.inbound_request(raw)
         assert ir.messages[0].content[0].type == "unknown"
 
@@ -652,9 +620,7 @@ class TestForwardCompatContentShapes:
         assert ir.messages[0].content[0].type == "unknown"
         assert ir.messages[0].content[1].type == "text"
 
-    def test_non_dict_tool_result_subblock_degrades(
-        self, adapter: AnthropicAdapter
-    ) -> None:
+    def test_non_dict_tool_result_subblock_degrades(self, adapter: AnthropicAdapter) -> None:
         raw = self._req(
             [{"type": "tool_result", "tool_use_id": "t", "content": ["bare", {"x": 1}]}]
         )

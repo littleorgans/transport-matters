@@ -128,12 +128,10 @@ class TestWriteAndReadExchange:
         assert loaded.transport.close is not None
         assert loaded.transport.close.close_code == 1000
         request_headers = {
-            header.name: header.value
-            for header in loaded.transport.upgrade.request_headers
+            header.name: header.value for header in loaded.transport.upgrade.request_headers
         }
         response_headers = {
-            header.name: header.value
-            for header in loaded.transport.upgrade.response_headers
+            header.name: header.value for header in loaded.transport.upgrade.response_headers
         }
         assert request_headers["authorization"] == "Bearer [redacted]"
         assert request_headers["x-test"] == "1"
@@ -141,9 +139,7 @@ class TestWriteAndReadExchange:
         assert response_headers["x-upstream"] == "chatgpt"
         assert loaded.transport.messages[0].event_type == "response.create"
 
-    async def test_rewrite_existing_exchange_dir(
-        self, storage: DiskStorageBackend
-    ) -> None:
+    async def test_rewrite_existing_exchange_dir(self, storage: DiskStorageBackend) -> None:
         exchange_id = "rewrite01-1234"
         original_ir = disk_tests._make_ir()
         await storage.write_exchange(
@@ -170,11 +166,7 @@ class TestWriteAndReadExchange:
                 request_ir=original_ir,
                 request_curated_raw=b'{"model":"claude-sonnet-4-20250514","max_tokens":256}',
                 request_curated_ir=original_ir.model_copy(
-                    update={
-                        "messages": [
-                            Message(role="user", content=[TextBlock(text="patched")])
-                        ]
-                    }
+                    update={"messages": [Message(role="user", content=[TextBlock(text="patched")])]}
                 ),
                 response_raw=b'{"id":"msg_final"}',
                 response_ir=final_response,
@@ -197,9 +189,7 @@ class TestWriteAndReadExchange:
         (exchange_dir / "request.raw").write_bytes(
             b'{"type":"response.create","model":"gpt-5-codex"}'
         )
-        (exchange_dir / "request.ir.json").write_text(
-            disk_tests._make_ir().model_dump_json()
-        )
+        (exchange_dir / "request.ir.json").write_text(disk_tests._make_ir().model_dump_json())
         (exchange_dir / "transport.json").write_text(
             """
 {
@@ -229,12 +219,10 @@ class TestWriteAndReadExchange:
 
         assert loaded.transport is not None
         request_headers = {
-            header.name: header.value
-            for header in loaded.transport.upgrade.request_headers
+            header.name: header.value for header in loaded.transport.upgrade.request_headers
         }
         response_headers = {
-            header.name: header.value
-            for header in loaded.transport.upgrade.response_headers
+            header.name: header.value for header in loaded.transport.upgrade.response_headers
         }
         assert request_headers["authorization"] == "Bearer [redacted]"
         assert request_headers["origin"] == "https://chatgpt.com"

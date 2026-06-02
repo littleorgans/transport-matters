@@ -40,6 +40,7 @@ from transport_matters.pause_session import (
 
 __all__ = [
     "TransportMattersAddon",
+    "addons",
     "build_pipeline_stats",
     "build_req_stats",
     "build_res_stats",
@@ -47,7 +48,6 @@ __all__ = [
     "fire_pause_count",
     "resolve_paused_flow",
     "stamp_pipeline_tokens",
-    "addons",
 ]
 
 # ── Addon ───────────────────────────────────────────────────────────

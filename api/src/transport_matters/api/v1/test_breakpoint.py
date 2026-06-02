@@ -100,9 +100,7 @@ class TestReleaseAndDrop:
                 "provider": "anthropic",
                 "system": [],
                 "tools": [],
-                "messages": [
-                    {"role": "user", "content": [{"type": "text", "text": "hi"}]}
-                ],
+                "messages": [{"role": "user", "content": [{"type": "text", "text": "hi"}]}],
                 "sampling": {"max_tokens": 1024},
                 "metadata": {},
             },
@@ -189,9 +187,7 @@ class TestGetPausedFlow:
             "track_spawn_order": 0,
         }
 
-    async def test_returns_tokens_before_when_stamped(
-        self, client: AsyncClient
-    ) -> None:
+    async def test_returns_tokens_before_when_stamped(self, client: AsyncClient) -> None:
         """After the background count lands, GET surfaces the stored value."""
         event = asyncio.Event()
         bp._paused["flow-tok"] = bp.PausedFlow(
@@ -224,9 +220,7 @@ class TestGetPausedFlow:
         assert response.status_code == 200
         assert response.json()["transport"] == "websocket"
 
-    async def test_returns_websocket_provisional_exchange_id(
-        self, client: AsyncClient
-    ) -> None:
+    async def test_returns_websocket_provisional_exchange_id(self, client: AsyncClient) -> None:
         event = asyncio.Event()
         flow = MagicMock()
         flow.metadata = {
@@ -296,9 +290,7 @@ class TestReAudit:
     async def test_re_audit_applies_override(self, client: AsyncClient) -> None:
         """Re-audit applies current overrides to original IR."""
         store = get_store()
-        store.upsert(
-            Override(kind="system_part_toggle", target="system:0", value=False)
-        )
+        store.upsert(Override(kind="system_part_toggle", target="system:0", value=False))
 
         event = asyncio.Event()
         bp._paused["flow-rule"] = bp.PausedFlow(
@@ -317,9 +309,7 @@ class TestReAudit:
         # System part should be stripped
         assert data["curated_ir"]["system"] == []
 
-    async def test_re_audit_applies_matching_track_scope(
-        self, client: AsyncClient
-    ) -> None:
+    async def test_re_audit_applies_matching_track_scope(self, client: AsyncClient) -> None:
         store = get_store()
         store.upsert(
             Override(kind="system_part_toggle", target="system:0", value=False),
@@ -350,9 +340,7 @@ class TestReAudit:
     async def test_re_audit_updates_paused_flow(self, client: AsyncClient) -> None:
         """Re-audit mutates the PausedFlow curated_ir and audit in place."""
         store = get_store()
-        store.upsert(
-            Override(kind="system_part_toggle", target="system:0", value=False)
-        )
+        store.upsert(Override(kind="system_part_toggle", target="system:0", value=False))
 
         event = asyncio.Event()
         pf = bp.PausedFlow(
@@ -394,9 +382,7 @@ class TestReAudit:
     async def test_re_audit_bypass_when_disabled(self, client: AsyncClient) -> None:
         """Re-audit returns identity audit when store.enabled is False."""
         store = get_store()
-        store.upsert(
-            Override(kind="system_part_toggle", target="system:0", value=False)
-        )
+        store.upsert(Override(kind="system_part_toggle", target="system:0", value=False))
         store.enabled = False
 
         event = asyncio.Event()
@@ -445,9 +431,7 @@ class TestReAudit:
         assert "tokens_before" in data
         assert data["tokens_before"] is None
 
-    async def test_re_audit_fires_counter_when_registered(
-        self, client: AsyncClient
-    ) -> None:
+    async def test_re_audit_fires_counter_when_registered(self, client: AsyncClient) -> None:
         """When the counter is available, re-audit recounts and persists the result."""
         from transport_matters import counting
 
@@ -455,9 +439,7 @@ class TestReAudit:
             def __init__(self) -> None:
                 self.calls = 0
 
-            async def count(
-                self, payload: bytes, auth_headers: dict[str, str]
-            ) -> int | None:
+            async def count(self, payload: bytes, auth_headers: dict[str, str]) -> int | None:
                 self.calls += 1
                 return 777
 
@@ -494,9 +476,7 @@ class TestReAudit:
             def __init__(self) -> None:
                 self.calls = 0
 
-            async def count(
-                self, payload: bytes, auth_headers: dict[str, str]
-            ) -> int | None:
+            async def count(self, payload: bytes, auth_headers: dict[str, str]) -> int | None:
                 self.calls += 1
                 return 1
 
@@ -523,9 +503,7 @@ class TestReAudit:
         finally:
             counting.set_counter(None)
 
-    async def test_re_audit_skips_counter_when_auth_missing(
-        self, client: AsyncClient
-    ) -> None:
+    async def test_re_audit_skips_counter_when_auth_missing(self, client: AsyncClient) -> None:
         """Legacy paused flows (no auth_headers stored) must not call the counter."""
         from transport_matters import counting
 
@@ -533,9 +511,7 @@ class TestReAudit:
             def __init__(self) -> None:
                 self.calls = 0
 
-            async def count(
-                self, payload: bytes, auth_headers: dict[str, str]
-            ) -> int | None:
+            async def count(self, payload: bytes, auth_headers: dict[str, str]) -> int | None:
                 self.calls += 1
                 return 1
 
@@ -628,9 +604,7 @@ class TestReleaseValidation:
         assert not pf.event.is_set()
         assert pf.release_payload is None
 
-    async def test_release_surfaces_serialization_errors(
-        self, client: AsyncClient
-    ) -> None:
+    async def test_release_surfaces_serialization_errors(self, client: AsyncClient) -> None:
         event = asyncio.Event()
         broken_ir = InternalRequest(
             model="codex/gpt-5-codex",

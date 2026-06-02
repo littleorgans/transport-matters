@@ -86,9 +86,7 @@ def _assignment_for_track(manager: TrackManager, track_id: str) -> TrackAssignme
     return manager._assignment(manager._state(ROOT_RUN_ID), track_id)
 
 
-def _spawn_anthropic_children(
-    manager: TrackManager, *spawn_ids: str
-) -> dict[str, TrackAssignment]:
+def _spawn_anthropic_children(manager: TrackManager, *spawn_ids: str) -> dict[str, TrackAssignment]:
     manager.record_exchange(
         ROOT_RUN_ID,
         _request(tools_count=100),
@@ -100,9 +98,7 @@ def _spawn_anthropic_children(
     }
 
 
-def _record_child_tool_use(
-    manager: TrackManager, child_track_id: str, tool_use_id: str
-) -> None:
+def _record_child_tool_use(manager: TrackManager, child_track_id: str, tool_use_id: str) -> None:
     manager.observe_response(
         ROOT_RUN_ID,
         child_track_id,
@@ -182,9 +178,7 @@ def test_late_tool_result_for_closed_subagent_routes_to_parent(
     _record_child_tool_use(manager, tool_owner.track_id, tool_use_id)
     _kill_track(manager, tool_owner.track_id)
 
-    late_result = manager.record_exchange(
-        ROOT_RUN_ID, _late_tool_result_request(tool_use_id), None
-    )
+    late_result = manager.record_exchange(ROOT_RUN_ID, _late_tool_result_request(tool_use_id), None)
 
     for track_id, expected_status in expected_statuses.items():
         assert children[track_id].track_id == track_id
@@ -280,18 +274,14 @@ def _arrange_nested_anthropic_subagent(
         _response(content=[_agent_tool_use("toolu_child", "worker")]),
         exchange_id="ex-root-spawn",
     )
-    child_assignment = manager.record_exchange(
-        ROOT_RUN_ID, _request(tools_count=90), None
-    )
+    child_assignment = manager.record_exchange(ROOT_RUN_ID, _request(tools_count=90), None)
     manager.record_exchange(
         ROOT_RUN_ID,
         _request(tools_count=90),
         _response(content=[_agent_tool_use("toolu_grandchild", "nested")]),
         exchange_id="ex-child-spawn",
     )
-    grandchild_assignment = manager.record_exchange(
-        ROOT_RUN_ID, _request(tools_count=80), None
-    )
+    grandchild_assignment = manager.record_exchange(ROOT_RUN_ID, _request(tools_count=80), None)
     return {"child": child_assignment, "grandchild": grandchild_assignment}
 
 
@@ -342,9 +332,7 @@ def _arrange_codex_nested_subagent(
                     content=[
                         _tool_result(
                             CODEX_SPAWN_ID,
-                            json.dumps(
-                                {"agent_id": CODEX_AGENT_ID, "nickname": "worker"}
-                            ),
+                            json.dumps({"agent_id": CODEX_AGENT_ID, "nickname": "worker"}),
                         )
                     ],
                 )
@@ -381,9 +369,7 @@ def _arrange_codex_nested_subagent(
                     content=[
                         _tool_result(
                             "call_grandchild_spawn",
-                            json.dumps(
-                                {"agent_id": grandchild_id, "nickname": "nested"}
-                            ),
+                            json.dumps({"agent_id": grandchild_id, "nickname": "nested"}),
                         )
                     ],
                 )
@@ -429,9 +415,7 @@ def _arrange_codex_failed_spawn_result(
         messages=[
             Message(
                 role="user",
-                content=[
-                    _tool_result("call_failed", json.dumps({"error": "rejected"}))
-                ],
+                content=[_tool_result("call_failed", json.dumps({"error": "rejected"}))],
             )
         ],
     )
@@ -443,9 +427,7 @@ def _arrange_codex_failed_spawn_result(
     }
 
 
-def _assert_codex_failed_spawn(
-    manager: TrackManager, assignments: CaseAssignments
-) -> None:
+def _assert_codex_failed_spawn(manager: TrackManager, assignments: CaseAssignments) -> None:
     assert assignments["assignment"].track_id == ROOT_RUN_ID
     assert set(manager.tracks(ROOT_RUN_ID)) == {ROOT_RUN_ID}
     assert manager._runs[ROOT_RUN_ID].open_spawns == {}

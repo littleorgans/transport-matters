@@ -129,9 +129,7 @@ def derive_codex_http_turn(
                 close=None,
             )
         )
-    except (ValidationError, ValueError):
-        logger.exception(
-            "derive_codex_http_turn: derivation failed for %s", exchange_id
-        )
+    except ValidationError, ValueError:
+        logger.exception("derive_codex_http_turn: derivation failed for %s", exchange_id)
         return None
     return artifacts

@@ -5,7 +5,7 @@ from __future__ import annotations
 import signal
 import subprocess
 import termios
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, ClassVar
 
 import pytest
 
@@ -19,9 +19,9 @@ if TYPE_CHECKING:
 class FakePopen:
     """Stand-in for `subprocess.Popen` that never forks a real process."""
 
-    instances: list[FakePopen] = []
-    killpg_calls: list[tuple[int, int]] = []
-    kill_calls_by_pid: list[tuple[int, int]] = []
+    instances: ClassVar[list[FakePopen]] = []
+    killpg_calls: ClassVar[list[tuple[int, int]]] = []
+    kill_calls_by_pid: ClassVar[list[tuple[int, int]]] = []
     _next_pid: int = 12_345
 
     def __init__(
@@ -138,7 +138,7 @@ def as_fake(mp: ManagedProcess) -> FakePopen:
 class StubThread:
     """Stand-in for `threading.Thread` used in the PTY shuttle tests."""
 
-    instances: list[StubThread] = []
+    instances: ClassVar[list[StubThread]] = []
 
     def __init__(
         self,

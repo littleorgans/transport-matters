@@ -75,9 +75,7 @@ def test_auth_headers_ignores_unrelated_headers() -> None:
 
 def test_cache_key_distinguishes_different_auth() -> None:
     payload = b'{"model":"c"}'
-    assert _cache_key(payload, {"x-api-key": "a"}) != _cache_key(
-        payload, {"x-api-key": "b"}
-    )
+    assert _cache_key(payload, {"x-api-key": "a"}) != _cache_key(payload, {"x-api-key": "b"})
 
 
 def test_cache_key_stable_across_dict_insertion_order() -> None:
@@ -177,16 +175,12 @@ class TestTokenCounterFailurePaths:
             assert await counter.count(b'{"model":"x"}', {}) is None
 
     async def test_5xx_returns_none(self) -> None:
-        async with _client_with_handler(
-            lambda r: httpx.Response(503, text="bad gateway")
-        ) as c:
+        async with _client_with_handler(lambda r: httpx.Response(503, text="bad gateway")) as c:
             counter = TokenCounter(c)
             assert await counter.count(b'{"model":"x"}', {}) is None
 
     async def test_4xx_non_429_returns_none(self) -> None:
-        async with _client_with_handler(
-            lambda r: httpx.Response(400, text="bad request")
-        ) as c:
+        async with _client_with_handler(lambda r: httpx.Response(400, text="bad request")) as c:
             counter = TokenCounter(c)
             assert await counter.count(b'{"model":"x"}', {}) is None
 
@@ -199,9 +193,7 @@ class TestTokenCounterFailurePaths:
             assert await counter.count(b'{"model":"x"}', {}) is None
 
     async def test_malformed_response_body_returns_none(self) -> None:
-        async with _client_with_handler(
-            lambda r: httpx.Response(200, content=b"not json")
-        ) as c:
+        async with _client_with_handler(lambda r: httpx.Response(200, content=b"not json")) as c:
             counter = TokenCounter(c)
             assert await counter.count(b'{"model":"x"}', {}) is None
 

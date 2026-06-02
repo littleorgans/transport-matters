@@ -57,9 +57,7 @@ def test_record_codex_websocket_message_tracks_counts_and_initial_frame() -> Non
     assert flow.websocket is not None
 
     flow.websocket.messages.append(
-        websocket.WebSocketMessage(
-            Opcode.TEXT, False, b'{"type":"response.output_text.delta"}'
-        )
+        websocket.WebSocketMessage(Opcode.TEXT, False, b'{"type":"response.output_text.delta"}')
     )
     update = record_codex_websocket_message(flow)
     assert update is not None
@@ -130,9 +128,7 @@ def test_record_codex_websocket_message_allocates_continuity_from_headers() -> N
     retry_flow = _codex_flow()
     retry_flow.request.headers["session-id"] = "session-real"
     retry_flow.request.headers["thread-id"] = "thread-real"
-    retry_flow.request.headers["x-codex-turn-metadata"] = json.dumps(
-        {"turn_id": "turn-real"}
-    )
+    retry_flow.request.headers["x-codex-turn-metadata"] = json.dumps({"turn_id": "turn-real"})
     assert retry_flow.websocket is not None
     ensure_codex_transport_state(retry_flow)
     retry_flow.websocket.messages.append(
@@ -203,12 +199,8 @@ def test_build_codex_transport_artifacts_redacts_sensitive_upgrade_headers() -> 
     transport = build_codex_transport_artifacts(flow)
 
     assert transport is not None
-    request_headers = {
-        header.name: header.value for header in transport.upgrade.request_headers
-    }
-    response_headers = {
-        header.name: header.value for header in transport.upgrade.response_headers
-    }
+    request_headers = {header.name: header.value for header in transport.upgrade.request_headers}
+    response_headers = {header.name: header.value for header in transport.upgrade.response_headers}
     assert request_headers["authorization"] == "Bearer [redacted]"
     assert request_headers["cookie"] == "[redacted]"
     assert request_headers["session-id"] == "sess-123"
@@ -217,9 +209,7 @@ def test_build_codex_transport_artifacts_redacts_sensitive_upgrade_headers() -> 
     assert response_headers["x-upstream"] == "chatgpt"
 
 
-def test_parse_codex_response_payloads_prefers_completed_output_items_and_usage() -> (
-    None
-):
+def test_parse_codex_response_payloads_prefers_completed_output_items_and_usage() -> None:
     response = parse_codex_response_payloads(
         [
             {
@@ -229,9 +219,7 @@ def test_parse_codex_response_payloads_prefers_completed_output_items_and_usage(
                     "type": "reasoning",
                     "status": "completed",
                     "encrypted_content": "opaque",
-                    "summary": [
-                        {"type": "summary_text", "text": "considering tradeoffs"}
-                    ],
+                    "summary": [{"type": "summary_text", "text": "considering tradeoffs"}],
                 },
             },
             {

@@ -91,9 +91,7 @@ async def _fake_run_pipeline(
 
 
 def _codex_ir() -> InternalRequest:
-    return _curated_ir().model_copy(
-        update={"model": "codex/gpt-5-codex", "provider": "codex"}
-    )
+    return _curated_ir().model_copy(update={"model": "codex/gpt-5-codex", "provider": "codex"})
 
 
 class _FakeCodexAdapter:
@@ -169,9 +167,7 @@ async def test_http_request_leaves_flow_clean_when_provisional_persist_fails(
     assert calls == 1
     assert state is not None
     assert state.provisional_exchange_id is None
-    assert json.loads(cast("_Flow", flow).request.text)["system"][0]["text"] == (
-        "curated system"
-    )
+    assert json.loads(cast("_Flow", flow).request.text)["system"][0]["text"] == ("curated system")
 
 
 async def test_http_request_preserves_original_bytes_when_pipeline_is_noop(
@@ -294,9 +290,7 @@ def _drive_codex_ws_noop(
     state = _WSState()
     flow = cast(
         "http.HTTPFlow",
-        types.SimpleNamespace(
-            id="flow-ws", websocket=types.SimpleNamespace(messages=[object()])
-        ),
+        types.SimpleNamespace(id="flow-ws", websocket=types.SimpleNamespace(messages=[object()])),
     )
     ir = _codex_ir()
 
@@ -315,24 +309,16 @@ def _drive_codex_ws_noop(
         "record_codex_websocket_message",
         lambda f: (state, message, True),
     )
-    monkeypatch.setattr(
-        addon_handlers, "_clear_codex_breakpoint_lifecycle", lambda f: None
-    )
-    monkeypatch.setattr(
-        addon_handlers, "capture_codex_initial_request_ir", lambda f, frame: ir
-    )
+    monkeypatch.setattr(addon_handlers, "_clear_codex_breakpoint_lifecycle", lambda f: None)
+    monkeypatch.setattr(addon_handlers, "capture_codex_initial_request_ir", lambda f, frame: ir)
     monkeypatch.setattr(
         addon_handlers,
         "get_request_flow_state",
         lambda f: types.SimpleNamespace(adapter=adapter),
     )
     monkeypatch.setattr(addon_handlers, "run_pipeline", noop_pipeline)
-    monkeypatch.setattr(
-        addon_handlers, "update_request_flow_state", lambda *a, **k: None
-    )
-    monkeypatch.setattr(
-        addon_handlers, "_persist_codex_provisional_exchange", noop_persist
-    )
+    monkeypatch.setattr(addon_handlers, "update_request_flow_state", lambda *a, **k: None)
+    monkeypatch.setattr(addon_handlers, "_persist_codex_provisional_exchange", noop_persist)
     monkeypatch.setattr(addon_handlers, "_should_skip_breakpoint", lambda model: True)
     return flow
 
@@ -500,9 +486,7 @@ async def test_addon_error_deletes_http_provisional_exchange(
 ) -> None:
     flow = cast("http.HTTPFlow", _Flow())
     ir = _curated_ir()
-    capture_request_flow_state(
-        flow, adapter=object(), request_ir=ir, raw_request=b"raw"
-    )
+    capture_request_flow_state(flow, adapter=object(), request_ir=ir, raw_request=b"raw")
     state = update_request_flow_state(flow, provisional_exchange_id="exchange-error")
     assert state is not None
     calls: list[tuple[http.HTTPFlow, RequestFlowState]] = []
@@ -531,9 +515,7 @@ async def test_addon_error_skips_codex_websocket_flow(
     )
     cast("_Flow", flow).request.headers["Upgrade"] = "websocket"
     ir = _curated_ir()
-    capture_request_flow_state(
-        flow, adapter=object(), request_ir=ir, raw_request=b"raw"
-    )
+    capture_request_flow_state(flow, adapter=object(), request_ir=ir, raw_request=b"raw")
     update_request_flow_state(flow, provisional_exchange_id="exchange-codex")
 
     async def fail_delete(*args: object) -> bool:
@@ -563,9 +545,7 @@ async def test_addon_error_skips_when_provisional_exchange_id_missing(
 ) -> None:
     flow = cast("http.HTTPFlow", _Flow())
     ir = _curated_ir()
-    capture_request_flow_state(
-        flow, adapter=object(), request_ir=ir, raw_request=b"raw"
-    )
+    capture_request_flow_state(flow, adapter=object(), request_ir=ir, raw_request=b"raw")
 
     async def fail_delete(*args: object) -> bool:
         raise AssertionError("Missing provisional id must short-circuit error hook")
@@ -600,12 +580,8 @@ async def test_http_request_records_unparsed_exchange_on_parse_failure(
 
     monkeypatch.setattr(addon_handlers, "get_adapter", lambda flow: object())
     monkeypatch.setattr(addon_handlers, "parse_request_ir", fake_parse)
-    monkeypatch.setattr(
-        addon_handlers, "_persist_unparsed_http_exchange", fake_unparsed
-    )
-    monkeypatch.setattr(
-        addon_handlers, "_persist_http_provisional_exchange", fail_persist
-    )
+    monkeypatch.setattr(addon_handlers, "_persist_unparsed_http_exchange", fake_unparsed)
+    monkeypatch.setattr(addon_handlers, "_persist_http_provisional_exchange", fail_persist)
 
     await addon_handlers.handle_http_request(flow, None)
 
@@ -642,16 +618,10 @@ async def test_codex_ws_records_unparsed_exchange_when_initial_frame_unparsable(
         "record_codex_websocket_message",
         lambda f: (state, message, True),
     )
-    monkeypatch.setattr(
-        addon_handlers, "_clear_codex_breakpoint_lifecycle", lambda f: None
-    )
-    monkeypatch.setattr(
-        addon_handlers, "capture_codex_initial_request_ir", lambda f, frame: None
-    )
+    monkeypatch.setattr(addon_handlers, "_clear_codex_breakpoint_lifecycle", lambda f: None)
+    monkeypatch.setattr(addon_handlers, "capture_codex_initial_request_ir", lambda f, frame: None)
     monkeypatch.setattr(addon_handlers, "clear_request_flow_state", lambda f: None)
-    monkeypatch.setattr(
-        addon_handlers, "_persist_unparsed_codex_exchange", fake_unparsed
-    )
+    monkeypatch.setattr(addon_handlers, "_persist_unparsed_codex_exchange", fake_unparsed)
     monkeypatch.setattr(addon_handlers, "run_pipeline", fail_pipeline)
 
     await addon_handlers.handle_codex_websocket_message(flow)

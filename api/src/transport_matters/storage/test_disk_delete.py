@@ -15,9 +15,7 @@ def storage(tmp_path: str) -> DiskStorageBackend:
 
 
 class TestDeleteExchange:
-    async def test_removes_index_row_and_artifacts(
-        self, storage: DiskStorageBackend
-    ) -> None:
+    async def test_removes_index_row_and_artifacts(self, storage: DiskStorageBackend) -> None:
         exchange_id = "deadbeef-1234"
         await storage.append_index(disk_tests._make_index_entry(exchange_id))
         await storage.write_exchange(
@@ -42,9 +40,7 @@ class TestDeleteExchange:
     ) -> None:
         exchange_id = "deadbeef-rollback"
         entry = disk_tests._make_index_entry(exchange_id)
-        artifacts = ExchangeArtifacts(
-            request_raw=b"{}", request_ir=disk_tests._make_ir()
-        )
+        artifacts = ExchangeArtifacts(request_raw=b"{}", request_ir=disk_tests._make_ir())
         await storage.append_index(entry)
         await storage.write_exchange(exchange_id, artifacts)
 
@@ -62,9 +58,7 @@ class TestDeleteExchange:
         restored_artifacts = await storage.read_exchange(exchange_id)
         assert restored_artifacts.request_raw == artifacts.request_raw
 
-    async def test_rewrite_failure_preserves_cache_order(
-        self, storage: DiskStorageBackend
-    ) -> None:
+    async def test_rewrite_failure_preserves_cache_order(self, storage: DiskStorageBackend) -> None:
         first = disk_tests._make_index_entry("deadbeef-first")
         middle = disk_tests._make_index_entry("deadbeef-middle")
         last = disk_tests._make_index_entry("deadbeef-last")

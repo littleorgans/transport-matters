@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 import pytest
 from pydantic import ValidationError
 
@@ -68,7 +70,7 @@ def test_derivation_version_support_helpers_are_authoritative() -> None:
 def test_replay_requires_turn_start_message_index() -> None:
     with pytest.raises(
         ValidationError,
-        match="replay must begin at context.request_message_index",
+        match=re.escape("replay must begin at context.request_message_index"),
     ):
         CodexReplayRequest(
             context=make_context(),
@@ -151,9 +153,7 @@ def test_event_identity_and_timestamp_helpers_follow_contract() -> None:
 
 
 def test_derived_artifacts_require_cursor_for_open_turns() -> None:
-    with pytest.raises(
-        ValidationError, match="open turn summaries must carry cursor state"
-    ):
+    with pytest.raises(ValidationError, match="open turn summaries must carry cursor state"):
         CodexDerivedTurnArtifacts(
             events=(),
             turn=_open_turn_summary(),
@@ -212,9 +212,7 @@ def test_derived_artifacts_reject_unsupported_derivation_version() -> None:
         )
 
 
-def test_serialization_helpers_support_replay_and_incremental_byte_equivalence() -> (
-    None
-):
+def test_serialization_helpers_support_replay_and_incremental_byte_equivalence() -> None:
     first = make_event(1, "turn_started", ts(10, 14, 3))
     second = make_event(2, "response_completed", ts(10, 14, 6))
     replay = CodexDerivedTurnArtifacts(
@@ -227,14 +225,12 @@ def test_serialization_helpers_support_replay_and_incremental_byte_equivalence()
     )
 
     replay_events = serialize_codex_events_jsonl(replay.events)
-    incremental_events = serialize_codex_events_jsonl(
-        (first,)
-    ) + serialize_codex_events_jsonl(incremental.events)
+    incremental_events = serialize_codex_events_jsonl((first,)) + serialize_codex_events_jsonl(
+        incremental.events
+    )
 
     assert replay_events == incremental_events
-    assert serialize_codex_turn_json(replay.turn) == serialize_codex_turn_json(
-        incremental.turn
-    )
+    assert serialize_codex_turn_json(replay.turn) == serialize_codex_turn_json(incremental.turn)
 
 
 def test_derived_artifacts_reject_noncanonical_event_id() -> None:

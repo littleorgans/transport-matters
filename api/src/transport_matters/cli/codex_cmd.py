@@ -37,7 +37,7 @@ from .trust import (
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping, Sequence
-    from importlib.abc import Traversable
+    from importlib.resources.abc import Traversable
 
 
 def _resolve_codex_ca_certificate_or_exit(
@@ -53,9 +53,7 @@ def _resolve_codex_ca_certificate_or_exit(
     bundle_dir: Path | None = None
     if not os.environ.get("CODEX_CA_CERTIFICATE"):
         bundle_dir = Path(
-            stack.enter_context(
-                tempfile.TemporaryDirectory(prefix="transport-matters-codex-ca-")
-            )
+            stack.enter_context(tempfile.TemporaryDirectory(prefix="transport-matters-codex-ca-"))
         )
     try:
         return str(
@@ -130,8 +128,7 @@ def _build_proxy_only_codex_hint(
 ) -> Sequence[str]:
     """Render an accurate manual Codex launch hint for proxy-only mode."""
     proxy_env = (
-        f"HTTP_PROXY={loopback_http_url(proxy_port)} "
-        f"HTTPS_PROXY={loopback_http_url(proxy_port)}"
+        f"HTTP_PROXY={loopback_http_url(proxy_port)} HTTPS_PROXY={loopback_http_url(proxy_port)}"
     )
     if codex_ca_certificate is not None:
         return (f"{proxy_env} CODEX_CA_CERTIFICATE={codex_ca_certificate} codex",)
@@ -224,9 +221,7 @@ def _run_codex_launch(
     codex_ca_certificate: str | None,
     working_dir: Path,
     resolved_storage: Path,
-    build_invocation: Callable[
-        [int, int], tuple[list[str], dict[str, str], ManagedClient | None]
-    ],
+    build_invocation: Callable[[int, int], tuple[list[str], dict[str, str], ManagedClient | None]],
     print_client_banner: Callable[..., None],
     run_client_with_retry: Callable[..., None],
     write_manifest_for: Callable[[int, int], None],
@@ -352,11 +347,7 @@ def run_codex(
                 proxy_port=prepared.proxy_port,
                 web_port=prepared.web_port,
             )
-        if (
-            not print_command
-            and home_dir is not None
-            and prepared.client_path is not None
-        ):
+        if not print_command and home_dir is not None and prepared.client_path is not None:
             seed_home_dir(
                 CLIENT_NAME_CODEX,
                 home_dir=home_dir,

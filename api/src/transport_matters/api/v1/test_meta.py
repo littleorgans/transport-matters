@@ -67,7 +67,8 @@ class TestMeta:
         config.get_settings.cache_clear()
         response = await client.get("/api/meta")
         data = response.json()
-        assert data["cwd"] == str(tmp_path.resolve())
+        # Test assertion path resolve, not production async I/O.
+        assert data["cwd"] == str(tmp_path.resolve())  # noqa: ASYNC240
 
     async def test_workspace_id_matches_helper(self, client: AsyncClient) -> None:
         response = await client.get("/api/meta")
@@ -84,9 +85,7 @@ class TestMeta:
         data = response.json()
         assert data["run_id"] == "run-123"
 
-    async def test_harnesses_expose_current_capabilities(
-        self, client: AsyncClient
-    ) -> None:
+    async def test_harnesses_expose_current_capabilities(self, client: AsyncClient) -> None:
         response = await client.get("/api/meta")
         data = response.json()
         harnesses = {harness["id"]: harness for harness in data["harnesses"]}

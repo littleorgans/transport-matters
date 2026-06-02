@@ -30,9 +30,7 @@ class TestReadIndexEntry:
         assert found_b is not None
         assert found_b.id == "bbbb2222"
 
-    async def test_consistent_with_read_index(
-        self, storage: DiskStorageBackend
-    ) -> None:
+    async def test_consistent_with_read_index(self, storage: DiskStorageBackend) -> None:
         ids = [f"id{i:04d}" for i in range(5)]
         for eid in ids:
             await storage.append_index(disk_tests._make_index_entry(eid))
@@ -45,9 +43,7 @@ class TestReadIndexEntry:
             assert found is not None
             assert found.id == eid
 
-    async def test_cache_updated_after_append(
-        self, storage: DiskStorageBackend
-    ) -> None:
+    async def test_cache_updated_after_append(self, storage: DiskStorageBackend) -> None:
         """Cache should reflect entries added after first read."""
         assert await storage.read_index_entry("cached-id") is None
         await storage.append_index(disk_tests._make_index_entry("cached-id"))

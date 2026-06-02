@@ -16,9 +16,7 @@ CODEX_OUTPUT_ITEM_ADDED_EVENT_TYPE = "response.output_item.added"
 CODEX_OUTPUT_ITEM_DONE_EVENT_TYPE = "response.output_item.done"
 CODEX_OUTPUT_TEXT_DELTA_EVENT_TYPE = "response.output_text.delta"
 CODEX_OUTPUT_TEXT_DONE_EVENT_TYPE = "response.output_text.done"
-CODEX_FUNCTION_CALL_ARGUMENTS_DELTA_EVENT_TYPE = (
-    "response.function_call_arguments.delta"
-)
+CODEX_FUNCTION_CALL_ARGUMENTS_DELTA_EVENT_TYPE = "response.function_call_arguments.delta"
 CODEX_FUNCTION_CALL_ARGUMENTS_DONE_EVENT_TYPE = "response.function_call_arguments.done"
 CODEX_ANONYMOUS_ASSISTANT_ITEM_ID = "__anonymous_assistant__"
 CODEX_ASSISTANT_ITEM_COMPLETED_EVENT_TYPE = CODEX_OUTPUT_ITEM_DONE_EVENT_TYPE
@@ -41,9 +39,7 @@ CODEX_OUTPUT_TEXT_TYPES = frozenset({CODEX_OUTPUT_TEXT_TYPE, CODEX_TEXT_TYPE})
 CODEX_PRESERVED_TEXT_TYPES = (
     CODEX_INPUT_TEXT_TYPES | CODEX_OUTPUT_TEXT_TYPES | frozenset({CODEX_REFUSAL_TYPE})
 )
-CODEX_TOOL_CALL_ITEM_TYPES = frozenset(
-    {"function_call", "custom_tool_call", "tool_search_call"}
-)
+CODEX_TOOL_CALL_ITEM_TYPES = frozenset({"function_call", "custom_tool_call", "tool_search_call"})
 CODEX_TOOL_OUTPUT_ITEM_TYPES = frozenset(
     {"function_call_output", "custom_tool_call_output", "tool_search_output"}
 )
@@ -59,9 +55,7 @@ def codex_payload_event_type(payload: object) -> str | None:
 
 
 def is_codex_turn_start(payload: object, *, from_client: bool) -> bool:
-    return (
-        from_client and codex_payload_event_type(payload) == CODEX_TURN_START_EVENT_TYPE
-    )
+    return from_client and codex_payload_event_type(payload) == CODEX_TURN_START_EVENT_TYPE
 
 
 def codex_terminal_status(

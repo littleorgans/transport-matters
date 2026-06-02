@@ -14,9 +14,7 @@ if TYPE_CHECKING:
     from transport_matters.ir import InternalRequest
 
 
-def request_unchanged(
-    original_ir: InternalRequest, curated_ir: InternalRequest
-) -> bool:
+def request_unchanged(original_ir: InternalRequest, curated_ir: InternalRequest) -> bool:
     """True when the curated request is structurally identical to the original.
 
     IR models are ``frozen``, so equality is a deep value comparison. When this

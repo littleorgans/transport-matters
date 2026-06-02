@@ -46,9 +46,7 @@ def _flatten_user_text(blocks: list[ContentBlock]) -> str:
                 return block.text
         elif isinstance(block, ToolResultBlock):
             parts = [
-                inner.text
-                for inner in block.content
-                if isinstance(inner, TextBlock) and inner.text
+                inner.text for inner in block.content if isinstance(inner, TextBlock) and inner.text
             ]
             if parts:
                 return "\n".join(parts)
@@ -159,9 +157,7 @@ async def stamp_pipeline_tokens(
     # Pass None so count_before_after collapses to a single call and the curated
     # IR is never reserialized.
     after_payload = (
-        None
-        if request_unchanged(original_ir, curated_ir)
-        else adapter.outbound_request(curated_ir)
+        None if request_unchanged(original_ir, curated_ir) else adapter.outbound_request(curated_ir)
     )
     tokens_before, tokens_after = await count_before_after(
         counter,
@@ -171,6 +167,4 @@ async def stamp_pipeline_tokens(
     )
     if tokens_before is None or tokens_after is None:
         return stats
-    return stats.model_copy(
-        update={"tokens_before": tokens_before, "tokens_after": tokens_after}
-    )
+    return stats.model_copy(update={"tokens_before": tokens_before, "tokens_after": tokens_after})

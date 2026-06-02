@@ -167,10 +167,7 @@ async def test_addon_websocket_message_persists_tool_search_output_turn() -> Non
         websocket.WebSocketMessage(
             Opcode.TEXT,
             True,
-            (
-                b'{"type":"response.create","model":"gpt-5-codex",'
-                b'"instructions":"first"}'
-            ),
+            (b'{"type":"response.create","model":"gpt-5-codex","instructions":"first"}'),
         )
     )
     await addon.websocket_message(flow)

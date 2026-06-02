@@ -140,7 +140,5 @@ def test_start_rejects_missing_directory(
     missing = tmp_path / "does-not-exist"
     result = runner.invoke(main, ["claude", str(missing), "--print-command"])
     assert result.exit_code == 2
-    assert (
-        "does not exist" in result.output.lower() or "does-not-exist" in result.output
-    )
+    assert "does not exist" in result.output.lower() or "does-not-exist" in result.output
     spy_run_client_children.assert_not_called()

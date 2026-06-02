@@ -96,9 +96,7 @@ class OverrideStore:
         self._overrides.pop(normalized, None)
         self._enabled.pop(normalized, None)
 
-    def _scoped_overrides(
-        self, scope: OverrideScope | None
-    ) -> OrderedDict[OverrideKey, Override]:
+    def _scoped_overrides(self, scope: OverrideScope | None) -> OrderedDict[OverrideKey, Override]:
         normalized = normalize_scope(scope)
         scoped = self._overrides.get(normalized)
         if scoped is None:

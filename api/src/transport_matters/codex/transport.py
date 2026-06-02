@@ -212,12 +212,8 @@ def close_codex_transport(flow: http.HTTPFlow) -> CodexCloseSummary | None:
     client_message_count = state.client_message_count
     server_message_count = state.server_message_count
     if state.turn_start_message_index is not None:
-        client_message_count = max(
-            0, client_message_count - state.turn_client_messages_before
-        )
-        server_message_count = max(
-            0, server_message_count - state.turn_server_messages_before
-        )
+        client_message_count = max(0, client_message_count - state.turn_client_messages_before)
+        server_message_count = max(0, server_message_count - state.turn_server_messages_before)
     return CodexCloseSummary(
         close_code=websocket.close_code,
         close_reason=websocket.close_reason,
@@ -330,9 +326,7 @@ def build_codex_response_stats(
     all_messages = getattr(websocket, "messages", None) or []
     state = get_codex_transport_state(flow)
     messages = (
-        _turn_messages(all_messages, state, message_end)
-        if state is not None
-        else all_messages
+        _turn_messages(all_messages, state, message_end) if state is not None else all_messages
     )
     stop_reason = _codex_stop_reason(messages, summary)
     return ResStats(
@@ -353,9 +347,7 @@ def build_codex_response_ir(
     all_messages = getattr(websocket, "messages", None) or []
     state = get_codex_transport_state(flow)
     messages = (
-        _turn_messages(all_messages, state, message_end)
-        if state is not None
-        else all_messages
+        _turn_messages(all_messages, state, message_end) if state is not None else all_messages
     )
     return parse_codex_response_payloads(
         _server_json_messages(messages),
@@ -396,9 +388,7 @@ def _message_artifact(message: WebSocketMessage) -> TransportMessageArtifact:
     payload_text = _payload_text(message)
     payload_json = _payload_json(payload_text)
     event_type = _payload_event_type(payload_json)
-    payload_base64 = (
-        None if message.is_text else base64.b64encode(bytes(message.content)).decode()
-    )
+    payload_base64 = None if message.is_text else base64.b64encode(bytes(message.content)).decode()
     return TransportMessageArtifact(
         ts=_transport_ts(getattr(message, "timestamp", None)),
         direction="client" if message.from_client else "server",
@@ -473,7 +463,7 @@ def _payload_json(payload_text: str | None) -> dict[str, Any] | list[Any] | None
 def _json_object_payload(raw: bytes) -> dict[str, Any] | None:
     try:
         payload: Any = json.loads(raw)
-    except (json.JSONDecodeError, ValueError):
+    except json.JSONDecodeError, ValueError:
         return None
     if isinstance(payload, dict):
         return payload

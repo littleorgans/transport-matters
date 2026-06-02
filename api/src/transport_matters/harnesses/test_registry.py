@@ -48,13 +48,8 @@ def test_claude_descriptor_matches_current_launch_boundary() -> None:
     assert claude.disable_flag == "--no-claude"
     assert claude.proxy_mode is HarnessProxyMode.REVERSE
     assert claude.trust_requirement is HarnessTrustRequirement.NONE
-    assert (
-        claude.shell_environment_policy
-        is HarnessShellEnvironmentPolicy.SANITIZED_BASE_URL
-    )
-    assert (
-        claude.pass_through_policy is HarnessPassThroughPolicy.VERBATIM_AFTER_SEPARATOR
-    )
+    assert claude.shell_environment_policy is HarnessShellEnvironmentPolicy.SANITIZED_BASE_URL
+    assert claude.pass_through_policy is HarnessPassThroughPolicy.VERBATIM_AFTER_SEPARATOR
     assert claude.capabilities.startup_probe is False
     assert claude.capabilities.disposable_probe is False
     assert claude.capabilities.overlay_before_work is False
@@ -81,9 +76,7 @@ def test_codex_descriptor_matches_current_launch_boundary() -> None:
         codex.shell_environment_policy
         is HarnessShellEnvironmentPolicy.SANITIZED_PROXY_WITH_SHELL_EXCLUDES
     )
-    assert (
-        codex.pass_through_policy is HarnessPassThroughPolicy.VERBATIM_AFTER_SEPARATOR
-    )
+    assert codex.pass_through_policy is HarnessPassThroughPolicy.VERBATIM_AFTER_SEPARATOR
     assert codex.capabilities.startup_probe is False
     assert codex.capabilities.disposable_probe is False
     assert codex.capabilities.overlay_before_work is False

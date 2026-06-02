@@ -54,9 +54,7 @@ def test_returns_none_for_empty_user_agent() -> None:
 
 
 def test_accepts_plain_dict() -> None:
-    assert detect_client_version({"user-agent": "claude-cli/2.1.154"}) == (
-        "claude-cli/2.1.154"
-    )
+    assert detect_client_version({"user-agent": "claude-cli/2.1.154"}) == ("claude-cli/2.1.154")
 
 
 def test_returns_none_for_none_headers() -> None:

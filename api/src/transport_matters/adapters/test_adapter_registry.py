@@ -29,9 +29,7 @@ def _flow(
     return flow
 
 
-@pytest.mark.parametrize(
-    "module_name", ["transport_matters.storage", "transport_matters.codex"]
-)
+@pytest.mark.parametrize("module_name", ["transport_matters.storage", "transport_matters.codex"])
 def test_low_level_packages_import_cleanly_in_fresh_interpreter(
     module_name: str,
 ) -> None:
@@ -39,7 +37,7 @@ def test_low_level_packages_import_cleanly_in_fresh_interpreter(
     api_root = Path(__file__).resolve().parents[3]
     env = dict(os.environ)
     env["PYTHONPATH"] = str(api_root / "src")
-    proc = subprocess.run(  # noqa: S603
+    proc = subprocess.run(
         [sys.executable, "-c", f"import {module_name}"],
         cwd=api_root,
         env=env,
@@ -56,9 +54,7 @@ class TestGetAdapter:
         ("provider", "expected_adapter"),
         [("codex", "codex"), ("anthropic", "anthropic")],
     )
-    def test_returns_adapter_for_provider_name(
-        self, provider: str, expected_adapter: str
-    ) -> None:
+    def test_returns_adapter_for_provider_name(self, provider: str, expected_adapter: str) -> None:
         """Provider lookup is explicit wire adapter lookup by provider name."""
         adapter = get_adapter_for_provider(provider)
 
@@ -114,9 +110,7 @@ class TestGetAdapter:
         )
         adapter = get_adapter(flow)
 
-        request_ir = adapter.inbound_request(
-            b'{"type":"response.create","model":"gpt-5-codex"}'
-        )
+        request_ir = adapter.inbound_request(b'{"type":"response.create","model":"gpt-5-codex"}')
 
         assert adapter.name == "codex"
         assert request_ir.provider == "codex"

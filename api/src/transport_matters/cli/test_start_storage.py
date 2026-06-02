@@ -187,9 +187,7 @@ def test_start_home_dir_sets_claude_config_dir_and_manifest(
         client = kwargs["client"]
         assert client is not None
         manifest_path = (
-            workspace_root(client.cwd)
-            / client.env["TRANSPORT_MATTERS_RUN_ID"]
-            / "manifest.json"
+            workspace_root(client.cwd) / client.env["TRANSPORT_MATTERS_RUN_ID"] / "manifest.json"
         )
         captured["raw"] = json.loads(manifest_path.read_text(encoding="utf-8"))
 
@@ -335,14 +333,8 @@ def test_start_different_cwds_get_disjoint_storage(
     assert result_b.exit_code == 0, result_b.output
     env_b = spy_run_client_children.call_args_list[1].kwargs["client"].env
 
-    assert (
-        env_a["TRANSPORT_MATTERS_STORAGE_DIR"] != env_b["TRANSPORT_MATTERS_STORAGE_DIR"]
-    )
+    assert env_a["TRANSPORT_MATTERS_STORAGE_DIR"] != env_b["TRANSPORT_MATTERS_STORAGE_DIR"]
     run_id_a = env_a["TRANSPORT_MATTERS_RUN_ID"]
     run_id_b = env_b["TRANSPORT_MATTERS_RUN_ID"]
-    assert env_a["TRANSPORT_MATTERS_STORAGE_DIR"] == str(
-        workspace_root(dir_a) / run_id_a
-    )
-    assert env_b["TRANSPORT_MATTERS_STORAGE_DIR"] == str(
-        workspace_root(dir_b) / run_id_b
-    )
+    assert env_a["TRANSPORT_MATTERS_STORAGE_DIR"] == str(workspace_root(dir_a) / run_id_a)
+    assert env_b["TRANSPORT_MATTERS_STORAGE_DIR"] == str(workspace_root(dir_b) / run_id_b)

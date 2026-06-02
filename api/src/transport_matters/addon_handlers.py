@@ -95,9 +95,7 @@ async def handle_http_request(
         len(ir.messages),
     )
 
-    curated_ir, audit, track_assignment = await run_pipeline(
-        ir, flow.id, get_settings().run_id
-    )
+    curated_ir, audit, track_assignment = await run_pipeline(ir, flow.id, get_settings().run_id)
     request_state = capture_request_flow_state(
         flow,
         adapter=adapter,
@@ -107,9 +105,7 @@ async def handle_http_request(
         audit=audit,
         track_assignment=track_assignment,
         codex_request_headers=(
-            snapshot_codex_http_request_headers(flow.request.headers)
-            if codex_http
-            else None
+            snapshot_codex_http_request_headers(flow.request.headers) if codex_http else None
         ),
     )
     provisional_exchange_id = await _persist_http_provisional_exchange(
@@ -159,9 +155,7 @@ async def handle_codex_websocket_message(flow: http.HTTPFlow) -> None:
     if update is None:
         return
     state, message, captured_initial = update
-    if state.provisional_exchange_id is not None and is_codex_turn_terminal_message(
-        message
-    ):
+    if state.provisional_exchange_id is not None and is_codex_turn_terminal_message(message):
         finalized = await _finalize_codex_provisional_exchange(flow, None)
         if not finalized:
             logger.warning(
@@ -215,9 +209,7 @@ async def handle_codex_websocket_message(flow: http.HTTPFlow) -> None:
         return
     state.provisional_exchange_id = None
     adapter = request_state.adapter
-    curated_ir, audit, track_assignment = await run_pipeline(
-        ir, flow.id, get_settings().run_id
-    )
+    curated_ir, audit, track_assignment = await run_pipeline(ir, flow.id, get_settings().run_id)
     update_request_flow_state(
         flow,
         curated_request_ir=curated_ir,

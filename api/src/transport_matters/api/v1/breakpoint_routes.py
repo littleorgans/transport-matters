@@ -17,7 +17,7 @@ from transport_matters.adapters.anthropic import AnthropicAdapter
 from transport_matters.codex.transport import get_codex_transport_state
 from transport_matters.counting import get_counter
 from transport_matters.exceptions import NotFoundError
-from transport_matters.ir import (  # noqa: TC001 — FastAPI needs runtime access
+from transport_matters.ir import (
     InternalRequest,
     Message,
     SamplingParams,
@@ -29,7 +29,7 @@ from transport_matters.override_state import (
     scope_from_params,
 )
 from transport_matters.overrides import (
-    OverrideAudit,  # noqa: TC001 — FastAPI needs runtime access
+    OverrideAudit,
     apply_overrides,
     get_store,
     identity_audit,
@@ -128,8 +128,7 @@ async def get_status() -> BreakpointStatusDetail:
     return BreakpointStatusDetail(
         mode=bp.get_mode(),
         paused_flows=[
-            PausedFlowInfo(flow_id=fid, paused_at_ms=pf.paused_at_ms)
-            for fid, pf in paused.items()
+            PausedFlowInfo(flow_id=fid, paused_at_ms=pf.paused_at_ms) for fid, pf in paused.items()
         ],
     )
 
@@ -188,8 +187,7 @@ async def release_flow(flow_id: str, ir: InternalRequest) -> dict[str, str]:
         raise HTTPException(
             status_code=422,
             detail=(
-                "Edited request changed provider from "
-                f"{pf.original_ir.provider} to {ir.provider}"
+                f"Edited request changed provider from {pf.original_ir.provider} to {ir.provider}"
             ),
         )
     payload = _validated_release_payload(ir)

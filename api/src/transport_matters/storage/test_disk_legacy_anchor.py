@@ -12,9 +12,7 @@ if TYPE_CHECKING:
 class TestLegacyFlatAnchorCacheInvalidation:
     """Startup drops cache roots with legacy top-level flat anchor keys."""
 
-    def test_wipes_root_when_index_contains_legacy_flat_anchor_keys(
-        self, tmp_path: Path
-    ) -> None:
+    def test_wipes_root_when_index_contains_legacy_flat_anchor_keys(self, tmp_path: Path) -> None:
         index_path = tmp_path / "index.jsonl"
         index_path.write_text(
             json.dumps(
@@ -37,9 +35,7 @@ class TestLegacyFlatAnchorCacheInvalidation:
         assert not sibling.exists()
         assert tmp_path.exists()
 
-    def test_preserves_root_when_index_uses_nested_spawn_anchor(
-        self, tmp_path: Path
-    ) -> None:
+    def test_preserves_root_when_index_uses_nested_spawn_anchor(self, tmp_path: Path) -> None:
         index_path = tmp_path / "index.jsonl"
         index_path.write_text(
             json.dumps(
@@ -67,13 +63,10 @@ class TestLegacyFlatAnchorCacheInvalidation:
 
         assert sibling.exists()
 
-    def test_skips_malformed_lines_and_still_detects_legacy(
-        self, tmp_path: Path
-    ) -> None:
+    def test_skips_malformed_lines_and_still_detects_legacy(self, tmp_path: Path) -> None:
         index_path = tmp_path / "index.jsonl"
         index_path.write_text(
-            "not json\n"
-            "\n" + json.dumps({"id": "ex-legacy", "track_spawn_order": 0}) + "\n"
+            "not json\n\n" + json.dumps({"id": "ex-legacy", "track_spawn_order": 0}) + "\n"
         )
 
         DiskStorageBackend(root=str(tmp_path))

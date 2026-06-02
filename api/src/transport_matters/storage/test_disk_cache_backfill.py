@@ -52,9 +52,7 @@ class TestCacheCreationBackfill:
         )
         await storage.write_exchange(exchange_id, artifacts)
 
-    async def test_backfills_zero_row_from_artifact(
-        self, storage: DiskStorageBackend
-    ) -> None:
+    async def test_backfills_zero_row_from_artifact(self, storage: DiskStorageBackend) -> None:
         exchange_id = "aaaa0000-1111-2222-3333-444455556666"
         entry = disk_tests._make_index_entry(exchange_id).model_copy(
             update={
@@ -109,9 +107,7 @@ class TestCacheCreationBackfill:
         assert reloaded.res is not None
         assert reloaded.res.cache_creation_input_tokens == 77
 
-    async def test_leaves_legitimate_zero_rows_alone(
-        self, storage: DiskStorageBackend
-    ) -> None:
+    async def test_leaves_legitimate_zero_rows_alone(self, storage: DiskStorageBackend) -> None:
         exchange_id = "cccc0000-1111-2222-3333-444455556666"
         entry = disk_tests._make_index_entry(exchange_id).model_copy(
             update={"res": ResStats(input_tokens=5, cache_creation_input_tokens=0)}
@@ -129,9 +125,7 @@ class TestCacheCreationBackfill:
         assert reloaded.res is not None
         assert reloaded.res.cache_creation_input_tokens == 0
 
-    async def test_rows_without_artifact_are_skipped(
-        self, storage: DiskStorageBackend
-    ) -> None:
+    async def test_rows_without_artifact_are_skipped(self, storage: DiskStorageBackend) -> None:
         exchange_id = "dddd0000-1111-2222-3333-444455556666"
         entry = disk_tests._make_index_entry(exchange_id).model_copy(
             update={"res": ResStats(input_tokens=5, cache_creation_input_tokens=0)}
@@ -187,9 +181,7 @@ class TestSpawnAnchorRoundTrip:
     including the explicit null shape that distinguishes a missing anchor
     from absent track metadata."""
 
-    async def test_preserves_populated_spawn_anchor(
-        self, storage: DiskStorageBackend
-    ) -> None:
+    async def test_preserves_populated_spawn_anchor(self, storage: DiskStorageBackend) -> None:
         exchange_id = "eeee0000-1111-2222-3333-444455556666"
         original_anchor = SpawnAnchor(
             track_spawn_exchange_id="parent-exchange",
@@ -213,13 +205,9 @@ class TestSpawnAnchorRoundTrip:
         assert reloaded is not None
         assert reloaded.spawn_anchor == original_anchor
 
-    async def test_preserves_null_spawn_anchor(
-        self, storage: DiskStorageBackend
-    ) -> None:
+    async def test_preserves_null_spawn_anchor(self, storage: DiskStorageBackend) -> None:
         exchange_id = "ffff0000-1111-2222-3333-444455556666"
-        entry = disk_tests._make_index_entry(exchange_id).model_copy(
-            update={"spawn_anchor": None}
-        )
+        entry = disk_tests._make_index_entry(exchange_id).model_copy(update={"spawn_anchor": None})
         await storage.append_index(entry)
 
         storage._index_cache = None

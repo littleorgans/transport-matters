@@ -351,8 +351,7 @@ async def test_addon_response_persists_codex_handshake_failure() -> None:
 async def test_addon_response_preserves_raw_handshake_failure_bytes() -> None:
     addon = TransportMattersAddon()
     raw_body = (
-        b"TLS error: invalid peer certificate: UnknownIssuer\xff"
-        b"\xfe while upgrading websocket"
+        b"TLS error: invalid peer certificate: UnknownIssuer\xff\xfe while upgrading websocket"
     )
     flow = _codex_handshake_failure_flow(status_code=502, body=raw_body)
 

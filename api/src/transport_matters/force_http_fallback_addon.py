@@ -24,9 +24,7 @@ if TYPE_CHECKING:
     from mitmproxy import http
 
 _CODEX_RESPONSES_PATH_SUFFIX = "/backend-api/codex/responses"
-_INJECTED_BODY = (
-    b"Upgrade Required (injected by transport-matters --force-http-fallback)\n"
-)
+_INJECTED_BODY = b"Upgrade Required (injected by transport-matters --force-http-fallback)\n"
 
 
 def _is_codex_websocket_upgrade(flow: http.HTTPFlow) -> bool:

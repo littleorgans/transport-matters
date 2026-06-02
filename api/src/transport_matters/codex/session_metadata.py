@@ -30,9 +30,7 @@ def codex_session_id_from_provider_metadata(
     if direct is not None:
         return direct
 
-    return _session_id_from_turn_metadata(
-        provider_metadata.get("x-codex-turn-metadata")
-    )
+    return _session_id_from_turn_metadata(provider_metadata.get("x-codex-turn-metadata"))
 
 
 def codex_session_id_from_header_lookup(

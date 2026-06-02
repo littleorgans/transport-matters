@@ -90,9 +90,7 @@ class TestEmitExchange:
         assert data["flow_id"] == "mitmproxy-flow-abc123"
 
     def test_payload_includes_codex_turn_when_provided(self) -> None:
-        ir = _make_ir().model_copy(
-            update={"provider": "codex", "model": "codex/gpt-5-codex"}
-        )
+        ir = _make_ir().model_copy(update={"provider": "codex", "model": "codex/gpt-5-codex"})
         req_stats = build_req_stats(ir)
         q = broadcast.subscribe()
 
@@ -195,9 +193,7 @@ class TestEmitExchange:
         req_stats = build_req_stats(ir)
         q = broadcast.subscribe()
 
-        emit_exchange(
-            ir, req_stats, None, "exchange-2", datetime(2026, 1, 1, tzinfo=UTC), None
-        )
+        emit_exchange(ir, req_stats, None, "exchange-2", datetime(2026, 1, 1, tzinfo=UTC), None)
 
         assert not q.empty()
         data = json.loads(q.get_nowait())

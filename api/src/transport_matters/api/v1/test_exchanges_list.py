@@ -134,9 +134,7 @@ class TestListExchanges:
                 }
             )
         )
-        await storage.append_index(
-            make_index_entry("anth-current", run_id="run-current")
-        )
+        await storage.append_index(make_index_entry("anth-current", run_id="run-current"))
         await storage.append_index(
             make_index_entry("codex-current", run_id="run-current").model_copy(
                 update={
@@ -157,9 +155,7 @@ class TestListExchanges:
         history = await client.get("/api/exchanges?include_history=true")
         assert history.status_code == 200
         history_data = history.json()
-        assert [
-            (row["id"], row["run_id"], row["provider"]) for row in history_data
-        ] == [
+        assert [(row["id"], row["run_id"], row["provider"]) for row in history_data] == [
             ("anth-old", "run-old", "anthropic"),
             ("codex-old", "run-old", "codex"),
             ("anth-current", "run-current", "anthropic"),
@@ -228,9 +224,7 @@ class TestListExchanges:
 
         provisional_response = await client.get("/api/exchanges")
         assert provisional_response.status_code == 200
-        provisional_rows = [
-            row for row in provisional_response.json() if row["id"] == exchange_id
-        ]
+        provisional_rows = [row for row in provisional_response.json() if row["id"] == exchange_id]
         assert len(provisional_rows) == 1
         provisional = provisional_rows[0]
         assert provisional["res"] is None
@@ -245,9 +239,7 @@ class TestListExchanges:
 
         mid_flow_response = await client.get("/api/exchanges")
         assert mid_flow_response.status_code == 200
-        mid_flow_rows = [
-            row for row in mid_flow_response.json() if row["id"] == exchange_id
-        ]
+        mid_flow_rows = [row for row in mid_flow_response.json() if row["id"] == exchange_id]
         assert len(mid_flow_rows) == 1
         assert mid_flow_rows[0]["res"] is None
         assert mid_flow_rows[0]["req"] == provisional["req"]
@@ -257,9 +249,7 @@ class TestListExchanges:
 
         finalized_response = await client.get("/api/exchanges")
         assert finalized_response.status_code == 200
-        finalized_rows = [
-            row for row in finalized_response.json() if row["id"] == exchange_id
-        ]
+        finalized_rows = [row for row in finalized_response.json() if row["id"] == exchange_id]
         assert len(finalized_rows) == 1
         finalized = finalized_rows[0]
         assert finalized["res"] is not None

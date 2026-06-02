@@ -52,9 +52,7 @@ MAPPED_REQUEST_KEYS = frozenset(
     }
 )
 STANDARD_FUNCTION_CALL_OUTPUT_KEYS = frozenset({"type", "call_id", "output"})
-STANDARD_TOOL_SEARCH_OUTPUT_KEYS = frozenset(
-    {"type", "call_id", "status", "execution", "tools"}
-)
+STANDARD_TOOL_SEARCH_OUTPUT_KEYS = frozenset({"type", "call_id", "status", "execution", "tools"})
 
 
 def parse_codex_request(raw_body: bytes) -> InternalRequest:
@@ -62,9 +60,7 @@ def parse_codex_request(raw_body: bytes) -> InternalRequest:
     if not isinstance(data, dict):
         raise ValueError("Codex frame must be a JSON object")
     if data.get("type") not in (None, "response.create"):
-        raise ValueError(
-            f"Codex request parser expected response.create, got {data.get('type')!r}"
-        )
+        raise ValueError(f"Codex request parser expected response.create, got {data.get('type')!r}")
 
     system = _parse_instructions(data.get("instructions"))
     input_system, messages, input_item_raw = _parse_input(data.get("input", []))
@@ -115,9 +111,7 @@ def _parse_input(
 
     for index, item in enumerate(items):
         if not isinstance(item, dict):
-            messages.append(
-                Message(role="user", content=[UnknownBlock(raw={"value": item})])
-            )
+            messages.append(Message(role="user", content=[UnknownBlock(raw={"value": item})]))
             preserved_raw.append({"index": index, "raw": item})
             continue
 
@@ -190,9 +184,7 @@ def _parse_system_message_item(
     item: dict[str, Any], raw_content: object
 ) -> tuple[list[SystemPart], bool]:
     if isinstance(raw_content, str):
-        return [
-            SystemPart(text=raw_content, provider_data={"role": item["role"]})
-        ], True
+        return [SystemPart(text=raw_content, provider_data={"role": item["role"]})], True
     if not isinstance(raw_content, list):
         return [], True
 
@@ -272,9 +264,7 @@ def _parse_user_extra_block(item: dict[str, Any]) -> _ContentParseResult | None:
 
 
 def _parse_assistant_extra_block(item: dict[str, Any]) -> _ContentParseResult | None:
-    if item.get("type") != CODEX_REFUSAL_TYPE or not isinstance(
-        item.get("refusal"), str
-    ):
+    if item.get("type") != CODEX_REFUSAL_TYPE or not isinstance(item.get("refusal"), str):
         return None
     return TextBlock(text=item["refusal"]), bool(set(item) - {"type", "refusal"})
 
@@ -302,17 +292,13 @@ def _parse_function_call_output(item: dict[str, Any]) -> Message:
             if key in item:
                 provider_data[key] = item[key]
 
-    output = (
-        item.get("tools") if item_type == "tool_search_output" else item.get("output")
-    )
+    output = item.get("tools") if item_type == "tool_search_output" else item.get("output")
     tool_content: list[TextBlock | ImageBlock]
     if item_type == "tool_search_output":
         tool_content = [TextBlock(text=json.dumps(output, indent=2, sort_keys=True))]
     elif isinstance(output, list):
         content, _ = _parse_user_content(output)
-        tool_content = [
-            block for block in content if isinstance(block, (TextBlock, ImageBlock))
-        ]
+        tool_content = [block for block in content if isinstance(block, (TextBlock, ImageBlock))]
     elif isinstance(output, str):
         tool_content = [TextBlock(text=output)]
     else:

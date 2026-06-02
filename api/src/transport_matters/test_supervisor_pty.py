@@ -48,9 +48,7 @@ def test_spawn_pty_start_new_session_is_true(
             captured.update(kwargs)
             super().__init__(argv, **kwargs)
 
-    monkeypatch.setattr(
-        "transport_matters.supervisor.subprocess.Popen", CapturingFakePopen
-    )
+    monkeypatch.setattr("transport_matters.supervisor.subprocess.Popen", CapturingFakePopen)
 
     sup = ProcessSupervisor()
     mp = sup.spawn("claude", ["claude"], foreground=True, pty=True)
@@ -176,7 +174,7 @@ def test_spawn_pty_rejects_log_path(tmp_log: Path) -> None:
     from transport_matters.supervisor import ProcessSupervisor
 
     sup = ProcessSupervisor()
-    with pytest.raises(ValueError, match="mutually exclusive|`pty=True`"):
+    with pytest.raises(ValueError, match=r"mutually exclusive|`pty=True`"):
         sup.spawn(
             "claude",
             ["claude"],

@@ -1,3 +1,14 @@
+"""Disk-storage filesystem helpers.
+
+littleorgans/python storage I/O standard (Rule 2, offload by payload class):
+unbounded/content/bulk/recursive I/O offloads to the storage executor via
+``_run_io`` (or streams with aiofiles); bounded index/metadata writes and single
+local-FS metadata syscalls (``Path.exists``/``.rename``/``.replace``/``.stat``/
+``.unlink``) may run inline under the POSIX-first platform contract, where all
+paths live under one storage root on one filesystem. The per-file ASYNC240
+ignore in pyproject.toml encodes that inline exception.
+"""
+
 from __future__ import annotations
 
 import asyncio
@@ -57,9 +68,11 @@ class DiskStorageFileOpsMixin:
             tmp.write(model.model_dump_json(indent=2))
         tmp_path.replace(path)
 
-    async def _activate_exchange_dir(
-        self, tmp_dir: Path, final_dir: Path
-    ) -> Path | None:
+    async def _activate_exchange_dir(self, tmp_dir: Path, final_dir: Path) -> Path | None:
+        # POSIX-only invariant (littleorgans/python storage Rule 3): the atomic
+        # directory swap relies on rename(2) with tmp/backup/final co-located
+        # under one storage root on one filesystem. File replaces use
+        # Path.replace (cross-platform atomic); directory rename-swap is POSIX.
         backup_dir = self._layout.backup_exchange_dir(final_dir)
         if backup_dir.exists():
             if final_dir.exists():
@@ -100,9 +113,7 @@ class DiskStorageFileOpsMixin:
             await self._run_io(shutil.rmtree, final_dir, True)
         staged_dir.rename(final_dir)
 
-    async def _rollback_activated_exchange(
-        self, final_dir: Path, backup_dir: Path | None
-    ) -> None:
+    async def _rollback_activated_exchange(self, final_dir: Path, backup_dir: Path | None) -> None:
         if backup_dir is not None and backup_dir.exists():
             if final_dir.exists():
                 await self._run_io(shutil.rmtree, final_dir, True)
@@ -117,9 +128,7 @@ class DiskStorageFileOpsMixin:
         try:
             await self._run_io(shutil.rmtree, backup_dir, True)
         except Exception:
-            logger.warning(
-                "Failed to remove exchange dir backup %s", backup_dir, exc_info=True
-            )
+            logger.warning("Failed to remove exchange dir backup %s", backup_dir, exc_info=True)
 
     def _cleanup_partial_writes(self) -> None:
         if not self._root.exists():
@@ -196,7 +205,10 @@ class DiskStorageFileOpsMixin:
         path: Path,
         transport: TransportArtifacts,
     ) -> None:
-        self._atomic_write_model_json(path, transport)
+        # TransportArtifacts carry request/response/messages bodies (unbounded),
+        # so the serialize-and-write is offloaded to the storage executor
+        # (littleorgans/python storage Rule 2, offload by payload class).
+        await self._run_io(self._atomic_write_model_json, path, transport)
 
 
 class DiskStorageRecoveryMixin(DiskStorageFileOpsMixin):
@@ -257,9 +269,7 @@ class DiskStorageRecoveryMixin(DiskStorageFileOpsMixin):
         paths = self._layout.artifact_paths(exchange_dir)
         if paths.entry.exists():
             try:
-                return IndexEntry.model_validate_json(
-                    await self._read_text(paths.entry)
-                )
+                return IndexEntry.model_validate_json(await self._read_text(paths.entry))
             except Exception:
                 logger.warning(
                     "Failed to read exchange entry sidecar for %s",
@@ -278,12 +288,8 @@ class DiskStorageRecoveryMixin(DiskStorageFileOpsMixin):
             )
             return None
 
-        request_ir = InternalRequest.model_validate_json(
-            await self._read_text(paths.request_ir)
-        )
-        request_curated_ir = await self._read_request_curated_ir_or_none(
-            paths.request_curated_ir
-        )
+        request_ir = InternalRequest.model_validate_json(await self._read_text(paths.request_ir))
+        request_curated_ir = await self._read_request_curated_ir_or_none(paths.request_curated_ir)
         request_audit = await self._read_request_audit_or_none(paths.request_audit)
         response_ir = await self._read_response_ir_or_none(paths.response_ir)
         ts = self._exchange_timestamp(exchange_dir)
@@ -309,14 +315,10 @@ class DiskStorageRecoveryMixin(DiskStorageFileOpsMixin):
         try:
             return CodexTurnSummary.model_validate_json(await self._read_text(path))
         except Exception:
-            logger.warning(
-                "Failed to read Codex turn sidecar for %s", path, exc_info=True
-            )
+            logger.warning("Failed to read Codex turn sidecar for %s", path, exc_info=True)
             return None
 
-    async def _read_request_curated_ir_or_none(
-        self, path: Path
-    ) -> InternalRequest | None:
+    async def _read_request_curated_ir_or_none(self, path: Path) -> InternalRequest | None:
         if not path.exists():
             return None
         return InternalRequest.model_validate_json(await self._read_text(path))

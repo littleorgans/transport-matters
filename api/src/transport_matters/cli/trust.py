@@ -63,9 +63,7 @@ def _system_trust_roots_as_pem() -> list[str]:
         ) from exc
 
     if not roots:
-        raise SystemTrustSnapshotError(
-            "Python reported zero active default trust roots"
-        )
+        raise SystemTrustSnapshotError("Python reported zero active default trust roots")
 
     serialized: list[str] = []
     seen: set[str] = set()

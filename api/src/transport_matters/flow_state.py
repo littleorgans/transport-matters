@@ -26,9 +26,7 @@ _TRACK_ASSIGNMENT_KEY = "transport_matters_track_assignment"
 _CODEX_REQUEST_HEADERS_KEY = "transport_matters_codex_request_headers"
 _PROVISIONAL_EXCHANGE_ID_KEY = "transport_matters_provisional_exchange_id"
 _DROPPED_KEY = "transport_matters_dropped"
-_CODEX_DERIVATION_HEADER_NAMES = frozenset(
-    {"session-id", "thread-id", "x-codex-turn-metadata"}
-)
+_CODEX_DERIVATION_HEADER_NAMES = frozenset({"session-id", "thread-id", "x-codex-turn-metadata"})
 _UNSET = object()
 
 
@@ -123,9 +121,7 @@ def get_request_flow_state(flow: http.HTTPFlow) -> RequestFlowState | None:
     curated_request_ir = flow.metadata.get(_CURATED_REQUEST_IR_KEY, request_ir)
     audit = flow.metadata.get(_AUDIT_KEY)
     track_assignment = flow.metadata.get(_TRACK_ASSIGNMENT_KEY)
-    codex_request_headers = _header_map(
-        flow.metadata.get(_CODEX_REQUEST_HEADERS_KEY, {})
-    )
+    codex_request_headers = _header_map(flow.metadata.get(_CODEX_REQUEST_HEADERS_KEY, {}))
     mutated_manually = flow.metadata.get(_MUTATED_MANUALLY_KEY, False)
     provisional_exchange_id = flow.metadata.get(_PROVISIONAL_EXCHANGE_ID_KEY)
     dropped = flow.metadata.get(_DROPPED_KEY, False)
@@ -139,9 +135,7 @@ def get_request_flow_state(flow: http.HTTPFlow) -> RequestFlowState | None:
         codex_request_headers=codex_request_headers,
         mutated_manually=mutated_manually,
         provisional_exchange_id=(
-            provisional_exchange_id
-            if isinstance(provisional_exchange_id, str)
-            else None
+            provisional_exchange_id if isinstance(provisional_exchange_id, str) else None
         ),
         dropped=dropped if isinstance(dropped, bool) else False,
     )

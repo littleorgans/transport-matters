@@ -51,9 +51,7 @@ class TestAuditAggregate:
         assert audit.chars_before == audit.chars_after
 
     def test_shared_char_accounting_fixture_matches_contract(self) -> None:
-        fixture_path = (
-            Path(__file__).resolve().parents[3] / "shared" / "char_accounting_v1.json"
-        )
+        fixture_path = Path(__file__).resolve().parents[3] / "shared" / "char_accounting_v1.json"
         fixture = json.loads(fixture_path.read_text(encoding="utf-8"))
         expected = fixture["expected"]
         block_adapter: TypeAdapter[ContentBlock] = TypeAdapter(ContentBlock)
@@ -62,21 +60,16 @@ class TestAuditAggregate:
         for number_case in fixture["number_cases"]:
             raw_value = number_case["value"]
             value = int(raw_value) if number_case["kind"] == "int" else float(raw_value)
-            assert canonical_json(value) == number_case["expected"], number_case[
-                "label"
-            ]
+            assert canonical_json(value) == number_case["expected"], number_case["label"]
         for residual_case in fixture["production_number_residual_cases"]:
             assert (
                 canonical_json(json.loads(residual_case["json"]))
                 == residual_case["python_expected"]
             ), residual_case["label"]
-            assert (
-                residual_case["python_expected"] != residual_case["typescript_expected"]
-            ), residual_case["label"]
-        assert (
-            canonical_json(fixture["tool"]["input_schema"])
-            == expected["tool_input_schema_json"]
-        )
+            assert residual_case["python_expected"] != residual_case["typescript_expected"], (
+                residual_case["label"]
+            )
+        assert canonical_json(fixture["tool"]["input_schema"]) == expected["tool_input_schema_json"]
         tool = ToolDef.model_validate(fixture["tool"])
         assert tool_chars(tool) == expected["tool_chars"]
 
@@ -108,9 +101,7 @@ class TestAuditCuratedValue:
 
     def test_system_part_text_populates(self) -> None:
         ir = make_ir(system=[SystemPart(text="part-0")])
-        overrides = [
-            Override(kind="system_part_text", target="system:0", value="rewritten")
-        ]
+        overrides = [Override(kind="system_part_text", target="system:0", value="rewritten")]
         _, audit = apply_overrides(overrides, ir)
         assert audit.entries[0].applied is True
         assert audit.entries[0].curated_value == "rewritten"
@@ -144,17 +135,11 @@ class TestAuditCuratedValue:
             ),
             Message(
                 role="user",
-                content=[
-                    ToolResultBlock(
-                        tool_use_id="tu-1", content=[TextBlock(text="a" * 500)]
-                    )
-                ],
+                content=[ToolResultBlock(tool_use_id="tu-1", content=[TextBlock(text="a" * 500)])],
             ),
         ]
         ir = make_ir(messages=messages)
-        overrides = [
-            Override(kind="truncate_tool_result", target="toolresult:tu-1", value=100)
-        ]
+        overrides = [Override(kind="truncate_tool_result", target="toolresult:tu-1", value=100)]
         _, audit = apply_overrides(overrides, ir)
         assert audit.entries[0].applied is True
         assert audit.entries[0].curated_value == "a" * 100 + " [truncated]"
@@ -167,25 +152,17 @@ class TestAuditCuratedValue:
             ),
             Message(
                 role="user",
-                content=[
-                    ToolResultBlock(
-                        tool_use_id="tu-1", content=[TextBlock(text="tiny")]
-                    )
-                ],
+                content=[ToolResultBlock(tool_use_id="tu-1", content=[TextBlock(text="tiny")])],
             ),
         ]
         ir = make_ir(messages=messages)
-        overrides = [
-            Override(kind="truncate_tool_result", target="toolresult:tu-1", value=100)
-        ]
+        overrides = [Override(kind="truncate_tool_result", target="toolresult:tu-1", value=100)]
         _, audit = apply_overrides(overrides, ir)
         assert audit.entries[0].applied is True
         assert audit.entries[0].curated_value == "tiny"
 
     def test_toggle_kinds_leave_curated_value_none(self) -> None:
-        messages = [
-            Message(role="user", content=[TextBlock(text="a"), TextBlock(text="b")])
-        ]
+        messages = [Message(role="user", content=[TextBlock(text="a"), TextBlock(text="b")])]
         ir = make_ir(
             system=[SystemPart(text="sys")],
             tools=[TOOL_BASH],
@@ -216,11 +193,7 @@ class TestAuditCuratedValue:
 
     def test_unapplied_truncate_leaves_curated_value_none(self) -> None:
         ir = make_ir()
-        overrides = [
-            Override(
-                kind="truncate_tool_result", target="toolresult:missing", value=100
-            )
-        ]
+        overrides = [Override(kind="truncate_tool_result", target="toolresult:missing", value=100)]
         _, audit = apply_overrides(overrides, ir)
         assert audit.entries[0].applied is False
         assert audit.entries[0].curated_value is None

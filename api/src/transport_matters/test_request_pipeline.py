@@ -126,9 +126,7 @@ async def test_codex_subagent_overrides_are_track_scoped() -> None:
 
 
 async def test_legacy_pipeline_uses_legacy_scope() -> None:
-    get_store().upsert(
-        Override(kind="system_part_toggle", target="system:0", value=False)
-    )
+    get_store().upsert(Override(kind="system_part_toggle", target="system:0", value=False))
 
     curated, _audit, assignment = await run_pipeline(_request(), "flow-legacy", None)
 

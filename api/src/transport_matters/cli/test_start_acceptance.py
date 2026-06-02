@@ -149,9 +149,7 @@ def test_start_injects_system_prompt_by_default(
     )
     monkeypatch.setattr("transport_matters.cli._port_in_use", lambda _: False)
 
-    result = runner.invoke(
-        main, ["claude", "--proxy-port", "9000", "--web-port", "9001"]
-    )
+    result = runner.invoke(main, ["claude", "--proxy-port", "9000", "--web-port", "9001"])
     assert result.exit_code == 0, result.output
     argv = spy_run_client_children.call_args.kwargs["client"].argv
     # client.argv = [claude_path, *passthrough]; injection prepends

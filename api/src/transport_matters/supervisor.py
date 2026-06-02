@@ -240,7 +240,7 @@ class ProcessSupervisor:
             start_new_session = True
 
         try:
-            popen = subprocess.Popen(  # noqa: S603 — argv is fully quoted.
+            popen = subprocess.Popen(
                 argv,
                 env=env,
                 cwd=str(cwd) if cwd is not None else None,
@@ -284,12 +284,11 @@ class ProcessSupervisor:
         stdin_fd = sys.stdin.fileno()
         if not os.isatty(stdin_fd):
             warnings.warn(
-                "parent stdin is not a tty; spawning with inherited stdio "
-                "instead of pty",
+                "parent stdin is not a tty; spawning with inherited stdio instead of pty",
                 RuntimeWarning,
                 stacklevel=3,
             )
-            popen = subprocess.Popen(  # noqa: S603 — argv is fully quoted.
+            popen = subprocess.Popen(
                 argv,
                 env=env,
                 cwd=str(cwd) if cwd is not None else None,
@@ -330,7 +329,7 @@ class ProcessSupervisor:
                 RuntimeWarning,
                 stacklevel=3,
             )
-            popen = subprocess.Popen(  # noqa: S603 — argv is fully quoted.
+            popen = subprocess.Popen(
                 argv,
                 env=env,
                 cwd=str(cwd) if cwd is not None else None,
@@ -348,7 +347,7 @@ class ProcessSupervisor:
         pty_popen: subprocess.Popen[bytes] | None = None
         try:
             try:
-                pty_popen = subprocess.Popen(  # noqa: S603 — argv is fully quoted.
+                pty_popen = subprocess.Popen(
                     argv,
                     env=env,
                     cwd=str(cwd) if cwd is not None else None,
@@ -629,10 +628,8 @@ def _pty_shuttle(
     try:
         while not stop_event.is_set():
             try:
-                readable, _, _ = select.select(
-                    [stdin_fd, master_fd], [], [], _PTY_SELECT_TIMEOUT
-                )
-            except (OSError, ValueError):
+                readable, _, _ = select.select([stdin_fd, master_fd], [], [], _PTY_SELECT_TIMEOUT)
+            except OSError, ValueError:
                 # select can raise OSError/ValueError if a fd was
                 # closed underneath us during teardown; treat it as
                 # a stop signal.

@@ -182,9 +182,7 @@ def apply_overrides(
                 elif original_index in removed_system_indices:
                     applied = False
                 else:
-                    adjusted = adjust_system_index(
-                        original_index, removed_system_indices
-                    )
+                    adjusted = adjust_system_index(original_index, removed_system_indices)
                     current_ir, chars_delta, applied = apply_system_part_toggle(
                         current_ir, adjusted, value
                     )
@@ -197,9 +195,7 @@ def apply_overrides(
                 if original_index in removed_system_indices:
                     applied = False
                 else:
-                    adjusted = adjust_system_index(
-                        original_index, removed_system_indices
-                    )
+                    adjusted = adjust_system_index(original_index, removed_system_indices)
                     current_ir, chars_delta, applied = apply_system_part_text(
                         current_ir, adjusted, value
                     )
@@ -221,13 +217,11 @@ def apply_overrides(
             if parsed is not None and isinstance(value, bool):
                 msg_idx, original_blk_idx = parsed
                 if value:
-                    applied = 0 <= msg_idx < len(
-                        ir.messages
-                    ) and 0 <= original_blk_idx < len(ir.messages[msg_idx].content)
-                else:
-                    adjusted_blk = adjust_blk_index(
-                        msg_idx, original_blk_idx, removed_blk_indices
+                    applied = 0 <= msg_idx < len(ir.messages) and 0 <= original_blk_idx < len(
+                        ir.messages[msg_idx].content
                     )
+                else:
+                    adjusted_blk = adjust_blk_index(msg_idx, original_blk_idx, removed_blk_indices)
                     if adjusted_blk is None:
                         applied = False
                     else:
@@ -235,17 +229,13 @@ def apply_overrides(
                             current_ir, msg_idx, adjusted_blk
                         )
                         if applied:
-                            removed_blk_indices.setdefault(msg_idx, set()).add(
-                                original_blk_idx
-                            )
+                            removed_blk_indices.setdefault(msg_idx, set()).add(original_blk_idx)
 
         elif kind == "message_text":
             parsed = parse_message_target(target)
             if parsed is not None and isinstance(value, str):
                 msg_idx, original_blk_idx = parsed
-                adjusted_blk = adjust_blk_index(
-                    msg_idx, original_blk_idx, removed_blk_indices
-                )
+                adjusted_blk = adjust_blk_index(msg_idx, original_blk_idx, removed_blk_indices)
                 if adjusted_blk is None:
                     applied = False
                 else:

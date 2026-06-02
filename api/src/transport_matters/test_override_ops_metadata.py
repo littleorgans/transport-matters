@@ -21,9 +21,7 @@ class TestSamplingSet:
 
     def test_sets_max_tokens(self) -> None:
         ir = make_ir()
-        overrides = [
-            Override(kind="sampling_set", target="sampling:max_tokens", value="4096")
-        ]
+        overrides = [Override(kind="sampling_set", target="sampling:max_tokens", value="4096")]
         result, audit = apply_overrides(overrides, ir)
         assert result.sampling.max_tokens == 4096
         assert audit.entries[0].applied is True
@@ -31,9 +29,7 @@ class TestSamplingSet:
 
     def test_sets_temperature_float(self) -> None:
         ir = make_ir()
-        overrides = [
-            Override(kind="sampling_set", target="sampling:temperature", value="0.7")
-        ]
+        overrides = [Override(kind="sampling_set", target="sampling:temperature", value="0.7")]
         result, _ = apply_overrides(overrides, ir)
         assert result.sampling.temperature == 0.7
 
@@ -43,17 +39,13 @@ class TestSamplingSet:
                 "sampling": SamplingParams(max_tokens=1024, temperature=0.9),
             }
         )
-        overrides = [
-            Override(kind="sampling_set", target="sampling:temperature", value="null")
-        ]
+        overrides = [Override(kind="sampling_set", target="sampling:temperature", value="null")]
         result, _ = apply_overrides(overrides, ir)
         assert result.sampling.temperature is None
 
     def test_sets_top_p_float(self) -> None:
         ir = make_ir()
-        overrides = [
-            Override(kind="sampling_set", target="sampling:top_p", value="0.95")
-        ]
+        overrides = [Override(kind="sampling_set", target="sampling:top_p", value="0.95")]
         result, _ = apply_overrides(overrides, ir)
         assert result.sampling.top_p == 0.95
 
@@ -77,47 +69,35 @@ class TestSamplingSet:
 
     def test_unknown_field_is_unapplied(self) -> None:
         ir = make_ir()
-        overrides = [
-            Override(kind="sampling_set", target="sampling:nonsense", value="1")
-        ]
+        overrides = [Override(kind="sampling_set", target="sampling:nonsense", value="1")]
         result, audit = apply_overrides(overrides, ir)
         assert audit.entries[0].applied is False
         assert result.sampling == ir.sampling
 
     def test_malformed_json_is_unapplied(self) -> None:
         ir = make_ir()
-        overrides = [
-            Override(
-                kind="sampling_set", target="sampling:temperature", value="not-json"
-            )
-        ]
+        overrides = [Override(kind="sampling_set", target="sampling:temperature", value="not-json")]
         result, audit = apply_overrides(overrides, ir)
         assert audit.entries[0].applied is False
         assert result.sampling == ir.sampling
 
     def test_wrong_type_for_field_is_unapplied(self) -> None:
         ir = make_ir()
-        overrides = [
-            Override(kind="sampling_set", target="sampling:max_tokens", value='"four"')
-        ]
+        overrides = [Override(kind="sampling_set", target="sampling:max_tokens", value='"four"')]
         result, audit = apply_overrides(overrides, ir)
         assert audit.entries[0].applied is False
         assert result.sampling == ir.sampling
 
     def test_max_tokens_rejects_bool(self) -> None:
         ir = make_ir()
-        overrides = [
-            Override(kind="sampling_set", target="sampling:max_tokens", value="true")
-        ]
+        overrides = [Override(kind="sampling_set", target="sampling:max_tokens", value="true")]
         result, audit = apply_overrides(overrides, ir)
         assert audit.entries[0].applied is False
         assert result.sampling == ir.sampling
 
     def test_chars_accounting_is_untouched(self) -> None:
         ir = make_ir(system=[SystemPart(type="text", text="hello")])
-        overrides = [
-            Override(kind="sampling_set", target="sampling:max_tokens", value="2048")
-        ]
+        overrides = [Override(kind="sampling_set", target="sampling:max_tokens", value="2048")]
         _, audit = apply_overrides(overrides, ir)
         assert audit.chars_before == audit.chars_after
 
@@ -143,9 +123,7 @@ class TestProviderExtrasSet:
         assert audit.entries[0].chars_delta == 0
 
     def test_null_value_deletes_key(self) -> None:
-        ir = make_ir().model_copy(
-            update={"provider_extras": {"thinking": {"type": "enabled"}}}
-        )
+        ir = make_ir().model_copy(update={"provider_extras": {"thinking": {"type": "enabled"}}})
         overrides = [
             Override(
                 kind="provider_extras_set",
@@ -198,9 +176,7 @@ class TestProviderExtrasSet:
     def test_batch_with_sampling_thinking_toggle(self) -> None:
         ir = make_ir().model_copy(
             update={
-                "sampling": SamplingParams(
-                    max_tokens=1024, temperature=0.7, top_p=0.9, top_k=40
-                ),
+                "sampling": SamplingParams(max_tokens=1024, temperature=0.7, top_p=0.9, top_k=40),
             }
         )
         overrides = [
@@ -275,9 +251,7 @@ class TestProviderExtrasNestedPath:
         assert result.provider_extras == {"output_config": {"effort": "high"}}
 
     def test_nested_clear_prunes_empty_parent(self) -> None:
-        ir = make_ir().model_copy(
-            update={"provider_extras": {"output_config": {"effort": "low"}}}
-        )
+        ir = make_ir().model_copy(update={"provider_extras": {"output_config": {"effort": "low"}}})
         overrides = [
             Override(
                 kind="provider_extras_set",
@@ -319,9 +293,7 @@ class TestProviderExtrasNestedPath:
         assert result.provider_extras == {}
 
     def test_nested_clear_cascade_stops_at_sibling(self) -> None:
-        ir = make_ir().model_copy(
-            update={"provider_extras": {"a": {"b": {"c": 1}, "d": 2}}}
-        )
+        ir = make_ir().model_copy(update={"provider_extras": {"a": {"b": {"c": 1}, "d": 2}}})
         overrides = [
             Override(
                 kind="provider_extras_set",
@@ -411,9 +383,7 @@ class TestProviderExtrasNestedPath:
         assert result.provider_extras == {"thinking": "plain"}
 
     def test_nested_does_not_mutate_original_ir(self) -> None:
-        ir = make_ir().model_copy(
-            update={"provider_extras": {"thinking": {"type": "enabled"}}}
-        )
+        ir = make_ir().model_copy(update={"provider_extras": {"thinking": {"type": "enabled"}}})
         original_thinking = ir.provider_extras["thinking"]
         overrides = [
             Override(

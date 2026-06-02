@@ -62,8 +62,7 @@ async def test_addon_websocket_message_can_pause_second_response_create_turn() -
     edited_ir = pf.curated_ir.model_copy(
         update={
             "system": [
-                part.model_copy(update={"text": "second edited"})
-                for part in pf.curated_ir.system
+                part.model_copy(update={"text": "second edited"}) for part in pf.curated_ir.system
             ]
         }
     )

@@ -78,9 +78,7 @@ def resolve_paths(*, workspace: str | None, as_json: bool) -> None:
 
     width = max(len(k) for k in entries)
     for key, value in entries.items():
-        typer.echo(
-            f"  {key.ljust(width)}  {value if value is not None else 'unresolved'}"
-        )
+        typer.echo(f"  {key.ljust(width)}  {value if value is not None else 'unresolved'}")
     if storage is None:
         typer.echo(
             f"\nNo live session; storage paths are unresolved. Run "
@@ -199,8 +197,7 @@ def _storage_for_slug(slug: str) -> Path:
             err=True,
         )
         typer.echo(
-            f"Run `{CLI_COMMAND} list` to see live workspaces, "
-            "or pass a directory path.",
+            f"Run `{CLI_COMMAND} list` to see live workspaces, or pass a directory path.",
             err=True,
         )
         raise typer.Exit(2)

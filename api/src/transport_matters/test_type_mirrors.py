@@ -131,11 +131,9 @@ def _py_model_fields(
         if not isinstance(node, ast.ClassDef) or node.name not in model_set:
             continue
         fields[node.name] = {
-            statement.target.id: ast.get_source_segment(source, statement.annotation)
-            or ""
+            statement.target.id: ast.get_source_segment(source, statement.annotation) or ""
             for statement in node.body
-            if isinstance(statement, ast.AnnAssign)
-            and isinstance(statement.target, ast.Name)
+            if isinstance(statement, ast.AnnAssign) and isinstance(statement.target, ast.Name)
         }
     return fields
 
@@ -148,9 +146,7 @@ def _py_assignment_block_sequence(source: str, name: str) -> tuple[str, ...]:
     tree = ast.parse(source)
     for node in tree.body:
         if _is_assignment_to(node, name):
-            return _block_name_sequence(
-                ast.get_source_segment(source, node.value) or ""
-            )
+            return _block_name_sequence(ast.get_source_segment(source, node.value) or "")
     raise AssertionError(f"Missing Python assignment {name}")
 
 
@@ -247,19 +243,13 @@ def _normalize_ts_type(source: str) -> str:
 def _canonical_py_fields(
     fields: dict[str, str],
 ) -> dict[str, str]:
-    return {
-        field_name: _canonical_py_type(field_type)
-        for field_name, field_type in fields.items()
-    }
+    return {field_name: _canonical_py_type(field_type) for field_name, field_type in fields.items()}
 
 
 def _canonical_ts_fields(
     fields: dict[str, TsField],
 ) -> dict[str, str]:
-    return {
-        field_name: _canonical_ts_type(field.type)
-        for field_name, field in fields.items()
-    }
+    return {field_name: _canonical_ts_type(field.type) for field_name, field in fields.items()}
 
 
 def _canonical_ts_type(source: str) -> str:
@@ -268,9 +258,7 @@ def _canonical_ts_type(source: str) -> str:
     if len(union_members) > 1:
         return " | ".join(_canonical_ts_type(member) for member in union_members)
 
-    array_short_match = re.fullmatch(
-        r"(?P<inner>[A-Za-z_][A-Za-z0-9_]*)\[\]", normalized
-    )
+    array_short_match = re.fullmatch(r"(?P<inner>[A-Za-z_][A-Za-z0-9_]*)\[\]", normalized)
     if array_short_match is not None:
         return f"Array<{_canonical_ts_type(array_short_match.group('inner'))}>"
 

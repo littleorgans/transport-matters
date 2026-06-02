@@ -15,9 +15,7 @@ from transport_matters.test_track_manager_support import (
 from transport_matters.track_manager import TrackManager
 
 
-def test_codex_reference_trace_assigns_subagent_by_agent_id_and_closes_on_wait() -> (
-    None
-):
+def test_codex_reference_trace_assigns_subagent_by_agent_id_and_closes_on_wait() -> None:
     manager = TrackManager()
     run_id = "c8a06661-613f-4363-9a56-a408ae754b90"
 
@@ -196,12 +194,8 @@ def test_codex_fan_out_continuation_routes_to_correct_subagent() -> None:
         ),
         None,
     )
-    child_a = manager.record_exchange(
-        ROOT_RUN_ID, _request(provider="codex", tools_count=90), None
-    )
-    child_b = manager.record_exchange(
-        ROOT_RUN_ID, _request(provider="codex", tools_count=90), None
-    )
+    child_a = manager.record_exchange(ROOT_RUN_ID, _request(provider="codex", tools_count=90), None)
+    child_b = manager.record_exchange(ROOT_RUN_ID, _request(provider="codex", tools_count=90), None)
     manager.observe_response(
         ROOT_RUN_ID,
         child_a.track_id,

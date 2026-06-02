@@ -36,12 +36,8 @@ class TestPriorityOrdering:
         ]
         result, audit = apply_overrides(overrides, ir)
         assert len(result.tools) == 0
-        toggle_entry = next(
-            entry for entry in audit.entries if entry.kind == "tool_toggle"
-        )
-        desc_entry = next(
-            entry for entry in audit.entries if entry.kind == "tool_description"
-        )
+        toggle_entry = next(entry for entry in audit.entries if entry.kind == "tool_toggle")
+        desc_entry = next(entry for entry in audit.entries if entry.kind == "tool_description")
         assert toggle_entry.applied is True
         assert desc_entry.applied is False
 
@@ -54,12 +50,8 @@ class TestPriorityOrdering:
         ]
         result, audit = apply_overrides(overrides, ir)
         assert len(result.system) == 0
-        toggle_entry = next(
-            entry for entry in audit.entries if entry.kind == "system_part_toggle"
-        )
-        text_entry = next(
-            entry for entry in audit.entries if entry.kind == "system_part_text"
-        )
+        toggle_entry = next(entry for entry in audit.entries if entry.kind == "system_part_toggle")
+        text_entry = next(entry for entry in audit.entries if entry.kind == "system_part_text")
         assert toggle_entry.applied is True
         assert text_entry.applied is False
 
@@ -109,9 +101,7 @@ class TestIndexShifting:
         result, audit = apply_overrides(overrides, ir)
         assert len(result.system) == 1
         assert result.system[0].text == "B"
-        text_entry = next(
-            entry for entry in audit.entries if entry.kind == "system_part_text"
-        )
+        text_entry = next(entry for entry in audit.entries if entry.kind == "system_part_text")
         assert text_entry.applied is False
 
     def test_message_text_after_block_toggle(self) -> None:
@@ -156,9 +146,7 @@ class TestIndexShifting:
         result, audit = apply_overrides(overrides, ir)
         assert result.messages[0].content[0].text == "first"  # type: ignore[union-attr]
         assert result.messages[0].content[1].text == "new second"  # type: ignore[union-attr]
-        msg_entry = next(
-            entry for entry in audit.entries if entry.kind == "message_text"
-        )
+        msg_entry = next(entry for entry in audit.entries if entry.kind == "message_text")
         assert msg_entry.applied is True
 
 
@@ -169,9 +157,7 @@ class TestSanitizeCuratedMessages:
             Message(role="assistant", content=[TextBlock(text="reply")]),
         ]
         ir = make_ir(messages=messages)
-        overrides = [
-            Override(kind="message_block_toggle", target="msg:0:blk:0", value=False)
-        ]
+        overrides = [Override(kind="message_block_toggle", target="msg:0:blk:0", value=False)]
         result, audit = apply_overrides(overrides, ir)
         assert len(result.messages) == 1
         assert result.messages[0].role == "assistant"
@@ -183,9 +169,7 @@ class TestSanitizeCuratedMessages:
             Message(role="assistant", content=[TextBlock(text="answer")]),
         ]
         ir = make_ir(messages=messages)
-        overrides = [
-            Override(kind="message_block_toggle", target="msg:1:blk:0", value=False)
-        ]
+        overrides = [Override(kind="message_block_toggle", target="msg:1:blk:0", value=False)]
         result, _ = apply_overrides(overrides, ir)
         assert len(result.messages) == 1
         assert result.messages[0].role == "user"
@@ -281,9 +265,7 @@ class TestOrphanPairPruning:
             ),
         ]
         ir = make_ir(messages=messages)
-        overrides = [
-            Override(kind="message_block_toggle", target="msg:1:blk:0", value=False)
-        ]
+        overrides = [Override(kind="message_block_toggle", target="msg:1:blk:0", value=False)]
         result, _ = apply_overrides(overrides, ir)
         assistant = result.messages[0]
         assert len(assistant.content) == 1
@@ -311,9 +293,7 @@ class TestOrphanPairPruning:
             ),
         ]
         ir = make_ir(messages=messages)
-        overrides = [
-            Override(kind="message_block_toggle", target="msg:0:blk:1", value=False)
-        ]
+        overrides = [Override(kind="message_block_toggle", target="msg:0:blk:1", value=False)]
         result, _ = apply_overrides(overrides, ir)
         assistant = result.messages[0]
         assert len(assistant.content) == 1
@@ -331,9 +311,7 @@ class TestOrphanPairPruning:
             ),
             Message(
                 role="user",
-                content=[
-                    ToolResultBlock(tool_use_id="tu-1", content=[TextBlock(text="ok")])
-                ],
+                content=[ToolResultBlock(tool_use_id="tu-1", content=[TextBlock(text="ok")])],
             ),
         ]
         ir = make_ir(messages=messages)
@@ -378,9 +356,7 @@ class TestOrphanPairPruning:
         result, _ = apply_overrides([], ir)
         assistant_blocks = result.messages[0].content
         assert len(assistant_blocks) == 2
-        kept_use_ids = [
-            block.id for block in assistant_blocks if isinstance(block, ToolUseBlock)
-        ]
+        kept_use_ids = [block.id for block in assistant_blocks if isinstance(block, ToolUseBlock)]
         assert kept_use_ids == ["paired"]
         user_blocks = result.messages[1].content
         assert len(user_blocks) == 1
