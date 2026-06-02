@@ -98,6 +98,47 @@ def test_claude_seed_preserves_existing_account(tmp_path: Path) -> None:
     assert seeded["hasCompletedOnboarding"] is True
 
 
+def test_claude_seed_writes_skip_dangerous_mode_setting(tmp_path: Path) -> None:
+    source = tmp_path / "default-claude"
+    source.mkdir()
+    _write_json(source / ".claude.json", {"userID": "user-default"})
+    home = tmp_path / "managed-claude"
+    workdir = tmp_path / "project"
+    workdir.mkdir()
+
+    seed_home_dir(
+        CLIENT_NAME_CLAUDE,
+        home_dir=home,
+        working_dir=workdir,
+        env={"CLAUDE_CONFIG_DIR": str(source)},
+    )
+
+    settings = _read_json(home / "settings.json")
+    assert settings["skipDangerousModePermissionPrompt"] is True
+
+
+def test_claude_seed_preserves_existing_settings(tmp_path: Path) -> None:
+    source = tmp_path / "default-claude"
+    source.mkdir()
+    _write_json(source / ".claude.json", {"userID": "user-default"})
+    home = tmp_path / "managed-claude"
+    home.mkdir()
+    _write_json(home / "settings.json", {"theme": "dark"})
+    workdir = tmp_path / "project"
+    workdir.mkdir()
+
+    seed_home_dir(
+        CLIENT_NAME_CLAUDE,
+        home_dir=home,
+        working_dir=workdir,
+        env={"CLAUDE_CONFIG_DIR": str(source)},
+    )
+
+    settings = _read_json(home / "settings.json")
+    assert settings["theme"] == "dark"
+    assert settings["skipDangerousModePermissionPrompt"] is True
+
+
 def test_codex_seed_fresh_home_copies_auth_0600_and_trust(
     tmp_path: Path,
 ) -> None:
