@@ -106,6 +106,33 @@ def _release_payload(
     return outbound_request_if_changed(adapter, pf.original_ir, final_ir)
 
 
+_pause_count_tasks: set[asyncio.Task[None]] = set()
+_PAUSE_DRAIN_TIMEOUT_S = 5.0
+
+
+def _retire_pause_count_task(task: asyncio.Task[None]) -> None:
+    _pause_count_tasks.discard(task)
+    if not task.cancelled() and task.exception() is not None:
+        logger.error("pause-count task failed", exc_info=task.exception())
+
+
+async def drain_pause_count_tasks() -> None:
+    """Await in-flight pause-count tasks before shared deps are torn down.
+
+    Pause-count tasks use the token counter's shared HTTP client, so
+    ``close_runtime`` drains them before that client is closed
+    (littleorgans/python storage Rule 4, no orphan tasks).
+    """
+    if not _pause_count_tasks:
+        return
+    _done, pending = await asyncio.wait(list(_pause_count_tasks), timeout=_PAUSE_DRAIN_TIMEOUT_S)
+    for task in pending:
+        task.cancel()
+    # Await cancellation to settle so no task touches the shared HTTP client
+    # between cancel() and the client's aclose() in close_runtime (Rule 4).
+    await asyncio.gather(*pending, return_exceptions=True)
+
+
 async def fire_pause_count(
     flow_id: str,
     counter: TokenCountingClient,
@@ -171,9 +198,7 @@ def _paused_event_payload(
         "parent_track_id": parent_track_id,
         "track_display_name": track_display_name,
         "track_role": track_role,
-        "spawn_anchor": spawn_anchor.model_dump(mode="json")
-        if spawn_anchor is not None
-        else None,
+        "spawn_anchor": spawn_anchor.model_dump(mode="json") if spawn_anchor is not None else None,
     }
     if provisional_exchange_id is not None:
         payload["provisional_exchange_id"] = provisional_exchange_id
@@ -186,12 +211,8 @@ def _flow_track_fields(flow: http.HTTPFlow) -> TrackFields:
     return {
         "run_id": get_settings().run_id,
         "track_id": assignment.track_id if assignment is not None else None,
-        "parent_track_id": assignment.parent_track_id
-        if assignment is not None
-        else None,
-        "track_display_name": (
-            assignment.track_display_name if assignment is not None else None
-        ),
+        "parent_track_id": assignment.parent_track_id if assignment is not None else None,
+        "track_display_name": (assignment.track_display_name if assignment is not None else None),
         "track_role": assignment.track_role if assignment is not None else None,
         "spawn_anchor": assignment.spawn_anchor if assignment is not None else None,
     }
@@ -284,14 +305,17 @@ async def handle_breakpoint(
             return _PauseHooks(auth_headers=auth)
 
         def after_broadcast() -> None:
-            asyncio.create_task(
+            task = asyncio.create_task(
                 fire_pause_count(
                     flow.id,
                     counter,
                     adapter.outbound_request(curated_ir),
                     auth,
-                )
+                ),
+                name=f"pause-count:{flow.id}",
             )
+            _pause_count_tasks.add(task)
+            task.add_done_callback(_retire_pause_count_task)
 
         return _PauseHooks(auth_headers=auth, after_broadcast=after_broadcast)
 
@@ -341,9 +365,7 @@ async def handle_websocket_breakpoint(
         transport_state = get_codex_transport_state(flow)
         return _PauseHooks(
             provisional_exchange_id=(
-                transport_state.provisional_exchange_id
-                if transport_state is not None
-                else None
+                transport_state.provisional_exchange_id if transport_state is not None else None
             )
         )
 

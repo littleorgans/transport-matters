@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 from dataclasses import dataclass
 
@@ -22,6 +23,8 @@ logger = logging.getLogger(__name__)
 class AddonRuntime:
     http_client: httpx.AsyncClient
     token_counter: TokenCounter
+    server: uvicorn.Server
+    serve_task: asyncio.Task[None]
 
 
 def load_runtime() -> AddonRuntime:
@@ -48,15 +51,32 @@ def load_runtime() -> AddonRuntime:
         log_config=None,
     )
     server = uvicorn.Server(config)
-    asyncio.ensure_future(server.serve())
+    serve_task = asyncio.create_task(server.serve(), name="web-ui-serve")
     logger.info("Web UI: http://127.0.0.1:%d", settings.web_port)
-    return AddonRuntime(http_client=http_client, token_counter=token_counter)
+    return AddonRuntime(
+        http_client=http_client,
+        token_counter=token_counter,
+        server=server,
+        serve_task=serve_task,
+    )
 
 
 async def close_runtime(runtime: AddonRuntime | None) -> None:
     await bp.clear_all()
     if runtime is None:
         return
+    # Drain in-flight pause-count tasks before closing the shared HTTP client
+    # they depend on (littleorgans/python storage Rule 4, no orphan tasks).
+    from transport_matters.pause_session import drain_pause_count_tasks
+
+    await drain_pause_count_tasks()
+    runtime.server.should_exit = True
+    try:
+        await asyncio.wait_for(runtime.serve_task, timeout=5.0)
+    except TimeoutError:
+        runtime.serve_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await runtime.serve_task
     await runtime.http_client.aclose()
     set_counter(None)
     set_recent_auth(None)
