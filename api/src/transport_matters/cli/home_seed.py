@@ -24,6 +24,8 @@ if TYPE_CHECKING:
 _CLAUDE_CONFIG_ENV = "CLAUDE_CONFIG_DIR"
 _CODEX_HOME_ENV = "CODEX_HOME"
 _CLAUDE_CONFIG_FILENAME = ".claude.json"
+_CLAUDE_SETTINGS_FILENAME = "settings.json"
+_CLAUDE_SKIP_DANGEROUS_KEY = "skipDangerousModePermissionPrompt"
 _CODEX_AUTH_FILENAME = "auth.json"
 _CODEX_CONFIG_FILENAME = "config.toml"
 _TRUSTED = "trusted"
@@ -73,6 +75,7 @@ class ClaudeSeeder:
         config["hasCompletedOnboarding"] = True
         _ensure_claude_trust(config, str(working_dir))
         _write_atomic_json(target, config)
+        _ensure_claude_skip_dangerous_prompt(home_dir)
 
 
 class CodexSeeder:
@@ -161,6 +164,19 @@ def _ensure_claude_trust(config: dict[str, Any], cwd: str) -> None:
         project = {}
         projects[cwd] = project
     project["hasTrustDialogAccepted"] = True
+
+
+def _ensure_claude_skip_dangerous_prompt(home_dir: Path) -> None:
+    """Seed settings.json so a managed Claude skips the dangerous-mode prompt.
+
+    Merge-only: preserves any existing settings keys and is idempotent.
+    """
+    target = home_dir / _CLAUDE_SETTINGS_FILENAME
+    settings = _read_json_object_if_exists(target)
+    if settings.get(_CLAUDE_SKIP_DANGEROUS_KEY) is True:
+        return
+    settings[_CLAUDE_SKIP_DANGEROUS_KEY] = True
+    _write_atomic_json(target, settings)
 
 
 def _write_atomic_json(path: Path, value: dict[str, Any]) -> None:
