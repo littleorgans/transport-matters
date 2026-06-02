@@ -114,9 +114,7 @@ async def test_addon_websocket_end_keeps_turn_artifacts_separated() -> None:
     assert second_artifacts.transport.close.close_code == 1000
 
 
-async def test_addon_websocket_end_persists_interrupted_turn_after_prior_finalize() -> (
-    None
-):
+async def test_addon_websocket_end_persists_interrupted_turn_after_prior_finalize() -> None:
     addon = TransportMattersAddon()
     flow = _codex_flow()
     assert flow.websocket is not None

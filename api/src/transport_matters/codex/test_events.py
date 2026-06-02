@@ -194,9 +194,7 @@ def test_turn_summary_rejects_mismatched_terminal_contract() -> None:
 
 
 def test_interrupted_turn_requires_close_stop_reason() -> None:
-    with pytest.raises(
-        ValidationError, match="interrupted turns must carry stop_reason"
-    ):
+    with pytest.raises(ValidationError, match="interrupted turns must carry stop_reason"):
         CodexTurnSummary(
             turn_id="turn_002",
             exchange_id="ex_123",

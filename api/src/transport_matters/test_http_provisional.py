@@ -169,9 +169,7 @@ def _curated_ir(
 ) -> InternalRequest:
     updates: dict[str, object] = {"system": [SystemPart(text=system_text)]}
     if message_text is not None:
-        updates["messages"] = [
-            Message(role="user", content=[TextBlock(text=message_text)])
-        ]
+        updates["messages"] = [Message(role="user", content=[TextBlock(text=message_text)])]
     return ir.model_copy(update=updates)
 
 
@@ -307,9 +305,7 @@ async def test_http_response_hook_finalizes_same_exchange_and_observes_response(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     flow = _http_flow("flow-http-finalize")
-    calls: list[
-        tuple[str | None, RequestFlowState, InternalResponse | None, str | None]
-    ] = []
+    calls: list[tuple[str | None, RequestFlowState, InternalResponse | None, str | None]] = []
 
     def fake_track_assignment(
         run_id: str | None,
@@ -358,9 +354,7 @@ async def test_http_response_hook_keeps_req_stats_json_equivalent(
 ) -> None:
     flow = _http_flow("flow-http-req-stats")
     queue = broadcast.subscribe()
-    _state, exchange_id, pending = await _request_pending(
-        flow, monkeypatch, queue=queue
-    )
+    _state, exchange_id, pending = await _request_pending(flow, monkeypatch, queue=queue)
     assert pending is not None
     _set_response(flow, _response_body())
 
@@ -465,9 +459,7 @@ async def test_http_error_response_finalizes_instead_of_deleting(
 ) -> None:
     flow = _http_flow(f"flow-http-{status_code}")
     queue = broadcast.subscribe()
-    _state, exchange_id, pending = await _request_pending(
-        flow, monkeypatch, queue=queue
-    )
+    _state, exchange_id, pending = await _request_pending(flow, monkeypatch, queue=queue)
     assert pending is not None
     _set_response(
         flow,

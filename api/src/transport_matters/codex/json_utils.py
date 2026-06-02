@@ -8,10 +8,7 @@ from typing import Any
 
 def canonicalize_json(value: Any) -> Any:
     if isinstance(value, dict):
-        return {
-            key: canonicalize_json(nested_value)
-            for key, nested_value in sorted(value.items())
-        }
+        return {key: canonicalize_json(nested_value) for key, nested_value in sorted(value.items())}
     if isinstance(value, list):
         return [canonicalize_json(item) for item in value]
     return value

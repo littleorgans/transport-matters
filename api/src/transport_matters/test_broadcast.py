@@ -2,10 +2,12 @@
 
 import json
 import logging
-
-import pytest
+from typing import TYPE_CHECKING
 
 from transport_matters import broadcast
+
+if TYPE_CHECKING:
+    import pytest
 
 
 class TestBroadcast:

@@ -68,12 +68,7 @@ class UnknownBlock(BaseModel):
 
 
 ContentBlock = Annotated[
-    TextBlock
-    | ToolUseBlock
-    | ToolResultBlock
-    | ThinkingBlock
-    | ImageBlock
-    | UnknownBlock,
+    TextBlock | ToolUseBlock | ToolResultBlock | ThinkingBlock | ImageBlock | UnknownBlock,
     Field(discriminator="type"),
 ]
 
@@ -85,9 +80,7 @@ class SystemPart(BaseModel):
 
     type: Literal["text"] = "text"
     text: str
-    cache_hint: dict[str, Any] | None = (
-        None  # Any: adapter-opaque, preserved on round-trip
-    )
+    cache_hint: dict[str, Any] | None = None  # Any: adapter-opaque, preserved on round-trip
     provider_data: dict[str, Any] | None = None  # Any: extra provider fields
 
 
@@ -146,10 +139,8 @@ class InternalRequest(BaseModel):
     sampling: SamplingParams
     metadata: RequestMetadata
     stream: bool = False
-    provider_extras: dict[str, Any] = (
-        Field(  # Any: catch-all for provider-only top-level fields
-            default_factory=dict,
-        )
+    provider_extras: dict[str, Any] = Field(  # Any: catch-all for provider-only top-level fields
+        default_factory=dict,
     )
 
 

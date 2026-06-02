@@ -78,9 +78,7 @@ async def run_pipeline(
     try:
         curated_ir, audit = apply_overrides(store.get_all(scope=scope), ir)
     except Exception:
-        logger.exception(
-            "Override pipeline failed for flow %s, forwarding unmodified", flow_id
-        )
+        logger.exception("Override pipeline failed for flow %s, forwarding unmodified", flow_id)
         return ir, None, track_assignment
 
     return curated_ir, audit, track_assignment

@@ -57,9 +57,7 @@ class TestAtomicPersist:
         assert await storage.read_index(limit=10, offset=0) == []
         with pytest.raises(FileNotFoundError):
             await storage.read_exchange(entry.id)
-        assert not any(
-            path.name.endswith((".tmp", ".bak")) for path in storage.root.iterdir()
-        )
+        assert not any(path.name.endswith((".tmp", ".bak")) for path in storage.root.iterdir())
 
     async def test_new_exchange_rollback_on_index_rewrite_failure(
         self, storage: DiskStorageBackend
@@ -82,9 +80,7 @@ class TestAtomicPersist:
         assert await storage.read_index(limit=10, offset=0) == []
         with pytest.raises(FileNotFoundError):
             await storage.read_exchange(entry.id)
-        assert not any(
-            path.name.endswith((".tmp", ".bak")) for path in storage.root.iterdir()
-        )
+        assert not any(path.name.endswith((".tmp", ".bak")) for path in storage.root.iterdir())
 
     async def test_existing_exchange_restored_on_index_rewrite_failure(
         self, storage: DiskStorageBackend
@@ -132,9 +128,7 @@ class TestAtomicPersist:
         restored_artifacts = await storage.read_exchange(exchange_id)
         assert restored_artifacts.request_raw == original_artifacts.request_raw
         assert restored_artifacts.response_ir is None
-        assert not any(
-            path.name.endswith((".tmp", ".bak")) for path in storage.root.iterdir()
-        )
+        assert not any(path.name.endswith((".tmp", ".bak")) for path in storage.root.iterdir())
 
     async def test_existing_exchange_restored_on_derived_turn_write_failure(
         self, storage: DiskStorageBackend
@@ -186,9 +180,7 @@ class TestAtomicPersist:
         assert restored_artifacts.request_raw == original_artifacts.request_raw
         assert restored_artifacts.events is None
         assert restored_artifacts.turn is None
-        assert not any(
-            path.name.endswith((".tmp", ".bak")) for path in storage.root.iterdir()
-        )
+        assert not any(path.name.endswith((".tmp", ".bak")) for path in storage.root.iterdir())
 
     async def test_existing_exchange_persist_uses_non_default_executor(
         self, storage: DiskStorageBackend
@@ -309,17 +301,13 @@ class TestAtomicPersist:
                 "model": "codex/gpt-5-codex",
             }
         )
-        turn = disk_tests._make_completed_turn().model_copy(
-            update={"exchange_id": exchange_id}
-        )
+        turn = disk_tests._make_completed_turn().model_copy(update={"exchange_id": exchange_id})
         artifacts = ExchangeArtifacts(
             request_raw=b'{"type":"response.create","model":"gpt-5-codex"}',
             request_ir=request_ir,
             turn=turn,
             events=(
-                disk_tests._make_codex_event().model_copy(
-                    update={"exchange_id": exchange_id}
-                ),
+                disk_tests._make_codex_event().model_copy(update={"exchange_id": exchange_id}),
             ),
         )
 

@@ -79,8 +79,7 @@ def derive_codex_turn_incremental(
         started_at=request.started_at,
         committed_text_chars=max(
             0,
-            request.text_chars
-            - _open_assistant_text_chars(request.cursor.open_assistant_items),
+            request.text_chars - _open_assistant_text_chars(request.cursor.open_assistant_items),
         ),
         committed_tool_calls=request.tool_calls,
     )
@@ -108,9 +107,7 @@ def _derive_codex_turn(
         cursor.next_message_index > context.request_message_index or next_seq > 1
     )
     last_message_index = (
-        cursor.next_message_index - 1
-        if cursor is not None
-        else context.request_message_index - 1
+        cursor.next_message_index - 1 if cursor is not None else context.request_message_index - 1
     )
     terminal_status: Literal["completed", "failed"] | None = None
     terminal_message_index: int | None = None
@@ -125,16 +122,11 @@ def _derive_codex_turn(
 
         last_message_index = message.message_index
         if message.dropped:
-            if (
-                not turn_started
-                and message.message_index == context.request_message_index
-            ):
+            if not turn_started and message.message_index == context.request_message_index:
                 return None
             continue
 
-        payload = (
-            message.payload_json if isinstance(message.payload_json, dict) else None
-        )
+        payload = message.payload_json if isinstance(message.payload_json, dict) else None
 
         if not turn_started:
             if (
@@ -172,16 +164,12 @@ def _derive_codex_turn(
                     source="client",
                     kind="tool_output_submitted",
                     ts=message.ts,
-                    transport_ref=CodexTransportRef(
-                        message_index=message.message_index
-                    ),
+                    transport_ref=CodexTransportRef(message_index=message.message_index),
                     data=_tool_output_event_data(item=item, input_index=index),
                 )
             continue
 
-        if message.direction == "client" and is_codex_turn_start(
-            payload, from_client=True
-        ):
+        if message.direction == "client" and is_codex_turn_start(payload, from_client=True):
             msg = "transport slice cannot contain a nested response.create turn start"
             raise ValueError(msg)
 
@@ -225,9 +213,7 @@ def _derive_codex_turn(
                     source="server",
                     kind="assistant_item_completed",
                     ts=message.ts,
-                    transport_ref=CodexTransportRef(
-                        message_index=message.message_index
-                    ),
+                    transport_ref=CodexTransportRef(message_index=message.message_index),
                     data=_assistant_item_event_data(assistant_item, text=text),
                 )
                 continue
@@ -242,9 +228,7 @@ def _derive_codex_turn(
                     source="server",
                     kind="assistant_item_completed",
                     ts=message.ts,
-                    transport_ref=CodexTransportRef(
-                        message_index=message.message_index
-                    ),
+                    transport_ref=CodexTransportRef(message_index=message.message_index),
                     data=_assistant_item_event_data(reasoning_item, text=text),
                 )
                 continue
@@ -254,9 +238,7 @@ def _derive_codex_turn(
                 call_key = codex_tool_call_key(tool_call_item)
                 arguments = ""
                 if call_key is not None:
-                    arguments = open_tool_calls.get(
-                        call_key, CodexOpenToolCall()
-                    ).arguments
+                    arguments = open_tool_calls.get(call_key, CodexOpenToolCall()).arguments
                     open_tool_calls.pop(call_key, None)
                 final_arguments = codex_tool_call_arguments_text(tool_call_item)
                 if final_arguments:
@@ -269,9 +251,7 @@ def _derive_codex_turn(
                     source="server",
                     kind="tool_call_completed",
                     ts=message.ts,
-                    transport_ref=CodexTransportRef(
-                        message_index=message.message_index
-                    ),
+                    transport_ref=CodexTransportRef(message_index=message.message_index),
                     data=_tool_call_event_data(tool_call_item, arguments=arguments),
                 )
                 continue
@@ -281,8 +261,7 @@ def _derive_codex_turn(
                 terminal_message_index = message.message_index
                 terminal_ts = message.ts
                 terminal_stop_reason = (
-                    codex_terminal_stop_reason(payload, from_client=False)
-                    or terminal_status
+                    codex_terminal_stop_reason(payload, from_client=False) or terminal_status
                 )
                 next_seq = _append_event(
                     events,
@@ -295,9 +274,7 @@ def _derive_codex_turn(
                         else "response_failed"
                     ),
                     ts=message.ts,
-                    transport_ref=CodexTransportRef(
-                        message_index=message.message_index
-                    ),
+                    transport_ref=CodexTransportRef(message_index=message.message_index),
                     data=_terminal_event_data(
                         payload=payload,
                         stop_reason=terminal_stop_reason,
@@ -307,18 +284,14 @@ def _derive_codex_turn(
     if not turn_started or started_at is None:
         return None
 
-    summary_text_chars = committed_text_chars + _open_assistant_text_chars(
-        open_assistant_items
-    )
+    summary_text_chars = committed_text_chars + _open_assistant_text_chars(open_assistant_items)
     finalized_tool_calls = committed_tool_calls + len(open_tool_calls)
 
     if terminal_status is not None:
         stop_reason = terminal_stop_reason or terminal_status
         status = terminal_status
         terminal_cause: CodexTerminalCause = (
-            "response_completed"
-            if terminal_status == "completed"
-            else "response_failed"
+            "response_completed" if terminal_status == "completed" else "response_failed"
         )
         next_seq = _append_event(
             events,

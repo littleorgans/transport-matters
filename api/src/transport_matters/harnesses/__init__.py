@@ -144,9 +144,7 @@ def get_harness_descriptor(harness_id: str) -> HarnessDescriptor:
     try:
         return _DESCRIPTORS_BY_ID[harness_id]
     except KeyError as exc:
-        raise UnsupportedHarnessError(
-            detail=f"No harness registered for {harness_id}"
-        ) from exc
+        raise UnsupportedHarnessError(detail=f"No harness registered for {harness_id}") from exc
 
 
 __all__ = [

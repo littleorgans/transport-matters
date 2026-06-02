@@ -74,9 +74,7 @@ class DiskStorageLayout:
             turn=exchange_dir / _TURN_FILENAME,
         )
 
-    def new_exchange_dir(
-        self, exchange_id: str, *, now: datetime | None = None
-    ) -> Path:
+    def new_exchange_dir(self, exchange_id: str, *, now: datetime | None = None) -> Path:
         ts = now or datetime.now(tz=UTC)
         return self.root / self.exchange_dir_name(exchange_id, ts=ts)
 
@@ -90,9 +88,7 @@ class DiskStorageLayout:
                 return exchange_dir
         return None
 
-    def exchange_dir_for_write(
-        self, exchange_id: str, *, now: datetime | None = None
-    ) -> Path:
+    def exchange_dir_for_write(self, exchange_id: str, *, now: datetime | None = None) -> Path:
         return self.find_exchange_dir(exchange_id) or self.new_exchange_dir(
             exchange_id,
             now=now,

@@ -127,17 +127,12 @@ def apply_truncate_tool_result(
         found = True
         new_content: list[ContentBlock] = []
         for block in message.content:
-            if (
-                not isinstance(block, ToolResultBlock)
-                or block.tool_use_id != tool_use_id
-            ):
+            if not isinstance(block, ToolResultBlock) or block.tool_use_id != tool_use_id:
                 new_content.append(block)
                 continue
 
             original_text = "".join(
-                text_block.text
-                for text_block in block.content
-                if isinstance(text_block, TextBlock)
+                text_block.text for text_block in block.content if isinstance(text_block, TextBlock)
             )
             if len(original_text) > max_chars:
                 truncated = original_text[:max_chars] + " [truncated]"
@@ -235,10 +230,7 @@ def sanitize_curated_messages(
                 continue
             if isinstance(block, ToolUseBlock) and block.id in orphan_use_ids:
                 continue
-            if (
-                isinstance(block, ToolResultBlock)
-                and block.tool_use_id in orphan_result_ids
-            ):
+            if isinstance(block, ToolResultBlock) and block.tool_use_id in orphan_result_ids:
                 continue
             kept_blocks.append(block)
         if not kept_blocks:

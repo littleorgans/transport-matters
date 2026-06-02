@@ -51,9 +51,7 @@ class TestGetPipelineTokens:
             "reason": "unsupported_provider",
         }
 
-    async def test_returns_cached_without_calling_counter(
-        self, client: AsyncClient
-    ) -> None:
+    async def test_returns_cached_without_calling_counter(self, client: AsyncClient) -> None:
         """Already stamped rows short circuit without touching the counter."""
         from transport_matters import counting
 
@@ -103,9 +101,7 @@ class TestGetPipelineTokens:
         assert response.status_code == 200
         assert stub.calls == 1
 
-    async def test_lazy_recount_lock_is_released_after_request(
-        self, client: AsyncClient
-    ) -> None:
+    async def test_lazy_recount_lock_is_released_after_request(self, client: AsyncClient) -> None:
         """Per-exchange recount locks must not accumulate after the request."""
         from transport_matters import counting
         from transport_matters.api.v1 import exchanges
@@ -234,9 +230,7 @@ class TestGetPipelineTokens:
         assert stored.pipeline.tokens_before is None
         assert stored.pipeline.tokens_after is None
 
-    async def test_partial_after_counter_result_does_not_persist(
-        self, client: AsyncClient
-    ) -> None:
+    async def test_partial_after_counter_result_does_not_persist(self, client: AsyncClient) -> None:
         """Mirror of the (42, None) case: (None, 42) is also a failure."""
         from transport_matters import counting
         from transport_matters.storage import get_storage
@@ -348,9 +342,7 @@ class TestGetPipelineTokens:
         }
         assert stub.calls == 0
 
-    async def test_concurrent_callers_share_one_counter_call(
-        self, client: AsyncClient
-    ) -> None:
+    async def test_concurrent_callers_share_one_counter_call(self, client: AsyncClient) -> None:
         """Two simultaneous opens of the same exchange trigger one counter call."""
         from transport_matters import counting
 
@@ -360,9 +352,7 @@ class TestGetPipelineTokens:
             def __init__(self) -> None:
                 self.calls = 0
 
-            async def count(
-                self, payload: bytes, auth_headers: dict[str, str]
-            ) -> int | None:
+            async def count(self, payload: bytes, auth_headers: dict[str, str]) -> int | None:
                 self.calls += 1
                 await gate.wait()
                 return 55
@@ -373,12 +363,8 @@ class TestGetPipelineTokens:
 
         await seed_pipeline_entry()
 
-        req_a = asyncio.create_task(
-            client.get("/api/exchanges/ex-pipe/pipeline_tokens")
-        )
-        req_b = asyncio.create_task(
-            client.get("/api/exchanges/ex-pipe/pipeline_tokens")
-        )
+        req_a = asyncio.create_task(client.get("/api/exchanges/ex-pipe/pipeline_tokens"))
+        req_b = asyncio.create_task(client.get("/api/exchanges/ex-pipe/pipeline_tokens"))
         await asyncio.sleep(0.05)
         gate.set()
 

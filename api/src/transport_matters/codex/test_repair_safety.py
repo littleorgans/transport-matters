@@ -137,9 +137,7 @@ async def test_repair_does_not_invent_sidecars_for_non_turn_transport(
 
     assert result.action == "none"
     assert result.status_before == "missing"
-    assert {diagnostic.code for diagnostic in result.diagnostics} >= {
-        "codex_turn_not_present"
-    }
+    assert {diagnostic.code for diagnostic in result.diagnostics} >= {"codex_turn_not_present"}
 
     exchange_dir = storage._find_exchange_dir(exchange_id)
     assert not (exchange_dir / "events.jsonl").exists()

@@ -19,19 +19,10 @@ def test_codex_turn_start_uses_client_response_create_only() -> None:
 
 
 def test_codex_terminal_boundary_uses_server_completed_and_failed_only() -> None:
-    assert (
-        codex_terminal_status({"type": "response.completed"}, from_client=False)
-        == "completed"
-    )
-    assert (
-        codex_terminal_status({"type": "response.failed"}, from_client=False)
-        == "failed"
-    )
+    assert codex_terminal_status({"type": "response.completed"}, from_client=False) == "completed"
+    assert codex_terminal_status({"type": "response.failed"}, from_client=False) == "failed"
     assert codex_terminal_status({"type": "response.failed"}, from_client=True) is None
-    assert (
-        codex_terminal_status({"type": "response.output_item.done"}, from_client=False)
-        is None
-    )
+    assert codex_terminal_status({"type": "response.output_item.done"}, from_client=False) is None
 
 
 def test_codex_terminal_stop_reason_prefers_status_metadata() -> None:

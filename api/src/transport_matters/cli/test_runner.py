@@ -49,12 +49,8 @@ def test_run_children_spawns_claude_with_pty(
     fake_sup.wait_any.return_value = ("claude", 0)
     fake_sup.wait_one.return_value = ("mitmdump", 0)
 
-    monkeypatch.setattr(
-        "transport_matters.cli.runner.ProcessSupervisor", lambda: fake_sup
-    )
-    monkeypatch.setattr(
-        "transport_matters.cli.runner._wait_for_port_ready", lambda *_a, **_k: True
-    )
+    monkeypatch.setattr("transport_matters.cli.runner.ProcessSupervisor", lambda: fake_sup)
+    monkeypatch.setattr("transport_matters.cli.runner._wait_for_port_ready", lambda *_a, **_k: True)
 
     with pytest.raises(typer.Exit):
         _run_children(
@@ -69,9 +65,7 @@ def test_run_children_spawns_claude_with_pty(
         )
 
     # Find the claude spawn call and assert the pty/foreground flags.
-    claude_calls = [
-        call for call in fake_sup.spawn.call_args_list if call.args[0] == "claude"
-    ]
+    claude_calls = [call for call in fake_sup.spawn.call_args_list if call.args[0] == "claude"]
     assert len(claude_calls) == 1
     kwargs = claude_calls[0].kwargs
     assert kwargs.get("pty") is True
@@ -92,12 +86,8 @@ def test_run_children_bails_out_on_signal_before_claude_spawn(
     # branch fires before spawn("claude") gets a chance.
     fake_sup.received_signal = int(signal.SIGINT)
 
-    monkeypatch.setattr(
-        "transport_matters.cli.runner.ProcessSupervisor", lambda: fake_sup
-    )
-    monkeypatch.setattr(
-        "transport_matters.cli.runner._wait_for_port_ready", lambda *_a, **_k: True
-    )
+    monkeypatch.setattr("transport_matters.cli.runner.ProcessSupervisor", lambda: fake_sup)
+    monkeypatch.setattr("transport_matters.cli.runner._wait_for_port_ready", lambda *_a, **_k: True)
 
     with pytest.raises(typer.Exit) as exc_info:
         _run_children(
@@ -129,12 +119,8 @@ def test_run_children_exits_zero_on_signal_after_children_spawn(
     fake_sup.received_signal = None
     fake_sup.wait_any.return_value = (SIGNAL_EXIT, int(signal.SIGINT))
 
-    monkeypatch.setattr(
-        "transport_matters.cli.runner.ProcessSupervisor", lambda: fake_sup
-    )
-    monkeypatch.setattr(
-        "transport_matters.cli.runner._wait_for_port_ready", lambda *_a, **_k: True
-    )
+    monkeypatch.setattr("transport_matters.cli.runner.ProcessSupervisor", lambda: fake_sup)
+    monkeypatch.setattr("transport_matters.cli.runner._wait_for_port_ready", lambda *_a, **_k: True)
 
     with pytest.raises(typer.Exit) as exc_info:
         _run_children(
@@ -161,12 +147,8 @@ def test_run_children_reports_proxy_failure_after_claude_exit(
     fake_sup.wait_any.return_value = ("claude", 0)
     fake_sup.wait_one.return_value = ("mitmdump", 7)
 
-    monkeypatch.setattr(
-        "transport_matters.cli.runner.ProcessSupervisor", lambda: fake_sup
-    )
-    monkeypatch.setattr(
-        "transport_matters.cli.runner._wait_for_port_ready", lambda *_a, **_k: True
-    )
+    monkeypatch.setattr("transport_matters.cli.runner.ProcessSupervisor", lambda: fake_sup)
+    monkeypatch.setattr("transport_matters.cli.runner._wait_for_port_ready", lambda *_a, **_k: True)
 
     with pytest.raises(typer.Exit) as exc_info:
         _run_children(
@@ -194,12 +176,8 @@ def test_run_client_children_handles_custom_client_exit_then_proxy_lifecycle(
     fake_sup.wait_any.return_value = ("sample-client", 0)
     fake_sup.wait_one.return_value = ("mitmdump", 0)
 
-    monkeypatch.setattr(
-        "transport_matters.cli.runner.ProcessSupervisor", lambda: fake_sup
-    )
-    monkeypatch.setattr(
-        "transport_matters.cli.runner._wait_for_port_ready", lambda *_a, **_k: True
-    )
+    monkeypatch.setattr("transport_matters.cli.runner.ProcessSupervisor", lambda: fake_sup)
+    monkeypatch.setattr("transport_matters.cli.runner._wait_for_port_ready", lambda *_a, **_k: True)
 
     outcome = _run_client_children_until_outcome(
         mitmdump_argv=["/bin/mitmdump"],
@@ -218,8 +196,7 @@ def test_run_client_children_handles_custom_client_exit_then_proxy_lifecycle(
 
     assert outcome == LaunchExitOutcome(0)
     assert (
-        "Sample Client exited; web UI still live at "
-        "http://127.0.0.1:8788. Ctrl+C to stop."
+        "Sample Client exited; web UI still live at http://127.0.0.1:8788. Ctrl+C to stop."
     ) in capsys.readouterr().out
     mitmdump_call = fake_sup.spawn.call_args_list[0]
     assert mitmdump_call.args == ("mitmdump", ["/bin/mitmdump"])
@@ -245,9 +222,7 @@ def test_run_client_children_proxy_only_runs_mitmdump_in_foreground(
     fake_sup = MagicMock()
     fake_sup.wait_one.return_value = ("mitmdump", 4)
 
-    monkeypatch.setattr(
-        "transport_matters.cli.runner.ProcessSupervisor", lambda: fake_sup
-    )
+    monkeypatch.setattr("transport_matters.cli.runner.ProcessSupervisor", lambda: fake_sup)
 
     outcome = _run_client_children_until_outcome(
         mitmdump_argv=["/bin/mitmdump"],
@@ -279,12 +254,8 @@ def test_run_client_children_outcome_captures_proxy_failure_log(
     fake_sup.wait_any.return_value = ("claude", 0)
     fake_sup.wait_one.return_value = ("mitmdump", 7)
 
-    monkeypatch.setattr(
-        "transport_matters.cli.runner.ProcessSupervisor", lambda: fake_sup
-    )
-    monkeypatch.setattr(
-        "transport_matters.cli.runner._wait_for_port_ready", lambda *_a, **_k: True
-    )
+    monkeypatch.setattr("transport_matters.cli.runner.ProcessSupervisor", lambda: fake_sup)
+    monkeypatch.setattr("transport_matters.cli.runner._wait_for_port_ready", lambda *_a, **_k: True)
 
     outcome = _run_client_children_until_outcome(
         mitmdump_argv=["/bin/mitmdump"],
@@ -321,9 +292,7 @@ def test_run_client_children_outcome_captures_bind_failure(
         log.write_text("EADDRINUSE ('127.0.0.1', 8787)\n")
         return False
 
-    monkeypatch.setattr(
-        "transport_matters.cli.runner.ProcessSupervisor", lambda: fake_sup
-    )
+    monkeypatch.setattr("transport_matters.cli.runner.ProcessSupervisor", lambda: fake_sup)
     monkeypatch.setattr("transport_matters.cli.runner._wait_for_port_ready", _not_ready)
 
     outcome = _run_client_children_until_outcome(
@@ -418,8 +387,7 @@ def test_failing_ports_from_log_falls_back_to_errno_when_phrases_missing(
     `_BIND_NEEDLES` tuple to break."""
     log = tmp_path / "mitm.log"
     log.write_text(
-        "bind ('127.0.0.1', 8787) failed: [Errno 48]\n"
-        "bind ('127.0.0.1', 8788) failed: [Errno 98]\n"
+        "bind ('127.0.0.1', 8787) failed: [Errno 48]\nbind ('127.0.0.1', 8788) failed: [Errno 98]\n"
     )
     # Both lines should match independently and contribute their port.
     assert _failing_ports_from_log(log, (8787, 8788)) == (8787, 8788)
@@ -453,9 +421,7 @@ def test_handle_bind_failure_pinned_web_port_fails_fast(
     spy = MagicMock()
     monkeypatch.setattr("transport_matters.cli.runner.allocate_port_pair", spy)
 
-    exc = _make_failure(
-        proxy_port=12000, web_port=8788, failing_ports=(8788,), tmp_path=tmp_path
-    )
+    exc = _make_failure(proxy_port=12000, web_port=8788, failing_ports=(8788,), tmp_path=tmp_path)
     with pytest.raises(typer.Exit) as exc_info:
         _handle_bind_failure(
             exc,
@@ -476,9 +442,7 @@ def test_handle_bind_failure_both_pinned_anonymous_failure_fails_fast(
     spy = MagicMock()
     monkeypatch.setattr("transport_matters.cli.runner.allocate_port_pair", spy)
 
-    exc = _make_failure(
-        proxy_port=9000, web_port=9001, failing_ports=(), tmp_path=tmp_path
-    )
+    exc = _make_failure(proxy_port=9000, web_port=9001, failing_ports=(), tmp_path=tmp_path)
     with pytest.raises(typer.Exit) as exc_info:
         _handle_bind_failure(
             exc,
@@ -500,9 +464,7 @@ def test_handle_bind_failure_reallocates_only_named_unpinned_slot(
         "transport_matters.cli.runner.allocate_port_pair",
         lambda: (60001, 60002),
     )
-    exc = _make_failure(
-        proxy_port=12000, web_port=12001, failing_ports=(12000,), tmp_path=tmp_path
-    )
+    exc = _make_failure(proxy_port=12000, web_port=12001, failing_ports=(12000,), tmp_path=tmp_path)
     new_proxy, new_web = _handle_bind_failure(
         exc,
         proxy_port=12000,
@@ -523,9 +485,7 @@ def test_handle_bind_failure_anonymous_failure_replaces_all_unpinned(
         "transport_matters.cli.runner.allocate_port_pair",
         lambda: (50000, 50001),
     )
-    exc = _make_failure(
-        proxy_port=12000, web_port=12001, failing_ports=(), tmp_path=tmp_path
-    )
+    exc = _make_failure(proxy_port=12000, web_port=12001, failing_ports=(), tmp_path=tmp_path)
     new_proxy, new_web = _handle_bind_failure(
         exc,
         proxy_port=12000,
@@ -545,9 +505,7 @@ def test_handle_bind_failure_keeps_pinned_proxy_when_only_web_named(
         "transport_matters.cli.runner.allocate_port_pair",
         lambda: (60001, 60002),
     )
-    exc = _make_failure(
-        proxy_port=9000, web_port=12001, failing_ports=(12001,), tmp_path=tmp_path
-    )
+    exc = _make_failure(proxy_port=9000, web_port=12001, failing_ports=(12001,), tmp_path=tmp_path)
     new_proxy, new_web = _handle_bind_failure(
         exc,
         proxy_port=9000,
@@ -571,9 +529,7 @@ def test_handle_bind_failure_propagates_allocator_error(
 
     monkeypatch.setattr("transport_matters.cli.runner.allocate_port_pair", _raise)
 
-    exc = _make_failure(
-        proxy_port=12000, web_port=12001, failing_ports=(), tmp_path=tmp_path
-    )
+    exc = _make_failure(proxy_port=12000, web_port=12001, failing_ports=(), tmp_path=tmp_path)
     with pytest.raises(typer.Exit) as exc_info:
         _handle_bind_failure(
             exc,

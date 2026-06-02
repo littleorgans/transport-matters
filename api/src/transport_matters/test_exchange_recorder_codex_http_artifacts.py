@@ -45,9 +45,7 @@ class _SseResponse(_Response):
 
 
 @pytest.fixture(autouse=True)
-def _reset_runtime_state(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> Generator[None]:
+def _reset_runtime_state(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Generator[None]:
     yield from reset_exchange_recorder_runtime_state(tmp_path, monkeypatch)
 
 
@@ -155,16 +153,12 @@ async def test_persist_http_exchange_stores_codex_transport_artifacts(
     assert transport.request is not None
     assert transport.request.method == "POST"
     assert transport.request.host == "chatgpt.com"
-    request_headers = {
-        header.name: header.value for header in transport.request.headers
-    }
+    request_headers = {header.name: header.value for header in transport.request.headers}
     assert request_headers["authorization"] == "Bearer [redacted]"
     assert request_headers["session-id"] == "session-1"
     assert transport.response is not None
     assert transport.response.status_code == 200
-    response_headers = {
-        header.name: header.value for header in transport.response.headers
-    }
+    response_headers = {header.name: header.value for header in transport.response.headers}
     assert response_headers["set-cookie"] == "[redacted]"
     assert [message.direction for message in transport.messages] == [
         "client",

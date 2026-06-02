@@ -102,9 +102,7 @@ class CodexSeeder:
 
 
 _SEEDERS: tuple[HarnessSeeder, ...] = (ClaudeSeeder(), CodexSeeder())
-_SEEDERS_BY_CLIENT: dict[str, HarnessSeeder] = {
-    seeder.client_name: seeder for seeder in _SEEDERS
-}
+_SEEDERS_BY_CLIENT: dict[str, HarnessSeeder] = {seeder.client_name: seeder for seeder in _SEEDERS}
 
 
 def seed_home_dir(
@@ -118,9 +116,7 @@ def seed_home_dir(
     try:
         seeder = _SEEDERS_BY_CLIENT[client_name]
     except KeyError as exc:
-        raise ValueError(
-            f"unmapped managed client home seeder: {client_name!r}"
-        ) from exc
+        raise ValueError(f"unmapped managed client home seeder: {client_name!r}") from exc
     seeder.seed(
         home_dir=home_dir,
         working_dir=working_dir,

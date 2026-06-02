@@ -27,9 +27,7 @@ def test_terminate_all_sends_sigterm_and_waits(tmp_log: Path) -> None:
     sup.terminate_all(grace_seconds=0.01)
 
     fake = as_fake(mp)
-    assert supervisor_support.FakePopen.killpg_calls == [
-        (fake.pid, int(signal.SIGTERM))
-    ]
+    assert supervisor_support.FakePopen.killpg_calls == [(fake.pid, int(signal.SIGTERM))]
     assert fake.terminate_calls == 0
     assert fake.kill_calls == 0
     assert fake.returncode == 0
@@ -75,9 +73,7 @@ def test_terminate_all_is_idempotent(tmp_log: Path) -> None:
     sup.terminate_all(grace_seconds=0.01)
 
     fake = as_fake(mp)
-    assert supervisor_support.FakePopen.killpg_calls == [
-        (fake.pid, int(signal.SIGTERM))
-    ]
+    assert supervisor_support.FakePopen.killpg_calls == [(fake.pid, int(signal.SIGTERM))]
     assert fake.terminate_calls == 0
 
 
@@ -90,9 +86,7 @@ def test_terminate_all_handles_multiple_children(tmp_log: Path) -> None:
 
     sup.terminate_all(grace_seconds=0.01)
 
-    assert supervisor_support.FakePopen.killpg_calls == [
-        (mp_mitm.popen.pid, int(signal.SIGTERM))
-    ]
+    assert supervisor_support.FakePopen.killpg_calls == [(mp_mitm.popen.pid, int(signal.SIGTERM))]
     assert supervisor_support.FakePopen.kill_calls_by_pid == [
         (mp_cc.popen.pid, int(signal.SIGTERM))
     ]
@@ -123,9 +117,7 @@ def test_signal_child_forwards_arbitrary_signal_to_pid() -> None:
 
     sup._signal_child(mp, signal.SIGHUP)
 
-    assert supervisor_support.FakePopen.kill_calls_by_pid == [
-        (mp.popen.pid, int(signal.SIGHUP))
-    ]
+    assert supervisor_support.FakePopen.kill_calls_by_pid == [(mp.popen.pid, int(signal.SIGHUP))]
     assert as_fake(mp).returncode == -int(signal.SIGHUP)
 
 
@@ -147,9 +139,7 @@ def test_terminate_all_tears_down_pty_resources(
 
     sup.terminate_all(grace_seconds=0.01)
 
-    assert supervisor_support.FakePopen.killpg_calls == [
-        (mp.popen.pid, int(signal.SIGTERM))
-    ]
+    assert supervisor_support.FakePopen.killpg_calls == [(mp.popen.pid, int(signal.SIGTERM))]
     assert stop_event.is_set()
     assert shuttle_thread.join_calls
     assert pty_stubs["tcsetattr"].called

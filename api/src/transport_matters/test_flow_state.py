@@ -132,9 +132,7 @@ def test_update_request_flow_state_rewrites_mutable_fields() -> None:
     assert flow.metadata["transport_matters_mutated_manually"] is True
 
 
-def test_update_request_flow_state_sets_provisional_id_without_clobbering_state() -> (
-    None
-):
+def test_update_request_flow_state_sets_provisional_id_without_clobbering_state() -> None:
     flow = cast("http.HTTPFlow", _Flow())
     adapter = object()
     original_ir = _make_ir()
@@ -169,15 +167,10 @@ def test_update_request_flow_state_sets_provisional_id_without_clobbering_state(
     assert state.mutated_manually is True
     assert state.dropped is False
     assert state.provisional_exchange_id == "exchange-provisional"
-    assert (
-        flow.metadata["transport_matters_provisional_exchange_id"]
-        == "exchange-provisional"
-    )
+    assert flow.metadata["transport_matters_provisional_exchange_id"] == "exchange-provisional"
 
 
-def test_update_request_flow_state_sets_dropped_without_clobbering_provisional_id() -> (
-    None
-):
+def test_update_request_flow_state_sets_dropped_without_clobbering_provisional_id() -> None:
     flow = cast("http.HTTPFlow", _Flow())
     adapter = object()
     request_ir = _make_ir()

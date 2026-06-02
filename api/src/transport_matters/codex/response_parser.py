@@ -122,9 +122,7 @@ def parse_codex_response_payloads(
         model=_response_model(response_payload, default_model),
         provider="codex",
         stop_reason=_response_stop_reason(response_payload) or default_stop_reason,
-        usage=_parse_usage(
-            None if response_payload is None else response_payload.get("usage")
-        ),
+        usage=_parse_usage(None if response_payload is None else response_payload.get("usage")),
         content=content,
         provider_extras=provider_extras,
     )
@@ -171,9 +169,7 @@ def _parse_usage(raw_usage: object) -> UsageStats:
         input_tokens=_as_int(raw_usage.get("input_tokens")),
         output_tokens=_as_int(raw_usage.get("output_tokens")),
         cache_read_input_tokens=(
-            _as_int(input_details.get("cached_tokens"))
-            if isinstance(input_details, dict)
-            else 0
+            _as_int(input_details.get("cached_tokens")) if isinstance(input_details, dict) else 0
         ),
         cache_creation_input_tokens=0,
     )
@@ -199,9 +195,7 @@ def _parse_output_items(
             continue
         if item_type in CODEX_TOOL_CALL_ITEM_TYPES:
             tool_block = _tool_use_block(item)
-            content.append(
-                tool_block if tool_block is not None else UnknownBlock(raw=item)
-            )
+            content.append(tool_block if tool_block is not None else UnknownBlock(raw=item))
             continue
         content.append(UnknownBlock(raw=item))
 
@@ -237,9 +231,7 @@ def _message_blocks(item: dict[str, Any]) -> list[ContentBlock]:
 
 
 def _reasoning_block(item: dict[str, Any]) -> ThinkingBlock:
-    provider_data = {
-        key: value for key, value in item.items() if key not in {"summary"}
-    }
+    provider_data = {key: value for key, value in item.items() if key not in {"summary"}}
     return ThinkingBlock(
         text=codex_reasoning_item_text(item),
         provider_data=provider_data or None,
@@ -263,9 +255,7 @@ def _tool_use_block(item: dict[str, Any]) -> ToolUseBlock | None:
     )
 
 
-def _fallback_text_content(
-    done_texts: list[str], deltas: list[str]
-) -> list[ContentBlock]:
+def _fallback_text_content(done_texts: list[str], deltas: list[str]) -> list[ContentBlock]:
     if done_texts:
         return [TextBlock(text=text) for text in done_texts]
     if deltas:

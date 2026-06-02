@@ -14,9 +14,9 @@ if TYPE_CHECKING:
 from transport_matters.api.v1.stream import stream_exchanges
 
 
-def _as_gen(response: StreamingResponse) -> AsyncGenerator[str, None]:
+def _as_gen(response: StreamingResponse) -> AsyncGenerator[str]:
     """Cast body_iterator to AsyncGenerator for test access."""
-    return cast("AsyncGenerator[str, None]", response.body_iterator)
+    return cast("AsyncGenerator[str]", response.body_iterator)
 
 
 def _reset() -> None:

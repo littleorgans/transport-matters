@@ -7,7 +7,7 @@ from pydantic import BaseModel
 
 from transport_matters import breakpoint as bp
 from transport_matters.ir import (
-    InternalRequest,  # noqa: TC001 — FastAPI needs runtime access
+    InternalRequest,
 )
 from transport_matters.override_state import (
     OverrideScope,
@@ -15,7 +15,7 @@ from transport_matters.override_state import (
 )
 from transport_matters.overrides import (
     Override,
-    OverrideAudit,  # noqa: TC001 — FastAPI needs runtime access
+    OverrideAudit,
     apply_overrides,
     get_store,
     identity_audit,
@@ -68,11 +68,7 @@ async def _update_scoped_paused_preview(
 
     if explicit_scope:
         pf = next(
-            (
-                candidate
-                for candidate in paused.values()
-                if _paused_scope(candidate) == scope
-            ),
+            (candidate for candidate in paused.values() if _paused_scope(candidate) == scope),
             None,
         )
         if pf is None:

@@ -66,9 +66,7 @@ async def test_repair_rebuilds_missing_codex_sidecars_without_rewriting_transpor
         request_raw=b'{"type":"response.create","model":"gpt-5-codex"}',
         request_ir=request_ir,
         request_curated_ir=request_ir.model_copy(
-            update={
-                "messages": [Message(role="user", content=[TextBlock(text="edited")])]
-            }
+            update={"messages": [Message(role="user", content=[TextBlock(text="edited")])]}
         ),
         transport=transport,
     )
@@ -180,9 +178,7 @@ async def test_repair_rebuilds_missing_codex_sidecars_from_transport_turn_metada
     storage: DiskStorageBackend,
 ) -> None:
     exchange_id = "codexrepairhdr-1234"
-    request_ir = _codex_ir().model_copy(
-        update={"metadata": RequestMetadata(provider_metadata={})}
-    )
+    request_ir = _codex_ir().model_copy(update={"metadata": RequestMetadata(provider_metadata={})})
     transport = _codex_transport(
         _message(
             direction="client",
@@ -232,9 +228,7 @@ async def test_repair_rebuilds_missing_codex_sidecars_from_http_transport(
     storage: DiskStorageBackend,
 ) -> None:
     exchange_id = "codexrepairhttp-1234"
-    request_ir = _codex_ir().model_copy(
-        update={"metadata": RequestMetadata(provider_metadata={})}
-    )
+    request_ir = _codex_ir().model_copy(update={"metadata": RequestMetadata(provider_metadata={})})
     start_ts = datetime(2026, 5, 14, tzinfo=UTC)
     request_payload = {"type": "response.create", "model": "gpt-5-codex"}
     transport = TransportArtifacts(

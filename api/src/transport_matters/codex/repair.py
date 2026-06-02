@@ -62,9 +62,7 @@ class CodexDerivedArtifactsResolution(BaseModel):
 
     status: CodexDerivedArtifactsStatus
     derived: CodexDerivedTurnArtifacts | None = None
-    diagnostics: tuple[CodexDerivedArtifactsDiagnostic, ...] = Field(
-        default_factory=tuple
-    )
+    diagnostics: tuple[CodexDerivedArtifactsDiagnostic, ...] = Field(default_factory=tuple)
 
 
 class CodexDerivedArtifactsRepairResult(BaseModel):
@@ -73,9 +71,7 @@ class CodexDerivedArtifactsRepairResult(BaseModel):
     action: CodexDerivedArtifactsRepairAction
     status_before: CodexDerivedArtifactsStatus
     derived: CodexDerivedTurnArtifacts | None = None
-    diagnostics: tuple[CodexDerivedArtifactsDiagnostic, ...] = Field(
-        default_factory=tuple
-    )
+    diagnostics: tuple[CodexDerivedArtifactsDiagnostic, ...] = Field(default_factory=tuple)
 
 
 def resolve_codex_derived_artifacts(
@@ -122,9 +118,7 @@ def resolve_codex_derived_artifacts(
 
     unsupported_versions = _unsupported_versions(turn_payload, event_payloads)
     if unsupported_versions:
-        supported_versions = ", ".join(
-            str(value) for value in sorted(_supported_versions())
-        )
+        supported_versions = ", ".join(str(value) for value in sorted(_supported_versions()))
         diagnostics.append(
             _diagnostic(
                 "warning",
@@ -200,9 +194,7 @@ async def repair_codex_derived_artifacts(
         artifacts.model_copy(update={"events": rebuilt.events, "turn": rebuilt.turn}),
     )
     return CodexDerivedArtifactsRepairResult(
-        action=(
-            "migrated" if resolution.status == "migration_required" else "repaired"
-        ),
+        action=("migrated" if resolution.status == "migration_required" else "repaired"),
         status_before=resolution.status,
         derived=rebuilt,
         diagnostics=diagnostics,
@@ -233,9 +225,7 @@ def _rebuild_codex_derived_artifacts(
 
     turn_payload, turn_parse_diagnostics = _parse_turn_json(derived_files.turn_json)
     diagnostics.extend(turn_parse_diagnostics)
-    event_payloads, event_parse_diagnostics = _parse_events_jsonl(
-        derived_files.events_jsonl
-    )
+    event_payloads, event_parse_diagnostics = _parse_events_jsonl(derived_files.events_jsonl)
     diagnostics.extend(event_parse_diagnostics)
 
     preferred_start = _int_field(turn_payload, "request_message_index")
@@ -441,15 +431,11 @@ def _unsupported_versions(
 ) -> tuple[int, ...]:
     versions: set[int] = set()
     turn_version = _int_field(turn_payload, "derivation_version")
-    if turn_version is not None and not is_supported_codex_derivation_version(
-        turn_version
-    ):
+    if turn_version is not None and not is_supported_codex_derivation_version(turn_version):
         versions.add(turn_version)
     for event in event_payloads:
         event_version = _int_field(event, "derivation_version")
-        if event_version is not None and not is_supported_codex_derivation_version(
-            event_version
-        ):
+        if event_version is not None and not is_supported_codex_derivation_version(event_version):
             versions.add(event_version)
     return tuple(sorted(versions))
 
@@ -533,9 +519,7 @@ def _turn_id(
     if turn_id is not None:
         return turn_id
     request_headers = _transport_request_headers(artifacts)
-    return codex_turn_id_from_header_lookup(
-        lambda name: request_headers.get(name.lower())
-    )
+    return codex_turn_id_from_header_lookup(lambda name: request_headers.get(name.lower()))
 
 
 def _transport_request_headers(artifacts: ExchangeArtifacts) -> dict[str, str]:

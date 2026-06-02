@@ -15,9 +15,7 @@ from transport_matters.codex.transport import (
 from .test_transport_support import _codex_flow
 
 
-def test_build_codex_transport_artifacts_persists_message_and_close_timestamps() -> (
-    None
-):
+def test_build_codex_transport_artifacts_persists_message_and_close_timestamps() -> None:
     flow = _codex_flow()
     state = ensure_codex_transport_state(flow)
     assert state is not None

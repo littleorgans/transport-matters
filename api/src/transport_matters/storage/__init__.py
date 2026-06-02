@@ -1,7 +1,7 @@
 """Storage layer exports."""
 
 import asyncio
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 from transport_matters.storage.base import (
     CodexDerivedArtifactFiles,
@@ -25,13 +25,16 @@ from transport_matters.storage.base import (
 )
 from transport_matters.storage.disk import DiskStorageBackend
 
+if TYPE_CHECKING:
+    from pathlib import Path
+
 _backend: StorageBackend | None = None
 _init_lock: asyncio.Lock = asyncio.Lock()
 
 
 def init_storage(root: Path | None = None) -> StorageBackend:
     """Called once by the addon at startup."""
-    global _backend  # noqa: PLW0603
+    global _backend
     _backend = DiskStorageBackend(root=root)
     return _backend
 
@@ -41,7 +44,7 @@ async def get_storage() -> StorageBackend:
 
     Uses double-checked locking to prevent concurrent initialization.
     """
-    global _backend  # noqa: PLW0603
+    global _backend
     if _backend is not None:
         return _backend
     async with _init_lock:
@@ -54,11 +57,13 @@ async def get_storage() -> StorageBackend:
 
 def reset_storage() -> None:
     """Reset the singleton. Used by tests only."""
-    global _backend  # noqa: PLW0603
+    global _backend
     _backend = None
 
 
 __all__ = [
+    "CodexDerivedArtifactFiles",
+    "CodexTurnListSummary",
     "ExchangeArtifacts",
     "IndexEntry",
     "OverrideAuditEntry",
@@ -78,6 +83,4 @@ __all__ = [
     "get_storage",
     "init_storage",
     "reset_storage",
-    "CodexDerivedArtifactFiles",
-    "CodexTurnListSummary",
 ]

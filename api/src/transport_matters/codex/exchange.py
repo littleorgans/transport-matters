@@ -125,11 +125,7 @@ async def _persist_codex_provisional_exchange(flow: http.HTTPFlow) -> str | None
         path=_STORAGE_LAYOUT.exchange_index_path_for(exchange_id, ts=ts),
         req=req_stats,
         pipeline=pipeline_stats,
-        codex_turn=(
-            CodexTurnListSummary.from_turn(derived.turn)
-            if derived is not None
-            else None
-        ),
+        codex_turn=(CodexTurnListSummary.from_turn(derived.turn) if derived is not None else None),
         mutated_manually=request_state.mutated_manually,
         **assignment_index_fields(track_assignment),
     )
@@ -249,11 +245,7 @@ async def _persist_codex_exchange(
         req=req_stats,
         pipeline=pipeline_stats,
         res=res_stats,
-        codex_turn=(
-            CodexTurnListSummary.from_turn(derived.turn)
-            if derived is not None
-            else None
-        ),
+        codex_turn=(CodexTurnListSummary.from_turn(derived.turn) if derived is not None else None),
         mutated_manually=request_state.mutated_manually,
         **assignment_index_fields(track_assignment),
     )
@@ -291,9 +283,7 @@ async def _finalize_codex_provisional_exchange(
 ) -> bool:
     request_state = get_request_flow_state(flow)
     state = get_codex_transport_state(flow)
-    provisional_exchange_id = (
-        state.provisional_exchange_id if state is not None else None
-    )
+    provisional_exchange_id = state.provisional_exchange_id if state is not None else None
     finalized_exchange_id = state.finalized_exchange_id if state is not None else None
     if request_state is None:
         return False
@@ -414,9 +404,7 @@ async def _finalize_codex_provisional_exchange(
     try:
         await storage.persist_exchange(entry, artifacts)
     except Exception:
-        logger.exception(
-            "Failed to finalize provisional Codex exchange %s", exchange_id
-        )
+        logger.exception("Failed to finalize provisional Codex exchange %s", exchange_id)
         return False
 
     _mark_codex_exchange_finalized(state, exchange_id)

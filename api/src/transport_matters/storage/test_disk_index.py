@@ -32,9 +32,7 @@ class TestAppendAndReadIndex:
         assert page[0].id == "ex-001"
         assert page[1].id == "ex-002"
 
-    async def test_upsert_replaces_existing_row(
-        self, storage: DiskStorageBackend
-    ) -> None:
+    async def test_upsert_replaces_existing_row(self, storage: DiskStorageBackend) -> None:
         original = disk_tests._make_index_entry("ex-upsert")
         await storage.append_index(original)
 
@@ -85,12 +83,8 @@ class TestAppendAndReadIndex:
         assert "track_spawn_tool_use_id" not in dumped
         assert "track_spawn_order" not in dumped
 
-    async def test_null_spawn_anchor_round_trips(
-        self, storage: DiskStorageBackend
-    ) -> None:
-        entry = disk_tests._make_index_entry("ex-001").model_copy(
-            update={"spawn_anchor": None}
-        )
+    async def test_null_spawn_anchor_round_trips(self, storage: DiskStorageBackend) -> None:
+        entry = disk_tests._make_index_entry("ex-001").model_copy(update={"spawn_anchor": None})
 
         await storage.append_index(entry)
 
@@ -99,9 +93,7 @@ class TestAppendAndReadIndex:
         assert entries[0].model_dump(mode="json")["spawn_anchor"] is None
 
     def test_entry_defaults_to_root_track(self) -> None:
-        entry = IndexEntry.model_validate(
-            disk_tests._make_index_entry("ex-001").model_dump()
-        )
+        entry = IndexEntry.model_validate(disk_tests._make_index_entry("ex-001").model_dump())
 
         assert entry.track_id == entry.run_id
         assert entry.parent_track_id is None

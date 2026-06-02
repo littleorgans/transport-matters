@@ -25,7 +25,7 @@ from .ports import PortAllocationError
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping, Sequence
-    from importlib.abc import Traversable
+    from importlib.resources.abc import Traversable
 
     from .runner import ManagedClient
 
@@ -287,9 +287,7 @@ def resolve_launch_ports(
     return proxy_port, web_port, proxy_user_supplied, web_user_supplied
 
 
-def resolve_storage_dir(
-    *, storage_dir: Path | None, working_dir: Path, run_id: str
-) -> Path:
+def resolve_storage_dir(*, storage_dir: Path | None, working_dir: Path, run_id: str) -> Path:
     """Resolve the storage root path for the launch without creating it.
 
     An explicit ``--storage-dir`` is caller-owned and used verbatim. The
@@ -430,9 +428,7 @@ def build_mitmdump_argv(
 
 def print_invocation(
     *,
-    build_invocation: Callable[
-        [int, int], tuple[list[str], dict[str, str], ManagedClient | None]
-    ],
+    build_invocation: Callable[[int, int], tuple[list[str], dict[str, str], ManagedClient | None]],
     proxy_port: int,
     web_port: int,
 ) -> None:
@@ -509,9 +505,7 @@ def build_managed_child_env(
         try:
             env_key = _HOME_DIR_ENV_BY_CLIENT[client_name]
         except KeyError as exc:
-            raise ValueError(
-                f"unmapped managed client home dir: {client_name!r}"
-            ) from exc
+            raise ValueError(f"unmapped managed client home dir: {client_name!r}") from exc
         env[env_key] = str(home_dir)
     if extra_env is not None:
         env.update(extra_env)

@@ -70,9 +70,7 @@ def test_start_prefers_same_environment_mitmdump(
             return "/bin/claude"
         return None
 
-    monkeypatch.setattr(
-        "transport_matters.cli.sysconfig.get_path", lambda name: "/tool/bin"
-    )
+    monkeypatch.setattr("transport_matters.cli.sysconfig.get_path", lambda name: "/tool/bin")
     monkeypatch.setattr("transport_matters.cli.shutil.which", fake_which)
     monkeypatch.setattr("transport_matters.cli._port_in_use", lambda _: False)
 
@@ -106,9 +104,7 @@ def test_start_skips_active_mitmdump_with_missing_shebang_interpreter(
     claude.write_text("#!/bin/sh\nexit 0\n")
     claude.chmod(0o755)
 
-    monkeypatch.setattr(
-        "transport_matters.cli.sysconfig.get_path", lambda name: str(scripts_dir)
-    )
+    monkeypatch.setattr("transport_matters.cli.sysconfig.get_path", lambda name: str(scripts_dir))
     monkeypatch.setenv("PATH", str(path_dir))
     monkeypatch.setattr("transport_matters.cli._port_in_use", lambda _: False)
 
@@ -145,9 +141,7 @@ def test_start_print_command_no_claude_omits_claude(
     spy_run_client_children: MagicMock,
 ) -> None:
     """``--no-claude`` skips the claude resolution and prints only mitmdump."""
-    monkeypatch.setattr(
-        "transport_matters.cli.shutil.which", _which_all("/bin/mitmdump")
-    )
+    monkeypatch.setattr("transport_matters.cli.shutil.which", _which_all("/bin/mitmdump"))
     monkeypatch.setattr("transport_matters.cli._port_in_use", lambda _: False)
 
     result = runner.invoke(main, ["claude", "--no-claude", "--print-command"])

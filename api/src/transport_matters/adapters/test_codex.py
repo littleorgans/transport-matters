@@ -25,10 +25,7 @@ from transport_matters.overrides import apply_overrides
 
 def _fixture_raw() -> bytes:
     fixture = (
-        Path(__file__).resolve().parents[3]
-        / "tests"
-        / "fixtures"
-        / "codex_response_create.json"
+        Path(__file__).resolve().parents[3] / "tests" / "fixtures" / "codex_response_create.json"
     )
     return fixture.read_bytes()
 
@@ -203,9 +200,7 @@ def test_outbound_request_round_trips_response_create_fixture() -> None:
     result = json.loads(adapter.outbound_request(ir).decode())
 
     assert result == payload
-    assert (
-        cast("dict[str, object]", result["input"][4])["type"] == "function_call_output"
-    )
+    assert cast("dict[str, object]", result["input"][4])["type"] == "function_call_output"
 
 
 def test_outbound_request_round_trips_client_tool_search_parameters() -> None:
@@ -322,12 +317,8 @@ def test_outbound_request_round_trips_custom_tool_output_fixture() -> None:
             "raw": cast("list[dict[str, object]]", payload["input"])[4],
         }
     ]
-    assert (
-        cast("dict[str, object]", result["input"][2])["type"] == "function_call_output"
-    )
-    assert cast("dict[str, object]", result["input"][4])["type"] == (
-        "custom_tool_call_output"
-    )
+    assert cast("dict[str, object]", result["input"][2])["type"] == "function_call_output"
+    assert cast("dict[str, object]", result["input"][4])["type"] == ("custom_tool_call_output")
 
 
 def test_outbound_request_preserves_codex_raw_fields_while_serializing_edits() -> None:
@@ -414,9 +405,7 @@ def test_outbound_request_preserves_codex_raw_fields_while_serializing_edits() -
     assert function_output["output"] == "Updated README contents"
 
 
-def test_outbound_request_preserves_custom_tool_output_type_when_editing_output() -> (
-    None
-):
+def test_outbound_request_preserves_custom_tool_output_type_when_editing_output() -> None:
     adapter = CodexAdapter()
     ir = adapter.inbound_request(_tool_output_fixture_raw())
 
@@ -434,16 +423,12 @@ def test_outbound_request_preserves_custom_tool_output_type_when_editing_output(
     edited_messages[4] = Message(
         role="user",
         content=[
-            custom_result.model_copy(
-                update={"content": [TextBlock(text="workspace/edited")]}
-            )
+            custom_result.model_copy(update={"content": [TextBlock(text="workspace/edited")]})
         ],
     )
 
     payload = json.loads(
-        adapter.outbound_request(
-            ir.model_copy(update={"messages": edited_messages})
-        ).decode()
+        adapter.outbound_request(ir.model_copy(update={"messages": edited_messages})).decode()
     )
 
     function_output = cast("dict[str, object]", payload["input"][2])
@@ -478,23 +463,17 @@ def test_noop_override_pipeline_preserves_outputs_only_continuation_turn() -> No
     assert result == payload
 
 
-def test_outbound_request_edits_later_turn_fixture_without_reconciliation_error() -> (
-    None
-):
+def test_outbound_request_edits_later_turn_fixture_without_reconciliation_error() -> None:
     adapter = CodexAdapter()
     ir = adapter.inbound_request(_later_turn_fixture_raw())
 
-    edited_system = [
-        ir.system[0].model_copy(update={"text": "Keep the summary to two words."})
-    ]
+    edited_system = [ir.system[0].model_copy(update={"text": "Keep the summary to two words."})]
     edited_messages = list(ir.messages)
     custom_result = cast("ToolResultBlock", edited_messages[2].content[0])
     edited_messages[2] = Message(
         role="user",
         content=[
-            custom_result.model_copy(
-                update={"content": [TextBlock(text="workspace/edited")]}
-            )
+            custom_result.model_copy(update={"content": [TextBlock(text="workspace/edited")]})
         ],
     )
 
@@ -515,9 +494,7 @@ def test_outbound_request_edits_later_turn_fixture_without_reconciliation_error(
     assert developer_content[0]["text"] == "Keep the summary to two words."
 
 
-def test_outbound_request_raises_when_preserved_raw_items_cannot_be_reconciled() -> (
-    None
-):
+def test_outbound_request_raises_when_preserved_raw_items_cannot_be_reconciled() -> None:
     adapter = CodexAdapter()
     ir = adapter.inbound_request(_fixture_raw())
 

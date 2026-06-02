@@ -50,10 +50,7 @@ def test_codex_print_command_uses_explicit_proxy_mode(
     lines = [line.strip() for line in result.stdout.splitlines() if line.strip()]
     assert any("--mode regular" in line for line in lines)
     assert any("--listen-port 9000" in line for line in lines)
-    assert any(
-        line.startswith("/bin/codex -c shell_environment_policy.exclude=")
-        for line in lines
-    )
+    assert any(line.startswith("/bin/codex -c shell_environment_policy.exclude=") for line in lines)
 
 
 def test_codex_print_command_does_not_create_workspace_run_dir(
@@ -162,9 +159,7 @@ def test_codex_home_dir_sets_codex_home_manifest_and_keeps_ca(
         client = kwargs["client"]
         assert client is not None
         manifest_path = (
-            workspace_root(client.cwd)
-            / client.env["TRANSPORT_MATTERS_RUN_ID"]
-            / "manifest.json"
+            workspace_root(client.cwd) / client.env["TRANSPORT_MATTERS_RUN_ID"] / "manifest.json"
         )
         captured["raw"] = json.loads(manifest_path.read_text(encoding="utf-8"))
 
@@ -508,9 +503,7 @@ def test_codex_no_codex_skips_trust_bootstrap_failures(
     def raise_error(*, env: dict[str, str], bundle_dir: Path | None) -> Path:
         raise MitmproxyCAMissingError(Path("/missing/mitmproxy-ca-cert.pem"))
 
-    monkeypatch.setattr(
-        "transport_matters.cli.resolve_codex_ca_certificate", raise_error
-    )
+    monkeypatch.setattr("transport_matters.cli.resolve_codex_ca_certificate", raise_error)
 
     result = runner.invoke(main, ["codex", "--no-codex"])
     assert result.exit_code == 0, result.output
@@ -539,9 +532,7 @@ def test_codex_no_codex_uses_existing_ca_hint_when_present(
     def fail_if_called(*, env: dict[str, str], bundle_dir: Path | None) -> Path:
         raise AssertionError("proxy-only mode should not resolve trust bundles")
 
-    monkeypatch.setattr(
-        "transport_matters.cli.resolve_codex_ca_certificate", fail_if_called
-    )
+    monkeypatch.setattr("transport_matters.cli.resolve_codex_ca_certificate", fail_if_called)
 
     result = runner.invoke(main, ["codex", "--no-codex"])
     assert result.exit_code == 0, result.output
@@ -570,19 +561,15 @@ def test_codex_cleans_generated_bundle_after_exit(
         captured["path"] = str(bundle_path)
         return bundle_path
 
-    monkeypatch.setattr(
-        "transport_matters.cli.resolve_codex_ca_certificate", fake_resolve
-    )
+    monkeypatch.setattr("transport_matters.cli.resolve_codex_ca_certificate", fake_resolve)
 
-    result = runner.invoke(
-        main, ["codex", "--proxy-port", "9000", "--web-port", "9001"]
-    )
+    result = runner.invoke(main, ["codex", "--proxy-port", "9000", "--web-port", "9001"])
     assert result.exit_code == 0, result.output
 
     bundle_path = Path(captured["path"])
-    assert spy_run_client_children.call_args.kwargs["client"].env[
-        "CODEX_CA_CERTIFICATE"
-    ] == str(bundle_path)
+    assert spy_run_client_children.call_args.kwargs["client"].env["CODEX_CA_CERTIFICATE"] == str(
+        bundle_path
+    )
     assert not bundle_path.exists()
 
 
@@ -602,9 +589,7 @@ def test_codex_cleans_generated_bundle_after_exit(
             "could not snapshot the active system trust roots.",
         ),
         (
-            TrustBundleWriteError(
-                Path("/tmp/codex-ca-bundle.pem"), "permission denied"
-            ),
+            TrustBundleWriteError(Path("/tmp/codex-ca-bundle.pem"), "permission denied"),
             "could not expose CODEX_CA_CERTIFICATE for Codex.",
         ),
     ],
@@ -625,9 +610,7 @@ def test_codex_surfaces_trust_bootstrap_failures(
     def raise_error(*, env: dict[str, str], bundle_dir: Path | None) -> Path:
         raise error
 
-    monkeypatch.setattr(
-        "transport_matters.cli.resolve_codex_ca_certificate", raise_error
-    )
+    monkeypatch.setattr("transport_matters.cli.resolve_codex_ca_certificate", raise_error)
 
     result = runner.invoke(main, ["codex"])
     assert result.exit_code == 2

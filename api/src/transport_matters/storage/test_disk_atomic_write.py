@@ -16,9 +16,7 @@ def storage(tmp_path: str) -> DiskStorageBackend:
 
 
 class TestAtomicWrite:
-    async def test_no_tmp_dir_after_successful_write(
-        self, storage: DiskStorageBackend
-    ) -> None:
+    async def test_no_tmp_dir_after_successful_write(self, storage: DiskStorageBackend) -> None:
         """Successful write should leave no .tmp directories."""
         artifacts = ExchangeArtifacts(
             request_raw=b'{"model":"test","max_tokens":1024}',
@@ -44,9 +42,7 @@ class TestAtomicWrite:
         DiskStorageBackend(root=str(tmp_path))
         assert normal.exists()
 
-    async def test_failed_write_cleans_up_tmp(
-        self, storage: DiskStorageBackend
-    ) -> None:
+    async def test_failed_write_cleans_up_tmp(self, storage: DiskStorageBackend) -> None:
         """If write_exchange fails mid-write, the .tmp dir is removed."""
         artifacts = ExchangeArtifacts(
             request_raw=b'{"model":"test","max_tokens":1024}',

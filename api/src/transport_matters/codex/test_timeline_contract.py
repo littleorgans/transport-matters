@@ -159,31 +159,19 @@ def assert_replay_matches_expectation(
     )
     assert (
         tuple(
-            event.transport_ref.message_index
-            if event.transport_ref is not None
-            else None
+            event.transport_ref.message_index if event.transport_ref is not None else None
             for event in result.events
         )
         == expectation.transport_refs
     )
-    assert all(
-        event.exchange_id == replay_request.context.exchange_id
-        for event in result.events
-    )
-    assert all(
-        event.session_id == replay_request.context.session_id for event in result.events
-    )
-    assert all(
-        event.turn_id == replay_request.context.turn_id for event in result.events
-    )
+    assert all(event.exchange_id == replay_request.context.exchange_id for event in result.events)
+    assert all(event.session_id == replay_request.context.session_id for event in result.events)
+    assert all(event.turn_id == replay_request.context.turn_id for event in result.events)
     assert result.turn.turn_id == replay_request.context.turn_id
     assert result.turn.exchange_id == replay_request.context.exchange_id
     assert result.turn.session_id == replay_request.context.session_id
     assert result.turn.turn_index == replay_request.context.turn_index
-    assert (
-        result.turn.request_message_index
-        == replay_request.context.request_message_index
-    )
+    assert result.turn.request_message_index == replay_request.context.request_message_index
     assert result.turn.message_range_start == expectation.message_range[0]
     assert result.turn.message_range_end == expectation.message_range[1]
     assert result.turn.status == expectation.status

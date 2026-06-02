@@ -82,9 +82,7 @@ class DiskStorageBackend(DiskStorageRecoveryMixin, StorageBackend):
                 break
         else:
             return
-        logger.info(
-            "Dropping legacy Transport Matters storage cache with flat spawn anchor fields"
-        )
+        logger.info("Dropping legacy Transport Matters storage cache with flat spawn anchor fields")
         shutil.rmtree(self._root, ignore_errors=True)
 
     # ── index ───────────────────────────────────────────────────────
@@ -112,9 +110,7 @@ class DiskStorageBackend(DiskStorageRecoveryMixin, StorageBackend):
                         entries[entry.id] = entry
                         pos = end
                     except (json.JSONDecodeError, Exception) as exc:
-                        logger.warning(
-                            "Skipping malformed index entry at pos %d: %s", pos, exc
-                        )
+                        logger.warning("Skipping malformed index entry at pos %d: %s", pos, exc)
                         break
 
         # Historical rows written before ResStats carried
@@ -179,11 +175,7 @@ class DiskStorageBackend(DiskStorageRecoveryMixin, StorageBackend):
             if cc == 0:
                 continue
             entries[exchange_id] = entry.model_copy(
-                update={
-                    "res": entry.res.model_copy(
-                        update={"cache_creation_input_tokens": cc}
-                    )
-                }
+                update={"res": entry.res.model_copy(update={"cache_creation_input_tokens": cc})}
             )
             corrected += 1
         return corrected
@@ -221,18 +213,14 @@ class DiskStorageBackend(DiskStorageRecoveryMixin, StorageBackend):
             await self._write_text(index_path, line, mode="a")
             cache[entry.id] = entry
 
-    async def persist_exchange(
-        self, entry: IndexEntry, artifacts: ExchangeArtifacts
-    ) -> None:
+    async def persist_exchange(self, entry: IndexEntry, artifacts: ExchangeArtifacts) -> None:
         artifacts.validate_codex_derived_artifacts()
         final_dir, tmp_dir = self._prepare_exchange_write(entry.id, now=entry.ts)
         backup_dir: Path | None = None
 
         try:
             await self._write_exchange_files(tmp_dir, artifacts)
-            await self._write_entry_json(
-                self._layout.artifact_paths(tmp_dir).entry, entry
-            )
+            await self._write_entry_json(self._layout.artifact_paths(tmp_dir).entry, entry)
             backup_dir = await self._activate_exchange_dir(tmp_dir, final_dir)
             try:
                 async with self._index_lock:
@@ -356,9 +344,7 @@ class DiskStorageBackend(DiskStorageRecoveryMixin, StorageBackend):
 
     # ── exchange artifacts ──────────────────────────────────────────
 
-    async def write_exchange(
-        self, exchange_id: str, artifacts: ExchangeArtifacts
-    ) -> None:
+    async def write_exchange(self, exchange_id: str, artifacts: ExchangeArtifacts) -> None:
         artifacts.validate_codex_derived_artifacts()
         final_dir, tmp_dir = self._prepare_exchange_write(exchange_id)
         try:
@@ -447,9 +433,7 @@ class DiskStorageBackend(DiskStorageRecoveryMixin, StorageBackend):
             turn=turn,
         )
 
-    async def read_codex_derived_files(
-        self, exchange_id: str
-    ) -> CodexDerivedArtifactFiles:
+    async def read_codex_derived_files(self, exchange_id: str) -> CodexDerivedArtifactFiles:
         exchange_dir = self._find_exchange_dir(exchange_id)
         paths = self._layout.artifact_paths(exchange_dir)
 
@@ -511,9 +495,7 @@ class DiskStorageBackend(DiskStorageRecoveryMixin, StorageBackend):
         tmp_dir.mkdir(parents=True, exist_ok=True)
         return final_dir, tmp_dir
 
-    async def _write_exchange_files(
-        self, tmp_dir: Path, artifacts: ExchangeArtifacts
-    ) -> None:
+    async def _write_exchange_files(self, tmp_dir: Path, artifacts: ExchangeArtifacts) -> None:
         paths = self._layout.artifact_paths(tmp_dir)
         await self._write_bytes(paths.request_raw, artifacts.request_raw)
 

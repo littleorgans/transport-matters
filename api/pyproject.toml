@@ -5,7 +5,7 @@ name = "transport-matters"
 dynamic = ["version"]
 description = "Provider-neutral context control plane for coding agents"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.14"
 license = "Apache-2.0"
 license-files = ["LICENSE"]
 authors = [
@@ -27,8 +27,7 @@ classifiers = [
     "Intended Audience :: Developers",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3 :: Only",
-    "Programming Language :: Python :: 3.12",
-    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Operating System :: OS Independent",
     "Topic :: Software Development :: Debuggers",
     "Topic :: Internet :: Proxy Servers",
@@ -94,8 +93,8 @@ only-include = ["src/transport_matters", "tests", "README.md", "LICENSE"]
 
 # ---- Ruff ----
 [tool.ruff]
-target-version = "py312"
-line-length = 88
+target-version = "py314"
+line-length = 100
 
 [tool.ruff.lint]
 select = [
@@ -110,6 +109,8 @@ select = [
     "RET",   # flake8-return
     "PTH",   # flake8-use-pathlib
     "TCH",   # flake8-type-checking
+    "ASYNC", # flake8-async
+    "RUF",   # ruff-specific rules
 ]
 ignore = [
     "E501",  # line too long (handled by formatter)
@@ -120,12 +121,22 @@ ignore = [
 "tests/**/*.py" = [
     "E402",    # imports after os.environ setup in conftest
 ]
+# disk_helpers.py runs single local-FS metadata syscalls (exists/rename/replace)
+# inline under the POSIX-first storage contract; offload is by payload class, not
+# lint visibility. See the module docstring (littleorgans/python storage Rule 2).
+"src/transport_matters/storage/disk_helpers.py" = [
+    "ASYNC240",
+]
 
 [tool.ruff.lint.isort]
 known-first-party = ["transport_matters"]
 
 [tool.ruff.lint.flake8-type-checking]
-runtime-evaluated-base-classes = ["pydantic.BaseModel"]
+# pydantic and pydantic-settings evaluate model annotations at runtime (model
+# build), so field-type imports must stay runtime imports. On a 3.13+ floor
+# with PEP 649 deferred annotations, ruff would otherwise suggest moving them
+# into TYPE_CHECKING, which breaks model construction.
+runtime-evaluated-base-classes = ["pydantic.BaseModel", "pydantic_settings.BaseSettings"]
 
 [tool.ruff.format]
 quote-style = "double"
@@ -133,7 +144,7 @@ indent-style = "space"
 
 # ---- mypy ----
 [tool.mypy]
-python_version = "3.12"
+python_version = "3.14"
 strict = true
 warn_return_any = true
 warn_unused_configs = true

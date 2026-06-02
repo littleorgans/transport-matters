@@ -27,9 +27,7 @@ from transport_matters.ir import RequestMetadata
         ),
         (
             RequestMetadata(
-                provider_metadata={
-                    "x-codex-turn-metadata": json.dumps({"session_id": "sess-turn"})
-                }
+                provider_metadata={"x-codex-turn-metadata": json.dumps({"session_id": "sess-turn"})}
             ),
             "sess-turn",
         ),

@@ -40,9 +40,7 @@ class _Flow:
 
 
 @pytest.fixture(autouse=True)
-def _reset_runtime_state(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> Generator[None]:
+def _reset_runtime_state(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Generator[None]:
     yield from reset_exchange_recorder_runtime_state(tmp_path, monkeypatch)
 
 

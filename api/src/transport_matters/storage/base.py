@@ -256,9 +256,7 @@ class TransportArtifacts(BaseModel):
     messages: list[TransportMessageArtifact] = Field(default_factory=list)
 
     @model_serializer(mode="wrap")
-    def serialize_by_protocol(
-        self, handler: SerializerFunctionWrapHandler
-    ) -> dict[str, Any]:
+    def serialize_by_protocol(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
         data = dict(cast("dict[str, Any]", handler(self)))
         if self.protocol == "websocket":
             data.pop("request", None)
@@ -277,9 +275,7 @@ class StorageBackend(ABC):
     async def append_index(self, entry: IndexEntry) -> None: ...
 
     @abstractmethod
-    async def persist_exchange(
-        self, entry: IndexEntry, artifacts: ExchangeArtifacts
-    ) -> None:
+    async def persist_exchange(self, entry: IndexEntry, artifacts: ExchangeArtifacts) -> None:
         """Persist artifacts plus the matching index row as one operation.
 
         Implementations must not leave an index row pointing at missing
@@ -293,9 +289,7 @@ class StorageBackend(ABC):
         ...
 
     @abstractmethod
-    async def write_exchange(
-        self, exchange_id: str, artifacts: ExchangeArtifacts
-    ) -> None: ...
+    async def write_exchange(self, exchange_id: str, artifacts: ExchangeArtifacts) -> None: ...
 
     @abstractmethod
     async def read_index(
@@ -310,9 +304,7 @@ class StorageBackend(ABC):
     async def read_exchange(self, exchange_id: str) -> ExchangeArtifacts: ...
 
     @abstractmethod
-    async def read_codex_derived_files(
-        self, exchange_id: str
-    ) -> CodexDerivedArtifactFiles: ...
+    async def read_codex_derived_files(self, exchange_id: str) -> CodexDerivedArtifactFiles: ...
 
     @abstractmethod
     async def write_codex_derived_artifacts(

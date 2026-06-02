@@ -2,12 +2,15 @@
 
 import asyncio
 import logging
-from collections.abc import AsyncGenerator
+from typing import TYPE_CHECKING
 
 from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 
 from transport_matters import broadcast
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncGenerator
 
 logger = logging.getLogger(__name__)
 
@@ -16,7 +19,7 @@ router = APIRouter()
 
 @router.get("/stream")
 async def stream_exchanges() -> StreamingResponse:
-    async def event_generator() -> AsyncGenerator[str, None]:
+    async def event_generator() -> AsyncGenerator[str]:
         q = broadcast.subscribe()
         try:
             yield 'data: {"type": "connected"}\n\n'

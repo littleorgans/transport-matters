@@ -260,9 +260,7 @@ class AnthropicAdapter(ProviderAdapter):
                 if delta_type == "text_delta":
                     buf["text"] = buf.get("text", "") + delta.get("text", "")
                 elif delta_type == "thinking_delta":
-                    buf["thinking"] = buf.get("thinking", "") + delta.get(
-                        "thinking", ""
-                    )
+                    buf["thinking"] = buf.get("thinking", "") + delta.get("thinking", "")
                 elif delta_type == "input_json_delta":
                     buf["_input_partial"] = buf.get("_input_partial", "") + delta.get(
                         "partial_json", ""
@@ -278,9 +276,7 @@ class AnthropicAdapter(ProviderAdapter):
                             parsed = {}
                         # ToolUseBlock.input is a dict; a stream that decodes to
                         # a non-object must be wrapped, not passed through.
-                        buf["input"] = (
-                            parsed if isinstance(parsed, dict) else {"value": parsed}
-                        )
+                        buf["input"] = parsed if isinstance(parsed, dict) else {"value": parsed}
                     content_blocks.append(buf)
             elif ev_type == "message_delta":
                 delta = ev.get("delta", {})
@@ -325,9 +321,7 @@ class AnthropicAdapter(ProviderAdapter):
                     type=item.get("type", "text"),
                     text=item.get("text", ""),
                     cache_hint=item.get("cache_control"),
-                    provider_data=_extra_provider_data(
-                        item, {"type", "text", "cache_control"}
-                    ),
+                    provider_data=_extra_provider_data(item, {"type", "text", "cache_control"}),
                 )
             )
         return parts
@@ -371,9 +365,7 @@ class AnthropicAdapter(ProviderAdapter):
     # -- messages --
 
     @classmethod
-    def _parse_messages(
-        cls, raw: list[dict[str, Any]]
-    ) -> list[Message]:  # Any: raw JSON dicts
+    def _parse_messages(cls, raw: list[dict[str, Any]]) -> list[Message]:  # Any: raw JSON dicts
         messages: list[Message] = []
         for item in raw:
             raw_content = item.get("content", [])
@@ -414,9 +406,7 @@ class AnthropicAdapter(ProviderAdapter):
         if block_type == "tool_result" and "tool_use_id" in raw:
             raw_sub = raw.get("content", [])
             if isinstance(raw_sub, str):
-                sub_content: list[TextBlock | ImageBlock | UnknownBlock] = [
-                    TextBlock(text=raw_sub)
-                ]
+                sub_content: list[TextBlock | ImageBlock | UnknownBlock] = [TextBlock(text=raw_sub)]
             elif isinstance(raw_sub, list):
                 sub_content = [cls._parse_tool_result_sub_block(s) for s in raw_sub]
             else:
@@ -533,7 +523,7 @@ class AnthropicAdapter(ProviderAdapter):
                     session_id = parsed.get("session_id")
                     device_id = parsed.get("device_id")
                     account_id = parsed.get("account_id")
-            except (json.JSONDecodeError, TypeError):
+            except json.JSONDecodeError, TypeError:
                 pass
 
         return RequestMetadata(

@@ -53,9 +53,7 @@ class CodexDerivationCursor(BaseModel):
 
     next_message_index: int = Field(ge=0)
     next_seq: int = Field(ge=0)
-    open_assistant_items: dict[str, CodexOpenAssistantItem] = Field(
-        default_factory=dict
-    )
+    open_assistant_items: dict[str, CodexOpenAssistantItem] = Field(default_factory=dict)
     open_tool_calls: dict[str, CodexOpenToolCall] = Field(default_factory=dict)
     terminal_seen: bool = False
 
@@ -133,10 +131,7 @@ class CodexTurnSummary(BaseModel):
             msg = "terminal_message_index must be within the turn message range"
             raise ValueError(msg)
         if self.status == "open":
-            if (
-                self.terminal_message_index is not None
-                or self.terminal_cause is not None
-            ):
+            if self.terminal_message_index is not None or self.terminal_cause is not None:
                 msg = "open turns cannot carry terminal markers"
                 raise ValueError(msg)
             if self.ended_at is not None:

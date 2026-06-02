@@ -111,9 +111,7 @@ async def _resolved_codex_derived_artifacts(
     )
 
 
-async def _load_exchange_or_404(
-    storage: StorageBackend, exchange_id: str
-) -> ExchangeArtifacts:
+async def _load_exchange_or_404(storage: StorageBackend, exchange_id: str) -> ExchangeArtifacts:
     try:
         return await storage.read_exchange(exchange_id)
     except FileNotFoundError as exc:
@@ -269,10 +267,7 @@ async def get_pipeline_tokens(
             reason="unsupported_provider",
         )
 
-    if (
-        entry.pipeline.tokens_before is not None
-        and entry.pipeline.tokens_after is not None
-    ):
+    if entry.pipeline.tokens_before is not None and entry.pipeline.tokens_after is not None:
         return PipelineTokensResponse(
             tokens_before=entry.pipeline.tokens_before,
             tokens_after=entry.pipeline.tokens_after,
@@ -293,10 +288,7 @@ async def get_pipeline_tokens(
             return PipelineTokensResponse(
                 tokens_before=None, tokens_after=None, reason="artifact_missing"
             )
-        if (
-            entry.pipeline.tokens_before is not None
-            and entry.pipeline.tokens_after is not None
-        ):
+        if entry.pipeline.tokens_before is not None and entry.pipeline.tokens_after is not None:
             return PipelineTokensResponse(
                 tokens_before=entry.pipeline.tokens_before,
                 tokens_after=entry.pipeline.tokens_after,
@@ -309,9 +301,7 @@ async def get_pipeline_tokens(
             )
         auth = get_recent_auth()
         if not auth:
-            return PipelineTokensResponse(
-                tokens_before=None, tokens_after=None, reason="no_auth"
-            )
+            return PipelineTokensResponse(tokens_before=None, tokens_after=None, reason="no_auth")
 
         try:
             artifacts = await storage.read_exchange(exchange_id)
@@ -347,13 +337,9 @@ async def get_pipeline_tokens(
         # whatever we computed this time via the response body.
         if tokens_before is not None and tokens_after is not None:
             try:
-                await storage.update_pipeline_tokens(
-                    exchange_id, tokens_before, tokens_after
-                )
+                await storage.update_pipeline_tokens(exchange_id, tokens_before, tokens_after)
             except Exception:
-                logger.exception(
-                    "pipeline_tokens: failed to persist for %s", exchange_id
-                )
+                logger.exception("pipeline_tokens: failed to persist for %s", exchange_id)
             return PipelineTokensResponse(
                 tokens_before=tokens_before,
                 tokens_after=tokens_after,

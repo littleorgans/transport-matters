@@ -92,8 +92,7 @@ def build_codex_transport_diagnostics(
     close = transport.close
     if close is not None:
         abnormal_close = (
-            close.close_code is not None
-            and close.close_code not in CODEX_NORMAL_CLOSE_CODES
+            close.close_code is not None and close.close_code not in CODEX_NORMAL_CLOSE_CODES
         )
         if abnormal_close:
             diagnostics.append(

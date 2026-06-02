@@ -27,7 +27,7 @@ from .runner import ManagedClient
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
-    from importlib.abc import Traversable
+    from importlib.resources.abc import Traversable
 
 
 def _validate_upstream(upstream: str) -> None:
@@ -42,8 +42,7 @@ def _validate_upstream(upstream: str) -> None:
         err=True,
     )
     typer.echo(
-        "Upstream must be a valid URL with scheme and host, e.g.\n"
-        "  https://api.anthropic.com",
+        "Upstream must be a valid URL with scheme and host, e.g.\n  https://api.anthropic.com",
         err=True,
     )
     raise typer.Exit(2)
@@ -73,11 +72,7 @@ def _build_start_invocation(
         web_port: int,
     ) -> tuple[list[str], dict[str, str], ManagedClient | None]:
         passthrough = list(claude_passthrough_user)
-        if (
-            not no_claude
-            and not no_system_prompt
-            and not user_supplied_system_prompt(passthrough)
-        ):
+        if not no_claude and not no_system_prompt and not user_supplied_system_prompt(passthrough):
             passthrough = inject_system_prompt(
                 passthrough,
                 proxy_port=proxy_port,
@@ -199,11 +194,7 @@ def run_start(
                 proxy_port=prepared.proxy_port,
                 web_port=prepared.web_port,
             )
-        if (
-            not print_command
-            and home_dir is not None
-            and prepared.client_path is not None
-        ):
+        if not print_command and home_dir is not None and prepared.client_path is not None:
             seed_home_dir(
                 CLIENT_NAME_CLAUDE,
                 home_dir=home_dir,

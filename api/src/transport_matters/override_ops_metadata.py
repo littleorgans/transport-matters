@@ -8,9 +8,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from transport_matters.ir import InternalRequest
 
-SAMPLING_FIELDS = frozenset(
-    {"max_tokens", "temperature", "top_p", "top_k", "stop_sequences"}
-)
+SAMPLING_FIELDS = frozenset({"max_tokens", "temperature", "top_p", "top_k", "stop_sequences"})
 
 
 def sampling_value_valid(field: str, value: object) -> bool:

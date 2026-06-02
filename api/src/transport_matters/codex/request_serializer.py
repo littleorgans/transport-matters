@@ -53,9 +53,7 @@ def serialize_codex_request(ir: InternalRequest) -> bytes:
         data["type"] = str(data["type"])
     data["model"] = denormalise_model(ir.model, CODEX_MODEL_PREFIX)
 
-    instructions, input_items = _serialize_input(
-        ir.system, ir.messages, preserved_input
-    )
+    instructions, input_items = _serialize_input(ir.system, ir.messages, preserved_input)
     if instructions is not None:
         data["instructions"] = instructions
     data["input"] = input_items
@@ -90,9 +88,7 @@ def _serialize_input(
     items: list[SerializedInputItem] = []
 
     for part in system:
-        provider_data = (
-            dict(part.provider_data) if isinstance(part.provider_data, dict) else {}
-        )
+        provider_data = dict(part.provider_data) if isinstance(part.provider_data, dict) else {}
         role = provider_data.get("role")
         if role in {"system", "developer"}:
             content: dict[str, Any] = {"type": CODEX_INPUT_TEXT_TYPE, "text": part.text}
@@ -120,9 +116,7 @@ def _serialize_message(message: Message) -> list[SerializedInputItem]:
     if len(message.content) == 1:
         block = message.content[0]
         if isinstance(block, ToolUseBlock):
-            return [
-                SerializedInputItem(kind="tool_use", payload=_tool_use_to_dict(block))
-            ]
+            return [SerializedInputItem(kind="tool_use", payload=_tool_use_to_dict(block))]
         if isinstance(block, ToolResultBlock):
             return [
                 SerializedInputItem(
@@ -131,9 +125,7 @@ def _serialize_message(message: Message) -> list[SerializedInputItem]:
                 )
             ]
         if isinstance(block, ThinkingBlock):
-            return [
-                SerializedInputItem(kind="reasoning", payload=_thinking_to_dict(block))
-            ]
+            return [SerializedInputItem(kind="reasoning", payload=_thinking_to_dict(block))]
         if isinstance(block, UnknownBlock) and looks_like_input_item(block.raw):
             return [
                 SerializedInputItem(
@@ -145,9 +137,7 @@ def _serialize_message(message: Message) -> list[SerializedInputItem]:
     unsupported = [
         block.type
         for block in message.content
-        if isinstance(
-            block, (ToolUseBlock, ToolResultBlock, ThinkingBlock, UnknownBlock)
-        )
+        if isinstance(block, (ToolUseBlock, ToolResultBlock, ThinkingBlock, UnknownBlock))
     ]
     if unsupported:
         raise ValueError(
@@ -161,8 +151,7 @@ def _serialize_message(message: Message) -> list[SerializedInputItem]:
             payload={
                 "role": message.role,
                 "content": [
-                    _message_content_to_dict(message.role, block)
-                    for block in message.content
+                    _message_content_to_dict(message.role, block) for block in message.content
                 ],
             },
         )
@@ -174,9 +163,7 @@ def _message_content_to_dict(
     block: ContentBlock,
 ) -> dict[str, Any]:
     if isinstance(block, TextBlock):
-        text_type = (
-            CODEX_OUTPUT_TEXT_TYPE if role == "assistant" else CODEX_INPUT_TEXT_TYPE
-        )
+        text_type = CODEX_OUTPUT_TEXT_TYPE if role == "assistant" else CODEX_INPUT_TEXT_TYPE
         return {"type": text_type, "text": block.text}
     if isinstance(block, ImageBlock) and role == "user":
         return {"type": CODEX_IMAGE_TYPE, **block.source}
@@ -184,9 +171,7 @@ def _message_content_to_dict(
         # Forward-compat: preserve an unmodeled sub-block verbatim rather than
         # crashing serialization (matches the Anthropic adapter's degradation).
         return block.raw
-    raise ValueError(
-        f"Codex serializer cannot encode {block.type!r} inside {role!r} message"
-    )
+    raise ValueError(f"Codex serializer cannot encode {block.type!r} inside {role!r} message")
 
 
 def _tool_use_to_dict(block: ToolUseBlock) -> dict[str, Any]:
@@ -250,9 +235,7 @@ def _tool_result_kind(block: ToolResultBlock) -> str:
 def _thinking_to_dict(block: ThinkingBlock) -> dict[str, Any]:
     payload: dict[str, Any] = {"type": "reasoning"}
     restore_provider_data(payload, block)
-    payload["summary"] = (
-        [{"type": "summary_text", "text": block.text}] if block.text else []
-    )
+    payload["summary"] = [{"type": "summary_text", "text": block.text}] if block.text else []
     return payload
 
 

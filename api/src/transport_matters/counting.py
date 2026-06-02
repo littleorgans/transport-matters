@@ -63,9 +63,7 @@ class TokenCountingClient(Protocol):
     trivial fake that yields deterministic values.
     """
 
-    async def count(
-        self, payload: bytes, auth_headers: dict[str, str]
-    ) -> int | None: ...
+    async def count(self, payload: bytes, auth_headers: dict[str, str]) -> int | None: ...
 
 
 async def count_before_after(

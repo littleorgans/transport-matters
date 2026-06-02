@@ -62,9 +62,7 @@ def _make_codex_transport_messages() -> list[Any]:
             "ts": request_fact.ts,
             "direction": request_fact.direction,
             "is_text": True,
-            "size_bytes": len(
-                json.dumps(request_payload, separators=(",", ":")).encode()
-            ),
+            "size_bytes": len(json.dumps(request_payload, separators=(",", ":")).encode()),
             "dropped": request_fact.dropped,
             "event_type": request_fact.event_type,
             "payload_text": json.dumps(request_payload, separators=(",", ":")),
@@ -75,9 +73,7 @@ def _make_codex_transport_messages() -> list[Any]:
             "ts": response_fact.ts,
             "direction": response_fact.direction,
             "is_text": True,
-            "size_bytes": len(
-                json.dumps(response_payload, separators=(",", ":")).encode()
-            ),
+            "size_bytes": len(json.dumps(response_payload, separators=(",", ":")).encode()),
             "dropped": response_fact.dropped,
             "event_type": response_fact.event_type,
             "payload_text": json.dumps(response_payload, separators=(",", ":")),
@@ -177,9 +173,7 @@ async def test_get_existing_surfaces_supported_codex_sidecars(
     async def unexpected_repair(*_args: object, **_kwargs: object) -> None:
         raise AssertionError("supported Codex exchanges should not repair on read")
 
-    monkeypatch.setattr(
-        exchange_routes, "repair_codex_derived_artifacts", unexpected_repair
-    )
+    monkeypatch.setattr(exchange_routes, "repair_codex_derived_artifacts", unexpected_repair)
 
     storage = cast("DiskStorageBackend", await get_storage())
     entry = make_index_entry().model_copy(
@@ -313,16 +307,13 @@ async def test_get_existing_surfaces_irreparable_codex_sidecars(
     artifacts = _make_transport_only_codex_artifacts()
     assert artifacts.transport is not None
     transport_messages = [
-        message.model_copy(update={"ts": None})
-        for message in artifacts.transport.messages
+        message.model_copy(update={"ts": None}) for message in artifacts.transport.messages
     ]
     await storage.write_exchange(
         "ex-001",
         artifacts.model_copy(
             update={
-                "transport": artifacts.transport.model_copy(
-                    update={"messages": transport_messages}
-                )
+                "transport": artifacts.transport.model_copy(update={"messages": transport_messages})
             }
         ),
     )

@@ -115,9 +115,7 @@ def test_start_passthrough_forwards_to_managed_client(
     )
     monkeypatch.setattr("transport_matters.cli._port_in_use", lambda _: False)
 
-    result = runner.invoke(
-        main, ["claude", "--no-system-prompt", "--", "-p", "hello world"]
-    )
+    result = runner.invoke(main, ["claude", "--no-system-prompt", "--", "-p", "hello world"])
     assert result.exit_code == 0, result.output
     kwargs = spy_run_client_children.call_args.kwargs
     assert kwargs["client"].argv == ["/bin/claude", "-p", "hello world"]

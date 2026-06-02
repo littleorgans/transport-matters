@@ -101,7 +101,7 @@ def test_lock_releases_when_holder_process_dies(tmp_path: Path) -> None:
         "print('LOCKED', flush=True)\n"
         "time.sleep(30)\n"
     )
-    proc = subprocess.Popen(  # noqa: S603 — launching our own interpreter with a known script
+    proc = subprocess.Popen(
         [sys.executable, "-c", child_src],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,

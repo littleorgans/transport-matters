@@ -107,11 +107,7 @@ def test_build_req_stats_with_system() -> None:
 
 
 def test_build_req_stats_with_tools() -> None:
-    tools = [
-        ToolDef(
-            name="search", description="Search the web", input_schema={"type": "object"}
-        )
-    ]
+    tools = [ToolDef(name="search", description="Search the web", input_schema={"type": "object"})]
     ir = _make_ir(tools=tools)
     stats = build_req_stats(ir)
     assert stats.tools_count == 1
@@ -122,10 +118,7 @@ def test_build_req_stats_total_is_sum_of_parts() -> None:
     tools = [ToolDef(name="fn", description="desc", input_schema={"type": "object"})]
     ir = _make_ir(system_text="sys", tools=tools, message_text="msg")
     stats = build_req_stats(ir)
-    assert (
-        stats.total_chars
-        == stats.system_chars + stats.tools_chars + stats.messages_chars
-    )
+    assert stats.total_chars == stats.system_chars + stats.tools_chars + stats.messages_chars
 
 
 # ── build_pipeline_stats ───────────────────────────────────────────
@@ -241,9 +234,7 @@ class TestStampPipelineTokens:
         ir = _make_ir()
         counter = _SeqCounter([42])
 
-        stamped = await stamp_pipeline_tokens(
-            stats, ir, ir, AnthropicAdapter(), counter, {}
-        )
+        stamped = await stamp_pipeline_tokens(stats, ir, ir, AnthropicAdapter(), counter, {})
 
         assert stamped.tokens_before == 42
         assert stamped.tokens_after == 42
@@ -305,9 +296,7 @@ class TestStampPipelineTokens:
         ir = _make_ir()
         counter = _SeqCounter([None])
 
-        stamped = await stamp_pipeline_tokens(
-            stats, ir, ir, AnthropicAdapter(), counter, {}
-        )
+        stamped = await stamp_pipeline_tokens(stats, ir, ir, AnthropicAdapter(), counter, {})
 
         assert stamped.tokens_before is None
         assert stamped.tokens_after is None
@@ -315,18 +304,12 @@ class TestStampPipelineTokens:
 
     async def test_preserves_chars_and_overrides(self) -> None:
         """Stamping only touches token fields; everything else is immutable."""
-        entry = OverrideAuditEntry(
-            kind="tool_toggle", target="t:x", applied=True, chars_delta=-10
-        )
-        stats = PipelineStats(
-            overrides_applied=[entry], chars_before=500, chars_after=490
-        )
+        entry = OverrideAuditEntry(kind="tool_toggle", target="t:x", applied=True, chars_delta=-10)
+        stats = PipelineStats(overrides_applied=[entry], chars_before=500, chars_after=490)
         ir = _make_ir()
         counter = _SeqCounter([99])
 
-        stamped = await stamp_pipeline_tokens(
-            stats, ir, ir, AnthropicAdapter(), counter, {}
-        )
+        stamped = await stamp_pipeline_tokens(stats, ir, ir, AnthropicAdapter(), counter, {})
 
         assert stamped.chars_before == 500
         assert stamped.chars_after == 490
@@ -474,9 +457,7 @@ class TestFirePauseCount:
         """Counter raising must not bubble up to cancel the pause."""
 
         class _Boom:
-            async def count(
-                self, payload: bytes, auth_headers: dict[str, str]
-            ) -> int | None:
+            async def count(self, payload: bytes, auth_headers: dict[str, str]) -> int | None:
                 raise RuntimeError("boom")
 
         pf = await self._register("flow-E")

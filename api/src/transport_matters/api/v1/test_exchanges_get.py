@@ -42,9 +42,7 @@ class TestGetExchange:
         assert data["turn"] is None
         assert data["codex_derived_artifacts"] is None
 
-    async def test_get_returns_404_when_index_row_is_missing(
-        self, client: AsyncClient
-    ) -> None:
+    async def test_get_returns_404_when_index_row_is_missing(self, client: AsyncClient) -> None:
         from transport_matters.storage import get_storage
 
         storage = await get_storage()
@@ -86,13 +84,9 @@ class TestGetExchange:
         data = response.json()
         assert data["request_ir"]["messages"][0]["content"][0]["text"] == "hi"
         assert data["request_curated_ir"] is not None
-        assert (
-            data["request_curated_ir"]["messages"][0]["content"][0]["text"] == "edited"
-        )
+        assert data["request_curated_ir"]["messages"][0]["content"][0]["text"] == "edited"
 
-    async def test_get_existing_surfaces_audit_and_transport(
-        self, client: AsyncClient
-    ) -> None:
+    async def test_get_existing_surfaces_audit_and_transport(self, client: AsyncClient) -> None:
         from transport_matters.storage import get_storage
 
         storage = await get_storage()
@@ -400,9 +394,7 @@ class TestGetExchange:
                     "path": "/backend-api/codex/responses?client=cli",
                     "request_headers": [],
                     "response_status_code": 502,
-                    "response_headers": [
-                        {"name": "content-type", "value": "text/plain"}
-                    ],
+                    "response_headers": [{"name": "content-type", "value": "text/plain"}],
                 },
                 "close": None,
                 "messages": [],
@@ -450,9 +442,7 @@ class TestGetExchange:
                     "path": "/backend-api/codex/responses?client=cli",
                     "request_headers": [],
                     "response_status_code": 403,
-                    "response_headers": [
-                        {"name": "content-type", "value": "application/json"}
-                    ],
+                    "response_headers": [{"name": "content-type", "value": "application/json"}],
                 },
                 "close": None,
                 "messages": [],
@@ -471,10 +461,7 @@ class TestGetExchange:
             "status indicates an upstream auth challenge"
             in data["transport_diagnostics"][0]["detail"]
         )
-        assert (
-            "Unauthorized websocket upgrade"
-            not in data["transport_diagnostics"][0]["detail"]
-        )
+        assert "Unauthorized websocket upgrade" not in data["transport_diagnostics"][0]["detail"]
 
     async def test_get_existing_redacts_generic_codex_handshake_failure_body(
         self, client: AsyncClient
@@ -507,9 +494,7 @@ class TestGetExchange:
                     "path": "/backend-api/codex/responses?client=cli",
                     "request_headers": [],
                     "response_status_code": 504,
-                    "response_headers": [
-                        {"name": "content-type", "value": "text/plain"}
-                    ],
+                    "response_headers": [{"name": "content-type", "value": "text/plain"}],
                 },
                 "close": None,
                 "messages": [],
@@ -523,10 +508,7 @@ class TestGetExchange:
         assert response.status_code == 200
         data = response.json()
         assert data["transport_diagnostics"][0]["code"] == "websocket_handshake_failed"
-        assert (
-            "response body redacted (28 bytes)"
-            in data["transport_diagnostics"][0]["detail"]
-        )
+        assert "response body redacted (28 bytes)" in data["transport_diagnostics"][0]["detail"]
         assert "raw-secret" not in data["transport_diagnostics"][0]["detail"]
 
     async def test_get_existing_keeps_mixed_provider_rows_distinct(
@@ -575,9 +557,7 @@ class TestGetExchange:
                     "path": "/backend-api/codex/responses?client=cli",
                     "request_headers": [],
                     "response_status_code": 502,
-                    "response_headers": [
-                        {"name": "content-type", "value": "text/plain"}
-                    ],
+                    "response_headers": [{"name": "content-type", "value": "text/plain"}],
                 },
                 "close": None,
                 "messages": [],

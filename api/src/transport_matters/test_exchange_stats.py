@@ -64,9 +64,7 @@ def test_extract_response_text_returns_text_blocks() -> None:
 
 
 def test_extract_response_text_falls_back_to_tool_use_input_json() -> None:
-    res = _make_res(
-        [ToolUseBlock(id="toolu_01", name="Read", input={"path": "/tmp/x"})]
-    )
+    res = _make_res([ToolUseBlock(id="toolu_01", name="Read", input={"path": "/tmp/x"})])
     assert extract_response_text(res) == '{"path": "/tmp/x"}'
 
 
@@ -143,9 +141,7 @@ class _SeqCounter:
         return len(payload)
 
 
-async def test_stamp_pipeline_tokens_skips_curated_serialization_when_unchanged() -> (
-    None
-):
+async def test_stamp_pipeline_tokens_skips_curated_serialization_when_unchanged() -> None:
     adapter = _CountAdapter()
     counter = _SeqCounter()
     ir = _make_ir([_user([TextBlock(text="hi")])])

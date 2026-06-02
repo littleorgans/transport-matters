@@ -108,9 +108,7 @@ async def test_addon_websocket_message_finalizes_turn_on_server_completion() -> 
     provisional_entry = next(
         entry for entry in entries if entry.id == state.provisional_exchange_id
     )
-    rotated_entry = next(
-        entry for entry in entries if entry.id != state.provisional_exchange_id
-    )
+    rotated_entry = next(entry for entry in entries if entry.id != state.provisional_exchange_id)
     assert provisional_entry.res is None
     assert provisional_entry.codex_turn is not None
     assert provisional_entry.codex_turn.status == "open"
@@ -122,9 +120,7 @@ async def test_addon_websocket_message_finalizes_turn_on_server_completion() -> 
 
     provisional_artifacts = await storage.read_exchange(provisional_entry.id)
     assert provisional_artifacts.transport is not None
-    assert [m.event_type for m in provisional_artifacts.transport.messages] == [
-        "response.create"
-    ]
+    assert [m.event_type for m in provisional_artifacts.transport.messages] == ["response.create"]
     assert provisional_artifacts.transport.close is None
 
 
@@ -180,9 +176,7 @@ async def test_addon_websocket_message_finalizes_turn_from_output_items() -> Non
     assert artifacts.response_ir.model == "codex/gpt-5-codex"
     assert artifacts.response_ir.content[0].type == "text"
     assert artifacts.response_ir.content[0].text == "assistant text"
-    assert artifacts.response_ir.provider_extras["output_item_meta"][0]["phase"] == (
-        "final_answer"
-    )
+    assert artifacts.response_ir.provider_extras["output_item_meta"][0]["phase"] == ("final_answer")
 
 
 async def test_addon_websocket_message_finalizes_failed_turn() -> None:

@@ -1,14 +1,16 @@
 import logging
 import logging.config
-from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from transport_matters.api.v1.router import api_router
 from transport_matters.config import get_settings
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
 
 LOG_FORMAT = "%(asctime)s %(levelname)-8s %(message)s"
 

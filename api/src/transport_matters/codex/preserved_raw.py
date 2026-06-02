@@ -113,8 +113,7 @@ def materialize_input_items(items: list[SerializedInputItem]) -> list[dict[str, 
             continue
         if item.original_index in positioned:
             raise ValueError(
-                "Codex serializer saw duplicate preserved input index "
-                f"{item.original_index}"
+                f"Codex serializer saw duplicate preserved input index {item.original_index}"
             )
         positioned[item.original_index] = item.payload
 
@@ -218,9 +217,7 @@ def _merge_message_item(
     ):
         merged["content"] = [
             _merge_message_content_item(raw_item, serialized_item)
-            for raw_item, serialized_item in zip(
-                raw_content, payload_content, strict=True
-            )
+            for raw_item, serialized_item in zip(raw_content, payload_content, strict=True)
         ]
     else:
         merged["content"] = payload_content

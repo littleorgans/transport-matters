@@ -36,9 +36,9 @@ __all__ = [
     "LaunchExitOutcome",
     "LaunchRetryExhaustedOutcome",
     "_handle_bind_failure",
+    "_run_children",
     "_run_client_children",
     "_run_client_with_retry",
-    "_run_children",
 ]
 
 
@@ -170,8 +170,7 @@ def _format_retry_exhaustion(outcome: LaunchRetryExhaustedOutcome) -> list[str]:
     if pinned_notes:
         lines.extend(
             [
-                f"  Pinned (held constant across all attempts): "
-                f"{', '.join(pinned_notes)}.",
+                f"  Pinned (held constant across all attempts): {', '.join(pinned_notes)}.",
                 "Free the pinned port(s), or omit the flag to let Transport Matters allocate\n"
                 "one. Check what is holding the conflicting ports "
                 "(e.g. `lsof -nP -iTCP -sTCP:LISTEN`).",
@@ -193,9 +192,7 @@ def _raise_retry_exhausted(outcome: LaunchRetryExhaustedOutcome) -> None:
     raise typer.Exit(1)
 
 
-def _failing_ports_from_log(
-    log_path: Path, attempted: tuple[int, ...]
-) -> tuple[int, ...] | None:
+def _failing_ports_from_log(log_path: Path, attempted: tuple[int, ...]) -> tuple[int, ...] | None:
     """Inspect the mitmdump log for an EADDRINUSE-shaped failure.
 
     Returns ``None`` if the log does not mention a bind conflict at all,
@@ -300,9 +297,7 @@ def _run_client_with_retry(
     web_port: int,
     proxy_user_supplied: bool,
     web_user_supplied: bool,
-    build_invocation: Callable[
-        [int, int], tuple[list[str], dict[str, str], ManagedClient | None]
-    ],
+    build_invocation: Callable[[int, int], tuple[list[str], dict[str, str], ManagedClient | None]],
     print_banner_for: Callable[[int, int], None],
     write_manifest_for: Callable[[int, int], None],
     resolved_storage: Path,
@@ -324,8 +319,7 @@ def _run_client_with_retry(
         write_manifest_for(proxy_port, web_port)
         if attempt > 0:
             typer.secho(
-                f"retrying after bind conflict "
-                f"(attempt {attempt + 1}/{_BIND_RETRY_ATTEMPTS})",
+                f"retrying after bind conflict (attempt {attempt + 1}/{_BIND_RETRY_ATTEMPTS})",
                 fg=typer.colors.YELLOW,
                 err=True,
             )

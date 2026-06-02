@@ -49,9 +49,7 @@ class HarnessDescriptorResponse(BaseModel):
     capabilities: HarnessCapabilities
 
     @classmethod
-    def from_descriptor(
-        cls, descriptor: HarnessDescriptor
-    ) -> HarnessDescriptorResponse:
+    def from_descriptor(cls, descriptor: HarnessDescriptor) -> HarnessDescriptorResponse:
         return cls(
             id=descriptor.id,
             display_name=descriptor.display_name,

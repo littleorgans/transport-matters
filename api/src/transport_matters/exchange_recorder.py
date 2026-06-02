@@ -144,9 +144,7 @@ def _extract_response(
 ) -> tuple[bytes, InternalResponse | None, ResStats | None]:
     res_text = flow.response.get_text() if flow.response else None
     raw_res = res_text.encode() if res_text else b""
-    content_type = (
-        flow.response.headers.get("content-type", "") if flow.response else ""
-    )
+    content_type = flow.response.headers.get("content-type", "") if flow.response else ""
     res_ir, res_stats = _parse_response_ir(adapter, raw_res, content_type, exchange_id)
     return raw_res, res_ir, _tag_http_error_status(res_stats, flow, raw_res)
 
@@ -249,9 +247,7 @@ def emit_exchange(
         "parent_track_id": parent_track_id,
         "track_display_name": track_display_name,
         "track_role": track_role or "parent",
-        "spawn_anchor": spawn_anchor.model_dump(mode="json")
-        if spawn_anchor is not None
-        else None,
+        "spawn_anchor": spawn_anchor.model_dump(mode="json") if spawn_anchor is not None else None,
     }
     if flow_id is not None:
         payload["flow_id"] = flow_id
@@ -430,9 +426,7 @@ def _assign_track(
 ) -> TrackAssignment | None:
     if run_id is None:
         return None
-    return get_track_manager().record_exchange(
-        run_id, ir, res_ir, exchange_id=exchange_id
-    )
+    return get_track_manager().record_exchange(run_id, ir, res_ir, exchange_id=exchange_id)
 
 
 def _persist_track_assignment(
@@ -445,9 +439,7 @@ def _persist_track_assignment(
     if run_id is None:
         return None
     if request_state.track_assignment is None:
-        return _assign_track(
-            run_id, request_state.request_ir, res_ir, exchange_id=exchange_id
-        )
+        return _assign_track(run_id, request_state.request_ir, res_ir, exchange_id=exchange_id)
     if res_ir is not None:
         get_track_manager().observe_response(
             run_id,
@@ -466,9 +458,7 @@ async def _persist_http_exchange(
     if request_state.dropped:
         return await _delete_http_provisional_exchange(flow, request_state)
     if request_state.provisional_exchange_id is not None:
-        finalized = await _finalize_http_provisional_exchange(
-            flow, request_state, token_counter
-        )
+        finalized = await _finalize_http_provisional_exchange(flow, request_state, token_counter)
         if finalized:
             return True
 
@@ -487,9 +477,7 @@ async def _persist_http_exchange(
         flow, request_state, exchange_id, raw_res, ts
     )
     req_stats = build_req_stats(curated_ir)
-    pipeline_stats = await _stamped_pipeline_stats(
-        flow, request_state, token_counter, exchange_id
-    )
+    pipeline_stats = await _stamped_pipeline_stats(flow, request_state, token_counter, exchange_id)
 
     run_id = get_settings().run_id
     track_assignment = _persist_track_assignment(
@@ -643,9 +631,7 @@ async def _finalize_http_provisional_exchange(
         flow, request_state, exchange_id, raw_res, existing_entry.ts
     )
     req_stats = build_req_stats(curated_ir)
-    pipeline_stats = await _stamped_pipeline_stats(
-        flow, request_state, token_counter, exchange_id
-    )
+    pipeline_stats = await _stamped_pipeline_stats(flow, request_state, token_counter, exchange_id)
 
     run_id = existing_entry.run_id
     _persist_track_assignment(run_id, request_state, res_ir, exchange_id=exchange_id)

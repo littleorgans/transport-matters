@@ -93,9 +93,7 @@ def test_transport_fixture_reports_chatgpt_auth_rejection() -> None:
     assert diagnostics[0].severity == "error"
     assert "upgrade response status=403" in (diagnostics[0].detail or "")
     assert "response body redacted" in (diagnostics[0].detail or "")
-    assert "status indicates an upstream auth challenge" in (
-        diagnostics[0].detail or ""
-    )
+    assert "status indicates an upstream auth challenge" in (diagnostics[0].detail or "")
     assert "Unauthorized websocket upgrade" not in (diagnostics[0].detail or "")
     assert any("ChatGPT" in check for check in diagnostics[0].operator_checks)
 
@@ -114,9 +112,7 @@ def test_transport_fixture_reports_proxy_trust_failure() -> None:
     assert diagnostics[0].severity == "error"
     assert "response body redacted" in (diagnostics[0].detail or "")
     assert "UnknownIssuer" not in (diagnostics[0].detail or "")
-    assert any(
-        "CODEX_CA_CERTIFICATE" in check for check in diagnostics[0].operator_checks
-    )
+    assert any("CODEX_CA_CERTIFICATE" in check for check in diagnostics[0].operator_checks)
 
 
 def test_transport_fixture_redacts_generic_handshake_failure_body() -> None:
@@ -135,9 +131,7 @@ def test_transport_fixture_redacts_generic_handshake_failure_body() -> None:
                         "path": "/backend-api/codex/responses?client=cli",
                         "request_headers": [],
                         "response_status_code": 504,
-                        "response_headers": [
-                            {"name": "content-type", "value": "text/plain"}
-                        ],
+                        "response_headers": [{"name": "content-type", "value": "text/plain"}],
                     },
                     "close": None,
                     "messages": [],
@@ -146,9 +140,7 @@ def test_transport_fixture_redacts_generic_handshake_failure_body() -> None:
         )
     )
 
-    assert [diagnostic.code for diagnostic in diagnostics] == [
-        "websocket_handshake_failed"
-    ]
+    assert [diagnostic.code for diagnostic in diagnostics] == ["websocket_handshake_failed"]
     assert diagnostics[0].severity == "error"
     assert "response body redacted (28 bytes)" in (diagnostics[0].detail or "")
     assert "raw-secret" not in (diagnostics[0].detail or "")

@@ -135,9 +135,7 @@ def canonical_block_json(block: ContentBlock) -> str:
             ]
         )
     if isinstance(block, ToolResultBlock):
-        content = (
-            "[" + ",".join(canonical_block_json(item) for item in block.content) + "]"
-        )
+        content = "[" + ",".join(canonical_block_json(item) for item in block.content) + "]"
         return _canonical_fields(
             [
                 ("type", _json_string(block.type)),
@@ -178,9 +176,7 @@ def block_chars(block: ContentBlock) -> int:
 
 
 def tool_chars(tool: ToolDef) -> int:
-    return (
-        len(tool.name) + len(tool.description) + len(canonical_json(tool.input_schema))
-    )
+    return len(tool.name) + len(tool.description) + len(canonical_json(tool.input_schema))
 
 
 def count_chars_parts(ir: InternalRequest) -> tuple[int, int, int]:

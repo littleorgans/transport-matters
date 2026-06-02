@@ -70,15 +70,7 @@ def test_exchange_suffix_paths_keep_existing_names(tmp_path: Path) -> None:
 
     assert layout.index_path == tmp_path / "index.jsonl"
     assert layout.index_tmp_path == tmp_path / "index.jsonl.tmp"
-    assert layout.tmp_exchange_dir(exchange_dir) == tmp_path / (
-        "20250601T120000Z-abcdef01.tmp"
-    )
-    assert layout.backup_exchange_dir(exchange_dir) == tmp_path / (
-        "20250601T120000Z-abcdef01.bak"
-    )
-    assert layout.staged_delete_dir(exchange_dir) == tmp_path / (
-        "20250601T120000Z-abcdef01.del"
-    )
-    assert layout.exchange_index_path(exchange_dir.name) == (
-        "exchanges/20250601T120000Z-abcdef01/"
-    )
+    assert layout.tmp_exchange_dir(exchange_dir) == tmp_path / ("20250601T120000Z-abcdef01.tmp")
+    assert layout.backup_exchange_dir(exchange_dir) == tmp_path / ("20250601T120000Z-abcdef01.bak")
+    assert layout.staged_delete_dir(exchange_dir) == tmp_path / ("20250601T120000Z-abcdef01.del")
+    assert layout.exchange_index_path(exchange_dir.name) == ("exchanges/20250601T120000Z-abcdef01/")

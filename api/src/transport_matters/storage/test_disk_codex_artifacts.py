@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import TYPE_CHECKING
 from unittest.mock import patch
 
@@ -40,9 +41,7 @@ def _codex_transport() -> dict[str, object]:
 
 
 class TestCodexDerivedArtifacts:
-    async def test_with_codex_derived_artifacts(
-        self, storage: DiskStorageBackend
-    ) -> None:
+    async def test_with_codex_derived_artifacts(self, storage: DiskStorageBackend) -> None:
         event = disk_tests._make_codex_event()
         turn = disk_tests._make_open_turn()
         artifacts = ExchangeArtifacts(
@@ -93,9 +92,7 @@ class TestCodexDerivedArtifacts:
             calls.append("transport")
             await original_transport(path, transport)
 
-        async def write_events(
-            path: Path, events: tuple[CodexSemanticEvent, ...]
-        ) -> None:
+        async def write_events(path: Path, events: tuple[CodexSemanticEvent, ...]) -> None:
             calls.append("events")
             await original_events(path, events)
 
@@ -128,9 +125,7 @@ class TestCodexDerivedArtifacts:
         original_event = disk_tests._make_codex_event().model_copy(
             update={"exchange_id": exchange_id}
         )
-        original_turn = disk_tests._make_open_turn().model_copy(
-            update={"exchange_id": exchange_id}
-        )
+        original_turn = disk_tests._make_open_turn().model_copy(update={"exchange_id": exchange_id})
         original_artifacts = ExchangeArtifacts(
             request_raw=b'{"type":"response.create","model":"gpt-5-codex"}',
             request_ir=disk_tests._make_ir(),
@@ -169,9 +164,7 @@ class TestCodexDerivedArtifacts:
         loaded = await storage.read_exchange(exchange_id)
         assert loaded.events == (original_event,)
         assert loaded.turn == original_turn
-        assert not any(
-            path.name.endswith((".tmp", ".bak")) for path in storage.root.iterdir()
-        )
+        assert not any(path.name.endswith((".tmp", ".bak")) for path in storage.root.iterdir())
 
     async def test_write_exchange_rejects_incomplete_derived_artifacts(
         self, storage: DiskStorageBackend
@@ -202,7 +195,7 @@ class TestCodexDerivedArtifacts:
         entry = disk_tests._make_index_entry("codexinvalid-5678")
 
         with pytest.raises(
-            ValueError, match="event exchange_id must match turn.exchange_id"
+            ValueError, match=re.escape("event exchange_id must match turn.exchange_id")
         ):
             await storage.persist_exchange(
                 entry,
@@ -218,6 +211,4 @@ class TestCodexDerivedArtifacts:
         assert await storage.read_index(limit=10, offset=0) == []
         with pytest.raises(FileNotFoundError):
             await storage.read_exchange(entry.id)
-        assert not any(
-            path.name.endswith((".tmp", ".bak")) for path in storage.root.iterdir()
-        )
+        assert not any(path.name.endswith((".tmp", ".bak")) for path in storage.root.iterdir())

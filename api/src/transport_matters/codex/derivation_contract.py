@@ -45,9 +45,7 @@ def is_supported_codex_derivation_version(version: int) -> bool:
 def require_supported_codex_derivation_version(version: int) -> int:
     if is_supported_codex_derivation_version(version):
         return version
-    supported = ", ".join(
-        str(value) for value in sorted(SUPPORTED_CODEX_DERIVATION_VERSIONS)
-    )
+    supported = ", ".join(str(value) for value in sorted(SUPPORTED_CODEX_DERIVATION_VERSIONS))
     msg = f"Unsupported Codex derivation version {version}. Supported versions: {supported}"
     raise UnsupportedCodexDerivationVersionError(msg)
 
@@ -73,9 +71,7 @@ def codex_event_ts(
     transport_message: CodexTransportMessageFact | None = None,
     operator_fact: CodexDerivationOperatorFact | None = None,
 ) -> datetime:
-    selected = [
-        value for value in (transport_message, operator_fact) if value is not None
-    ]
+    selected = [value for value in (transport_message, operator_fact) if value is not None]
     if len(selected) != 1:
         msg = "exactly one source fact is required to assign a deterministic event timestamp"
         raise ValueError(msg)
@@ -271,9 +267,7 @@ class CodexIncrementalAdvanceRequest(_CodexDerivationRequestBase):
                 self.cursor.next_message_index > self.context.request_message_index
                 and self.started_at is None
             ):
-                msg = (
-                    "incremental advance requires started_at once the turn has started"
-                )
+                msg = "incremental advance requires started_at once the turn has started"
                 raise ValueError(msg)
             return self
         first_index = self.transport_messages[0].message_index
@@ -342,14 +336,9 @@ class CodexDerivedTurnArtifacts(BaseModel):
             raise ValueError(msg)
         expected_next_message_index = self.turn.message_range_end + 1
         if cursor.next_message_index != expected_next_message_index:
-            msg = (
-                "open turn cursor.next_message_index must equal "
-                "turn.message_range_end + 1"
-            )
+            msg = "open turn cursor.next_message_index must equal turn.message_range_end + 1"
             raise ValueError(msg)
-        expected_next_seq = (
-            CODEX_INITIAL_EVENT_SEQ if previous_seq is None else previous_seq + 1
-        )
+        expected_next_seq = CODEX_INITIAL_EVENT_SEQ if previous_seq is None else previous_seq + 1
         if cursor.next_seq != expected_next_seq:
             msg = "open turn cursor.next_seq must equal the next contiguous event seq"
             raise ValueError(msg)
