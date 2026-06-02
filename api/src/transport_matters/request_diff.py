@@ -6,8 +6,6 @@ breakpoint release, exchange persistence, and token counting so they all
 agree on one structural-equality contract.
 """
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Any, cast
 
 if TYPE_CHECKING:

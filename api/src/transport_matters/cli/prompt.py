@@ -15,8 +15,6 @@ both ``--append-system-prompt VALUE`` (two tokens) and
 claude's exact argv parser.
 """
 
-from __future__ import annotations
-
 from .identity import PRODUCT_LABEL
 from .net import loopback_http_url
 

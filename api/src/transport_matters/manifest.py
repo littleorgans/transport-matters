@@ -20,8 +20,6 @@ dataclass. ``read`` tolerates missing, malformed, and schema-mismatched
 files by returning ``None`` so callers can reap them transparently.
 """
 
-from __future__ import annotations
-
 import json
 import os
 from dataclasses import asdict, dataclass

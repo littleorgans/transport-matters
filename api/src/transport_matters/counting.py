@@ -10,8 +10,6 @@ Failures (network, rate limit, malformed response, schema drift) degrade
 to None so the UI can render an em dash instead of crashing the flow.
 """
 
-from __future__ import annotations
-
 import asyncio
 import hashlib
 import json

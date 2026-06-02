@@ -1,7 +1,5 @@
 """Tests for the Codex trust bootstrap helper."""
 
-from __future__ import annotations
-
 import ssl
 from typing import TYPE_CHECKING
 

@@ -9,8 +9,6 @@ Tests that previously patched ``transport_matters.cli.shutil.which`` /
 re-exports are still resolved at call time inside ``run_doctor``'s own module.
 """
 
-from __future__ import annotations
-
 import shutil
 import sys
 import sysconfig

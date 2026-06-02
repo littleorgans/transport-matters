@@ -1,7 +1,5 @@
 """Integration tests for the override apply pipeline."""
 
-from __future__ import annotations
-
 import pytest
 
 from transport_matters.ir import (

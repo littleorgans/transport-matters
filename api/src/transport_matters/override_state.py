@@ -1,7 +1,5 @@
 """Private override store state for the Transport Matters pipeline."""
 
-from __future__ import annotations
-
 from collections import OrderedDict
 from typing import TYPE_CHECKING
 

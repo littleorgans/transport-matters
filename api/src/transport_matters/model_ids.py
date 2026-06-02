@@ -1,7 +1,5 @@
 """Provider model ID prefix helpers."""
 
-from __future__ import annotations
-
 
 def normalise_model(model: str, prefix: str) -> str:
     if model.startswith(prefix):

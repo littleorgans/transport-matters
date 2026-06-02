@@ -1,7 +1,5 @@
 """Shared pytest fixtures for the v1 API test package."""
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING
 
 import pytest

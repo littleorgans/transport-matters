@@ -1,7 +1,5 @@
 """Tests for GET /api/exchanges/{id}/turn-content."""
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING
 
 from transport_matters.ir import InternalResponse, TextBlock, UsageStats

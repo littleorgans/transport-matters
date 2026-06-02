@@ -7,8 +7,6 @@ that persist across exchanges within a session.
 This module imports only from ``transport_matters.ir``.
 """
 
-from __future__ import annotations
-
 import json
 from typing import TYPE_CHECKING, Literal
 

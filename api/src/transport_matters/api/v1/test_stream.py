@@ -1,7 +1,5 @@
 """Tests for the SSE stream endpoint."""
 
-from __future__ import annotations
-
 import asyncio
 from typing import TYPE_CHECKING, cast
 

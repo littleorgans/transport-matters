@@ -1,7 +1,5 @@
 """Shared launch plumbing for the CLI entrypoints."""
 
-from __future__ import annotations
-
 import contextlib
 import os
 import shutil

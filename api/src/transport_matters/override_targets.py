@@ -1,7 +1,5 @@
 """Private target parsing and index adjustment helpers for overrides."""
 
-from __future__ import annotations
-
 import re
 
 _INDEX_RE = re.compile(r"^(0|-?[1-9][0-9]*)$")

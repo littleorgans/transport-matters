@@ -1,7 +1,5 @@
 """Tests for override state management."""
 
-from __future__ import annotations
-
 import pytest
 
 from transport_matters.override_state import LEGACY_SCOPE_ID, scope_from_params

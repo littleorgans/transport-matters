@@ -1,7 +1,5 @@
 """Codex websocket turn completion and finalization coverage."""
 
-from __future__ import annotations
-
 from mitmproxy import websocket
 from wsproto.frame_protocol import Opcode
 

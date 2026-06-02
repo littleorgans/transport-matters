@@ -1,7 +1,5 @@
 """Codex websocket response parsing into Transport Matters IR."""
 
-from __future__ import annotations
-
 from typing import Any
 
 from transport_matters.codex.protocol import (

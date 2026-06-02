@@ -1,7 +1,5 @@
 """Tests for exchange_stats helpers."""
 
-from __future__ import annotations
-
 from transport_matters.exchange_stats import (
     extract_response_text,
     extract_user_prompt_text,

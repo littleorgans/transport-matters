@@ -1,7 +1,5 @@
 """Unit tests for the count_tokens wrapper."""
 
-from __future__ import annotations
-
 import json
 
 import httpx

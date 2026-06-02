@@ -5,8 +5,6 @@ macOS. This seeder copies only account metadata plus trust state, so other
 platform credential layouts may still require a manual login.
 """
 
-from __future__ import annotations
-
 import contextlib
 import json
 import os

@@ -25,8 +25,6 @@ pulled in by `cli.py` (or any other entrypoint) without introducing
 a cycle.
 """
 
-from __future__ import annotations
-
 import contextlib
 import fcntl
 import os

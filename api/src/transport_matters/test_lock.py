@@ -1,7 +1,5 @@
 """Tests for the workspace lock."""
 
-from __future__ import annotations
-
 import signal
 import subprocess
 import sys

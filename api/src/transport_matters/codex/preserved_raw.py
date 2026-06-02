@@ -1,7 +1,5 @@
 """Preserved raw Codex input item reconciliation helpers."""
 
-from __future__ import annotations
-
 from dataclasses import dataclass
 from typing import Any
 

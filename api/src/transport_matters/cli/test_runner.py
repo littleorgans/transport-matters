@@ -12,8 +12,6 @@ isolated here so the regex/decision-table edge cases don't have to
 go through the full CLI surface.
 """
 
-from __future__ import annotations
-
 import signal
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock

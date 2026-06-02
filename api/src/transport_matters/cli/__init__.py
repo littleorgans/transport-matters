@@ -21,8 +21,6 @@ package scope so existing imports and most test monkeypatch paths
 remain valid.
 """
 
-from __future__ import annotations
-
 import shutil
 import sysconfig
 from functools import partial

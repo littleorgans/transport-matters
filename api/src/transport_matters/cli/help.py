@@ -10,8 +10,6 @@ Rendered verbatim as plain text via `_PlainGroup` / `_PlainCommand` so
 Typer's Rich chrome never competes with the hand-tuned layout.
 """
 
-from __future__ import annotations
-
 from textwrap import dedent
 from typing import TYPE_CHECKING, Any
 

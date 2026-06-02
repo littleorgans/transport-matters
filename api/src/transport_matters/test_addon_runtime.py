@@ -1,7 +1,5 @@
 """Tests for close_runtime teardown logic."""
 
-from __future__ import annotations
-
 import asyncio
 
 import httpx

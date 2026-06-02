@@ -1,7 +1,5 @@
 """Shared helpers for Server Sent Events payload decoding."""
 
-from __future__ import annotations
-
 import json
 from typing import TYPE_CHECKING, Any
 

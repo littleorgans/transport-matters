@@ -8,8 +8,6 @@ from ``test_start.py`` so the bulk start surface stays under the
 per-file LOC budget.
 """
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Any
 from unittest.mock import MagicMock
 

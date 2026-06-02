@@ -5,8 +5,6 @@ active client request turn. Also builds the canonical HTTP fallback
 transport record from the buffered request and SSE response stream.
 """
 
-from __future__ import annotations
-
 import base64
 import json
 import time

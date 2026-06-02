@@ -5,8 +5,6 @@ Each test builds a realistic Anthropic request body, runs it through
 round-trip (modulo key ordering and whitespace).
 """
 
-from __future__ import annotations
-
 import json
 from typing import Any
 

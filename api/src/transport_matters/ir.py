@@ -7,8 +7,6 @@ frozen (immutable); pipeline stages produce new instances.
 This module imports no internal Transport Matters modules.
 """
 
-from __future__ import annotations
-
 from typing import Annotated, Any, Literal  # Any: used for opaque provider blobs
 
 from pydantic import BaseModel, ConfigDict, Field

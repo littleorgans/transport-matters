@@ -1,7 +1,5 @@
 """Persistence codecs for Codex derived artifacts."""
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:

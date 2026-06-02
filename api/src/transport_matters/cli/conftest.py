@@ -8,8 +8,6 @@ Plain helper functions live in ``_helpers.py`` so this file stays
 focused on pytest fixtures and hooks (per the pytest convention).
 """
 
-from __future__ import annotations
-
 import socket
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock

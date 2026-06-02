@@ -27,8 +27,6 @@ exceptions. This is a CLI-layer domain exception; colocating it with
 the lock keeps the import graph shallow.
 """
 
-from __future__ import annotations
-
 import fcntl
 import os
 from typing import TYPE_CHECKING, Self

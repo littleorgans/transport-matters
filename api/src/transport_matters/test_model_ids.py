@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from transport_matters.model_ids import denormalise_model, normalise_model
 
 

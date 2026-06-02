@@ -1,7 +1,5 @@
 """Private content mutation helpers for overrides."""
 
-from __future__ import annotations
-
 from transport_matters.ir import (
     ContentBlock,
     InternalRequest,

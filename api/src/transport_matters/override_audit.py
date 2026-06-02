@@ -1,7 +1,5 @@
 """Private audit models and char accounting helpers for overrides."""
 
-from __future__ import annotations
-
 import json
 import math
 import re

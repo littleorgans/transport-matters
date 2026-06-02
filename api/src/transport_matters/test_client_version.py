@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from transport_matters.client_version import detect_client_version
 
 

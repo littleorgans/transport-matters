@@ -9,8 +9,6 @@ paths live under one storage root on one filesystem. The per-file ASYNC240
 ignore in pyproject.toml encodes that inline exception.
 """
 
-from __future__ import annotations
-
 import asyncio
 import logging
 import shutil

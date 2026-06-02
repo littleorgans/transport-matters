@@ -1,7 +1,5 @@
 """Addon websocket-end and handshake coverage for Codex transport capture."""
 
-from __future__ import annotations
-
 import asyncio
 import json
 import logging

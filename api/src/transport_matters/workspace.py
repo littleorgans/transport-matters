@@ -15,8 +15,6 @@ Layout: ``~/.transport-matters/workspaces/{slug}/{hash}/``
   (8 chars). Stable for a given canonical path on a given machine.
 """
 
-from __future__ import annotations
-
 import re
 from dataclasses import dataclass
 from hashlib import blake2b

@@ -1,7 +1,5 @@
 """Tests for the exchanges pipeline token endpoint."""
 
-from __future__ import annotations
-
 import asyncio
 import gc
 from typing import TYPE_CHECKING

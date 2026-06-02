@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from transport_matters.codex.response_parser import parse_codex_response_payloads
 
 

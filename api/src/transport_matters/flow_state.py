@@ -1,7 +1,5 @@
 """Typed accessors for request state stored on mitmproxy flows."""
 
-from __future__ import annotations
-
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, cast
 

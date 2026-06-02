@@ -1,7 +1,5 @@
 """Compatibility exports for Codex turn derivation."""
 
-from __future__ import annotations
-
 from transport_matters.codex.derivation_codec import (
     serialize_codex_events_jsonl,
     serialize_codex_turn_json,

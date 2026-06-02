@@ -4,8 +4,6 @@ Adapters are checked in registration order; the first whose
 ``matches(flow)`` returns True wins.
 """
 
-from __future__ import annotations
-
 from typing import Any  # Any: mitmproxy flow object, untyped
 
 from transport_matters.adapters.anthropic import AnthropicAdapter

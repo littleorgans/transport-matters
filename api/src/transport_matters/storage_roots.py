@@ -1,7 +1,5 @@
 """Backend owned storage root paths."""
 
-from __future__ import annotations
-
 from pathlib import Path
 
 DEFAULT_STORAGE_DIRNAME = ".transport-matters"

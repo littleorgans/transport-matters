@@ -4,8 +4,6 @@ Keep the package surface lightweight so low-level imports such as
 ``transport_matters.codex.events`` do not trigger adapter registration imports.
 """
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:

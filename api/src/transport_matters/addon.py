@@ -4,8 +4,6 @@ Captures /v1/messages exchanges, applies pipeline rules, stores
 artifacts, and emits SSE events.
 """
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Any  # Any: mitmproxy loader type is untyped
 
 if TYPE_CHECKING:

@@ -4,8 +4,6 @@ Per-command help (``doctor``, ``paths``, ``list``) lives next to its
 command's behaviour tests in the matching ``test_<cmd>.py`` module.
 """
 
-from __future__ import annotations
-
 from typer.testing import CliRunner
 
 from transport_matters.cli import main

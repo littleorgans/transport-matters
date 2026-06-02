@@ -5,8 +5,6 @@ and the canonical IR models.  Adapters are registered in ``__init__.py``
 and selected at runtime via ``matches(flow)``.
 """
 
-from __future__ import annotations
-
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Any  # Any: flow is untyped mitmproxy object
 

@@ -1,7 +1,5 @@
 """Shared builders for Codex derivation tests."""
 
-from __future__ import annotations
-
 from datetime import UTC, datetime
 
 from transport_matters.codex.derivation import (

@@ -3,8 +3,6 @@
 Imported by sibling ``test_disk_*.py`` modules as ``disk_tests``.
 """
 
-from __future__ import annotations
-
 from datetime import UTC, datetime
 
 from transport_matters.codex.derivation import CODEX_DERIVATION_VERSION

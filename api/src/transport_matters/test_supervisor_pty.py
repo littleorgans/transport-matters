@@ -1,7 +1,5 @@
 """PTY-specific tests for `transport_matters.supervisor`."""
 
-from __future__ import annotations
-
 import signal
 import termios
 import tty

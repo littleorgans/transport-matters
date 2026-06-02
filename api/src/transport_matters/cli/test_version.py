@@ -1,7 +1,5 @@
 """Tests for ``transport-matters version`` and ``transport-matters --version``."""
 
-from __future__ import annotations
-
 from typer.testing import CliRunner
 
 from transport_matters import __version__

@@ -1,7 +1,5 @@
 """Helpers for restoring opaque provider data onto wire dictionaries."""
 
-from __future__ import annotations
-
 from typing import Any, Protocol
 
 
