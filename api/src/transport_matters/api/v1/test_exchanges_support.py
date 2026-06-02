@@ -1,7 +1,5 @@
 """Shared fixtures and builders for exchanges API tests."""
 
-from __future__ import annotations
-
 from datetime import UTC, datetime
 
 from transport_matters.ir import (

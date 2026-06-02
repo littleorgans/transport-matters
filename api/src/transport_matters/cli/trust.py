@@ -1,7 +1,5 @@
 """Process scoped trust bootstrap for the Codex launch path."""
 
-from __future__ import annotations
-
 import ssl
 from pathlib import Path
 from typing import TYPE_CHECKING

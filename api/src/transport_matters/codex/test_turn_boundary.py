@@ -1,7 +1,5 @@
 """Tests for the Codex websocket turn boundary contract."""
 
-from __future__ import annotations
-
 from transport_matters.codex.protocol import (
     CODEX_INTERRUPTED_STATUS,
     codex_assistant_completed_item,

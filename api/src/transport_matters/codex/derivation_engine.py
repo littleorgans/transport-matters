@@ -1,7 +1,5 @@
 """Pure Codex turn derivation engine."""
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Any, Literal, cast
 
 from transport_matters.codex.derivation_contract import (

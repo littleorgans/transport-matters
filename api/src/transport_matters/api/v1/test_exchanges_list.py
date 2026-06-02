@@ -1,7 +1,5 @@
 """Tests for the exchanges list endpoint."""
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING
 
 from httpx import ASGITransport, AsyncClient

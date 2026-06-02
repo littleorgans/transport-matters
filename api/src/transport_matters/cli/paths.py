@@ -24,8 +24,6 @@ Resolution order for the ``storage`` value:
    branches create directories; ``paths`` is read-only.
 """
 
-from __future__ import annotations
-
 import json
 import os
 from importlib.resources import files

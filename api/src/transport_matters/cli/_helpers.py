@@ -5,8 +5,6 @@ fixtures and hooks. Pytest does not collect this module because the
 filename does not match ``test_*.py`` / ``*_test.py``.
 """
 
-from __future__ import annotations
-
 import re
 from typing import TYPE_CHECKING, Any
 

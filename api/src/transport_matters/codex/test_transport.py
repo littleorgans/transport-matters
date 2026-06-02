@@ -1,7 +1,5 @@
 """Unit tests for Codex websocket transport helpers."""
 
-from __future__ import annotations
-
 import json
 
 from mitmproxy import websocket

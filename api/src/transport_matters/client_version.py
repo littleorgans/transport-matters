@@ -4,8 +4,6 @@ Identifies the calling client (e.g. ``claude-cli/2.1.154``) so an unparsable
 request can be tagged with the version that produced its unsupported shape.
 """
 
-from __future__ import annotations
-
 from typing import Any  # Any: mitmproxy Headers / dict-like with case-insensitive get
 
 

@@ -1,7 +1,5 @@
 """Shared test support for `transport_matters.supervisor`."""
 
-from __future__ import annotations
-
 import signal
 import subprocess
 import termios

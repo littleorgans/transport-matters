@@ -6,8 +6,6 @@ existing patches keep working; ``_port_in_use`` is rebound by name in
 ``diagnose`` so tests must patch it at ``transport_matters.cli.diagnose``.
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 from typing import TYPE_CHECKING
 

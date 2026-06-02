@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import pytest
 
 from transport_matters.adapters import get_adapter_for_provider

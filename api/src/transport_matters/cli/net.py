@@ -1,7 +1,5 @@
 """Port-probing helpers used by `start` and `doctor`."""
 
-from __future__ import annotations
-
 import socket
 import time
 

@@ -1,7 +1,5 @@
 """Tests for decomposed addon phase helpers."""
 
-from __future__ import annotations
-
 import asyncio
 
 from transport_matters import breakpoint as bp

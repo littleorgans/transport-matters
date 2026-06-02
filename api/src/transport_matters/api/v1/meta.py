@@ -13,8 +13,6 @@ overlays by it when that slice lands.
 semantics stay on the provider adapters and captured IR provider fields.
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 
 from fastapi import APIRouter

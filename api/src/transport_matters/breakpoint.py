@@ -7,8 +7,6 @@ Runtime imports: no internal Transport Matters modules.
 TYPE_CHECKING-only: ``transport_matters.ir.InternalRequest``, ``transport_matters.overrides.OverrideAudit``.
 """
 
-from __future__ import annotations
-
 import asyncio
 import time
 from dataclasses import dataclass, field

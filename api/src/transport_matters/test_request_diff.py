@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from transport_matters.ir import (
     InternalRequest,
     Message,

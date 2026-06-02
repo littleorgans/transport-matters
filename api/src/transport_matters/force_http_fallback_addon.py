@@ -16,8 +16,6 @@ Reference: `codex-rs/core/tests/suite/websocket_fallback.rs` —
 (upstream test that confirms 426 triggers immediate fallback).
 """
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:

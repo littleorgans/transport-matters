@@ -3,8 +3,6 @@
 Named ``breakpoint_routes`` to avoid shadowing ``transport_matters.breakpoint``.
 """
 
-from __future__ import annotations
-
 import logging
 from typing import Literal
 

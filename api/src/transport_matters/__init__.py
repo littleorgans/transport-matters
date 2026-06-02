@@ -1,7 +1,5 @@
 """Transport Matters, a provider-neutral context control plane for coding agents."""
 
-from __future__ import annotations
-
 try:
     from importlib.metadata import PackageNotFoundError, version
 

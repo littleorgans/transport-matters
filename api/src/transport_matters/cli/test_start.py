@@ -6,8 +6,6 @@ This module keeps only the smaller integration-style checks that still
 exercise the command surface end to end.
 """
 
-from __future__ import annotations
-
 import os
 from typing import TYPE_CHECKING, Any
 from unittest.mock import MagicMock

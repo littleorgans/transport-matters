@@ -5,8 +5,6 @@ canonical IR.  The round-trip invariant holds:
 ``outbound_request(inbound_request(raw)) == raw`` (modulo key ordering).
 """
 
-from __future__ import annotations
-
 import json
 from typing import Any  # Any: opaque provider blobs, JSON dicts
 

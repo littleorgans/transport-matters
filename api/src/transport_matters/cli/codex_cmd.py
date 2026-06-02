@@ -1,7 +1,5 @@
 """Implementation of the `transport-matters codex` command."""
 
-from __future__ import annotations
-
 import contextlib
 import json
 import os

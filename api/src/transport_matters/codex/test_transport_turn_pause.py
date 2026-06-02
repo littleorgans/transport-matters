@@ -1,7 +1,5 @@
 """Codex websocket pause and stale request state coverage."""
 
-from __future__ import annotations
-
 import asyncio
 import json
 

@@ -4,8 +4,6 @@ Storage backends persist exchange artifacts (raw bodies, IR models)
 and the append-only index used by the dashboard.
 """
 
-from __future__ import annotations
-
 from abc import ABC, abstractmethod
 from datetime import datetime
 from typing import Any, Literal, cast

@@ -1,7 +1,5 @@
 """Tests for the breakpoint state machine."""
 
-from __future__ import annotations
-
 import asyncio
 from unittest.mock import MagicMock
 

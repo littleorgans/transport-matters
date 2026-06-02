@@ -1,7 +1,5 @@
 """Private metadata mutation helpers for overrides."""
 
-from __future__ import annotations
-
 import copy
 from typing import TYPE_CHECKING, Any
 

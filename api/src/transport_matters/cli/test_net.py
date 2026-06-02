@@ -1,7 +1,5 @@
 """Tests for the port-probing helpers in ``transport_matters.cli.net``."""
 
-from __future__ import annotations
-
 import pytest
 import typer
 

@@ -1,7 +1,5 @@
 """High level `transport_matters.supervisor` façade checks."""
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING
 
 import pytest

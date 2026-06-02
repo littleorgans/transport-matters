@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from transport_matters.codex.continuity import (
     CodexContinuityAllocator,
     allocate_codex_continuity_from_headers,

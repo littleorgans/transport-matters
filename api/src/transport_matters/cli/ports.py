@@ -24,8 +24,6 @@ the (theoretically impossible) case where the kernel double-assigns
 within one allocation.
 """
 
-from __future__ import annotations
-
 import socket
 
 __all__ = ["PortAllocationError", "allocate_port_pair"]

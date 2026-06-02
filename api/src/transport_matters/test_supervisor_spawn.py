@@ -1,7 +1,5 @@
 """Spawn policy tests for `transport_matters.supervisor`."""
 
-from __future__ import annotations
-
 import subprocess
 from typing import TYPE_CHECKING
 

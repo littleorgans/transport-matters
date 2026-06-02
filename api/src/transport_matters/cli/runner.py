@@ -13,8 +13,6 @@ allocate-→-spawn retry loop. Other startup failures still raise
 keeps failing fast rather than burning retry budget.
 """
 
-from __future__ import annotations
-
 import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING

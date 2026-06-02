@@ -1,7 +1,5 @@
 """Process-local Codex turn continuity allocation."""
 
-from __future__ import annotations
-
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Literal
 

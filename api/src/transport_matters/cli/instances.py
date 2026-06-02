@@ -6,8 +6,6 @@ public helpers at ``transport_matters.cli.X`` when they're candidates for
 monkeypatching in tests; private helpers stay pinned here.
 """
 
-from __future__ import annotations
-
 import contextlib
 import json
 from typing import TYPE_CHECKING

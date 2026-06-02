@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from transport_matters.codex.request_serializer import _message_content_to_dict
 from transport_matters.ir import UnknownBlock
 

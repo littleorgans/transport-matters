@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from transport_matters.ir import Message, ToolUseBlock
 from transport_matters.test_track_manager_support import (
     CLAUDE_SPAWN_ID,

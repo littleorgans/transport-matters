@@ -1,7 +1,5 @@
 """Wait and poll tests for `transport_matters.supervisor`."""
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING
 
 import pytest

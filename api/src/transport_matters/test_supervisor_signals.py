@@ -1,7 +1,5 @@
 """Signal handler tests for `transport_matters.supervisor`."""
 
-from __future__ import annotations
-
 import signal
 
 from transport_matters.supervisor import ProcessSupervisor

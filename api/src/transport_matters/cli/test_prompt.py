@@ -1,7 +1,5 @@
 """Tests for ``transport_matters.cli.prompt`` — system-prompt injection helpers."""
 
-from __future__ import annotations
-
 import pytest
 
 from transport_matters.cli.prompt import (

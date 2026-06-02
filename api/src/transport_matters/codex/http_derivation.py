@@ -8,8 +8,6 @@ index entry, derived events, and frontend rendering converge on a
 single shape across both transports.
 """
 
-from __future__ import annotations
-
 import logging
 from datetime import timedelta
 from typing import TYPE_CHECKING

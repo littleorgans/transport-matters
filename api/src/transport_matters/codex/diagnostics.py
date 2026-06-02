@@ -1,7 +1,5 @@
 """Codex transport diagnostics derived from persisted artifacts."""
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING
 
 from transport_matters.codex.protocol import CODEX_NORMAL_CLOSE_CODES

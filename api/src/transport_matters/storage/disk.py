@@ -4,8 +4,6 @@ Persists exchange artifacts and index to ``~/.transport-matters/``
 (configurable).  Uses ``aiofiles`` for non-blocking file I/O.
 """
 
-from __future__ import annotations
-
 import asyncio
 import json
 import logging

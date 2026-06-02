@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import shutil
 from typing import TYPE_CHECKING, Any, cast
 from unittest.mock import patch

@@ -1,7 +1,5 @@
 """Implementation of the `transport-matters claude` command."""
 
-from __future__ import annotations
-
 import shutil
 from importlib.resources import as_file
 from pathlib import Path  # noqa: TC003

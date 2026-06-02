@@ -8,8 +8,6 @@ Three behaviours pinned per the Phase 2 spec:
   exhausted, with the underlying ``OSError`` chained.
 """
 
-from __future__ import annotations
-
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any
 from unittest.mock import MagicMock
