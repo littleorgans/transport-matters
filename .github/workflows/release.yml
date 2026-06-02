@@ -133,7 +133,7 @@ jobs:
       - name: Smoke-test the wheel in a clean venv
         working-directory: api
         run: |
-          python -m venv /tmp/smoke
+          uv venv --python "$(cat .python-version)" --seed /tmp/smoke
           /tmp/smoke/bin/pip install --quiet dist/transport_matters-*.whl
           /tmp/smoke/bin/transport-matters --version
           /tmp/smoke/bin/transport-matters version
