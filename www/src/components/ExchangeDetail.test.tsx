@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { downloadInspectHtml } from "../lib/exportInspect";
 import { ExchangeDetail } from "./ExchangeDetail";
 
 const mockMeta = {
@@ -45,6 +46,10 @@ vi.mock("../api", () => ({
 
 vi.mock("../hooks/useMeta", () => ({
   useMeta: () => ({ meta: mockMeta, isLoading: false }),
+}));
+
+vi.mock("../lib/exportInspect", () => ({
+  downloadInspectHtml: vi.fn(),
 }));
 
 function makeClient() {
@@ -639,7 +644,7 @@ describe("ExchangeDetail", () => {
     await waitFor(() =>
       expect(screen.getByRole("button", { name: /timeline/i })).toBeInTheDocument(),
     );
-    expect(screen.queryByRole("button", { name: /inspect/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^inspect$/i })).not.toBeInTheDocument();
     expect(screen.getByText(/Client sent response.create to open the turn/i)).toBeInTheDocument();
     expect(
       screen.getByText(/semantic timeline rebuilt from canonical transport during read/i),
@@ -655,5 +660,67 @@ describe("ExchangeDetail", () => {
     }
     fireEvent.click(transportTab);
     await waitFor(() => expect(screen.getByText(/Raw transport JSON/i)).toBeInTheDocument());
+  });
+
+  it("renders inspect fullscreen controls and invokes download", async () => {
+    const { fetchExchange } = await import("../api");
+    const inspectDetail = {
+      entry: {
+        id: "exchange-fullscreen",
+        ts: new Date("2026-01-01T12:00:00Z").toISOString(),
+        provider: "anthropic",
+        model: "anthropic/claude-3",
+        path: "exchanges/test/",
+        req: {
+          system_parts: 0,
+          system_chars: 0,
+          tools_count: 0,
+          tools_chars: 0,
+          messages_count: 1,
+          messages_chars: 10,
+          total_chars: 10,
+        },
+        pipeline: null,
+        res: null,
+        mutated_manually: false,
+      },
+      request_ir: { model: "claude-3", messages: [] },
+      request_curated_ir: null,
+      request_audit: null,
+      response_ir: null,
+      transport: null,
+      events: null,
+      turn: null,
+      transport_diagnostics: [],
+    };
+
+    vi.mocked(fetchExchange).mockResolvedValueOnce(inspectDetail);
+
+    const qc = makeClient();
+    render(
+      <QueryClientProvider client={qc}>
+        <ExchangeDetail id="exchange-fullscreen" />
+      </QueryClientProvider>,
+    );
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /open inspect fullscreen/i })).toBeInTheDocument(),
+    );
+
+    const maximizeButton = screen.getByRole("button", { name: /open inspect fullscreen/i });
+    fireEvent.click(maximizeButton);
+    expect(screen.getByRole("button", { name: /close inspect fullscreen/i })).toBeInTheDocument();
+
+    fireEvent.keyDown(window, { key: "Escape" });
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("button", { name: /close inspect fullscreen/i }),
+      ).not.toBeInTheDocument();
+    });
+
+    fireEvent.click(maximizeButton);
+    const downloadButton = screen.getByRole("button", { name: /download inspect content/i });
+    fireEvent.click(downloadButton);
+    expect(downloadInspectHtml).toHaveBeenCalledWith(inspectDetail);
   });
 });

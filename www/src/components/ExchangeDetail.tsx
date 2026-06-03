@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { startTransition, useDeferredValue, useEffect, useState } from "react";
 import { fetchExchange } from "../api";
 import { useMeta } from "../hooks/useMeta";
+import { downloadInspectHtml } from "../lib/exportInspect";
 import { displayCwd, displayModel, formatClockTime } from "../lib/formatting";
 import { exchangeKey } from "../lib/queryKeys";
 import { useUIStore } from "../stores/uiStore";
@@ -159,6 +160,83 @@ function TransportDiagnostics({ diagnostics }: { diagnostics: TransportDiagnosti
   );
 }
 
+function ExpandWindowIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      className={className}
+      aria-hidden="true"
+    >
+      <path
+        d="M4 13h4V9"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M20 11h-4v4"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path d="M20 20V4H4v16h16" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function DownloadIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      className={className}
+      aria-hidden="true"
+    >
+      <path
+        d="M12 3v12"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M8 9l4 4 4-4"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path d="M4.5 16.5h15" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      <path d="M4 4h16" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function CloseIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      width="12"
+      height="12"
+      viewBox="0 0 12 12"
+      fill="none"
+      aria-hidden="true"
+      className={className}
+    >
+      <path
+        d="M2 2L10 10M10 2L2 10"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
 export function ExchangeDetail({ id }: ExchangeDetailProps) {
   const [tab, setTab] = useState<DetailTab>("inspect");
   const deferredTab = useDeferredValue(tab);
@@ -166,6 +244,7 @@ export function ExchangeDetail({ id }: ExchangeDetailProps) {
     exchangeId: string;
     messageIndex: number;
   } | null>(null);
+  const [fullscreen, setFullscreen] = useState(false);
   const { meta } = useMeta();
 
   const {
@@ -184,6 +263,21 @@ export function ExchangeDetail({ id }: ExchangeDetailProps) {
       useUIStore.getState().setSelectedId(null);
     }
   }, [error]);
+
+  useEffect(() => {
+    if (!fullscreen) return;
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setFullscreen(false);
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [fullscreen]);
 
   if (isLoading) {
     return (
@@ -218,6 +312,16 @@ export function ExchangeDetail({ id }: ExchangeDetailProps) {
     day: "numeric",
   });
   const timeStr = formatClockTime(ts);
+
+  const jumpToTransportFrame = (messageIndex: number) => {
+    if (fullscreen) {
+      setFullscreen(false);
+    }
+    startTransition(() => {
+      setTransportFocus({ exchangeId: id, messageIndex });
+      setTab("transport");
+    });
+  };
 
   return (
     <div className="flex h-full flex-col overflow-hidden fade-in">
@@ -330,6 +434,28 @@ export function ExchangeDetail({ id }: ExchangeDetailProps) {
           );
         })}
         <div className="flex-1 tab-rest flex items-center justify-end pr-6">
+          {tab === "inspect" && (
+            <div className="mr-3 flex items-center gap-2 pr-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setFullscreen(true);
+                }}
+                aria-label="Open inspect fullscreen"
+                className="btn cursor-pointer border border-edge px-2.5 py-1.5 text-txt-3 transition-colors hover:bg-raised hover:text-txt"
+              >
+                <ExpandWindowIcon className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => downloadInspectHtml(detail)}
+                aria-label="Download inspect content"
+                className="btn cursor-pointer border border-edge px-2.5 py-1.5 text-txt-3 transition-colors hover:bg-raised hover:text-txt"
+              >
+                <DownloadIcon className="h-4 w-4" />
+              </button>
+            </div>
+          )}
           {entry.mutated_manually && (
             <span className="flex items-center gap-1.5 text-[11px] uppercase tracking-[0.18em] text-amber">
               <span className="h-1 w-1 rounded-full bg-amber" />
@@ -339,20 +465,27 @@ export function ExchangeDetail({ id }: ExchangeDetailProps) {
         </div>
       </div>
 
+      {fullscreen && (
+        <div className="fixed inset-0 z-50 bg-canvas overflow-auto">
+          <button
+            type="button"
+            onClick={() => setFullscreen(false)}
+            aria-label="Close inspect fullscreen"
+            className="btn absolute right-4 top-4 border border-edge bg-surface px-2.5 py-2 text-txt transition-colors hover:bg-raised hover:text-txt"
+          >
+            <CloseIcon className="h-3 w-3" />
+          </button>
+          <div className="pt-16">
+            <InspectTab detail={detail} onJumpToTransportFrame={jumpToTransportFrame} />
+          </div>
+        </div>
+      )}
       {/* Tab content — request tabs default to what was actually sent to
           the provider (curated IR when the pipeline or a breakpoint edit
           mutated the request), falling back to the original IR otherwise. */}
       <div className="flex-1 overflow-y-auto">
         {deferredTab === "inspect" ? (
-          <InspectTab
-            detail={detail}
-            onJumpToTransportFrame={(messageIndex) => {
-              startTransition(() => {
-                setTransportFocus({ exchangeId: id, messageIndex });
-                setTab("transport");
-              });
-            }}
-          />
+          <InspectTab detail={detail} onJumpToTransportFrame={jumpToTransportFrame} />
         ) : deferredTab === "request" ? (
           <JsonView payload={detail.request_curated_ir ?? detail.request_ir} />
         ) : deferredTab === "transport" ? (
