@@ -36,10 +36,7 @@ import {
 } from "./mutations";
 
 function ResponseCard({ content, expandAll }: { content: ContentBlock[]; expandAll: boolean }) {
-  const { toggleAll, toggleOne, isExpanded } = useCollapsibleSet(
-    content.length,
-    expandAll ? false : true,
-  );
+  const { toggleAll, toggleOne, isExpanded } = useCollapsibleSet(content.length, !expandAll);
 
   return (
     <div className="card-flush">
@@ -309,12 +306,7 @@ export function InspectTab({ detail, onJumpToTransportFrame, expandAll = false }
       )}
 
       {tools.length > 0 && (
-        <ToolsSection
-          tools={tools}
-          overrides={syntheticOverrides}
-          readOnly
-          expandAll={expandAll}
-        />
+        <ToolsSection tools={tools} overrides={syntheticOverrides} readOnly expandAll={expandAll} />
       )}
 
       <div className="h-8" />
