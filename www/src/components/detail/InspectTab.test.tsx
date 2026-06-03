@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it } from "vitest";
 import { useUIStore } from "../../stores/uiStore";
-import type { ExchangeDetail, InternalRequest, OverrideAudit } from "../../types";
+import type { ExchangeDetail, InternalRequest, InternalResponse, OverrideAudit } from "../../types";
 import { InspectTab } from "./InspectTab";
 
 function makeRequest(overrides: Partial<InternalRequest> = {}): InternalRequest {
@@ -49,10 +49,12 @@ function makeDetail({
   request,
   curated,
   audit = null,
+  response = null,
 }: {
   request: InternalRequest;
   curated?: InternalRequest | null;
   audit?: OverrideAudit | null;
+  response?: InternalResponse | null;
 }): ExchangeDetail {
   return {
     entry: {
@@ -77,7 +79,7 @@ function makeDetail({
     request_ir: request as unknown as Record<string, unknown>,
     request_curated_ir: curated ? (curated as unknown as Record<string, unknown>) : null,
     request_audit: audit,
-    response_ir: null,
+    response_ir: response ? (response as unknown as Record<string, unknown>) : null,
     transport: null,
     events: null,
     turn: null,
@@ -86,13 +88,13 @@ function makeDetail({
   };
 }
 
-function renderTab(detail: ExchangeDetail) {
+function renderTab(detail: ExchangeDetail, props: { expandAll?: boolean } = {}) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
   return render(
     <QueryClientProvider client={queryClient}>
-      <InspectTab detail={detail} />
+      <InspectTab detail={detail} expandAll={props.expandAll} />
     </QueryClientProvider>,
   );
 }
@@ -100,6 +102,56 @@ function renderTab(detail: ExchangeDetail) {
 describe("InspectTab", () => {
   beforeEach(() => {
     useUIStore.setState({ autoExpandBlocks: true });
+  });
+
+  it("mounts every inspect body when expandAll overrides collapsed defaults", () => {
+    useUIStore.setState({ autoExpandBlocks: false });
+    const systemText = `${"system export body ".repeat(20)}END`;
+    const messageText = `${"message export body ".repeat(20)}END`;
+    const responseText = `${"response export body ".repeat(20)}END`;
+    const toolDescription = `${"tool export description ".repeat(20)}END`;
+    const detail = makeDetail({
+      request: makeRequest({
+        system: [{ type: "text", text: systemText }],
+        tools: [
+          {
+            name: "mcp__demo__expand_all_tool",
+            description: toolDescription,
+            input_schema: { type: "object", properties: { payload: { type: "string" } } },
+          },
+        ],
+        messages: [{ role: "user", content: [{ type: "text", text: messageText }] }],
+      }),
+      response: {
+        id: "response-1",
+        model: "gpt-5-codex",
+        provider: "codex",
+        stop_reason: null,
+        usage: {
+          input_tokens: 1,
+          output_tokens: 1,
+          cache_creation_input_tokens: 0,
+          cache_read_input_tokens: 0,
+        },
+        content: [{ type: "text", text: responseText }],
+        provider_extras: {},
+      },
+    });
+
+    const { unmount } = renderTab(detail);
+
+    expect(screen.queryByDisplayValue(systemText)).not.toBeInTheDocument();
+    expect(screen.queryByDisplayValue(messageText)).not.toBeInTheDocument();
+    expect(screen.queryByDisplayValue(toolDescription)).not.toBeInTheDocument();
+    expect(screen.queryByText(responseText)).not.toBeInTheDocument();
+    unmount();
+
+    renderTab(detail, { expandAll: true });
+
+    expect(screen.getByDisplayValue(systemText)).toBeInTheDocument();
+    expect(screen.getByDisplayValue(messageText)).toBeInTheDocument();
+    expect(screen.getByDisplayValue(toolDescription)).toBeInTheDocument();
+    expect(screen.getByText(responseText)).toBeInTheDocument();
   });
 
   it("does not render sampling controls in the inspect panel", () => {

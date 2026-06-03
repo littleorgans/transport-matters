@@ -19,6 +19,8 @@ interface ToolsSectionProps {
    * hidden. Used by the Inspect tab.
    */
   readOnly?: boolean;
+  /** Start tool groups and rows expanded for fullscreen export serialization. */
+  expandAll?: boolean;
 }
 
 interface EditorToolGroup {
@@ -84,12 +86,14 @@ function ToolRow({
   onOverride,
   allExpanded,
   readOnly,
+  initialExpanded,
 }: {
   tool: ToolDef;
   overrides: Override[];
   onOverride: (batch: Override[]) => void;
   allExpanded: boolean;
   readOnly?: boolean;
+  initialExpanded: boolean;
 }) {
   const target = toolTarget(tool.name);
   const {
@@ -110,7 +114,7 @@ function ToolRow({
     toggleKind: "tool_toggle",
     textKind: "tool_description",
     target,
-    initialExpanded: false,
+    initialExpanded,
   });
 
   // Section-level Expand/Collapse All drives per-row state. Individual
@@ -192,17 +196,20 @@ function ToolGroupSection({
   onOverride,
   allExpanded,
   readOnly,
+  startExpanded,
 }: {
   group: EditorToolGroup;
   overrides: Override[];
   onOverride: (batch: Override[]) => void;
   allExpanded: boolean;
   readOnly?: boolean;
+  startExpanded: boolean;
 }) {
   // Groups default collapsed so opening OVERLAY doesn't dump every
   // tool row in view — expand is opt-in (per-group `+` or the
-  // section-wide Expand All toggle).
-  const [collapsed, setCollapsed] = useState(true);
+  // section-wide Expand All toggle). Export serialization can opt into
+  // a force-mounted first render.
+  const [collapsed, setCollapsed] = useState(!startExpanded);
   const checkedCount = group.tools.filter(
     (t) => overrideValue<boolean>(overrides, "tool_toggle", toolTarget(t.name)) !== false,
   ).length;
@@ -285,6 +292,7 @@ function ToolGroupSection({
                   onOverride={onOverride}
                   allExpanded={allExpanded}
                   readOnly={readOnly}
+                  initialExpanded={startExpanded}
                 />
                 {i < group.tools.length - 1 && <div className="hairline-x mx-4" />}
               </div>
@@ -301,9 +309,10 @@ export function ToolsSection({
   overrides = [],
   onOverride = noopOverride,
   readOnly,
+  expandAll = false,
 }: ToolsSectionProps) {
   const groups = useMemo(() => buildEditorGroups(tools), [tools]);
-  const [allExpanded, setAllExpanded] = useState(false);
+  const [allExpanded, setAllExpanded] = useState(expandAll);
 
   if (tools.length === 0) return null;
 
@@ -386,6 +395,7 @@ export function ToolsSection({
             onOverride={onOverride}
             allExpanded={allExpanded}
             readOnly={readOnly}
+            startExpanded={expandAll}
           />
         ))}
       </div>

@@ -21,6 +21,8 @@ interface MessagesSectionProps {
    * twin for. Used by the Inspect tab.
    */
   readOnly?: boolean;
+  /** Start every message block body expanded for fullscreen export serialization. */
+  expandAll?: boolean;
 }
 
 function toolResultBlockTarget(message: Message, blkIdx: number): string | null {
@@ -100,12 +102,14 @@ function MessageCard({
   overrides,
   onOverride,
   readOnly,
+  expandAll = false,
 }: {
   message: Message;
   msgIdx: number;
   overrides: Override[];
   onOverride: (batch: Override[]) => void;
   readOnly?: boolean;
+  expandAll?: boolean;
 }) {
   const tone = SECTION_TONE[message.role];
 
@@ -132,7 +136,7 @@ function MessageCard({
   const autoExpandBlocks = useUIStore((s) => s.autoExpandBlocks);
   const { toggleAll, toggleOne, isExpanded } = useCollapsibleSet(
     message.content.length,
-    !autoExpandBlocks,
+    expandAll ? false : !autoExpandBlocks,
   );
 
   return (
@@ -179,6 +183,7 @@ export function MessagesSection({
   overrides = [],
   onOverride = noopOverride,
   readOnly,
+  expandAll = false,
 }: MessagesSectionProps) {
   const messageOverrideCount = overrides.filter(
     (o) =>
@@ -226,6 +231,7 @@ export function MessagesSection({
             overrides={overrides}
             onOverride={effectiveOnOverride}
             readOnly={readOnly}
+            expandAll={expandAll}
           />
         ))}
       </div>
