@@ -35,8 +35,8 @@ import {
   detectToolResultMutations,
 } from "./mutations";
 
-function ResponseCard({ content }: { content: ContentBlock[] }) {
-  const { toggleAll, toggleOne, isExpanded } = useCollapsibleSet(content.length, true);
+function ResponseCard({ content, expandAll }: { content: ContentBlock[]; expandAll: boolean }) {
+  const { toggleAll, toggleOne, isExpanded } = useCollapsibleSet(content.length, !expandAll);
 
   return (
     <div className="card-flush">
@@ -67,6 +67,8 @@ function ResponseCard({ content }: { content: ContentBlock[] }) {
 interface InspectTabProps {
   detail: ExchangeDetail;
   onJumpToTransportFrame?: (messageIndex: number) => void;
+  /** Start every collapsible body expanded for fullscreen export serialization. */
+  expandAll?: boolean;
 }
 
 /**
@@ -241,7 +243,7 @@ function CodexDerivedArtifactsCard({
   );
 }
 
-export function InspectTab({ detail, onJumpToTransportFrame }: InspectTabProps) {
+export function InspectTab({ detail, onJumpToTransportFrame, expandAll = false }: InspectTabProps) {
   const { response_ir } = detail;
   const codexEvents = detail.events;
   const codexTurn = detail.turn;
@@ -280,20 +282,32 @@ export function InspectTab({ detail, onJumpToTransportFrame }: InspectTabProps) 
       )}
 
       {systemParts.length > 0 && (
-        <SystemSection parts={systemParts} overrides={syntheticOverrides} readOnly />
+        <SystemSection
+          parts={systemParts}
+          overrides={syntheticOverrides}
+          readOnly
+          expandAll={expandAll}
+        />
       )}
 
       {requestMessages.length > 0 && (
-        <MessagesSection messages={requestMessages} overrides={syntheticOverrides} readOnly />
+        <MessagesSection
+          messages={requestMessages}
+          overrides={syntheticOverrides}
+          readOnly
+          expandAll={expandAll}
+        />
       )}
 
       {responseContent.length > 0 && (
         <section>
-          <ResponseCard content={responseContent} />
+          <ResponseCard content={responseContent} expandAll={expandAll} />
         </section>
       )}
 
-      {tools.length > 0 && <ToolsSection tools={tools} overrides={syntheticOverrides} readOnly />}
+      {tools.length > 0 && (
+        <ToolsSection tools={tools} overrides={syntheticOverrides} readOnly expandAll={expandAll} />
+      )}
 
       <div className="h-8" />
     </div>

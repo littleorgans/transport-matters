@@ -18,6 +18,8 @@ interface SystemSectionProps {
    * view can reuse the same SystemPartRow shape the editor renders.
    */
   readOnly?: boolean;
+  /** Start every collapsible body expanded for fullscreen export serialization. */
+  expandAll?: boolean;
 }
 
 function SystemPartRow({
@@ -103,6 +105,7 @@ export function SystemSection({
   overrides = [],
   onOverride = noopOverride,
   readOnly,
+  expandAll = false,
 }: SystemSectionProps) {
   const overrideCount = overrides.filter(
     (o) => o.kind === "system_part_toggle" || o.kind === "system_part_text",
@@ -117,7 +120,10 @@ export function SystemSection({
   // Seeded from the auto-expand pref in the initializer only, so
   // mid-session flips don't retroactively collapse mounted rows.
   const autoExpandBlocks = useUIStore((s) => s.autoExpandBlocks);
-  const { toggleAll, toggleOne, isExpanded } = useCollapsibleSet(parts.length, !autoExpandBlocks);
+  const { toggleAll, toggleOne, isExpanded } = useCollapsibleSet(
+    parts.length,
+    expandAll ? false : !autoExpandBlocks,
+  );
 
   // Nothing to show and nothing to edit when the request carries no
   // system parts. Mirrors the early return in ToolsSection and the

@@ -500,7 +500,7 @@ describe("BreakpointEditor — SAVE AS OVERLAY in tab bar right slot", () => {
     expect(screen.queryByRole("button", { name: /save as overlay/i })).toBeNull();
   });
 
-  it("renders disabled on OVERLAY with 'make an override' phrase when none stored", () => {
+  it("renders disabled on OVERLAY with no override helper text", () => {
     const { wrapper } = makeWrapper();
     render(<BreakpointEditor pausedFlow={mockPausedFlow} onResolved={vi.fn()} />, { wrapper });
 
@@ -509,7 +509,7 @@ describe("BreakpointEditor — SAVE AS OVERLAY in tab bar right slot", () => {
     const button = screen.getByRole("button", { name: /save as overlay/i });
     expect(button).toBeInTheDocument();
     expect(button).toBeDisabled();
-    expect(screen.getByText("Make an override to save as an overlay")).toBeInTheDocument();
+    expect(screen.queryByText("Make an override to save as an overlay")).toBeNull();
   });
 
   it("renders enabled on OVERLAY with pluralized 'ready to lift' phrase when overrides exist", () => {
@@ -536,6 +536,90 @@ describe("BreakpointEditor — SAVE AS OVERLAY in tab bar right slot", () => {
     fireEvent.click(screen.getByRole("button", { name: "overlay" }));
 
     expect(screen.getByText("1 override ready to lift")).toBeInTheDocument();
+  });
+
+  it("renders the expand control on every tab and keeps it rightmost", () => {
+    const { wrapper } = makeWrapper();
+    render(<BreakpointEditor pausedFlow={mockPausedFlow} onResolved={vi.fn()} />, { wrapper });
+
+    expect(screen.getByRole("button", { name: "Open messages fullscreen" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Open overlay fullscreen" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Open raw fullscreen" })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "overlay" }));
+    expect(screen.getByRole("button", { name: "Open overlay fullscreen" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "raw" }));
+    expect(screen.getByRole("button", { name: "Open raw fullscreen" })).toBeInTheDocument();
+
+    const expandButtons = screen.getAllByRole("button", { name: /open .*fullscreen/i });
+    expect(expandButtons).toHaveLength(1);
+  });
+
+  it("opens and closes editor fullscreen overlay with Escape", () => {
+    const { wrapper } = makeWrapper();
+    render(<BreakpointEditor pausedFlow={mockPausedFlow} onResolved={vi.fn()} />, { wrapper });
+
+    fireEvent.click(screen.getByRole("button", { name: "Open messages fullscreen" }));
+    expect(screen.getByRole("button", { name: /close messages fullscreen/i })).toBeInTheDocument();
+
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByRole("button", { name: /close messages fullscreen/i })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Open messages fullscreen" }));
+    expect(screen.getByRole("button", { name: /close messages fullscreen/i })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /close messages fullscreen/i }));
+    expect(screen.queryByRole("button", { name: /close messages fullscreen/i })).toBeNull();
+  });
+
+  it("renders a single pane subtree while entering fullscreen", () => {
+    const { wrapper } = makeWrapper();
+    useUIStore.setState({ autoExpandBlocks: true });
+    render(<BreakpointEditor pausedFlow={mockPausedFlow} onResolved={vi.fn()} />, { wrapper });
+
+    expect(screen.getAllByRole("textbox")).toHaveLength(1);
+
+    fireEvent.click(screen.getByRole("button", { name: /open messages fullscreen/i }));
+    expect(screen.getByRole("button", { name: /close messages fullscreen/i })).toBeInTheDocument();
+    expect(screen.getAllByRole("textbox")).toHaveLength(1);
+
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByRole("button", { name: /close messages fullscreen/i })).toBeNull();
+    expect(screen.getAllByRole("textbox")).toHaveLength(1);
+  });
+
+  it("preserves editor in-progress edits and collapsed row state across fullscreen toggle", () => {
+    const { wrapper } = makeWrapper();
+    useUIStore.setState({ autoExpandBlocks: true });
+    render(<BreakpointEditor pausedFlow={mockPausedFlow} onResolved={vi.fn()} />, { wrapper });
+
+    const draftTextarea = screen.getByRole("textbox");
+    const rowButton = draftTextarea.parentElement?.parentElement?.querySelector("[role='button']");
+    expect(rowButton).not.toBeUndefined();
+    if (rowButton == null) {
+      throw new Error("Expected a row toggle button in the message card");
+    }
+
+    const draft = "you are still working here";
+    fireEvent.change(draftTextarea, { target: { value: draft } });
+
+    fireEvent.click(rowButton);
+    expect(screen.queryByRole("textbox")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: /open messages fullscreen/i }));
+
+    expect(screen.queryByRole("textbox")).toBeNull();
+    expect(screen.getByRole("button", { name: /close messages fullscreen/i })).toBeInTheDocument();
+
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByRole("button", { name: /close messages fullscreen/i })).toBeNull();
+
+    // Re-expand the same row and verify the in-progress text value
+    // is still there, proving local form state was not dropped on fullscreen
+    // transitions.
+    fireEvent.click(rowButton);
+    const restoredTextbox = screen.getByRole("textbox");
+    expect(restoredTextbox).toHaveValue(draft);
   });
 
   it("hides the helper phrase on MESSAGES and RAW", () => {

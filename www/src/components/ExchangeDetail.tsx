@@ -1,7 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
 import { startTransition, useDeferredValue, useEffect, useState } from "react";
 import { fetchExchange } from "../api";
+import { useFullscreen } from "../hooks/useFullscreen";
 import { useMeta } from "../hooks/useMeta";
+import { downloadInspectHtml } from "../lib/exportInspect";
 import { displayCwd, displayModel, formatClockTime } from "../lib/formatting";
 import { exchangeKey } from "../lib/queryKeys";
 import { useUIStore } from "../stores/uiStore";
@@ -9,6 +11,8 @@ import type { ExchangeDetail as ExchangeDetailPayload, TransportDiagnostic } fro
 import { CodexTransportPanel } from "./detail/CodexTransportPanel";
 import { InspectTab } from "./detail/InspectTab";
 import { JsonView } from "./detail/JsonView";
+import { FullscreenOverlay } from "./FullscreenOverlay";
+import { ExpandWindowIcon } from "./icons";
 
 interface ExchangeDetailProps {
   id: string;
@@ -159,6 +163,35 @@ function TransportDiagnostics({ diagnostics }: { diagnostics: TransportDiagnosti
   );
 }
 
+function DownloadIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      className={className}
+      aria-hidden="true"
+    >
+      <path
+        d="M12 3v12"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M8 9l4 4 4-4"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path d="M4.5 16.5h15" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      <path d="M4 4h16" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 export function ExchangeDetail({ id }: ExchangeDetailProps) {
   const [tab, setTab] = useState<DetailTab>("inspect");
   const deferredTab = useDeferredValue(tab);
@@ -166,6 +199,7 @@ export function ExchangeDetail({ id }: ExchangeDetailProps) {
     exchangeId: string;
     messageIndex: number;
   } | null>(null);
+  const { isFullscreen, openFullscreen, closeFullscreen } = useFullscreen();
   const { meta } = useMeta();
 
   const {
@@ -218,6 +252,16 @@ export function ExchangeDetail({ id }: ExchangeDetailProps) {
     day: "numeric",
   });
   const timeStr = formatClockTime(ts);
+
+  const jumpToTransportFrame = (messageIndex: number) => {
+    if (isFullscreen) {
+      closeFullscreen();
+    }
+    startTransition(() => {
+      setTransportFocus({ exchangeId: id, messageIndex });
+      setTab("transport");
+    });
+  };
 
   return (
     <div className="flex h-full flex-col overflow-hidden fade-in">
@@ -330,6 +374,28 @@ export function ExchangeDetail({ id }: ExchangeDetailProps) {
           );
         })}
         <div className="flex-1 tab-rest flex items-center justify-end pr-6">
+          {tab === "inspect" && (
+            <div className="mr-3 flex items-center gap-2 pr-2">
+              <button
+                type="button"
+                onClick={() => {
+                  openFullscreen();
+                }}
+                aria-label="Open inspect fullscreen"
+                className="btn cursor-pointer border border-edge px-2.5 py-1.5 text-txt-3 transition-colors hover:bg-raised hover:text-txt"
+              >
+                <ExpandWindowIcon className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => downloadInspectHtml(detail)}
+                aria-label="Download inspect content"
+                className="btn cursor-pointer border border-edge px-2.5 py-1.5 text-txt-3 transition-colors hover:bg-raised hover:text-txt"
+              >
+                <DownloadIcon className="h-4 w-4" />
+              </button>
+            </div>
+          )}
           {entry.mutated_manually && (
             <span className="flex items-center gap-1.5 text-[11px] uppercase tracking-[0.18em] text-amber">
               <span className="h-1 w-1 rounded-full bg-amber" />
@@ -339,20 +405,23 @@ export function ExchangeDetail({ id }: ExchangeDetailProps) {
         </div>
       </div>
 
+      {isFullscreen && (
+        <FullscreenOverlay
+          isOpen={isFullscreen}
+          onClose={closeFullscreen}
+          label="Close inspect fullscreen"
+        >
+          <div className="h-full overflow-auto">
+            <InspectTab detail={detail} onJumpToTransportFrame={jumpToTransportFrame} />
+          </div>
+        </FullscreenOverlay>
+      )}
       {/* Tab content — request tabs default to what was actually sent to
           the provider (curated IR when the pipeline or a breakpoint edit
           mutated the request), falling back to the original IR otherwise. */}
       <div className="flex-1 overflow-y-auto">
         {deferredTab === "inspect" ? (
-          <InspectTab
-            detail={detail}
-            onJumpToTransportFrame={(messageIndex) => {
-              startTransition(() => {
-                setTransportFocus({ exchangeId: id, messageIndex });
-                setTab("transport");
-              });
-            }}
-          />
+          <InspectTab detail={detail} onJumpToTransportFrame={jumpToTransportFrame} />
         ) : deferredTab === "request" ? (
           <JsonView payload={detail.request_curated_ir ?? detail.request_ir} />
         ) : deferredTab === "transport" ? (

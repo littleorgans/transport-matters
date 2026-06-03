@@ -1,9 +1,10 @@
 import { useState } from "react";
+import { useFullscreen } from "../../hooks/useFullscreen";
 import { useMeta } from "../../hooks/useMeta";
 import { UNKNOWN_CWD, useOverlaysStore } from "../../stores/overlaysStore";
 import { useUIStore } from "../../stores/uiStore";
 import type { PausedFlow } from "../../types";
-
+import { FullscreenOverlay } from "../FullscreenOverlay";
 import { useBreakpointEditorActions } from "./BreakpointEditorActions";
 import { BreakpointEditorPanes } from "./BreakpointEditorPanes";
 import { BreakpointEditorTabs, type EditorViewMode } from "./BreakpointEditorTabs";
@@ -35,6 +36,7 @@ export function BreakpointEditor({ pausedFlow, onResolved }: BreakpointEditorPro
     handleForwardUnmodified,
     handleDrop,
   } = useBreakpointEditorActions({ pausedFlow, onResolved });
+  const { isFullscreen, openFullscreen, closeFullscreen } = useFullscreen();
 
   const handleSaveAsOverlay = () => {
     if (overrides.length === 0) return;
@@ -100,14 +102,22 @@ export function BreakpointEditor({ pausedFlow, onResolved }: BreakpointEditorPro
         loading={loading}
         onViewModeChange={setViewMode}
         onSaveAsOverlay={handleSaveAsOverlay}
+        onExpand={openFullscreen}
       />
-      <BreakpointEditorPanes
-        viewMode={viewMode}
-        pausedFlow={pausedFlow}
-        editedIr={editedIr}
-        overrides={overrides}
-        onOverride={handleUpsert}
-      />
+      <FullscreenOverlay
+        isOpen={isFullscreen}
+        inlineWhenClosed
+        onClose={closeFullscreen}
+        label={`Close ${viewMode} fullscreen`}
+      >
+        <BreakpointEditorPanes
+          viewMode={viewMode}
+          pausedFlow={pausedFlow}
+          editedIr={editedIr}
+          overrides={overrides}
+          onOverride={handleUpsert}
+        />
+      </FullscreenOverlay>
     </div>
   );
 }

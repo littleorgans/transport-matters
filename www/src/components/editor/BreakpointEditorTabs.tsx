@@ -1,3 +1,5 @@
+import { ExpandWindowIcon } from "../icons";
+
 export type EditorViewMode = "messages" | "overlay" | "raw";
 
 const TAB_ORDER: EditorViewMode[] = ["messages", "overlay", "raw"];
@@ -8,6 +10,7 @@ interface BreakpointEditorTabsProps {
   loading: boolean;
   onViewModeChange: (mode: EditorViewMode) => void;
   onSaveAsOverlay: () => void;
+  onExpand: () => void;
 }
 
 export function BreakpointEditorTabs({
@@ -16,6 +19,7 @@ export function BreakpointEditorTabs({
   loading,
   onViewModeChange,
   onSaveAsOverlay,
+  onExpand,
 }: BreakpointEditorTabsProps) {
   return (
     <div className="flex items-stretch border-y border-edge">
@@ -34,11 +38,9 @@ export function BreakpointEditorTabs({
       <div className="flex flex-1 tab-rest items-center justify-end gap-3 pr-3">
         {viewMode === "overlay" && (
           <>
-            <span className="label text-txt-3">
-              {overridesCount === 0
-                ? "Make an override to save as an overlay"
-                : `${overridesCount} override${overridesCount !== 1 ? "s" : ""} ready to lift`}
-            </span>
+            {overridesCount > 0 && (
+              <span className="label text-txt-3">{`${overridesCount} override${overridesCount !== 1 ? "s" : ""} ready to lift`}</span>
+            )}
             <button
               type="button"
               disabled={loading || overridesCount === 0}
@@ -49,6 +51,15 @@ export function BreakpointEditorTabs({
             </button>
           </>
         )}
+        <button
+          type="button"
+          onClick={onExpand}
+          aria-label={`Open ${viewMode} fullscreen`}
+          className="btn cursor-pointer border border-edge px-2.5 py-2 text-txt-3 transition-colors hover:bg-raised hover:text-txt"
+        >
+          <ExpandWindowIcon className="h-4 w-4" />
+          <span className="sr-only">{`Open ${viewMode} fullscreen`}</span>
+        </button>
       </div>
     </div>
   );
