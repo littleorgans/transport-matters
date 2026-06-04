@@ -1,6 +1,13 @@
 import ast
 from pathlib import Path
 
+# Anchor scan roots to this file's location, not the process cwd, so the lint
+# scans the same trees regardless of where pytest is invoked from. A cwd-relative
+# root silently scans nothing (and false-passes) when run from anywhere but api/.
+_PKG_ROOT = Path(__file__).resolve().parent  # api/src/transport_matters
+_API_ROOT = _PKG_ROOT.parents[1]  # api
+_SCAN_ROOTS = [_PKG_ROOT, _API_ROOT / "tests"]
+
 
 def is_test(path: str) -> bool:
     base = path.split("/")[-1]
@@ -13,12 +20,12 @@ def is_test(path: str) -> bool:
 
 
 def violations() -> list[tuple[str, str]]:
-    roots = [Path("src/transport_matters"), Path("tests")]
     out: list[tuple[str, str]] = []
 
-    for root in roots:
+    for root in _SCAN_ROOTS:
+        assert root.is_dir(), f"private-import scan root missing: {root}"
         for path in sorted(root.rglob("*.py")):
-            rel = str(path)
+            rel = str(path.relative_to(_API_ROOT))
             if is_test(rel):
                 continue
 
