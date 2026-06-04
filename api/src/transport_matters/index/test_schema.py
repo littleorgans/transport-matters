@@ -163,14 +163,20 @@ class TestSchemaGate:
         apply_schema(conn)  # no mismatch → no drop
         assert conn.execute("SELECT COUNT(*) FROM block").fetchone()[0] == 1
 
-    def test_missing_gated_key_forces_rebuild(self, conn: sqlite3.Connection) -> None:
-        # An old schema_meta predating adapters_version must NOT survive: a missing gated key
-        # is a mismatch, so the stale tier-2 is dropped + rebuilt, not silently re-seeded.
+    def test_old_shape_with_only_schema_version_forces_rebuild(
+        self, conn: sqlite3.Connection
+    ) -> None:
+        # A schema_meta predating the later gated keys (only schema_version present) must NOT
+        # survive: each missing gated key is a mismatch, so the stale tier-2 is dropped + rebuilt
+        # rather than silently re-seeded onto the old table.
         _upsert_block_raw(conn, "stale", text="old")
-        conn.execute("DELETE FROM schema_meta WHERE key = 'adapters_version'")
+        conn.execute(
+            "DELETE FROM schema_meta "
+            "WHERE key IN ('identity_canonical', 'session_ns', 'adapters_version')"
+        )
         apply_schema(conn)
         assert conn.execute("SELECT COUNT(*) FROM block").fetchone()[0] == 0
-        version = conn.execute(
-            "SELECT value FROM schema_meta WHERE key = 'adapters_version'"
-        ).fetchone()[0]
-        assert version == "1"
+        reseeded = dict(conn.execute("SELECT key, value FROM schema_meta").fetchall())
+        assert reseeded["adapters_version"] == "1"
+        assert reseeded["identity_canonical"] == "identity_canonical:v1"
+        assert reseeded["session_ns"]  # re-seeded
