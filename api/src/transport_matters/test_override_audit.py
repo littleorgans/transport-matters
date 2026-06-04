@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 from pydantic import TypeAdapter
 
+from transport_matters.canonicalization import canonical_json
 from transport_matters.ir import (
     ContentBlock,
     InternalRequest,
@@ -18,7 +19,6 @@ from transport_matters.ir import (
 )
 from transport_matters.override_audit import (
     canonical_block_json,
-    canonical_json,
     count_chars_parts,
     tool_chars,
 )
@@ -83,15 +83,6 @@ class TestAuditAggregate:
             "messages": messages,
             "total": system + tools + messages,
         } == expected["parts"]
-
-    def test_canonical_json_sorts_keys_by_code_point(self) -> None:
-        assert canonical_json({"\ue000": 1, "😀": 2}) == '{"\ue000":1,"😀":2}'
-
-    def test_canonical_json_rejects_non_finite_numbers(self) -> None:
-        with pytest.raises(ValueError, match="non-finite"):
-            canonical_json(float("nan"))
-        with pytest.raises(ValueError, match="non-finite"):
-            canonical_json(float("inf"))
 
 
 class TestAuditCuratedValue:
