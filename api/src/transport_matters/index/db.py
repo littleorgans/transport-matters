@@ -48,10 +48,11 @@ def connect(path: str | Path, *, read_only: bool = False) -> sqlite3.Connection:
     otherwise the full §3.1 write PRAGMAs apply. ``isolation_level=None`` puts pysqlite in
     autocommit mode so the writer owns its transaction boundaries explicitly (§6.3).
 
-    A read connection sets ``check_same_thread=False`` because a request opens it on FastAPI's
-    sync-dependency threadpool thread and the async handler reads it on the event-loop thread
-    (sequential, per-request — never shared, so this is safe). The writer connection stays
-    thread-affine (``check_same_thread=True``), pinned to its single OS thread.
+    A read connection sets ``check_same_thread=False``: a request opens it in the read-only
+    dependency and a **sync** route handler reads it, both of which FastAPI runs on its
+    threadpool (so the blocking SQL stays off the event loop) — possibly on different worker
+    threads. Access is sequential and per-request (never shared concurrently), so cross-thread
+    use is safe. The writer connection stays thread-affine (``check_same_thread=True``).
     """
     conn = sqlite3.connect(path, isolation_level=None, check_same_thread=not read_only)
     for pragma in _READ_PRAGMAS if read_only else _PRAGMAS:

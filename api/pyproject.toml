@@ -127,15 +127,12 @@ ignore = [
 "src/transport_matters/storage/disk_helpers.py" = [
     "ASYNC240",
 ]
-# TC003: FastAPI evaluates route + dependency annotations at runtime (get_type_hints), so the
+# FastAPI evaluates route + dependency annotations at runtime (get_type_hints), so the
 # sqlite3 / Iterator / Literal types used in the handlers must stay runtime imports, not move
-# into a TYPE_CHECKING block.
-# ASYNC240: the raw-fetch handler does one bounded metadata syscall (Path.exists) to return a
-# clean 404 before streaming; offload is by payload class, not lint visibility (same rule as
-# storage/disk_helpers.py).
+# into a TYPE_CHECKING block. (Handlers are sync `def` so FastAPI offloads their blocking SQL
+# + filesystem reads to its threadpool, off the event loop — so no ASYNC240 exemption needed.)
 "src/transport_matters/api/v1/index_routes.py" = [
     "TC003",
-    "ASYNC240",
 ]
 
 [tool.ruff.lint.isort]

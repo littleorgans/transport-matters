@@ -74,7 +74,7 @@ class BlocksRequest(BaseModel):
 
 
 @router.post("/search")
-async def search(body: SearchRequest, conn: _ReadConn) -> SearchResponse:
+def search(body: SearchRequest, conn: _ReadConn) -> SearchResponse:
     if conn is None:
         return SearchResponse(hits=[], bodies=[])
     hits = search_blocks(
@@ -85,12 +85,12 @@ async def search(body: SearchRequest, conn: _ReadConn) -> SearchResponse:
 
 
 @router.post("/blocks")
-async def blocks(body: BlocksRequest, conn: _ReadConn) -> list[BlockBody]:
+def blocks(body: BlocksRequest, conn: _ReadConn) -> list[BlockBody]:
     return get_block_bodies(conn, body.ids) if conn is not None else []
 
 
 @router.get("/sessions")
-async def sessions(
+def sessions(
     conn: _ReadConn,
     workspace_hash: Annotated[str | None, Query()] = None,
     run_id: Annotated[str | None, Query()] = None,
@@ -106,7 +106,7 @@ async def sessions(
 
 
 @router.get("/sessions/{session_id}/timeline")
-async def timeline(
+def timeline(
     session_id: str,
     conn: _ReadConn,
     stream: Literal["wire", "transcript"] = "wire",
@@ -122,19 +122,19 @@ async def timeline(
 
 
 @router.get("/sessions/{session_id}/pivot")
-async def pivot(session_id: str, conn: _ReadConn) -> list[Correspondence]:
+def pivot(session_id: str, conn: _ReadConn) -> list[Correspondence]:
     return session_pivot(conn, session_id) if conn is not None else []
 
 
 @router.get("/sessions/{session_id}/diff")
-async def diff(session_id: str, conn: _ReadConn) -> SessionDiff:
+def diff(session_id: str, conn: _ReadConn) -> SessionDiff:
     if conn is None:
         return SessionDiff(wire_only=[], transcript_only=[], shared=[])
     return session_diff(conn, session_id)
 
 
 @router.get("/exchanges/{exchange_id}/raw")
-async def raw(
+def raw(
     exchange_id: str, conn: _ReadConn, part: Literal["request", "response"] = "request"
 ) -> FileResponse:
     if conn is None:
