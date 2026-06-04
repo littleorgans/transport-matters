@@ -3,10 +3,10 @@
 import logging
 from typing import TYPE_CHECKING, Any, TypedDict
 
-from transport_matters.counting import TokenCountingClient, _relevant_auth_headers
+from transport_matters.counting import TokenCountingClient, relevant_auth_headers
 from transport_matters.exchange_stats import (
-    _parse_response_ir,
     build_pipeline_stats,
+    parse_response_ir,
     stamp_pipeline_tokens,
 )
 from transport_matters.ir import InternalRequest, InternalResponse
@@ -34,7 +34,7 @@ class _RequestArtifactFields(TypedDict):
     request_audit: OverrideAudit | None
 
 
-def _persistable_curated_ir(
+def persistable_curated_ir(
     curated_ir: InternalRequest, original_ir: InternalRequest
 ) -> InternalRequest | None:
     """Return a validated curated IR snapshot or None when it should not be stored."""
@@ -83,7 +83,7 @@ def build_request_artifacts(
         "request_raw": raw_req,
         "request_ir": ir,
         "request_curated_raw": outbound_request_if_changed(adapter, ir, curated_ir),
-        "request_curated_ir": _persistable_curated_ir(curated_ir, ir),
+        "request_curated_ir": persistable_curated_ir(curated_ir, ir),
         "request_audit": audit,
     }
 
@@ -103,7 +103,7 @@ def _http_error_response_stats(
     )
 
 
-def _tag_http_error_status(
+def tag_http_error_status(
     res_stats: ResStats | None,
     flow: http.HTTPFlow,
     raw_res: bytes,
@@ -133,7 +133,7 @@ def _tag_http_error_status(
     )
 
 
-def _extract_response(
+def extract_response(
     flow: http.HTTPFlow,
     adapter: Any,
     exchange_id: str,
@@ -141,11 +141,11 @@ def _extract_response(
     res_text = flow.response.get_text() if flow.response else None
     raw_res = res_text.encode() if res_text else b""
     content_type = flow.response.headers.get("content-type", "") if flow.response else ""
-    res_ir, res_stats = _parse_response_ir(adapter, raw_res, content_type, exchange_id)
-    return raw_res, res_ir, _tag_http_error_status(res_stats, flow, raw_res)
+    res_ir, res_stats = parse_response_ir(adapter, raw_res, content_type, exchange_id)
+    return raw_res, res_ir, tag_http_error_status(res_stats, flow, raw_res)
 
 
-def _derive_codex_http(
+def derive_codex_http(
     flow: http.HTTPFlow,
     request_state: RequestFlowState,
     exchange_id: str,
@@ -183,7 +183,7 @@ def _derive_codex_http(
     )
 
 
-async def _stamped_pipeline_stats(
+async def stamped_pipeline_stats(
     flow: http.HTTPFlow,
     request_state: RequestFlowState,
     token_counter: TokenCountingClient | None,
@@ -193,7 +193,7 @@ async def _stamped_pipeline_stats(
     if pipeline_stats is None or token_counter is None:
         return pipeline_stats
     try:
-        auth = _relevant_auth_headers(flow.request.headers)
+        auth = relevant_auth_headers(flow.request.headers)
         return await stamp_pipeline_tokens(
             pipeline_stats,
             request_state.request_ir,
@@ -210,7 +210,7 @@ async def _stamped_pipeline_stats(
         return pipeline_stats
 
 
-def _request_raw_bytes(flow: http.HTTPFlow) -> bytes:
+def request_raw_bytes(flow: http.HTTPFlow) -> bytes:
     """Capture the request body binary-safely, never raising on bad bodies.
 
     Prefers the content-decoded body (what the adapter parsed and the rest of

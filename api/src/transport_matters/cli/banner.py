@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-def _print_client_banner(
+def print_client_banner(
     *,
     proxy_port: int,
     web_port: int,
@@ -35,7 +35,7 @@ def _print_client_banner(
     typer.echo("")
 
 
-def _print_banner(
+def print_banner(
     *,
     proxy_port: int,
     web_port: int,
@@ -46,7 +46,7 @@ def _print_banner(
     proxy_hint = None
     if no_claude:
         proxy_hint = (f"ANTHROPIC_BASE_URL={loopback_http_url(proxy_port)} claude",)
-    _print_client_banner(
+    print_client_banner(
         proxy_port=proxy_port,
         web_port=web_port,
         proxy_target=upstream,

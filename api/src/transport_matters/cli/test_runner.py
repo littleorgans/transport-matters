@@ -1,13 +1,13 @@
-"""Tests for ``_run_children`` — the supervisor-driven start lifecycle.
+"""Tests for ``run_children`` — the supervisor-driven start lifecycle.
 
-These tests drive ``_run_children`` directly (no CLI) and assert how it
+These tests drive ``run_children`` directly (no CLI) and assert how it
 sequences ``ProcessSupervisor.spawn`` / ``wait_any`` / ``terminate_all``
 under the four interesting outcomes: clean shutdown, signal during
-``_wait_for_port_ready``, signal after both children spawn, and proxy
+``wait_for_port_ready``, signal after both children spawn, and proxy
 exit after claude exits successfully.
 
-Plus the bind-failure helpers (``_failing_ports_from_log`` and
-``_handle_bind_failure``) used by the allocate-→-spawn retry loop —
+Plus the bind-failure helpers (``failing_ports_from_log`` and
+``handle_bind_failure``) used by the allocate-→-spawn retry loop —
 isolated here so the regex/decision-table edge cases don't have to
 go through the full CLI surface.
 """
@@ -19,17 +19,17 @@ from unittest.mock import MagicMock
 import pytest
 import typer
 
-from transport_matters.cli import SIGNAL_EXIT, _run_children
+from transport_matters.cli import SIGNAL_EXIT, run_children
 from transport_matters.cli.runner import (
     BindFailure,
     LaunchBindFailureOutcome,
     LaunchExitOutcome,
     LaunchRetryExhaustedOutcome,
     ManagedClient,
-    _failing_ports_from_log,
-    _format_retry_exhaustion,
-    _handle_bind_failure,
-    _run_client_children_until_outcome,
+    failing_ports_from_log,
+    format_retry_exhaustion,
+    handle_bind_failure,
+    run_client_children_until_outcome,
 )
 
 if TYPE_CHECKING:
@@ -48,10 +48,10 @@ def test_run_children_spawns_claude_with_pty(
     fake_sup.wait_one.return_value = ("mitmdump", 0)
 
     monkeypatch.setattr("transport_matters.cli.runner.ProcessSupervisor", lambda: fake_sup)
-    monkeypatch.setattr("transport_matters.cli.runner._wait_for_port_ready", lambda *_a, **_k: True)
+    monkeypatch.setattr("transport_matters.cli.runner.wait_for_port_ready", lambda *_a, **_k: True)
 
     with pytest.raises(typer.Exit):
-        _run_children(
+        run_children(
             mitmdump_argv=["/bin/mitmdump"],
             mitmdump_env={},
             storage_dir=tmp_path,
@@ -80,15 +80,15 @@ def test_run_children_bails_out_on_signal_before_claude_spawn(
     """
     fake_sup = MagicMock()
     # Signal flag is set from the start, as if SIGINT landed during
-    # `_wait_for_port_ready`. spawn("mitmdump") runs normally; the
+    # `wait_for_port_ready`. spawn("mitmdump") runs normally; the
     # branch fires before spawn("claude") gets a chance.
     fake_sup.received_signal = int(signal.SIGINT)
 
     monkeypatch.setattr("transport_matters.cli.runner.ProcessSupervisor", lambda: fake_sup)
-    monkeypatch.setattr("transport_matters.cli.runner._wait_for_port_ready", lambda *_a, **_k: True)
+    monkeypatch.setattr("transport_matters.cli.runner.wait_for_port_ready", lambda *_a, **_k: True)
 
     with pytest.raises(typer.Exit) as exc_info:
-        _run_children(
+        run_children(
             mitmdump_argv=["/bin/mitmdump"],
             mitmdump_env={},
             storage_dir=tmp_path,
@@ -118,10 +118,10 @@ def test_run_children_exits_zero_on_signal_after_children_spawn(
     fake_sup.wait_any.return_value = (SIGNAL_EXIT, int(signal.SIGINT))
 
     monkeypatch.setattr("transport_matters.cli.runner.ProcessSupervisor", lambda: fake_sup)
-    monkeypatch.setattr("transport_matters.cli.runner._wait_for_port_ready", lambda *_a, **_k: True)
+    monkeypatch.setattr("transport_matters.cli.runner.wait_for_port_ready", lambda *_a, **_k: True)
 
     with pytest.raises(typer.Exit) as exc_info:
-        _run_children(
+        run_children(
             mitmdump_argv=["/bin/mitmdump"],
             mitmdump_env={},
             storage_dir=tmp_path,
@@ -146,10 +146,10 @@ def test_run_children_reports_proxy_failure_after_claude_exit(
     fake_sup.wait_one.return_value = ("mitmdump", 7)
 
     monkeypatch.setattr("transport_matters.cli.runner.ProcessSupervisor", lambda: fake_sup)
-    monkeypatch.setattr("transport_matters.cli.runner._wait_for_port_ready", lambda *_a, **_k: True)
+    monkeypatch.setattr("transport_matters.cli.runner.wait_for_port_ready", lambda *_a, **_k: True)
 
     with pytest.raises(typer.Exit) as exc_info:
-        _run_children(
+        run_children(
             mitmdump_argv=["/bin/mitmdump"],
             mitmdump_env={},
             storage_dir=tmp_path,
@@ -175,9 +175,9 @@ def test_run_client_children_handles_custom_client_exit_then_proxy_lifecycle(
     fake_sup.wait_one.return_value = ("mitmdump", 0)
 
     monkeypatch.setattr("transport_matters.cli.runner.ProcessSupervisor", lambda: fake_sup)
-    monkeypatch.setattr("transport_matters.cli.runner._wait_for_port_ready", lambda *_a, **_k: True)
+    monkeypatch.setattr("transport_matters.cli.runner.wait_for_port_ready", lambda *_a, **_k: True)
 
-    outcome = _run_client_children_until_outcome(
+    outcome = run_client_children_until_outcome(
         mitmdump_argv=["/bin/mitmdump"],
         mitmdump_env={"TRANSPORT_MATTERS_RUN_ID": "run-001"},
         storage_dir=tmp_path,
@@ -222,7 +222,7 @@ def test_run_client_children_proxy_only_runs_mitmdump_in_foreground(
 
     monkeypatch.setattr("transport_matters.cli.runner.ProcessSupervisor", lambda: fake_sup)
 
-    outcome = _run_client_children_until_outcome(
+    outcome = run_client_children_until_outcome(
         mitmdump_argv=["/bin/mitmdump"],
         mitmdump_env={"TRANSPORT_MATTERS_RUN_ID": "run-001"},
         storage_dir=tmp_path,
@@ -253,9 +253,9 @@ def test_run_client_children_outcome_captures_proxy_failure_log(
     fake_sup.wait_one.return_value = ("mitmdump", 7)
 
     monkeypatch.setattr("transport_matters.cli.runner.ProcessSupervisor", lambda: fake_sup)
-    monkeypatch.setattr("transport_matters.cli.runner._wait_for_port_ready", lambda *_a, **_k: True)
+    monkeypatch.setattr("transport_matters.cli.runner.wait_for_port_ready", lambda *_a, **_k: True)
 
-    outcome = _run_client_children_until_outcome(
+    outcome = run_client_children_until_outcome(
         mitmdump_argv=["/bin/mitmdump"],
         mitmdump_env={},
         storage_dir=tmp_path,
@@ -291,9 +291,9 @@ def test_run_client_children_outcome_captures_bind_failure(
         return False
 
     monkeypatch.setattr("transport_matters.cli.runner.ProcessSupervisor", lambda: fake_sup)
-    monkeypatch.setattr("transport_matters.cli.runner._wait_for_port_ready", _not_ready)
+    monkeypatch.setattr("transport_matters.cli.runner.wait_for_port_ready", _not_ready)
 
-    outcome = _run_client_children_until_outcome(
+    outcome = run_client_children_until_outcome(
         mitmdump_argv=["/bin/mitmdump"],
         mitmdump_env={},
         storage_dir=tmp_path,
@@ -317,7 +317,7 @@ def test_run_client_children_outcome_captures_bind_failure(
 
 
 # --------------------------------------------------------------------------- #
-# _failing_ports_from_log                                                     #
+# failing_ports_from_log                                                     #
 # --------------------------------------------------------------------------- #
 
 
@@ -325,7 +325,7 @@ def test_failing_ports_from_log_returns_none_when_log_missing(
     tmp_path: Path,
 ) -> None:
     """No log on disk → caller can't tell bind-vs-other; returns None."""
-    assert _failing_ports_from_log(tmp_path / "absent.log", (8787,)) is None
+    assert failing_ports_from_log(tmp_path / "absent.log", (8787,)) is None
 
 
 def test_failing_ports_from_log_returns_none_when_no_bind_needles(
@@ -336,7 +336,7 @@ def test_failing_ports_from_log_returns_none_when_no_bind_needles(
     error instead of looping pointlessly."""
     log = tmp_path / "mitm.log"
     log.write_text("Some unrelated mitmproxy startup error\nbad addon import\n")
-    assert _failing_ports_from_log(log, (8787, 8788)) is None
+    assert failing_ports_from_log(log, (8787, 8788)) is None
 
 
 def test_failing_ports_from_log_extracts_darwin_errno(tmp_path: Path) -> None:
@@ -348,7 +348,7 @@ def test_failing_ports_from_log_extracts_darwin_errno(tmp_path: Path) -> None:
         "Error starting proxy server: error while attempting to bind on "
         "address ('127.0.0.1', 8787): [Errno 48] Address already in use\n"
     )
-    assert _failing_ports_from_log(log, (8787, 8788)) == (8787,)
+    assert failing_ports_from_log(log, (8787, 8788)) == (8787,)
 
 
 def test_failing_ports_from_log_extracts_linux_errno(tmp_path: Path) -> None:
@@ -357,7 +357,7 @@ def test_failing_ports_from_log_extracts_linux_errno(tmp_path: Path) -> None:
     the attempted set."""
     log = tmp_path / "mitm.log"
     log.write_text("[Errno 98] Address already in use: ('127.0.0.1', 9000)\n")
-    assert _failing_ports_from_log(log, (9000,)) == (9000,)
+    assert failing_ports_from_log(log, (9000,)) == (9000,)
 
 
 def test_failing_ports_from_log_returns_empty_when_port_unattributable(
@@ -369,7 +369,7 @@ def test_failing_ports_from_log_returns_empty_when_port_unattributable(
     slots."""
     log = tmp_path / "mitm.log"
     log.write_text("EADDRINUSE during reverse-proxy startup\n")
-    assert _failing_ports_from_log(log, (8787, 8788)) == ()
+    assert failing_ports_from_log(log, (8787, 8788)) == ()
 
 
 def test_failing_ports_from_log_falls_back_to_errno_when_phrases_missing(
@@ -388,11 +388,11 @@ def test_failing_ports_from_log_falls_back_to_errno_when_phrases_missing(
         "bind ('127.0.0.1', 8787) failed: [Errno 48]\nbind ('127.0.0.1', 8788) failed: [Errno 98]\n"
     )
     # Both lines should match independently and contribute their port.
-    assert _failing_ports_from_log(log, (8787, 8788)) == (8787, 8788)
+    assert failing_ports_from_log(log, (8787, 8788)) == (8787, 8788)
 
 
 # --------------------------------------------------------------------------- #
-# _handle_bind_failure                                                        #
+# handle_bind_failure                                                        #
 # --------------------------------------------------------------------------- #
 
 
@@ -421,7 +421,7 @@ def test_handle_bind_failure_pinned_web_port_fails_fast(
 
     exc = _make_failure(proxy_port=12000, web_port=8788, failing_ports=(8788,), tmp_path=tmp_path)
     with pytest.raises(typer.Exit) as exc_info:
-        _handle_bind_failure(
+        handle_bind_failure(
             exc,
             proxy_port=12000,
             web_port=8788,
@@ -442,7 +442,7 @@ def test_handle_bind_failure_both_pinned_anonymous_failure_fails_fast(
 
     exc = _make_failure(proxy_port=9000, web_port=9001, failing_ports=(), tmp_path=tmp_path)
     with pytest.raises(typer.Exit) as exc_info:
-        _handle_bind_failure(
+        handle_bind_failure(
             exc,
             proxy_port=9000,
             web_port=9001,
@@ -463,7 +463,7 @@ def test_handle_bind_failure_reallocates_only_named_unpinned_slot(
         lambda: (60001, 60002),
     )
     exc = _make_failure(proxy_port=12000, web_port=12001, failing_ports=(12000,), tmp_path=tmp_path)
-    new_proxy, new_web = _handle_bind_failure(
+    new_proxy, new_web = handle_bind_failure(
         exc,
         proxy_port=12000,
         web_port=12001,
@@ -484,7 +484,7 @@ def test_handle_bind_failure_anonymous_failure_replaces_all_unpinned(
         lambda: (50000, 50001),
     )
     exc = _make_failure(proxy_port=12000, web_port=12001, failing_ports=(), tmp_path=tmp_path)
-    new_proxy, new_web = _handle_bind_failure(
+    new_proxy, new_web = handle_bind_failure(
         exc,
         proxy_port=12000,
         web_port=12001,
@@ -504,7 +504,7 @@ def test_handle_bind_failure_keeps_pinned_proxy_when_only_web_named(
         lambda: (60001, 60002),
     )
     exc = _make_failure(proxy_port=9000, web_port=12001, failing_ports=(12001,), tmp_path=tmp_path)
-    new_proxy, new_web = _handle_bind_failure(
+    new_proxy, new_web = handle_bind_failure(
         exc,
         proxy_port=9000,
         web_port=12001,
@@ -529,7 +529,7 @@ def test_handle_bind_failure_propagates_allocator_error(
 
     exc = _make_failure(proxy_port=12000, web_port=12001, failing_ports=(), tmp_path=tmp_path)
     with pytest.raises(typer.Exit) as exc_info:
-        _handle_bind_failure(
+        handle_bind_failure(
             exc,
             proxy_port=12000,
             web_port=12001,
@@ -548,7 +548,7 @@ def test_format_retry_exhaustion_highlights_pinned_ports() -> None:
         web_user_supplied=True,
     )
 
-    message = "\n".join(_format_retry_exhaustion(outcome))
+    message = "\n".join(format_retry_exhaustion(outcome))
 
     assert "could not bind ports after 3 attempts" in message
     assert "Tried (proxy, web): (54321, 9001), (60001, 9001), (60003, 9001)." in message

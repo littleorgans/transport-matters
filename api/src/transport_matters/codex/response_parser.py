@@ -42,7 +42,7 @@ def parse_codex_response_sse(
     SSE envelope is the only difference; once payloads are extracted,
     the existing WS payload-to-IR builder produces the same result.
     """
-    payloads = _parse_sse_event_payloads(raw_body)
+    payloads = parse_sse_event_payloads(raw_body)
     return parse_codex_response_payloads(
         payloads,
         default_model=default_model,
@@ -50,7 +50,7 @@ def parse_codex_response_sse(
     )
 
 
-def _parse_sse_event_payloads(raw_body: bytes) -> list[dict[str, Any]]:
+def parse_sse_event_payloads(raw_body: bytes) -> list[dict[str, Any]]:
     """Extract JSON event payloads from a Codex SSE byte stream.
 
     Each `data:` line is a single JSON object; multi-line `data:`

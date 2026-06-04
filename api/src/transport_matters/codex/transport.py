@@ -32,8 +32,8 @@ from transport_matters.codex.protocol import (
     is_codex_turn_start,
 )
 from transport_matters.codex.response_parser import (
-    _parse_sse_event_payloads,
     parse_codex_response_payloads,
+    parse_sse_event_payloads,
 )
 from transport_matters.storage.base import (
     ResStats,
@@ -363,7 +363,7 @@ def parse_codex_http_transport_payloads(
         request_payload = {**request_payload, "type": "response.create"}
     return CodexHttpTransportPayloads(
         request=request_payload,
-        response_events=tuple(_parse_sse_event_payloads(raw_response)),
+        response_events=tuple(parse_sse_event_payloads(raw_response)),
     )
 
 

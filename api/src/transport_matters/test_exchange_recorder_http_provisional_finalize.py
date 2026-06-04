@@ -54,10 +54,10 @@ async def test_finalize_http_provisional_exchange_updates_pending_row_in_place(
             track_role="subagent",
         )
 
-    monkeypatch.setattr(recorder, "_persist_track_assignment", fake_track_assignment)
+    monkeypatch.setattr(recorder, "persist_track_assignment", fake_track_assignment)
     events = broadcast.subscribe()
 
-    exchange_id = await recorder._persist_http_provisional_exchange(flow, state)
+    exchange_id = await recorder.persist_http_provisional_exchange(flow, state)
 
     assert exchange_id is not None
     pending_event = json.loads(events.get_nowait())
@@ -169,7 +169,7 @@ async def test_finalize_http_provisional_exchange_returns_false_for_missing_entr
     ) -> TrackAssignment | None:
         raise AssertionError("missing entry path must not assign a track")
 
-    monkeypatch.setattr(recorder, "_persist_track_assignment", fail_track_assignment)
+    monkeypatch.setattr(recorder, "persist_track_assignment", fail_track_assignment)
     counter = _SeqCounter([1, 2])
 
     finalized = await recorder._finalize_http_provisional_exchange(flow, state, counter)
@@ -184,7 +184,7 @@ async def test_finalize_http_provisional_exchange_returns_false_for_missing_entr
 async def test_finalize_http_provisional_exchange_skips_token_stamping_without_counter() -> None:
     state = _make_state()
     flow = cast("http.HTTPFlow", _Flow())
-    exchange_id = await recorder._persist_http_provisional_exchange(flow, state)
+    exchange_id = await recorder.persist_http_provisional_exchange(flow, state)
 
     assert exchange_id is not None
     state.provisional_exchange_id = exchange_id

@@ -6,7 +6,7 @@ The philosophy, stolen wholesale from `attention-matters`:
   one runnable example in the help epilog.
 - No dead ends. When something fails, we tell the user what to try next.
 
-Rendered verbatim as plain text via `_PlainGroup` / `_PlainCommand` so
+Rendered verbatim as plain text via `PlainGroup` / `PlainCommand` so
 Typer's Rich chrome never competes with the hand-tuned layout.
 """
 
@@ -234,14 +234,14 @@ _SUBCOMMAND_HELP = {
 }
 
 
-class _PlainGroup(TyperGroup):
+class PlainGroup(TyperGroup):
     """Typer group that renders help as plain text."""
 
     def format_help(self, ctx: click.Context, formatter: Any) -> None:
         typer.echo(_ROOT_HELP, nl=False)
 
 
-class _PlainCommand(TyperCommand):
+class PlainCommand(TyperCommand):
     """Typer command that renders help as plain text."""
 
     def format_help(self, ctx: click.Context, formatter: Any) -> None:

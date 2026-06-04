@@ -60,7 +60,7 @@ async def test_persist_unparsed_http_exchange_records_raw_and_version() -> None:
     adapter = AnthropicAdapter()
     events = broadcast.subscribe()
 
-    await recorder._persist_unparsed_http_exchange(flow, adapter, codex_http=False)
+    await recorder.persist_unparsed_http_exchange(flow, adapter, codex_http=False)
 
     storage = await get_storage()
     entries = await storage.read_index(limit=10, offset=0)
@@ -92,7 +92,7 @@ async def test_persist_unparsed_http_exchange_falls_back_model_when_no_json() ->
     )
     adapter = AnthropicAdapter()
 
-    await recorder._persist_unparsed_http_exchange(flow, adapter, codex_http=False)
+    await recorder.persist_unparsed_http_exchange(flow, adapter, codex_http=False)
 
     storage = await get_storage()
     entries = await storage.read_index(limit=10, offset=0)
@@ -117,10 +117,10 @@ async def test_persist_unparsed_http_exchange_is_exception_safe(
     async def boom(*args: object, **kwargs: object) -> bool:
         raise RuntimeError("storage exploded")
 
-    monkeypatch.setattr(recorder, "_persist_exchange", boom)
+    monkeypatch.setattr(recorder, "persist_exchange", boom)
 
     # A recording failure must never propagate out of the proxy hook.
-    await recorder._persist_unparsed_http_exchange(flow, adapter, codex_http=False)
+    await recorder.persist_unparsed_http_exchange(flow, adapter, codex_http=False)
 
     storage = await get_storage()
     assert await storage.read_index(limit=10, offset=0) == []

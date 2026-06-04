@@ -35,7 +35,7 @@ def test_start_coexists_with_live_sibling_run(
     own ``run_id`` and its own lock.
     """
     monkeypatch.setattr("transport_matters.cli.shutil.which", _which_all())
-    monkeypatch.setattr("transport_matters.cli._port_in_use", lambda _: False)
+    monkeypatch.setattr("transport_matters.cli.port_in_use", lambda _: False)
 
     workdir = tmp_path / "project"
     workdir.mkdir()
@@ -55,7 +55,7 @@ def test_start_writes_manifest_visible_to_client_runner(
 ) -> None:
     """While the shared runner is running the manifest must exist on disk."""
     monkeypatch.setattr("transport_matters.cli.shutil.which", _which_all())
-    monkeypatch.setattr("transport_matters.cli._port_in_use", lambda _: False)
+    monkeypatch.setattr("transport_matters.cli.port_in_use", lambda _: False)
 
     captured: dict[str, Any] = {}
 
@@ -101,7 +101,7 @@ def test_start_reaps_its_run_manifest_on_normal_exit(
     same CWD can launch again.
     """
     monkeypatch.setattr("transport_matters.cli.shutil.which", _which_all())
-    monkeypatch.setattr("transport_matters.cli._port_in_use", lambda _: False)
+    monkeypatch.setattr("transport_matters.cli.port_in_use", lambda _: False)
 
     workdir = tmp_path / "project"
     workdir.mkdir()
@@ -121,7 +121,7 @@ def test_start_different_cwds_coexist(
 ) -> None:
     """Starts in different CWDs each launch independently."""
     monkeypatch.setattr("transport_matters.cli.shutil.which", _which_all())
-    monkeypatch.setattr("transport_matters.cli._port_in_use", lambda _: False)
+    monkeypatch.setattr("transport_matters.cli.port_in_use", lambda _: False)
 
     dir_a = tmp_path / "a"
     dir_a.mkdir()

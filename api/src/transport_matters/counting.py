@@ -98,7 +98,7 @@ async def count_before_after(
     return tokens_before, tokens_after
 
 
-def _relevant_auth_headers(headers: Any) -> dict[str, str]:
+def relevant_auth_headers(headers: Any) -> dict[str, str]:
     """Filter a mitmproxy/httpx headers mapping to the Anthropic auth keys.
 
     Accepts anything with a case-insensitive ``.get(key)`` — mitmproxy's
@@ -175,7 +175,7 @@ def get_counter() -> TokenCounter | None:
 def set_recent_auth(auth: dict[str, str] | None) -> None:
     """Cache the latest Anthropic auth headers for lazy count_tokens calls.
 
-    Callers should pass the ``_relevant_auth_headers`` filtered view, not
+    Callers should pass the ``relevant_auth_headers`` filtered view, not
     raw HTTP headers, so we never keep more than the four keys the count
     endpoint accepts. Pass ``None`` or an empty mapping to clear (e.g. at
     addon shutdown).

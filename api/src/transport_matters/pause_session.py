@@ -8,18 +8,18 @@ from typing import TYPE_CHECKING, Any, Literal, TypedDict
 
 from transport_matters import breakpoint as bp
 from transport_matters import broadcast
-from transport_matters.codex.exchange import _delete_codex_provisional_exchange
+from transport_matters.codex.exchange import delete_codex_provisional_exchange
 from transport_matters.codex.exchange_derivation import (
-    _clear_codex_breakpoint_lifecycle,
-    _record_codex_breakpoint_release,
-    _rewrite_codex_provisional_exchange,
+    clear_codex_breakpoint_lifecycle,
+    record_codex_breakpoint_release,
+    rewrite_codex_provisional_exchange,
 )
 from transport_matters.codex.transport import (
     get_codex_transport_state,
     mark_codex_initial_request_dropped,
 )
 from transport_matters.config import get_settings
-from transport_matters.counting import TokenCountingClient, _relevant_auth_headers
+from transport_matters.counting import TokenCountingClient, relevant_auth_headers
 from transport_matters.flow_state import (
     get_request_flow_state,
     update_request_flow_state,
@@ -297,7 +297,7 @@ async def handle_breakpoint(
     from mitmproxy.http import Response as MitmResponse
 
     def prepare_http_pause() -> _PauseHooks:
-        auth = _relevant_auth_headers(flow.request.headers)
+        auth = relevant_auth_headers(flow.request.headers)
 
         if counter is None:
             return _PauseHooks(auth_headers=auth)
@@ -382,13 +382,13 @@ async def handle_websocket_breakpoint(
         return
 
     if outcome.pf.dropped:
-        _clear_codex_breakpoint_lifecycle(flow)
+        clear_codex_breakpoint_lifecycle(flow)
         mark_codex_initial_request_dropped(flow)
-        await _delete_codex_provisional_exchange(flow)
+        await delete_codex_provisional_exchange(flow)
         message.drop()
         return
 
-    _record_codex_breakpoint_release(
+    record_codex_breakpoint_release(
         flow,
         paused_at_ms=outcome.pf.paused_at_ms,
         released_at_ms=int(time.time() * 1000),
@@ -402,4 +402,4 @@ async def handle_websocket_breakpoint(
         audit=outcome.audit,
         mutated_manually=outcome.mutated_manually,
     )
-    await _rewrite_codex_provisional_exchange(flow, force_replay=True)
+    await rewrite_codex_provisional_exchange(flow, force_replay=True)

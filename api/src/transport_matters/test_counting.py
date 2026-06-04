@@ -7,8 +7,8 @@ import httpx
 from transport_matters.counting import (
     TokenCounter,
     _cache_key,
-    _relevant_auth_headers,
     _strip_for_count,
+    relevant_auth_headers,
 )
 
 # ── _strip_for_count ──────────────────────────────────────────────────
@@ -39,7 +39,7 @@ def test_strip_invalid_json_passes_through_unchanged() -> None:
     assert _strip_for_count(bogus) == bogus
 
 
-# ── _relevant_auth_headers ────────────────────────────────────────────
+# ── relevant_auth_headers ────────────────────────────────────────────
 
 
 def test_auth_headers_picks_known_keys() -> None:
@@ -51,7 +51,7 @@ def test_auth_headers_picks_known_keys() -> None:
         "user-agent": "foo",
         "content-type": "application/json",
     }
-    result = _relevant_auth_headers(headers)
+    result = relevant_auth_headers(headers)
     assert result == {
         "x-api-key": "sk-x",
         "authorization": "Bearer y",
@@ -61,11 +61,11 @@ def test_auth_headers_picks_known_keys() -> None:
 
 
 def test_auth_headers_skips_empty_values() -> None:
-    assert _relevant_auth_headers({"x-api-key": ""}) == {}
+    assert relevant_auth_headers({"x-api-key": ""}) == {}
 
 
 def test_auth_headers_ignores_unrelated_headers() -> None:
-    assert _relevant_auth_headers({"cookie": "session=1"}) == {}
+    assert relevant_auth_headers({"cookie": "session=1"}) == {}
 
 
 # ── _cache_key ────────────────────────────────────────────────────────

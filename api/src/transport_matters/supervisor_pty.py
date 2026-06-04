@@ -24,10 +24,10 @@ _PTY_SELECT_TIMEOUT = 0.1
 # expected to exit on its next select tick, so half a second is very
 # generous. If the thread is still blocked after that, the daemon flag
 # lets the process exit anyway.
-_PTY_JOIN_TIMEOUT = 0.5
+PTY_JOIN_TIMEOUT = 0.5
 
 
-def _install_parent_cbreak(fd: int) -> list[Any]:
+def install_parent_cbreak(fd: int) -> list[Any]:
     """Put the parent terminal in cbreak while preserving Return as ``\r``.
 
     Python 3.12.2+ changed ``tty.setcbreak()`` to preserve ``ICRNL``.
@@ -45,7 +45,7 @@ def _install_parent_cbreak(fd: int) -> list[Any]:
     return old_attrs
 
 
-def _pty_shuttle(
+def pty_shuttle(
     stdin_fd: int,
     stdout_fd: int,
     master_fd: int,

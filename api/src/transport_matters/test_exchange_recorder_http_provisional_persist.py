@@ -50,10 +50,10 @@ async def test_persist_http_provisional_exchange_stores_and_broadcasts_pending_r
             track_role="parent",
         )
 
-    monkeypatch.setattr(recorder, "_persist_track_assignment", fake_track_assignment)
+    monkeypatch.setattr(recorder, "persist_track_assignment", fake_track_assignment)
     events = broadcast.subscribe()
 
-    exchange_id = await recorder._persist_http_provisional_exchange(flow, state)
+    exchange_id = await recorder.persist_http_provisional_exchange(flow, state)
 
     assert exchange_id is not None
     assert uuid.UUID(exchange_id).version == 4
@@ -97,9 +97,9 @@ async def test_provisional_exchange_skips_curated_artifacts_when_pipeline_is_noo
 ) -> None:
     state = _make_noop_state()
     flow = cast("http.HTTPFlow", _Flow())
-    monkeypatch.setattr(recorder, "_persist_track_assignment", lambda *a, **k: None)
+    monkeypatch.setattr(recorder, "persist_track_assignment", lambda *a, **k: None)
 
-    exchange_id = await recorder._persist_http_provisional_exchange(flow, state)
+    exchange_id = await recorder.persist_http_provisional_exchange(flow, state)
     assert exchange_id is not None
 
     storage = await get_storage()
@@ -134,10 +134,10 @@ async def test_persist_http_provisional_exchange_reuses_existing_id(
     ) -> TrackAssignment | None:
         raise AssertionError("idempotent path must not assign a track")
 
-    monkeypatch.setattr(recorder, "_persist_exchange", fail_persist)
-    monkeypatch.setattr(recorder, "_persist_track_assignment", fail_track_assignment)
+    monkeypatch.setattr(recorder, "persist_exchange", fail_persist)
+    monkeypatch.setattr(recorder, "persist_track_assignment", fail_track_assignment)
 
-    exchange_id = await recorder._persist_http_provisional_exchange(flow, state)
+    exchange_id = await recorder.persist_http_provisional_exchange(flow, state)
 
     assert exchange_id == "exchange-existing"
     assert events.empty()
@@ -159,9 +159,9 @@ async def test_persist_http_provisional_exchange_returns_none_on_failure(
     ) -> bool:
         return False
 
-    monkeypatch.setattr(recorder, "_persist_exchange", refuse_persist)
+    monkeypatch.setattr(recorder, "persist_exchange", refuse_persist)
 
-    exchange_id = await recorder._persist_http_provisional_exchange(flow, state)
+    exchange_id = await recorder.persist_http_provisional_exchange(flow, state)
 
     assert exchange_id is None
     assert state.provisional_exchange_id is None

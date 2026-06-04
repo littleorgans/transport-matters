@@ -22,7 +22,7 @@ def _unparsed_model(raw: bytes, adapter_name: str) -> str:
     return model if isinstance(model, str) and model else f"{adapter_name}/unparsed"
 
 
-def _unparsed_request_ir(
+def unparsed_request_ir(
     raw: bytes,
     adapter_name: str,
     client_version: str | None,

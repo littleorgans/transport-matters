@@ -32,7 +32,7 @@ def test_start_accepts_directory_argument(
     monkeypatch.setattr(
         "transport_matters.cli.shutil.which", lambda name, path=None: f"/bin/{name}"
     )
-    monkeypatch.setattr("transport_matters.cli._port_in_use", lambda _: False)
+    monkeypatch.setattr("transport_matters.cli.port_in_use", lambda _: False)
 
     workdir = tmp_path / "project"
     workdir.mkdir()
@@ -49,7 +49,7 @@ def test_start_does_not_pollute_os_environ(
     monkeypatch.setattr(
         "transport_matters.cli.shutil.which", lambda name, path=None: f"/bin/{name}"
     )
-    monkeypatch.setattr("transport_matters.cli._port_in_use", lambda _: False)
+    monkeypatch.setattr("transport_matters.cli.port_in_use", lambda _: False)
     monkeypatch.delenv("TRANSPORT_MATTERS_WEB_PORT", raising=False)
     monkeypatch.delenv("TRANSPORT_MATTERS_PROXY_PORT", raising=False)
 

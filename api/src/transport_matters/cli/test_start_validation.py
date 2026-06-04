@@ -22,7 +22,7 @@ def test_start_refuses_when_proxy_port_is_busy(
     spy_run_client_children: MagicMock,
 ) -> None:
     monkeypatch.setattr("transport_matters.cli.shutil.which", _which_all())
-    monkeypatch.setattr("transport_matters.cli._port_in_use", lambda p: p == busy_port)
+    monkeypatch.setattr("transport_matters.cli.port_in_use", lambda p: p == busy_port)
 
     result = runner.invoke(
         main,
@@ -64,7 +64,7 @@ def test_start_refuses_when_claude_missing(
         "transport_matters.cli.shutil.which",
         _which_by_name({"mitmdump": "/bin/mitmdump"}),
     )
-    monkeypatch.setattr("transport_matters.cli._port_in_use", lambda _: False)
+    monkeypatch.setattr("transport_matters.cli.port_in_use", lambda _: False)
 
     result = runner.invoke(main, ["claude", "--print-command"])
     assert result.exit_code == 2
@@ -84,7 +84,7 @@ def test_start_no_claude_works_when_claude_absent(
         "transport_matters.cli.shutil.which",
         _which_by_name({"mitmdump": "/bin/mitmdump"}),
     )
-    monkeypatch.setattr("transport_matters.cli._port_in_use", lambda _: False)
+    monkeypatch.setattr("transport_matters.cli.port_in_use", lambda _: False)
 
     result = runner.invoke(main, ["claude", "--no-claude", "--print-command"])
     assert result.exit_code == 0
@@ -97,7 +97,7 @@ def test_start_rejects_malformed_upstream_url(
 ) -> None:
     """Upstream URL must have both a scheme and hostname."""
     monkeypatch.setattr("transport_matters.cli.shutil.which", _which_all())
-    monkeypatch.setattr("transport_matters.cli._port_in_use", lambda _: False)
+    monkeypatch.setattr("transport_matters.cli.port_in_use", lambda _: False)
 
     result = runner.invoke(
         main,
@@ -114,7 +114,7 @@ def test_start_rejects_upstream_without_scheme(
     spy_run_client_children: MagicMock,
 ) -> None:
     monkeypatch.setattr("transport_matters.cli.shutil.which", _which_all())
-    monkeypatch.setattr("transport_matters.cli._port_in_use", lambda _: False)
+    monkeypatch.setattr("transport_matters.cli.port_in_use", lambda _: False)
 
     result = runner.invoke(
         main,
@@ -133,7 +133,7 @@ def test_start_rejects_missing_directory(
 ) -> None:
     """Non-existent positional directory is rejected by click before we run."""
     monkeypatch.setattr("transport_matters.cli.shutil.which", _which_all())
-    monkeypatch.setattr("transport_matters.cli._port_in_use", lambda _: False)
+    monkeypatch.setattr("transport_matters.cli.port_in_use", lambda _: False)
 
     missing = tmp_path / "does-not-exist"
     result = runner.invoke(main, ["claude", str(missing), "--print-command"])

@@ -2,7 +2,7 @@
 
 Owns both child processes end to end: spawn mitmdump, wait for readiness,
 spawn the managed client, then translate whichever child exits first into a
-sensible top-level exit code. See the `_run_client_children_until_outcome`
+sensible top-level exit code. See the `run_client_children_until_outcome`
 docstring for the full decision matrix.
 
 The startup window also detects ``EADDRINUSE``-shaped failures and
@@ -21,7 +21,7 @@ import typer
 
 from transport_matters.supervisor import SIGNAL_EXIT, ProcessSupervisor
 
-from .net import _wait_for_port_ready, loopback_http_url
+from .net import loopback_http_url, wait_for_port_ready
 from .ports import PortAllocationError, allocate_port_pair
 
 if TYPE_CHECKING:
@@ -33,10 +33,10 @@ __all__ = [
     "LaunchBindFailureOutcome",
     "LaunchExitOutcome",
     "LaunchRetryExhaustedOutcome",
-    "_handle_bind_failure",
-    "_run_children",
     "_run_client_children",
-    "_run_client_with_retry",
+    "handle_bind_failure",
+    "run_children",
+    "run_client_with_retry",
 ]
 
 
@@ -92,7 +92,7 @@ class ManagedClient:
 
 
 class BindFailure(RuntimeError):
-    """Raised by :func:`_run_children` when mitmdump fails to bind a port.
+    """Raised by :func:`run_children` when mitmdump fails to bind a port.
 
     Carries the ports that were attempted on this run plus the subset
     that the log singled out as already-in-use. The caller uses
@@ -152,7 +152,7 @@ class LaunchRetryExhaustedOutcome:
 LaunchOutcome = LaunchExitOutcome | LaunchBindFailureOutcome
 
 
-def _format_retry_exhaustion(outcome: LaunchRetryExhaustedOutcome) -> list[str]:
+def format_retry_exhaustion(outcome: LaunchRetryExhaustedOutcome) -> list[str]:
     attempted_str = ", ".join(f"({p}, {w})" for p, w in outcome.attempted)
     lines = [
         f"error: could not bind ports after {_BIND_RETRY_ATTEMPTS} attempts.",
@@ -183,14 +183,14 @@ def _format_retry_exhaustion(outcome: LaunchRetryExhaustedOutcome) -> list[str]:
 
 
 def _raise_retry_exhausted(outcome: LaunchRetryExhaustedOutcome) -> None:
-    lines = _format_retry_exhaustion(outcome)
+    lines = format_retry_exhaustion(outcome)
     typer.secho(lines[0], fg=typer.colors.RED, err=True)
     for line in lines[1:]:
         typer.echo(line, err=True)
     raise typer.Exit(1)
 
 
-def _failing_ports_from_log(log_path: Path, attempted: tuple[int, ...]) -> tuple[int, ...] | None:
+def failing_ports_from_log(log_path: Path, attempted: tuple[int, ...]) -> tuple[int, ...] | None:
     """Inspect the mitmdump log for an EADDRINUSE-shaped failure.
 
     Returns ``None`` if the log does not mention a bind conflict at all,
@@ -222,7 +222,7 @@ def _failing_ports_from_log(log_path: Path, attempted: tuple[int, ...]) -> tuple
     return tuple(found)
 
 
-def _handle_bind_failure(
+def handle_bind_failure(
     exc: BindFailure,
     *,
     proxy_port: int,
@@ -289,7 +289,7 @@ def _handle_bind_failure(
     return proxy_port, web_port
 
 
-def _run_client_with_retry(
+def run_client_with_retry(
     *,
     proxy_port: int,
     web_port: int,
@@ -307,7 +307,7 @@ def _run_client_with_retry(
     (with a "retrying" preamble after the first), rebuilds the child
     invocations via ``build_invocation``, and calls
     :func:`_run_client_children`. On :class:`BindFailure` the retry
-    decision lives in :func:`_handle_bind_failure`. On exhaustion we
+    decision lives in :func:`handle_bind_failure`. On exhaustion we
     surface the attempted port pairs and exit non-zero with an
     actionable message.
     """
@@ -340,7 +340,7 @@ def _run_client_with_retry(
             # the spec mandates).
             if attempt + 1 >= _BIND_RETRY_ATTEMPTS:
                 break
-            proxy_port, web_port = _handle_bind_failure(
+            proxy_port, web_port = handle_bind_failure(
                 exc,
                 proxy_port=proxy_port,
                 web_port=web_port,
@@ -359,7 +359,7 @@ def _run_client_with_retry(
     )
 
 
-def _run_children(
+def run_children(
     *,
     mitmdump_argv: list[str],
     mitmdump_env: dict[str, str],
@@ -402,7 +402,7 @@ def _run_client_children(
     web_port: int,
 ) -> None:
     """Run child processes and translate the structured outcome to CLI exit."""
-    outcome = _run_client_children_until_outcome(
+    outcome = run_client_children_until_outcome(
         mitmdump_argv=mitmdump_argv,
         mitmdump_env=mitmdump_env,
         storage_dir=storage_dir,
@@ -423,7 +423,7 @@ def _raise_launch_outcome(outcome: LaunchOutcome) -> None:
     raise typer.Exit(outcome.exit_code)
 
 
-def _run_client_children_until_outcome(
+def run_client_children_until_outcome(
     *,
     mitmdump_argv: list[str],
     mitmdump_env: dict[str, str],
@@ -475,11 +475,11 @@ def _run_client_children_until_outcome(
             env={**mitmdump_env, "PYTHONUNBUFFERED": "1"},
             log_path=mitmdump_log,
         )
-        if not _wait_for_port_ready("127.0.0.1", proxy_port):
+        if not wait_for_port_ready("127.0.0.1", proxy_port):
             # Distinguish "port stolen between allocate and spawn"
             # (retryable upstairs) from "config is broken" (don't retry).
             # The log scan returns None for non-bind failures.
-            failing = _failing_ports_from_log(mitmdump_log, (proxy_port, web_port))
+            failing = failing_ports_from_log(mitmdump_log, (proxy_port, web_port))
             if failing is not None:
                 sup.terminate_all()
                 return LaunchBindFailureOutcome(

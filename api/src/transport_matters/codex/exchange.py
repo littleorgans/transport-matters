@@ -6,11 +6,11 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from transport_matters.codex.exchange_derivation import (
-    _advance_codex_derived_artifacts,
-    _clear_codex_breakpoint_lifecycle,
-    _replay_codex_derived_artifacts,
-    _supported_codex_derived_artifacts,
-    _updated_codex_exchange_artifacts,
+    advance_codex_derived_artifacts,
+    clear_codex_breakpoint_lifecycle,
+    replay_codex_derived_artifacts,
+    supported_codex_derived_artifacts,
+    updated_codex_exchange_artifacts,
 )
 from transport_matters.codex.transport import (
     build_codex_response_ir,
@@ -21,12 +21,12 @@ from transport_matters.codex.transport import (
 )
 from transport_matters.config import get_settings
 from transport_matters.exchange_recorder import (
-    _emit_exchange_deleted,
-    _persist_exchange,
-    _persist_track_assignment,
-    _persist_unparsed_exchange,
     build_request_artifacts,
     emit_exchange,
+    emit_exchange_deleted,
+    persist_exchange,
+    persist_track_assignment,
+    persist_unparsed_exchange,
 )
 from transport_matters.exchange_stats import (
     build_pipeline_stats,
@@ -74,7 +74,7 @@ def _codex_turn_index(state: Any | None) -> int:
     return allocation.turn_index if allocation is not None else 0
 
 
-async def _persist_codex_provisional_exchange(flow: http.HTTPFlow) -> str | None:
+async def persist_codex_provisional_exchange(flow: http.HTTPFlow) -> str | None:
     state = get_codex_transport_state(flow)
     request_state = get_request_flow_state(flow)
     if state is None or request_state is None:
@@ -99,7 +99,7 @@ async def _persist_codex_provisional_exchange(flow: http.HTTPFlow) -> str | None
     turn_index = _codex_turn_index(state)
     ts = datetime.now(UTC)
     derived = (
-        _replay_codex_derived_artifacts(
+        replay_codex_derived_artifacts(
             flow,
             exchange_id=exchange_id,
             request_state=request_state,
@@ -111,7 +111,7 @@ async def _persist_codex_provisional_exchange(flow: http.HTTPFlow) -> str | None
         else None
     )
     run_id = get_settings().run_id
-    track_assignment = _persist_track_assignment(
+    track_assignment = persist_track_assignment(
         run_id, request_state, None, exchange_id=exchange_id
     )
     entry = IndexEntry(
@@ -133,7 +133,7 @@ async def _persist_codex_provisional_exchange(flow: http.HTTPFlow) -> str | None
         events=derived.events if derived is not None else None,
         turn=derived.turn if derived is not None else None,
     )
-    if not await _persist_exchange(storage, entry, artifacts):
+    if not await persist_exchange(storage, entry, artifacts):
         return None
 
     state.provisional_exchange_id = exchange_id
@@ -154,11 +154,11 @@ async def _persist_codex_provisional_exchange(flow: http.HTTPFlow) -> str | None
     return exchange_id
 
 
-async def _delete_codex_provisional_exchange(flow: http.HTTPFlow) -> bool:
+async def delete_codex_provisional_exchange(flow: http.HTTPFlow) -> bool:
     state = get_codex_transport_state(flow)
     exchange_id = state.provisional_exchange_id if state is not None else None
     if exchange_id is None:
-        _clear_codex_breakpoint_lifecycle(flow)
+        clear_codex_breakpoint_lifecycle(flow)
         return True
 
     from transport_matters.storage import get_storage
@@ -174,8 +174,8 @@ async def _delete_codex_provisional_exchange(flow: http.HTTPFlow) -> bool:
         state.provisional_exchange_id = None
         state.finalized_exchange_id = None
         state.current_turn_allocation = None
-    _clear_codex_breakpoint_lifecycle(flow)
-    _emit_exchange_deleted(exchange_id, flow_id=flow.id)
+    clear_codex_breakpoint_lifecycle(flow)
+    emit_exchange_deleted(exchange_id, flow_id=flow.id)
     return True
 
 
@@ -218,7 +218,7 @@ async def _persist_codex_exchange(
     allocation = _codex_turn_allocation(state)
     turn_index = _codex_turn_index(state)
     derived = (
-        _replay_codex_derived_artifacts(
+        replay_codex_derived_artifacts(
             flow,
             exchange_id=exchange_id,
             request_state=request_state,
@@ -230,7 +230,7 @@ async def _persist_codex_exchange(
         else None
     )
     run_id = get_settings().run_id
-    track_assignment = _persist_track_assignment(
+    track_assignment = persist_track_assignment(
         run_id, request_state, res_ir, exchange_id=exchange_id
     )
     entry = IndexEntry(
@@ -254,7 +254,7 @@ async def _persist_codex_exchange(
         events=derived.events if derived is not None else None,
         turn=derived.turn if derived is not None else None,
     )
-    if not await _persist_exchange(storage, entry, artifacts):
+    if not await persist_exchange(storage, entry, artifacts):
         return False
 
     emit_exchange(
@@ -273,7 +273,7 @@ async def _persist_codex_exchange(
     return True
 
 
-async def _finalize_codex_provisional_exchange(
+async def finalize_codex_provisional_exchange(
     flow: http.HTTPFlow,
     summary: Any | None,
     *,
@@ -323,18 +323,18 @@ async def _finalize_codex_provisional_exchange(
     )
     pipeline_stats = build_pipeline_stats(request_state.audit)
 
-    existing_derived = _supported_codex_derived_artifacts(existing_artifacts)
+    existing_derived = supported_codex_derived_artifacts(existing_artifacts)
     derived: CodexDerivedTurnArtifacts | None
     if existing_derived is not None and existing_derived.turn.status != "open":
         derived = existing_derived
     elif existing_derived is not None:
-        derived = _advance_codex_derived_artifacts(
+        derived = advance_codex_derived_artifacts(
             existing_derived,
             exchange_id=exchange_id,
             transport=transport,
         )
         if derived is None:
-            derived = _replay_codex_derived_artifacts(
+            derived = replay_codex_derived_artifacts(
                 flow,
                 exchange_id=exchange_id,
                 request_state=request_state,
@@ -345,7 +345,7 @@ async def _finalize_codex_provisional_exchange(
     else:
         allocation = _codex_turn_allocation(state)
         turn_index = _codex_turn_index(state)
-        derived = _replay_codex_derived_artifacts(
+        derived = replay_codex_derived_artifacts(
             flow,
             exchange_id=exchange_id,
             request_state=request_state,
@@ -392,7 +392,7 @@ async def _finalize_codex_provisional_exchange(
             "mutated_manually": request_state.mutated_manually,
         }
     )
-    artifacts = _updated_codex_exchange_artifacts(
+    artifacts = updated_codex_exchange_artifacts(
         existing_artifacts,
         request_state=request_state,
         transport=transport,
@@ -483,7 +483,7 @@ def _codex_handshake_failure_ir(flow: http.HTTPFlow) -> InternalRequest:
     )
 
 
-async def _persist_codex_handshake_failure(flow: http.HTTPFlow) -> None:
+async def persist_codex_handshake_failure(flow: http.HTTPFlow) -> None:
     response = getattr(flow, "response", None)
     if response is None or getattr(response, "status_code", None) == 101:
         return
@@ -523,7 +523,7 @@ async def _persist_codex_handshake_failure(flow: http.HTTPFlow) -> None:
         response_raw=response_raw,
         transport=transport,
     )
-    if not await _persist_exchange(storage, entry, artifacts):
+    if not await persist_exchange(storage, entry, artifacts):
         return
 
     emit_exchange(
@@ -537,7 +537,7 @@ async def _persist_codex_handshake_failure(flow: http.HTTPFlow) -> None:
     )
 
 
-async def _persist_unparsed_codex_exchange(
+async def persist_unparsed_codex_exchange(
     flow: http.HTTPFlow,
     raw_frame: bytes,
 ) -> None:
@@ -548,4 +548,4 @@ async def _persist_unparsed_codex_exchange(
     """
     if not raw_frame:
         return
-    await _persist_unparsed_exchange(flow, raw_frame, "codex")
+    await persist_unparsed_exchange(flow, raw_frame, "codex")

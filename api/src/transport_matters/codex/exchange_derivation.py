@@ -27,8 +27,8 @@ from transport_matters.codex.transport import (
     get_codex_transport_state,
 )
 from transport_matters.exchange_recorder import (
-    _persistable_curated_ir,
     emit_exchange,
+    persistable_curated_ir,
 )
 from transport_matters.exchange_stats import build_pipeline_stats, build_req_stats
 from transport_matters.flow_state import get_request_flow_state
@@ -49,12 +49,12 @@ _CODEX_BREAKPOINT_PAUSED_AT_MS_KEY = "transport_matters_codex_breakpoint_paused_
 _CODEX_BREAKPOINT_RELEASED_AT_MS_KEY = "transport_matters_codex_breakpoint_released_at_ms"
 
 
-def _clear_codex_breakpoint_lifecycle(flow: http.HTTPFlow) -> None:
+def clear_codex_breakpoint_lifecycle(flow: http.HTTPFlow) -> None:
     flow.metadata.pop(_CODEX_BREAKPOINT_PAUSED_AT_MS_KEY, None)
     flow.metadata.pop(_CODEX_BREAKPOINT_RELEASED_AT_MS_KEY, None)
 
 
-def _record_codex_breakpoint_release(
+def record_codex_breakpoint_release(
     flow: http.HTTPFlow,
     *,
     paused_at_ms: int,
@@ -64,7 +64,7 @@ def _record_codex_breakpoint_release(
     flow.metadata[_CODEX_BREAKPOINT_RELEASED_AT_MS_KEY] = released_at_ms
 
 
-def _supported_codex_derived_artifacts(
+def supported_codex_derived_artifacts(
     artifacts: ExchangeArtifacts,
 ) -> CodexDerivedTurnArtifacts | None:
     if artifacts.events is None or artifacts.turn is None:
@@ -220,7 +220,7 @@ def _codex_turn_context(
     )
 
 
-def _replay_codex_derived_artifacts(
+def replay_codex_derived_artifacts(
     flow: http.HTTPFlow,
     *,
     exchange_id: str,
@@ -260,7 +260,7 @@ def _replay_codex_derived_artifacts(
     )
 
 
-def _advance_codex_derived_artifacts(
+def advance_codex_derived_artifacts(
     artifacts: CodexDerivedTurnArtifacts,
     *,
     exchange_id: str,
@@ -303,7 +303,7 @@ def _advance_codex_derived_artifacts(
     )
 
 
-def _updated_codex_exchange_artifacts(
+def updated_codex_exchange_artifacts(
     existing_artifacts: ExchangeArtifacts,
     *,
     request_state: Any,
@@ -320,7 +320,7 @@ def _updated_codex_exchange_artifacts(
                 request_state.request_ir,
                 request_state.curated_request_ir,
             ),
-            "request_curated_ir": _persistable_curated_ir(
+            "request_curated_ir": persistable_curated_ir(
                 request_state.curated_request_ir,
                 request_state.request_ir,
             ),
@@ -349,7 +349,7 @@ def _updated_codex_provisional_entry(
     )
 
 
-async def _rewrite_codex_provisional_exchange(
+async def rewrite_codex_provisional_exchange(
     flow: http.HTTPFlow,
     *,
     force_replay: bool = False,
@@ -372,12 +372,12 @@ async def _rewrite_codex_provisional_exchange(
         if transport is None:
             return False
 
-        derived = _supported_codex_derived_artifacts(existing_artifacts)
+        derived = supported_codex_derived_artifacts(existing_artifacts)
         if force_replay or derived is None:
             allocation = state.current_turn_allocation
             turn_index = allocation.turn_index if allocation is not None else 0
             existing_turn = derived.turn if derived is not None else None
-            replayed = _replay_codex_derived_artifacts(
+            replayed = replay_codex_derived_artifacts(
                 flow,
                 exchange_id=exchange_id,
                 request_state=request_state,
@@ -390,13 +390,13 @@ async def _rewrite_codex_provisional_exchange(
                 return False
             derived = replayed
         else:
-            advanced = _advance_codex_derived_artifacts(
+            advanced = advance_codex_derived_artifacts(
                 derived,
                 exchange_id=exchange_id,
                 transport=transport,
             )
             if advanced is None:
-                replayed = _replay_codex_derived_artifacts(
+                replayed = replay_codex_derived_artifacts(
                     flow,
                     exchange_id=exchange_id,
                     request_state=request_state,
@@ -418,7 +418,7 @@ async def _rewrite_codex_provisional_exchange(
         )
         await storage.persist_exchange(
             updated_entry,
-            _updated_codex_exchange_artifacts(
+            updated_codex_exchange_artifacts(
                 existing_artifacts,
                 request_state=request_state,
                 transport=transport,

@@ -205,7 +205,7 @@ def test_pty_shuttle_forwards_both_directions(
 ) -> None:
     import threading as _threading
 
-    from transport_matters.supervisor import _pty_shuttle
+    from transport_matters.supervisor import pty_shuttle
 
     stdin_fd = 0
     stdout_fd = 1
@@ -241,7 +241,7 @@ def test_pty_shuttle_forwards_both_directions(
     monkeypatch.setattr("transport_matters.supervisor.os.read", _fake_read)
     monkeypatch.setattr("transport_matters.supervisor.os.write", _fake_write)
 
-    _pty_shuttle(stdin_fd, stdout_fd, master_fd, stop_event)
+    pty_shuttle(stdin_fd, stdout_fd, master_fd, stop_event)
 
     assert (master_fd, b"keystroke") in writes
     assert (stdout_fd, b"echo") in writes
@@ -252,7 +252,7 @@ def test_pty_shuttle_forwards_both_directions(
 def test_pty_shuttle_exits_on_stop_event(monkeypatch: pytest.MonkeyPatch) -> None:
     import threading as _threading
 
-    from transport_matters.supervisor import _pty_shuttle
+    from transport_matters.supervisor import pty_shuttle
 
     stop_event = _threading.Event()
     select_calls = 0
@@ -272,7 +272,7 @@ def test_pty_shuttle_exits_on_stop_event(monkeypatch: pytest.MonkeyPatch) -> Non
         lambda *_a: pytest.fail("shuttle read() with stop event set"),
     )
 
-    _pty_shuttle(0, 1, 77, stop_event)
+    pty_shuttle(0, 1, 77, stop_event)
     assert stop_event.is_set()
 
 
@@ -280,14 +280,14 @@ def test_parent_cbreak_preserves_return_for_raw_child() -> None:
     import os
     import pty
 
-    from transport_matters.supervisor import _install_parent_cbreak
+    from transport_matters.supervisor import install_parent_cbreak
 
     parent_master, parent_slave = pty.openpty()
     child_master, child_slave = pty.openpty()
     parent_old: list[Any] | None = None
     child_old: list[Any] | None = None
     try:
-        parent_old = _install_parent_cbreak(parent_slave)
+        parent_old = install_parent_cbreak(parent_slave)
 
         child_old = termios.tcgetattr(child_slave)
         child_new = list(child_old)

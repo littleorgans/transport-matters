@@ -50,7 +50,7 @@ async def test_persist_unparsed_codex_exchange_records_raw_and_version() -> None
     )
     events = broadcast.subscribe()
 
-    await codex_exchange._persist_unparsed_codex_exchange(flow, raw)
+    await codex_exchange.persist_unparsed_codex_exchange(flow, raw)
 
     storage = await get_storage()
     entries = await storage.read_index(limit=10, offset=0)
@@ -75,7 +75,7 @@ async def test_persist_unparsed_codex_exchange_records_raw_and_version() -> None
 async def test_persist_unparsed_codex_exchange_skips_when_frame_missing() -> None:
     flow = cast("http.HTTPFlow", _Flow({}))
 
-    await codex_exchange._persist_unparsed_codex_exchange(flow, b"")
+    await codex_exchange.persist_unparsed_codex_exchange(flow, b"")
 
     storage = await get_storage()
     assert await storage.read_index(limit=10, offset=0) == []
@@ -91,9 +91,9 @@ async def test_persist_unparsed_codex_exchange_is_exception_safe(
 
     # The codex helper delegates to the shared recorder, so the persistence
     # call resolves in exchange_recorder's namespace.
-    monkeypatch.setattr("transport_matters.exchange_recorder._persist_exchange", boom)
+    monkeypatch.setattr("transport_matters.exchange_recorder.persist_exchange", boom)
 
-    await codex_exchange._persist_unparsed_codex_exchange(flow, b"{}")
+    await codex_exchange.persist_unparsed_codex_exchange(flow, b"{}")
 
     storage = await get_storage()
     assert await storage.read_index(limit=10, offset=0) == []

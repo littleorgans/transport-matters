@@ -32,13 +32,13 @@ async def test_codex_http_derivation_receives_request_header_snapshot(
     fresh_state = _make_codex_state()
     cast("_Flow", flow).response = _Response(_make_response_body())
 
-    persisted = await recorder._persist_http_exchange(flow, fresh_state, None)
+    persisted = await recorder.persist_http_exchange(flow, fresh_state, None)
 
     assert persisted is True
     assert calls[0]["request_headers"] == fresh_state.codex_request_headers
 
     provisional_state = _make_codex_state()
-    exchange_id = await recorder._persist_http_provisional_exchange(flow, provisional_state)
+    exchange_id = await recorder.persist_http_provisional_exchange(flow, provisional_state)
     assert exchange_id is not None
     provisional_state.provisional_exchange_id = exchange_id
 

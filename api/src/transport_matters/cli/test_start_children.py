@@ -26,7 +26,7 @@ def test_start_calls_run_client_children_with_claude_client(
         "transport_matters.cli.shutil.which",
         _which_by_name({"mitmdump": "/bin/mitmdump", "claude": "/bin/claude"}),
     )
-    monkeypatch.setattr("transport_matters.cli._port_in_use", lambda _: False)
+    monkeypatch.setattr("transport_matters.cli.port_in_use", lambda _: False)
 
     workdir = tmp_path / "project"
     workdir.mkdir()
@@ -59,7 +59,7 @@ def test_start_sanitizes_managed_claude_env(
         "transport_matters.cli.shutil.which",
         _which_by_name({"mitmdump": "/bin/mitmdump", "claude": "/bin/claude"}),
     )
-    monkeypatch.setattr("transport_matters.cli._port_in_use", lambda _: False)
+    monkeypatch.setattr("transport_matters.cli.port_in_use", lambda _: False)
     monkeypatch.setenv("HTTP_PROXY", "http://corp-proxy:8080")
     monkeypatch.setenv("HTTPS_PROXY", "http://corp-proxy:8080")
     monkeypatch.setenv("ALL_PROXY", "socks5://corp-proxy:1080")
@@ -99,7 +99,7 @@ def test_start_no_claude_passes_none_client(
     spy_run_client_children: MagicMock,
 ) -> None:
     monkeypatch.setattr("transport_matters.cli.shutil.which", _which_all())
-    monkeypatch.setattr("transport_matters.cli._port_in_use", lambda _: False)
+    monkeypatch.setattr("transport_matters.cli.port_in_use", lambda _: False)
 
     result = runner.invoke(main, ["claude", "--no-claude"])
     assert result.exit_code == 0, result.output

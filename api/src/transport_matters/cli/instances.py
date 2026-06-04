@@ -21,7 +21,7 @@ from .identity import PRODUCT_LABEL
 if TYPE_CHECKING:
     from pathlib import Path
 
-__all__ = ["_list_instances"]
+__all__ = ["list_instances"]
 
 
 _TABLE_HEADERS: tuple[str, ...] = (
@@ -39,7 +39,7 @@ _TABLE_HEADERS: tuple[str, ...] = (
 _RUN_ID_DISPLAY_LEN = 8
 
 
-def _list_instances(*, as_json: bool) -> None:
+def list_instances(*, as_json: bool) -> None:
     """Body of ``transport-matters list``.
 
     Scans ``~/.transport-matters/workspaces/``, probes each manifest's lock via

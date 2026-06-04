@@ -42,7 +42,7 @@ def test_start_dynamic_ports_appear_in_print_command(
         "transport_matters.cli.shutil.which",
         _which_by_name({"mitmdump": "/bin/mitmdump", "claude": "/bin/claude"}),
     )
-    monkeypatch.setattr("transport_matters.cli._port_in_use", lambda _: False)
+    monkeypatch.setattr("transport_matters.cli.port_in_use", lambda _: False)
     monkeypatch.setattr(
         "transport_matters.cli.allocate_port_pair", lambda *_a, **_k: (54321, 54322)
     )
@@ -68,7 +68,7 @@ def test_start_explicit_proxy_port_overrides_allocation(
         "transport_matters.cli.shutil.which",
         _which_by_name({"mitmdump": "/bin/mitmdump", "claude": "/bin/claude"}),
     )
-    monkeypatch.setattr("transport_matters.cli._port_in_use", lambda _: False)
+    monkeypatch.setattr("transport_matters.cli.port_in_use", lambda _: False)
 
     sentinel = MagicMock(return_value=(11111, 22222))
     monkeypatch.setattr("transport_matters.cli.allocate_port_pair", sentinel)
@@ -145,7 +145,7 @@ def test_start_injects_system_prompt_by_default(
         "transport_matters.cli.shutil.which",
         _which_by_name({"mitmdump": "/bin/mitmdump", "claude": "/bin/claude"}),
     )
-    monkeypatch.setattr("transport_matters.cli._port_in_use", lambda _: False)
+    monkeypatch.setattr("transport_matters.cli.port_in_use", lambda _: False)
 
     result = runner.invoke(main, ["claude", "--proxy-port", "9000", "--web-port", "9001"])
     assert result.exit_code == 0, result.output
@@ -170,7 +170,7 @@ def test_start_no_system_prompt_skips_injection(
         "transport_matters.cli.shutil.which",
         _which_by_name({"mitmdump": "/bin/mitmdump", "claude": "/bin/claude"}),
     )
-    monkeypatch.setattr("transport_matters.cli._port_in_use", lambda _: False)
+    monkeypatch.setattr("transport_matters.cli.port_in_use", lambda _: False)
 
     result = runner.invoke(main, ["claude", "--no-system-prompt"])
     assert result.exit_code == 0, result.output
@@ -191,7 +191,7 @@ def test_start_user_supplied_system_prompt_wins(
         "transport_matters.cli.shutil.which",
         _which_by_name({"mitmdump": "/bin/mitmdump", "claude": "/bin/claude"}),
     )
-    monkeypatch.setattr("transport_matters.cli._port_in_use", lambda _: False)
+    monkeypatch.setattr("transport_matters.cli.port_in_use", lambda _: False)
 
     result = runner.invoke(main, ["claude", "--", "--system-prompt", "you are X"])
     assert result.exit_code == 0, result.output
@@ -215,7 +215,7 @@ def test_start_user_supplied_append_system_prompt_wins(
         "transport_matters.cli.shutil.which",
         _which_by_name({"mitmdump": "/bin/mitmdump", "claude": "/bin/claude"}),
     )
-    monkeypatch.setattr("transport_matters.cli._port_in_use", lambda _: False)
+    monkeypatch.setattr("transport_matters.cli.port_in_use", lambda _: False)
 
     result = runner.invoke(
         main,
@@ -252,7 +252,7 @@ def test_start_retries_after_bind_failure_then_succeeds(
         "transport_matters.cli.shutil.which",
         _which_by_name({"mitmdump": "/bin/mitmdump", "claude": "/bin/claude"}),
     )
-    monkeypatch.setattr("transport_matters.cli._port_in_use", lambda _: False)
+    monkeypatch.setattr("transport_matters.cli.port_in_use", lambda _: False)
     drawn = _patch_allocate_pairs(monkeypatch, [(54321, 54322), (60001, 60002)])
 
     log_path = tmp_path / "mitmdump.log"
@@ -296,7 +296,7 @@ def test_start_exhausts_retry_budget_with_actionable_message(
         "transport_matters.cli.shutil.which",
         _which_by_name({"mitmdump": "/bin/mitmdump", "claude": "/bin/claude"}),
     )
-    monkeypatch.setattr("transport_matters.cli._port_in_use", lambda _: False)
+    monkeypatch.setattr("transport_matters.cli.port_in_use", lambda _: False)
     drawn = _patch_allocate_pairs(
         monkeypatch,
         [(54321, 54322), (60001, 60002), (60003, 60004)],
@@ -344,7 +344,7 @@ def test_start_exhaustion_message_highlights_pinned_flag(
         "transport_matters.cli.shutil.which",
         _which_by_name({"mitmdump": "/bin/mitmdump", "claude": "/bin/claude"}),
     )
-    monkeypatch.setattr("transport_matters.cli._port_in_use", lambda _: False)
+    monkeypatch.setattr("transport_matters.cli.port_in_use", lambda _: False)
     # User pins web=9001. The proxy slot still draws from the allocator
     # initially, then the retry path re-allocates a fresh proxy each
     # time (web stays pinned because the user chose it).
@@ -405,7 +405,7 @@ def test_start_does_not_retry_when_pinned_port_is_in_use(
         "transport_matters.cli.shutil.which",
         _which_by_name({"mitmdump": "/bin/mitmdump", "claude": "/bin/claude"}),
     )
-    monkeypatch.setattr("transport_matters.cli._port_in_use", lambda _: False)
+    monkeypatch.setattr("transport_matters.cli.port_in_use", lambda _: False)
     # Web port is unpinned, so the initial allocation still draws a pair
     # (the proxy half is discarded because the user pinned 9000).
     drawn = _patch_allocate_pairs(monkeypatch, [(50000, 60000)])
@@ -429,7 +429,7 @@ def test_start_does_not_retry_when_pinned_port_is_in_use(
     assert result.exit_code == 2
     # Exactly one spawn attempt: no retry on a pinned-port conflict.
     assert spy_run_client_children.call_count == 1
-    # Initial allocation only — `_handle_bind_failure` short-circuits
+    # Initial allocation only — `handle_bind_failure` short-circuits
     # before re-allocating when the failure is pinned.
     assert drawn == [(50000, 60000)]
     # Message names the offending flag + value and points at recovery.

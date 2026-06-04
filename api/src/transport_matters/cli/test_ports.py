@@ -15,7 +15,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from transport_matters.cli.ports import (
-    _DEFAULT_ATTEMPTS,
+    DEFAULT_ATTEMPTS,
     PortAllocationError,
     allocate_port_pair,
 )
@@ -192,4 +192,4 @@ def test_default_attempt_count() -> None:
     Stops a future regression where someone tweaks the default at the
     function signature and forgets the docstring rationale.
     """
-    assert _DEFAULT_ATTEMPTS == 3
+    assert DEFAULT_ATTEMPTS == 3

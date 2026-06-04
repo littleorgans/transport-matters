@@ -50,11 +50,11 @@ async def test_persist_http_exchange_deletes_when_request_state_dropped(
     ) -> bool:
         raise AssertionError("drop path must not create a fallback exchange")
 
-    monkeypatch.setattr(recorder, "_delete_http_provisional_exchange", fake_delete)
+    monkeypatch.setattr(recorder, "delete_http_provisional_exchange", fake_delete)
     monkeypatch.setattr(recorder, "_finalize_http_provisional_exchange", fail_finalize)
-    monkeypatch.setattr(recorder, "_persist_exchange", fail_persist)
+    monkeypatch.setattr(recorder, "persist_exchange", fail_persist)
 
-    persisted = await recorder._persist_http_exchange(flow, state, None)
+    persisted = await recorder.persist_http_exchange(flow, state, None)
 
     assert persisted is True
     assert calls == [(flow, state)]
@@ -83,10 +83,10 @@ async def test_persist_http_exchange_drop_without_provisional_skips_fallback(
     ) -> bool:
         raise AssertionError("drop path must not create a fallback exchange")
 
-    monkeypatch.setattr(recorder, "_delete_http_provisional_exchange", fake_delete)
-    monkeypatch.setattr(recorder, "_persist_exchange", fail_persist)
+    monkeypatch.setattr(recorder, "delete_http_provisional_exchange", fake_delete)
+    monkeypatch.setattr(recorder, "persist_exchange", fail_persist)
 
-    persisted = await recorder._persist_http_exchange(flow, state, None)
+    persisted = await recorder.persist_http_exchange(flow, state, None)
 
     assert persisted is True
     assert calls == [(flow, state)]
@@ -117,9 +117,9 @@ async def test_persist_http_exchange_finalizes_existing_provisional(
         raise AssertionError("finalized provisional must not create duplicate row")
 
     monkeypatch.setattr(recorder, "_finalize_http_provisional_exchange", fake_finalize)
-    monkeypatch.setattr(recorder, "_persist_exchange", fail_persist)
+    monkeypatch.setattr(recorder, "persist_exchange", fail_persist)
 
-    persisted = await recorder._persist_http_exchange(flow, state, counter)
+    persisted = await recorder.persist_http_exchange(flow, state, counter)
 
     assert persisted is True
     assert calls == [(flow, state, counter)]
@@ -143,7 +143,7 @@ async def test_persist_http_exchange_falls_back_when_finalize_misses_record(
 
     monkeypatch.setattr(recorder, "_finalize_http_provisional_exchange", fake_finalize)
 
-    persisted = await recorder._persist_http_exchange(flow, state, None)
+    persisted = await recorder.persist_http_exchange(flow, state, None)
 
     assert persisted is True
     assert calls == [(flow, state, None)]

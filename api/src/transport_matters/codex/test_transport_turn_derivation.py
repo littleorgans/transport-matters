@@ -66,11 +66,11 @@ async def test_addon_websocket_message_preserves_open_sidecars_when_derivation_f
     with (
         caplog.at_level(logging.WARNING, logger="transport_matters.codex.exchange"),
         patch(
-            "transport_matters.codex.exchange._advance_codex_derived_artifacts",
+            "transport_matters.codex.exchange.advance_codex_derived_artifacts",
             return_value=None,
         ),
         patch(
-            "transport_matters.codex.exchange._replay_codex_derived_artifacts",
+            "transport_matters.codex.exchange.replay_codex_derived_artifacts",
             return_value=None,
         ),
     ):

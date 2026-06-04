@@ -316,7 +316,7 @@ async def test_http_response_hook_finalizes_same_exchange_and_observes_response(
         return None
 
     monkeypatch.setattr(
-        "transport_matters.exchange_recorder._persist_track_assignment",
+        "transport_matters.exchange_recorder.persist_track_assignment",
         fake_track_assignment,
     )
     state, exchange_id, _ = await _request_pending(flow, monkeypatch)
@@ -490,7 +490,7 @@ async def test_http_response_hook_falls_back_when_provisional_emit_failed(
 
     monkeypatch.setattr(
         addon_handlers,
-        "_persist_http_provisional_exchange",
+        "persist_http_provisional_exchange",
         fake_persist,
     )
 
@@ -535,7 +535,7 @@ async def test_http_create_fresh_synthesizes_error_stats_when_provisional_missin
 
     monkeypatch.setattr(
         addon_handlers,
-        "_persist_http_provisional_exchange",
+        "persist_http_provisional_exchange",
         fake_persist,
     )
 
