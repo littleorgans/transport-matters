@@ -3,6 +3,12 @@ from typing import TYPE_CHECKING, Any, cast
 import pytest
 
 from transport_matters import exchange_recorder as recorder
+from transport_matters._exchange_recorder_http_support import (
+    _Flow,
+    _make_codex_state,
+    _make_response_body,
+    _Response,
+)
 from transport_matters.api.v1.exchanges import get_exchange
 from transport_matters.codex.derivation_contract import CodexDerivedTurnArtifacts
 from transport_matters.codex.test_derivation_support import (
@@ -10,12 +16,6 @@ from transport_matters.codex.test_derivation_support import (
     make_event,
 )
 from transport_matters.storage import CodexTurnListSummary, get_storage
-from transport_matters.test_exchange_recorder_http_provisional import (
-    _Flow,
-    _make_codex_state,
-    _make_response_body,
-    _Response,
-)
 from transport_matters.test_exchange_recorder_support import (
     reset_exchange_recorder_runtime_state,
 )
