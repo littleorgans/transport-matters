@@ -1,0 +1,142 @@
+"""The transcript adapter port (§4): the ABC + the frozen dataclasses every CLI maps onto.
+
+Adapters are the transcript-side anti-corruption layer. They import **only** ``ir`` (and stdlib)
+so a transcript ``text``/``tool_use``/``tool_result``/``thinking``/``image`` is the *same*
+``ir.ContentBlock`` the wire side emits — which is what makes ``identity_canonical`` (§3.3) hash
+identical content identically across both streams (the cross-stream dedup linchpin, §4.1.3).
+
+``SessionBinding`` is the **single canonical** session contract: slices 1/2 staged a copy in
+``index/sessions.py``; this is now the one definition (DRY). It maps 1:1 to the §3 ``session``
+row. ``session_id`` is already RESOLVED by the binder (claude/anthropic use the native id
+directly — no proxy mint yet; codex synthesizes), so there is no separate resolve step.
+"""
+
+from abc import ABC, abstractmethod
+from typing import Annotated, Any, ClassVar, Literal  # Any: native records are provider JSON
+
+from pydantic import BaseModel, ConfigDict, Field
+
+from transport_matters.ir import ContentBlock
+
+RawRecord = dict[str, Any]  # Any: one parsed native transcript record (jsonl line / db-row JSON)
+
+
+class SessionBinding(BaseModel):
+    """The resolved session_id and how it was derived. Maps 1:1 to the §3 ``session`` row."""
+
+    model_config = ConfigDict(frozen=True)
+
+    session_id: str  # universal correlation key (§2); session PK (resolved by the binder)
+    provider: str  # wire family: anthropic | codex | gemini | opencode
+    run_id: str
+    cwd: str
+    workspace_slug: str
+    workspace_hash: str
+    started_at: str  # ISO-8601
+    cli: str | None = None  # harness: claude | codex | ...; nullable until the launcher plumbs it
+    native_session_id: str | None = None  # provider native id (for the §3.4 partial-unique guard)
+    minted: bool = False  # True = we minted via --session-id (deferred); False = native / read-back
+    source_descriptor: str | None = (
+        None  # JSON locating the transcript source (set in §7.3, slice 4b)
+    )
+
+
+class FileTailSource(BaseModel):
+    """Line-addressable transcript on disk (claude/codex/gemini). Live-tail = file-watch + offset (§9)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    kind: Literal["file_tail"] = "file_tail"
+    path: str  # absolute jsonl path → transcript_turn.source_path
+    format: str  # claude_jsonl | codex_rollout | gemini_session | gemini_checkpoint
+    encoding: str = "utf-8"
+
+
+class PullSource(BaseModel):
+    """Non-line-addressable transcript pulled via API/export/db (opencode). Live-tail = poll (§9)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    kind: Literal["pull"] = "pull"
+    ref: str  # session ref (opencode ses_ id) → transcript_turn.source_path stem
+    mechanism: str  # opencode_export | opencode_db
+    command: list[str] | None = (
+        None  # e.g. ["opencode", "export", "<ses_id>"]; None for direct db read
+    )
+
+
+TranscriptSource = Annotated[FileTailSource | PullSource, Field(discriminator="kind")]
+
+
+class RunContext(BaseModel):
+    """Input to ``bind()``: per-run facts the adapter needs."""
+
+    model_config = ConfigDict(frozen=True)
+
+    run_id: str
+    cwd: str
+    workspace_slug: str
+    workspace_hash: str
+    cli: str
+    started_at: str
+    native_session_id: str | None = None  # read-back input: native id learned from the wire / db
+
+
+class TurnContext(BaseModel):
+    """Input to ``normalize()``: the bound session + this record's position. Keeps normalize pure."""
+
+    model_config = ConfigDict(frozen=True)
+
+    binding: SessionBinding
+    source_path: str
+    seq: int  # caller-assigned positional order within session
+    source_line: int | None = None  # line offset for file_tail; None for pull
+    parent_id: str | None = (
+        None  # previous emitted turn_id, when the format has no native parent link
+    )
+    model: str | None = None  # threaded model when not on the record
+    pending_calls: dict[str, str] | None = (
+        None  # iterator-maintained cross-record tool pairing (§5.3)
+    )
+
+
+class NormalizedTurn(BaseModel):
+    """One harness turn → a §3 ``transcript_turn`` row; ``parts`` → ``turn_block`` edges + blocks."""
+
+    model_config = ConfigDict(frozen=True)
+
+    turn_id: str  # PK: native id, or uuid5(SESSION_NS, f"{session_id}|{seq}")
+    session_id: str  # NOT NULL (a turn only exists under a bound session)
+    run_id: str
+    provider: str
+    cli: str
+    role: str  # user | assistant | system | tool
+    seq: int
+    is_sidechain: bool
+    parent_id: str | None = None  # DAG parent (claude parentUuid); None at root
+    ts: str | None = None  # per-turn ISO-8601 where available
+    model: str | None = None
+    source_path: str = ""  # tier-1 transcript source
+    source_line: int | None = None  # line offset where line-addressable
+    parts: list[ContentBlock] = Field(default_factory=list)  # ir union; each part → block + edge
+
+
+class TranscriptAdapter(ABC):
+    """Transcript-side anti-corruption layer. One concrete subclass per CLI (§5), registered by ``cli``."""
+
+    provider: ClassVar[str]
+    cli: ClassVar[str]
+
+    @abstractmethod
+    async def bind(self, run: RunContext) -> SessionBinding:
+        """Establish the session_id (the correlation key). claude: native id used directly,
+        minted=False (no proxy --session-id mint yet); codex: read-back synth (§3.4)."""
+
+    @abstractmethod
+    async def locate(self, binding: SessionBinding) -> TranscriptSource:
+        """Resolve where the transcript lives (a deterministic path for claude, glob/db for read-back)."""
+
+    @abstractmethod
+    def normalize(self, record: RawRecord, ctx: TurnContext) -> NormalizedTurn | None:
+        """Pure: map ONE native record to a turn, or None to skip a non-conversational record.
+        Prefer native fields (id, parentUuid, role, ts); fall back to ctx (seq, parent_id, model)."""

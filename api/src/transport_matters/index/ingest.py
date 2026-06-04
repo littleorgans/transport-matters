@@ -13,8 +13,9 @@ scan — ``raw_dir`` is a pure path computation), and the sink only does a non-b
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from transport_matters.index.adapters.base import SessionBinding
 from transport_matters.index.blocks import upsert_block
-from transport_matters.index.sessions import SessionBinding, resolve_session_id, upsert_session
+from transport_matters.index.sessions import synth_session_id, upsert_session
 from transport_matters.index.writer import IndexJob
 from transport_matters.storage.disk_layout import DiskStorageLayout
 from transport_matters.workspace import workspace_id
@@ -23,6 +24,7 @@ if TYPE_CHECKING:
     import sqlite3
     from pathlib import Path
 
+    from transport_matters.index.adapters.base import NormalizedTurn
     from transport_matters.index.blocks import IndexablePart
     from transport_matters.index.writer import IndexWriter
     from transport_matters.storage.base import ExchangeArtifacts, IndexEntry
@@ -75,16 +77,24 @@ def bind_exchange(
     """Resolve this exchange's ``SessionBinding`` (the FK-parent session), or ``None``.
 
     The correlation id is the wire-observed ``RequestMetadata.session_id`` — an INPUT only,
-    never written to ``wire_exchange.session_id`` verbatim: it is routed through a
-    ``SessionBinding`` (minted-authoritative or read-back synth, §3.4). Absent correlation id
-    or run id → ``None`` (``wire_exchange.session_id`` stays NULL; a later correlation upsert
+    routed through the canonical ``SessionBinding`` (§4.2). anthropic/gemini use the native id
+    DIRECTLY as the session_id (== claude's transcript ``sessionId`` — the HARD-GATE correlation
+    linchpin; no proxy ``--session-id`` mint yet); read-back providers synth a stable PK (§3.4).
+    ``minted=False`` and ``native_session_id`` is always the raw id. Absent correlation id or
+    run id → ``None`` (``wire_exchange.session_id`` stays NULL; a later correlation upsert
     backfills it).
     """
     correlation_id = artifacts.request_ir.metadata.session_id
     if correlation_id is None or run_facts.run_id is None:
         return None
     readback = entry.provider in _READBACK_PROVIDERS
+    session_id = (
+        synth_session_id(run_facts.run_id, entry.provider, correlation_id)
+        if readback
+        else correlation_id
+    )
     return SessionBinding(
+        session_id=session_id,
         provider=entry.provider,
         run_id=run_facts.run_id,
         cwd=str(run_facts.cwd) if run_facts.cwd is not None else "",
@@ -92,8 +102,8 @@ def bind_exchange(
         workspace_hash=run_facts.workspace_hash,
         started_at=run_facts.started_at,
         cli=run_facts.cli,
-        native_session_id=correlation_id if readback else None,
-        minted_session_id=None if readback else correlation_id,
+        native_session_id=correlation_id,
+        minted=False,
     )
 
 
@@ -106,7 +116,7 @@ def build_wire_job(
     accounting — DRY, §7.2); token counts from ``ResStats``; ``raw_dir`` is a tier-1 pointer
     only. The writer applies the closure in a batch (§6.3).
     """
-    session_id = resolve_session_id(binding) if binding is not None else None
+    session_id = binding.session_id if binding is not None else None
     res = entry.res
     row = _WireRow(
         exchange_id=entry.id,
@@ -261,4 +271,75 @@ ON CONFLICT(exchange_id) DO UPDATE SET
     mutated_manually   = excluded.mutated_manually,
     raw_dir            = excluded.raw_dir,
     seq                = COALESCE(wire_exchange.seq, excluded.seq)
+"""
+
+
+def build_transcript_job(turn: NormalizedTurn, binding: SessionBinding) -> IndexJob:
+    """Map a NormalizedTurn + its SessionBinding to a transcript ``IndexJob`` (§7.3).
+
+    The binding supplies the FK-parent ``session`` row; the turn supplies everything else. ``parts``
+    are ``ir.ContentBlock``s, so identical content dedups to the same ``block.hash`` as the wire
+    side — which is what makes the §8.4 pivot/diff exact.
+    """
+
+    def apply(conn: sqlite3.Connection) -> None:
+        _write_transcript(conn, binding, turn)
+
+    return IndexJob(kind="transcript", entity_id=turn.turn_id, run_id=turn.run_id, apply=apply)
+
+
+def _write_transcript(
+    conn: sqlite3.Connection, binding: SessionBinding, turn: NormalizedTurn
+) -> None:
+    """Apply one transcript turn in its SAVEPOINT: session → transcript_turn → turn_block edges.
+
+    Idempotent (§3.7): upsert by ``turn_id`` PK; edges deleted then re-inserted. A transcript turn
+    carries ONE role, so every edge takes the turn's role (§4.3).
+    """
+    upsert_session(conn, binding)
+    conn.execute(
+        _TRANSCRIPT_UPSERT,
+        (
+            turn.turn_id,
+            turn.session_id,
+            turn.run_id,
+            turn.provider,
+            turn.cli,
+            turn.parent_id,
+            turn.role,
+            turn.seq,
+            turn.ts,
+            1 if turn.is_sidechain else 0,
+            turn.model,
+            turn.source_path,
+            turn.source_line,
+        ),
+    )
+    conn.execute("DELETE FROM turn_block WHERE turn_id = ?", (turn.turn_id,))
+    for pos, part in enumerate(turn.parts):
+        block_id = upsert_block(conn, part)
+        conn.execute(
+            "INSERT INTO turn_block (turn_id, pos, block_id, role) VALUES (?, ?, ?, ?)",
+            (turn.turn_id, pos, block_id, turn.role),
+        )
+
+
+_TRANSCRIPT_UPSERT = """
+INSERT INTO transcript_turn (
+    turn_id, session_id, run_id, provider, cli, parent_id, role, seq, ts, is_sidechain,
+    model, source_path, source_line
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(turn_id) DO UPDATE SET
+    session_id   = excluded.session_id,
+    run_id       = excluded.run_id,
+    provider     = excluded.provider,
+    cli          = excluded.cli,
+    parent_id    = excluded.parent_id,
+    role         = excluded.role,
+    seq          = excluded.seq,
+    ts           = excluded.ts,
+    is_sidechain = excluded.is_sidechain,
+    model        = excluded.model,
+    source_path  = excluded.source_path,
+    source_line  = excluded.source_line
 """
