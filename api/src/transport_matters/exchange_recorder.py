@@ -35,6 +35,7 @@ from transport_matters.storage import (
 )
 from transport_matters.storage.base import ExchangeArtifacts, StorageBackend
 from transport_matters.storage.disk_layout import DiskStorageLayout
+from transport_matters.storage.exchange_sink import emit_to_index
 from transport_matters.track_manager import (
     TrackAssignment,
     assignment_index_fields,
@@ -261,6 +262,10 @@ async def persist_http_exchange(
     if not await persist_exchange(storage, entry, artifacts):
         return False
 
+    # Tier-1 persisted (durable) — hand the exchange to the injected tier-2 sink (§6.4/§7.1).
+    # Best-effort and non-blocking; emit_to_index swallows any failure so the wire path is
+    # never blocked by, nor fails because of, tier-2.
+    emit_to_index(entry, artifacts)
     emit_exchange(
         ir,
         req_stats,
