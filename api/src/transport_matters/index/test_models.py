@@ -5,9 +5,10 @@ from typing import TYPE_CHECKING
 import pytest
 from pydantic import ValidationError
 
+from transport_matters.index.adapters.base import SessionBinding
 from transport_matters.index.blocks import upsert_block
 from transport_matters.index.models import BlockRow, SessionRow
-from transport_matters.index.sessions import SessionBinding, upsert_session
+from transport_matters.index.sessions import upsert_session
 from transport_matters.ir import TextBlock
 
 if TYPE_CHECKING:
@@ -40,6 +41,7 @@ class TestRowModelsMirrorTables:
 
     def test_session_row_round_trips_from_select(self, conn: sqlite3.Connection) -> None:
         binding = SessionBinding(
+            session_id="mint-1",
             provider="anthropic",
             run_id="run1",
             cwd="/w",
@@ -47,14 +49,15 @@ class TestRowModelsMirrorTables:
             workspace_hash="hash",
             started_at="2026-06-05T00:00:00Z",
             cli="claude",
-            minted_session_id="mint-1",
+            native_session_id="mint-1",
+            minted=False,
         )
         session_id = upsert_session(conn, binding)
         record = conn.execute(
             f"SELECT {', '.join(_SESSION_COLS)} FROM session WHERE session_id = ?", (session_id,)
         ).fetchone()
         row = SessionRow(**dict(zip(_SESSION_COLS, record, strict=True)))
-        assert (row.session_id, row.provider, row.minted) == (session_id, "anthropic", 1)
+        assert (row.session_id, row.provider, row.minted) == (session_id, "anthropic", 0)
 
 
 class TestRowModelsFrozen:

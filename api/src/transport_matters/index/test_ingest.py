@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 
 from transport_matters.index.db import connect
 from transport_matters.index.ingest import RunFacts, bind_exchange, build_wire_job, make_index_sink
+from transport_matters.index.sessions import synth_session_id
 from transport_matters.index.writer import IndexWriter
 from transport_matters.ir import Message, SystemPart, TextBlock
 from transport_matters.storage.base import ReqStats, ResStats
@@ -32,13 +33,14 @@ def _run_facts(run_id: str | None = "run1") -> RunFacts:
 
 
 class TestBindExchange:
-    def test_minted_provider_uses_correlation_id_directly(self) -> None:
+    def test_anthropic_uses_native_id_directly(self) -> None:
         entry = make_index_entry(provider="anthropic")
         artifacts = make_artifacts(make_request_ir(session_id="sess-1"))
         binding = bind_exchange(entry, artifacts, _run_facts())
         assert binding is not None
-        assert binding.minted_session_id == "sess-1"
-        assert binding.native_session_id is None
+        assert binding.session_id == "sess-1"  # native id used directly (== transcript sessionId)
+        assert binding.native_session_id == "sess-1"
+        assert binding.minted is False
 
     def test_readback_provider_synthesizes(self) -> None:
         entry = make_index_entry(provider="codex")
@@ -46,7 +48,8 @@ class TestBindExchange:
         binding = bind_exchange(entry, artifacts, _run_facts())
         assert binding is not None
         assert binding.native_session_id == "native-9"
-        assert binding.minted_session_id is None
+        assert binding.session_id == synth_session_id("run1", "codex", "native-9")
+        assert binding.minted is False
 
     def test_no_correlation_id_returns_none(self) -> None:
         artifacts = make_artifacts(make_request_ir(session_id=None))
