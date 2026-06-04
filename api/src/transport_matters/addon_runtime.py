@@ -25,6 +25,7 @@ from transport_matters.storage.exchange_sink import clear_exchange_sink, set_exc
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+    from pathlib import Path
 
     from transport_matters.index.adapters.base import SessionBinding
 
@@ -74,7 +75,13 @@ def load_runtime() -> AddonRuntime:
     storage = init_storage(root=settings.storage_dir)
     from transport_matters.storage.disk import DiskStorageBackend
 
+    # The tier-1 storage root is workspace-scoped (settings.storage_dir) while the tier-2 index.db
+    # is global (index_db_path == default root). raw_dir is an absolute tier-1 pointer, so the sink
+    # must stamp it with the BACKEND's real root, not the default — else GET /raw 404s on a pointer
+    # that dangles off the wrong root (roadtest2 #1).
+    storage_root: Path | None = None
     if isinstance(storage, DiskStorageBackend):
+        storage_root = storage.root
         logger.info("Storage root: %s", storage.root)
 
     http_client = httpx.AsyncClient(
@@ -98,7 +105,9 @@ def load_runtime() -> AddonRuntime:
         index_tailer.start()
         run_facts = build_run_facts(settings.run_id, settings.cwd, datetime.now(UTC).isoformat())
         on_binding = _make_cursor_registrar(index_tailer, loop)
-        set_exchange_sink(make_index_sink(index_writer, run_facts, on_binding))
+        set_exchange_sink(
+            make_index_sink(index_writer, run_facts, on_binding, storage_root=storage_root)
+        )
     except Exception:
         logger.exception(
             "tier-2 capture failed to start; wire/transcript capture disabled this run"

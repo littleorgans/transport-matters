@@ -109,13 +109,22 @@ def bind_exchange(
 
 
 def build_wire_job(
-    entry: IndexEntry, artifacts: ExchangeArtifacts, binding: SessionBinding | None
+    entry: IndexEntry,
+    artifacts: ExchangeArtifacts,
+    binding: SessionBinding | None,
+    *,
+    storage_root: Path | None = None,
 ) -> IndexJob:
     """Map a persisted exchange to a frozen wire row + ordered edges and wrap it in an IndexJob.
 
     Char counts are reused from ``IndexEntry.req`` (``ReqStats`` already IS the production char
-    accounting — DRY, §7.2); token counts from ``ResStats``; ``raw_dir`` is a tier-1 pointer
-    only. The writer applies the closure in a batch (§6.3).
+    accounting — DRY, §7.2); token counts from ``ResStats``. ``raw_dir`` is a tier-1 pointer
+    only: it MUST be rooted at the backend's actual storage root (``storage_root``), which is
+    workspace-scoped (``settings.storage_dir``) at runtime. The global default root is used only
+    when no root is supplied (unit callers). Reconstructing the dir from ``entry.id`` + ``entry.ts``
+    is exact: the recorder persists via the same ``new_exchange_dir(id, now=entry.ts)`` policy.
+    ``None`` would dangle the absolute pointer if tier-1 lives off the default root. The writer
+    applies the closure in a batch (§6.3).
     """
     session_id = binding.session_id if binding is not None else None
     res = entry.res
@@ -133,7 +142,7 @@ def build_wire_job(
         res_tokens=res.output_tokens if res is not None else None,
         stop_reason=res.stop_reason if res is not None else None,
         mutated_manually=1 if entry.mutated_manually else 0,
-        raw_dir=str(DiskStorageLayout().new_exchange_dir(entry.id, now=entry.ts)),
+        raw_dir=str(DiskStorageLayout(storage_root).new_exchange_dir(entry.id, now=entry.ts)),
     )
     parts = _flatten_parts(artifacts)
 
@@ -147,19 +156,26 @@ def make_index_sink(
     writer: IndexWriter,
     run_facts: RunFacts,
     on_binding: Callable[[SessionBinding], None] | None = None,
+    *,
+    storage_root: Path | None = None,
 ) -> ExchangeSink:
     """Build the post-persist sink ``load_runtime`` registers: bind → build → submit (§6.4).
 
     ``on_binding`` (injected by ``load_runtime``, so ingest never imports the tailer — no cycle) is
     invoked once per resolved wire binding so the transcript tailer can register that session's
     cursor read-back style — the first wire frame is what reveals the session_id (§9.2/§15 risk 2).
+
+    ``storage_root`` is the backend's actual (workspace-scoped) storage root; it is threaded into
+    ``raw_dir`` so the tier-2 pointer resolves to the tier-1 bytes the backend wrote. ``load_runtime``
+    passes the ``DiskStorageBackend`` root — this is the injection point, so ``index`` never imports
+    ``storage`` (the §DAG back-edge stays absent).
     """
 
     def sink(entry: IndexEntry, artifacts: ExchangeArtifacts) -> None:
         binding = bind_exchange(entry, artifacts, run_facts)
         if binding is not None and on_binding is not None:
             on_binding(binding)
-        writer.submit(build_wire_job(entry, artifacts, binding))
+        writer.submit(build_wire_job(entry, artifacts, binding, storage_root=storage_root))
 
     return sink
 
