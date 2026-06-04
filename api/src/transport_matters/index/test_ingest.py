@@ -85,6 +85,37 @@ class TestBuildWireJob:
             == 1
         )
 
+    def test_raw_dir_uses_provided_storage_root(self, conn: sqlite3.Connection) -> None:
+        # Regression (roadtest2 #1): raw_dir is a tier-1 pointer that must be rooted at the
+        # backend's ACTUAL storage root. When tier-1 is workspace-scoped (settings.storage_dir)
+        # but raw_dir is recomputed on the global default root, the absolute pointer dangles and
+        # GET /raw 404s though the bytes are safe on disk. The dir NAME alone (the prior assertion)
+        # cannot catch this — the root is the failure surface.
+        entry = make_index_entry()
+        artifacts = make_artifacts(make_request_ir(session_id="sess-1"))
+        binding = bind_exchange(entry, artifacts, _run_facts())
+        ws_root = Path("/ws/scoped/root")
+        build_wire_job(entry, artifacts, binding, storage_root=ws_root).apply(conn)
+
+        raw_dir = conn.execute(
+            "SELECT raw_dir FROM wire_exchange WHERE exchange_id = ?", (entry.id,)
+        ).fetchone()[0]
+        assert raw_dir == str(DiskStorageLayout(ws_root).new_exchange_dir(entry.id, now=entry.ts))
+        assert Path(raw_dir).parent == ws_root  # rooted at the backend root, not the default
+
+    def test_raw_dir_defaults_to_layout_default_root(self, conn: sqlite3.Connection) -> None:
+        # No storage_root supplied (e.g. unit callers) → fall back to the default layout root,
+        # preserving prior behaviour.
+        entry = make_index_entry()
+        artifacts = make_artifacts(make_request_ir(session_id="sess-1"))
+        binding = bind_exchange(entry, artifacts, _run_facts())
+        build_wire_job(entry, artifacts, binding).apply(conn)
+
+        raw_dir = conn.execute(
+            "SELECT raw_dir FROM wire_exchange WHERE exchange_id = ?", (entry.id,)
+        ).fetchone()[0]
+        assert Path(raw_dir).parent == DiskStorageLayout().root
+
     def test_null_session_when_uncorrelated(self, conn: sqlite3.Connection) -> None:
         entry = make_index_entry()
         artifacts = make_artifacts(make_request_ir(session_id=None))
