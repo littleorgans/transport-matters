@@ -25,21 +25,36 @@ _PRAGMAS = (
     "PRAGMA wal_autocheckpoint = 1000",
 )
 
+# Read connections (§8.1) skip the WAL/sync/checkpoint write-tuning PRAGMAs — the file is
+# already WAL — and set query_only=ON, which rejects writes. Under WAL a reader sees a
+# consistent snapshot and never blocks the §6 writer thread (nor each other). query_only is
+# used rather than mode=ro to sidestep read-only-WAL lock pitfalls while giving the same
+# never-write / never-block guarantees.
+_READ_PRAGMAS = (
+    "PRAGMA busy_timeout = 5000",
+    "PRAGMA query_only = ON",
+)
+
 
 def index_db_path() -> Path:
     """Return the single tier-2 database path: ``default_storage_root()/index.db``."""
     return default_storage_root() / "index.db"
 
 
-def connect(path: str | Path) -> sqlite3.Connection:
-    """Open a tier-2 connection with the §3.1 PRAGMAs applied, in manual-transaction mode.
+def connect(path: str | Path, *, read_only: bool = False) -> sqlite3.Connection:
+    """Open a tier-2 connection in manual-transaction mode with the appropriate PRAGMAs.
 
-    ``isolation_level=None`` puts pysqlite in autocommit mode so the writer owns its
-    transaction boundaries explicitly (``BEGIN IMMEDIATE`` / ``SAVEPOINT`` / ``COMMIT``,
-    §6.3) rather than the driver inserting implicit ``BEGIN`` statements.
+    ``read_only=True`` opens a pure reader for the §8 query surface (``query_only = ON``);
+    otherwise the full §3.1 write PRAGMAs apply. ``isolation_level=None`` puts pysqlite in
+    autocommit mode so the writer owns its transaction boundaries explicitly (§6.3).
+
+    A read connection sets ``check_same_thread=False`` because a request opens it on FastAPI's
+    sync-dependency threadpool thread and the async handler reads it on the event-loop thread
+    (sequential, per-request — never shared, so this is safe). The writer connection stays
+    thread-affine (``check_same_thread=True``), pinned to its single OS thread.
     """
-    conn = sqlite3.connect(path, isolation_level=None)
-    for pragma in _PRAGMAS:
+    conn = sqlite3.connect(path, isolation_level=None, check_same_thread=not read_only)
+    for pragma in _READ_PRAGMAS if read_only else _PRAGMAS:
         conn.execute(pragma)
     return conn
 
