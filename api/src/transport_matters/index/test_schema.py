@@ -162,3 +162,15 @@ class TestSchemaGate:
         _upsert_block_raw(conn, "keep", text="data")
         apply_schema(conn)  # no mismatch → no drop
         assert conn.execute("SELECT COUNT(*) FROM block").fetchone()[0] == 1
+
+    def test_missing_gated_key_forces_rebuild(self, conn: sqlite3.Connection) -> None:
+        # An old schema_meta predating adapters_version must NOT survive: a missing gated key
+        # is a mismatch, so the stale tier-2 is dropped + rebuilt, not silently re-seeded.
+        _upsert_block_raw(conn, "stale", text="old")
+        conn.execute("DELETE FROM schema_meta WHERE key = 'adapters_version'")
+        apply_schema(conn)
+        assert conn.execute("SELECT COUNT(*) FROM block").fetchone()[0] == 0
+        version = conn.execute(
+            "SELECT value FROM schema_meta WHERE key = 'adapters_version'"
+        ).fetchone()[0]
+        assert version == "1"

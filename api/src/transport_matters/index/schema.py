@@ -182,9 +182,12 @@ def rebuild_fts(conn: sqlite3.Connection) -> None:
 
 def _gated_mismatch(conn: sqlite3.Connection) -> bool:
     if not _has_table(conn, "schema_meta"):
-        return False
+        return False  # fresh db: nothing to rebuild; apply_schema creates + seeds below
     stored = dict(conn.execute("SELECT key, value FROM schema_meta").fetchall())
-    return any(key in stored and stored[key] != _SCHEMA_META[key] for key in _GATED_KEYS)
+    # A MISSING gated key (an old shape predating the key, e.g. before adapters_version) is a
+    # mismatch too: stored.get returns None, which never equals the code constant, so it forces
+    # drop + rebuild rather than silently seeding the new key onto the stale schema (§3.2).
+    return any(stored.get(key) != _SCHEMA_META[key] for key in _GATED_KEYS)
 
 
 def _has_table(conn: sqlite3.Connection, name: str) -> bool:
