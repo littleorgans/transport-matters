@@ -47,4 +47,6 @@ def emit_to_index(entry: IndexEntry, artifacts: ExchangeArtifacts) -> None:
     try:
         sink(entry, artifacts)
     except Exception:
-        _log.exception("tier-2 index sink failed for exchange %s", entry.id)
+        # Non-fatal (tier-1 is authoritative), but never silent: surface at WARNING with the
+        # traceback so a capture regression (silent zero-rows) cannot hide in the logs again.
+        _log.warning("tier-2 index sink failed for exchange %s", entry.id, exc_info=True)

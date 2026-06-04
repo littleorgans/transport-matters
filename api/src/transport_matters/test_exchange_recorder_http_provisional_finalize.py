@@ -13,6 +13,7 @@ from transport_matters._exchange_recorder_http_support import (
 )
 from transport_matters.overrides import OverrideAudit, OverrideAuditEntry
 from transport_matters.storage import get_storage
+from transport_matters.storage.exchange_sink import clear_exchange_sink, set_exchange_sink
 from transport_matters.track_manager import TrackAssignment
 
 if TYPE_CHECKING:
@@ -21,6 +22,7 @@ if TYPE_CHECKING:
 
     from transport_matters.flow_state import RequestFlowState
     from transport_matters.ir import InternalResponse
+    from transport_matters.storage.base import ExchangeArtifacts, IndexEntry
 
 pytest_plugins = ("transport_matters._exchange_recorder_http_fixtures",)
 
@@ -179,6 +181,41 @@ async def test_finalize_http_provisional_exchange_returns_false_for_missing_entr
     assert events.empty()
     storage = await get_storage()
     assert await storage.read_index(limit=10, offset=0) == []
+
+
+async def test_finalize_http_provisional_exchange_feeds_tier2_sink() -> None:
+    """Regression: the provisional->finalize path is Claude's PRIMARY (streaming) path, so it
+    MUST hand the completed exchange to the injected tier-2 sink. Before this fix emit_to_index
+    was only reached on the dead non-provisional branch, so a real Claude run captured zero
+    tier-2 rows (wire_exchange + transcript_turn) despite tier-1 persisting fine.
+    """
+    captured: list[tuple[IndexEntry, ExchangeArtifacts]] = []
+    set_exchange_sink(lambda entry, artifacts: captured.append((entry, artifacts)))
+    try:
+        state = _make_state()
+        flow = cast("http.HTTPFlow", _Flow())
+
+        exchange_id = await recorder.persist_http_provisional_exchange(flow, state)
+        assert exchange_id is not None
+        # The provisional row is request-only (no response yet): tier-2 must NOT fire here,
+        # because build_wire_job needs entry.res — capture happens once, at finalize.
+        assert captured == []
+
+        state.provisional_exchange_id = exchange_id
+        cast("_Flow", flow).response = _Response(_make_response_body())
+        finalized = await recorder._finalize_http_provisional_exchange(flow, state, None)
+
+        assert finalized is True
+        # Finalize feeds the tier-2 sink exactly once, with the completed exchange.
+        assert len(captured) == 1
+        sink_entry, sink_artifacts = captured[0]
+        assert sink_entry.id == exchange_id
+        assert sink_entry.res is not None
+        assert sink_entry.res.stop_reason == "end_turn"
+        assert sink_artifacts.response_ir is not None
+        assert sink_artifacts.response_ir.stop_reason == "end_turn"
+    finally:
+        clear_exchange_sink()
 
 
 async def test_finalize_http_provisional_exchange_skips_token_stamping_without_counter() -> None:

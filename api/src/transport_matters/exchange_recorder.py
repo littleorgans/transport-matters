@@ -419,6 +419,11 @@ async def _finalize_http_provisional_exchange(
         logger.exception("Failed to finalize provisional HTTP exchange %s", exchange_id)
         return False
 
+    # Streaming (Claude's PRIMARY path) finalizes here, NOT in persist_http_exchange's
+    # non-provisional branch — so tier-2 must be fed from this seam too, or real streaming
+    # exchanges never reach the index (§6.4/§7.1). The response (entry.res) is only available
+    # now, so finalize is the correct point. Best-effort: emit_to_index swallows any failure.
+    emit_to_index(entry, artifacts)
     emit_exchange(
         ir,
         req_stats,
