@@ -38,7 +38,7 @@ def test_codex_print_command_uses_explicit_proxy_mode(
         "transport_matters.cli.shutil.which",
         _which_by_name({"mitmdump": "/bin/mitmdump", "codex": "/bin/codex"}),
     )
-    monkeypatch.setattr("transport_matters.cli._port_in_use", lambda _: False)
+    monkeypatch.setattr("transport_matters.cli.port_in_use", lambda _: False)
 
     result = runner.invoke(
         main,
@@ -61,7 +61,7 @@ def test_codex_print_command_does_not_create_workspace_run_dir(
         "transport_matters.cli.shutil.which",
         _which_by_name({"mitmdump": "/bin/mitmdump", "codex": "/bin/codex"}),
     )
-    monkeypatch.setattr("transport_matters.cli._port_in_use", lambda _: False)
+    monkeypatch.setattr("transport_matters.cli.port_in_use", lambda _: False)
     monkeypatch.delenv("TRANSPORT_MATTERS_STORAGE_DIR", raising=False)
     workdir = tmp_path / "project"
     workdir.mkdir()
@@ -89,7 +89,7 @@ def test_codex_sets_proxy_env_on_managed_child(
         "transport_matters.cli.shutil.which",
         _which_by_name({"mitmdump": "/bin/mitmdump", "codex": "/bin/codex"}),
     )
-    monkeypatch.setattr("transport_matters.cli._port_in_use", lambda _: False)
+    monkeypatch.setattr("transport_matters.cli.port_in_use", lambda _: False)
     bundle_path = tmp_path / "ca.pem"
     bundle_path.write_text("bundle", encoding="utf-8")
     monkeypatch.setattr(
@@ -142,7 +142,7 @@ def test_codex_home_dir_sets_codex_home_manifest_and_keeps_ca(
         "transport_matters.cli.shutil.which",
         _which_by_name({"mitmdump": "/bin/mitmdump", "codex": "/bin/codex"}),
     )
-    monkeypatch.setattr("transport_matters.cli._port_in_use", lambda _: False)
+    monkeypatch.setattr("transport_matters.cli.port_in_use", lambda _: False)
     monkeypatch.setenv("CODEX_HOME", "/parent/codex")
     monkeypatch.chdir(tmp_path)
     bundle_path = tmp_path / "ca.pem"
@@ -197,7 +197,7 @@ def test_codex_unset_home_dir_omits_codex_home(
         "transport_matters.cli.shutil.which",
         _which_by_name({"mitmdump": "/bin/mitmdump", "codex": "/bin/codex"}),
     )
-    monkeypatch.setattr("transport_matters.cli._port_in_use", lambda _: False)
+    monkeypatch.setattr("transport_matters.cli.port_in_use", lambda _: False)
     monkeypatch.delenv("CODEX_HOME", raising=False)
     bundle_path = tmp_path / "ca.pem"
     bundle_path.write_text("bundle", encoding="utf-8")
@@ -222,7 +222,7 @@ def test_codex_writes_workspace_manifest_visible_to_managed_child(
         "transport_matters.cli.shutil.which",
         _which_by_name({"mitmdump": "/bin/mitmdump", "codex": "/bin/codex"}),
     )
-    monkeypatch.setattr("transport_matters.cli._port_in_use", lambda _: False)
+    monkeypatch.setattr("transport_matters.cli.port_in_use", lambda _: False)
     monkeypatch.delenv("TRANSPORT_MATTERS_STORAGE_DIR", raising=False)
     bundle_path = tmp_path / "ca.pem"
     bundle_path.write_text("bundle", encoding="utf-8")
@@ -274,7 +274,7 @@ def test_codex_retries_after_bind_failure_then_succeeds(
         "transport_matters.cli.shutil.which",
         _which_by_name({"mitmdump": "/bin/mitmdump", "codex": "/bin/codex"}),
     )
-    monkeypatch.setattr("transport_matters.cli._port_in_use", lambda _: False)
+    monkeypatch.setattr("transport_matters.cli.port_in_use", lambda _: False)
     bundle_path = tmp_path / "ca.pem"
     bundle_path.write_text("bundle", encoding="utf-8")
     monkeypatch.setattr(
@@ -321,7 +321,7 @@ def test_codex_excludes_manicure_proxy_env_from_shell_commands(
         "transport_matters.cli.shutil.which",
         _which_by_name({"mitmdump": "/bin/mitmdump", "codex": "/bin/codex"}),
     )
-    monkeypatch.setattr("transport_matters.cli._port_in_use", lambda _: False)
+    monkeypatch.setattr("transport_matters.cli.port_in_use", lambda _: False)
     bundle_path = tmp_path / "ca.pem"
     bundle_path.write_text("bundle", encoding="utf-8")
     monkeypatch.setattr(
@@ -382,7 +382,7 @@ def test_codex_sanitizes_managed_child_proxy_and_trust_env(
         "transport_matters.cli.shutil.which",
         _which_by_name({"mitmdump": "/bin/mitmdump", "codex": "/bin/codex"}),
     )
-    monkeypatch.setattr("transport_matters.cli._port_in_use", lambda _: False)
+    monkeypatch.setattr("transport_matters.cli.port_in_use", lambda _: False)
     monkeypatch.setenv("HTTP_PROXY", "http://corp-proxy:8080")
     monkeypatch.setenv("HTTPS_PROXY", "http://corp-proxy:8080")
     monkeypatch.setenv("ALL_PROXY", "socks5://corp-proxy:1080")
@@ -477,7 +477,7 @@ def test_codex_no_codex_print_command_omits_child(
         "transport_matters.cli.shutil.which",
         _which_by_name({"mitmdump": "/bin/mitmdump"}),
     )
-    monkeypatch.setattr("transport_matters.cli._port_in_use", lambda _: False)
+    monkeypatch.setattr("transport_matters.cli.port_in_use", lambda _: False)
 
     result = runner.invoke(main, ["codex", "--no-codex", "--print-command"])
     assert result.exit_code == 0, result.output
@@ -495,7 +495,7 @@ def test_codex_no_codex_skips_trust_bootstrap_failures(
         "transport_matters.cli.shutil.which",
         _which_by_name({"mitmdump": "/bin/mitmdump"}),
     )
-    monkeypatch.setattr("transport_matters.cli._port_in_use", lambda _: False)
+    monkeypatch.setattr("transport_matters.cli.port_in_use", lambda _: False)
     monkeypatch.delenv("CODEX_CA_CERTIFICATE", raising=False)
 
     def raise_error(*, env: dict[str, str], bundle_dir: Path | None) -> Path:
@@ -522,7 +522,7 @@ def test_codex_no_codex_uses_existing_ca_hint_when_present(
         "transport_matters.cli.shutil.which",
         _which_by_name({"mitmdump": "/bin/mitmdump"}),
     )
-    monkeypatch.setattr("transport_matters.cli._port_in_use", lambda _: False)
+    monkeypatch.setattr("transport_matters.cli.port_in_use", lambda _: False)
     bundle_path = tmp_path / "ca.pem"
     bundle_path.write_text("bundle", encoding="utf-8")
     monkeypatch.setenv("CODEX_CA_CERTIFICATE", str(bundle_path))
@@ -548,7 +548,7 @@ def test_codex_cleans_generated_bundle_after_exit(
         "transport_matters.cli.shutil.which",
         _which_by_name({"mitmdump": "/bin/mitmdump", "codex": "/bin/codex"}),
     )
-    monkeypatch.setattr("transport_matters.cli._port_in_use", lambda _: False)
+    monkeypatch.setattr("transport_matters.cli.port_in_use", lambda _: False)
     monkeypatch.delenv("CODEX_CA_CERTIFICATE", raising=False)
     captured: dict[str, str] = {}
 
@@ -603,7 +603,7 @@ def test_codex_surfaces_trust_bootstrap_failures(
         "transport_matters.cli.shutil.which",
         _which_by_name({"mitmdump": "/bin/mitmdump", "codex": "/bin/codex"}),
     )
-    monkeypatch.setattr("transport_matters.cli._port_in_use", lambda _: False)
+    monkeypatch.setattr("transport_matters.cli.port_in_use", lambda _: False)
 
     def raise_error(*, env: dict[str, str], bundle_dir: Path | None) -> Path:
         raise error

@@ -25,7 +25,7 @@ def test_start_print_command_includes_passthrough(
         "transport_matters.cli.shutil.which",
         _which_by_name({"mitmdump": "/bin/mitmdump", "claude": "/bin/claude"}),
     )
-    monkeypatch.setattr("transport_matters.cli._port_in_use", lambda _: False)
+    monkeypatch.setattr("transport_matters.cli.port_in_use", lambda _: False)
 
     result = runner.invoke(
         main,
@@ -48,7 +48,7 @@ def test_start_no_claude_plus_passthrough_fails(
 ) -> None:
     """``--no-claude`` + pass-through is nonsensical and exits 2."""
     monkeypatch.setattr("transport_matters.cli.shutil.which", _which_all())
-    monkeypatch.setattr("transport_matters.cli._port_in_use", lambda _: False)
+    monkeypatch.setattr("transport_matters.cli.port_in_use", lambda _: False)
 
     result = runner.invoke(main, ["claude", "--no-claude", "--", "--model", "sonnet"])
     assert result.exit_code == 2
@@ -66,7 +66,7 @@ def test_start_empty_double_dash_is_noop(
         "transport_matters.cli.shutil.which",
         _which_by_name({"mitmdump": "/bin/mitmdump", "claude": "/bin/claude"}),
     )
-    monkeypatch.setattr("transport_matters.cli._port_in_use", lambda _: False)
+    monkeypatch.setattr("transport_matters.cli.port_in_use", lambda _: False)
 
     result = runner.invoke(main, ["claude", "--no-system-prompt", "--"])
     assert result.exit_code == 0, result.output
@@ -85,7 +85,7 @@ def test_start_dir_plus_passthrough(
         "transport_matters.cli.shutil.which",
         _which_by_name({"mitmdump": "/bin/mitmdump", "claude": "/bin/claude"}),
     )
-    monkeypatch.setattr("transport_matters.cli._port_in_use", lambda _: False)
+    monkeypatch.setattr("transport_matters.cli.port_in_use", lambda _: False)
 
     workdir = tmp_path / "project"
     workdir.mkdir()
@@ -111,7 +111,7 @@ def test_start_passthrough_forwards_to_managed_client(
         "transport_matters.cli.shutil.which",
         _which_by_name({"mitmdump": "/bin/mitmdump", "claude": "/bin/claude"}),
     )
-    monkeypatch.setattr("transport_matters.cli._port_in_use", lambda _: False)
+    monkeypatch.setattr("transport_matters.cli.port_in_use", lambda _: False)
 
     result = runner.invoke(main, ["claude", "--no-system-prompt", "--", "-p", "hello world"])
     assert result.exit_code == 0, result.output

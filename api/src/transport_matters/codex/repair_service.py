@@ -3,7 +3,7 @@
 from typing import TYPE_CHECKING
 
 from transport_matters.codex.repair_models import CodexDerivedArtifactsRepairResult
-from transport_matters.codex.repair_rebuild import _rebuild_codex_derived_artifacts
+from transport_matters.codex.repair_rebuild import rebuild_codex_derived_artifacts
 from transport_matters.codex.repair_resolution import resolve_codex_derived_artifacts
 
 if TYPE_CHECKING:
@@ -26,7 +26,7 @@ async def repair_codex_derived_artifacts(
             diagnostics=resolution.diagnostics,
         )
 
-    rebuilt, rebuild_diagnostics = _rebuild_codex_derived_artifacts(
+    rebuilt, rebuild_diagnostics = rebuild_codex_derived_artifacts(
         exchange_id=exchange_id,
         artifacts=artifacts,
         derived_files=derived_files,

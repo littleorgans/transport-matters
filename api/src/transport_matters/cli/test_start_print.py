@@ -22,7 +22,7 @@ def test_start_print_command_does_not_spawn(
 ) -> None:
     """``--print-command`` must short-circuit before we spawn anything."""
     monkeypatch.setattr("transport_matters.cli.shutil.which", _which_all())
-    monkeypatch.setattr("transport_matters.cli._port_in_use", lambda _: False)
+    monkeypatch.setattr("transport_matters.cli.port_in_use", lambda _: False)
 
     result = runner.invoke(main, ["claude", "--print-command"])
     assert result.exit_code == 0
@@ -39,7 +39,7 @@ def test_start_print_command_does_not_create_workspace_run_dir(
     spy_run_client_children: MagicMock,
 ) -> None:
     monkeypatch.setattr("transport_matters.cli.shutil.which", _which_all())
-    monkeypatch.setattr("transport_matters.cli._port_in_use", lambda _: False)
+    monkeypatch.setattr("transport_matters.cli.port_in_use", lambda _: False)
     monkeypatch.delenv("TRANSPORT_MATTERS_STORAGE_DIR", raising=False)
     workdir = tmp_path / "project"
     workdir.mkdir()
@@ -70,7 +70,7 @@ def test_start_prefers_same_environment_mitmdump(
 
     monkeypatch.setattr("transport_matters.cli.sysconfig.get_path", lambda name: "/tool/bin")
     monkeypatch.setattr("transport_matters.cli.shutil.which", fake_which)
-    monkeypatch.setattr("transport_matters.cli._port_in_use", lambda _: False)
+    monkeypatch.setattr("transport_matters.cli.port_in_use", lambda _: False)
 
     result = runner.invoke(main, ["claude", "--no-system-prompt", "--print-command"])
     assert result.exit_code == 0
@@ -104,7 +104,7 @@ def test_start_skips_active_mitmdump_with_missing_shebang_interpreter(
 
     monkeypatch.setattr("transport_matters.cli.sysconfig.get_path", lambda name: str(scripts_dir))
     monkeypatch.setenv("PATH", str(path_dir))
-    monkeypatch.setattr("transport_matters.cli._port_in_use", lambda _: False)
+    monkeypatch.setattr("transport_matters.cli.port_in_use", lambda _: False)
 
     result = runner.invoke(main, ["claude", "--no-system-prompt", "--print-command"])
     assert result.exit_code == 0
@@ -123,7 +123,7 @@ def test_start_print_command_includes_claude_invocation(
         "transport_matters.cli.shutil.which",
         _which_by_name({"mitmdump": "/bin/mitmdump", "claude": "/bin/claude"}),
     )
-    monkeypatch.setattr("transport_matters.cli._port_in_use", lambda _: False)
+    monkeypatch.setattr("transport_matters.cli.port_in_use", lambda _: False)
 
     result = runner.invoke(main, ["claude", "--no-system-prompt", "--print-command"])
     assert result.exit_code == 0
@@ -140,7 +140,7 @@ def test_start_print_command_no_claude_omits_claude(
 ) -> None:
     """``--no-claude`` skips the claude resolution and prints only mitmdump."""
     monkeypatch.setattr("transport_matters.cli.shutil.which", _which_all("/bin/mitmdump"))
-    monkeypatch.setattr("transport_matters.cli._port_in_use", lambda _: False)
+    monkeypatch.setattr("transport_matters.cli.port_in_use", lambda _: False)
 
     result = runner.invoke(main, ["claude", "--no-claude", "--print-command"])
     assert result.exit_code == 0
@@ -156,7 +156,7 @@ def test_start_print_command_respects_port_and_upstream(
     spy_run_client_children: MagicMock,
 ) -> None:
     monkeypatch.setattr("transport_matters.cli.shutil.which", _which_all())
-    monkeypatch.setattr("transport_matters.cli._port_in_use", lambda _: False)
+    monkeypatch.setattr("transport_matters.cli.port_in_use", lambda _: False)
 
     result = runner.invoke(
         main,
@@ -187,7 +187,7 @@ def test_start_uses_claude_bin_override(
         "transport_matters.cli.shutil.which",
         _which_by_name({"mitmdump": "/bin/mitmdump"}),
     )
-    monkeypatch.setattr("transport_matters.cli._port_in_use", lambda _: False)
+    monkeypatch.setattr("transport_matters.cli.port_in_use", lambda _: False)
 
     fake_claude = tmp_path / "my-claude"
     fake_claude.write_text("#!/bin/sh\nexec echo hi\n")

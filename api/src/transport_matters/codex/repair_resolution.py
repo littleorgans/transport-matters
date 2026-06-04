@@ -7,10 +7,10 @@ from transport_matters.codex.repair_models import (
     build_repair_diagnostic,
 )
 from transport_matters.codex.repair_payloads import (
-    _parse_events_jsonl,
-    _parse_turn_json,
-    _supported_versions,
-    _unsupported_versions,
+    parse_events_jsonl,
+    parse_turn_json,
+    supported_versions,
+    unsupported_versions,
 )
 from transport_matters.storage.base import CodexDerivedArtifactFiles, ExchangeArtifacts
 
@@ -52,14 +52,15 @@ def resolve_codex_derived_artifacts(
             diagnostics=tuple(diagnostics),
         )
 
-    turn_payload, turn_diagnostics = _parse_turn_json(files.turn_json)
+    turn_payload, turn_diagnostics = parse_turn_json(files.turn_json)
     diagnostics.extend(turn_diagnostics)
-    event_payloads, event_diagnostics = _parse_events_jsonl(files.events_jsonl)
+    event_payloads, event_diagnostics = parse_events_jsonl(files.events_jsonl)
     diagnostics.extend(event_diagnostics)
 
-    unsupported_versions = _unsupported_versions(turn_payload, event_payloads)
-    if unsupported_versions:
-        supported_versions = ", ".join(str(value) for value in sorted(_supported_versions()))
+    unsupported = unsupported_versions(turn_payload, event_payloads)
+    if unsupported:
+        supported_versions_list = supported_versions()
+        supported_versions_text = ", ".join(str(value) for value in sorted(supported_versions_list))
         diagnostics.append(
             build_repair_diagnostic(
                 "warning",
@@ -67,8 +68,8 @@ def resolve_codex_derived_artifacts(
                 "Persisted Codex derived artifacts use an unsupported derivation version.",
                 detail=(
                     "Unsupported versions: "
-                    + ", ".join(str(value) for value in unsupported_versions)
-                    + f". Supported versions: {supported_versions}"
+                    + ", ".join(str(value) for value in unsupported)
+                    + f". Supported versions: {supported_versions_text}"
                 ),
             )
         )

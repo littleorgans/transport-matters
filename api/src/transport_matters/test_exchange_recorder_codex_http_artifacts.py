@@ -70,12 +70,12 @@ def _derived_artifacts(exchange_id: str) -> CodexDerivedTurnArtifacts:
 
 
 async def _persist_fresh(flow: http.HTTPFlow) -> bool:
-    return await recorder._persist_http_exchange(flow, _make_codex_state(), None)
+    return await recorder.persist_http_exchange(flow, _make_codex_state(), None)
 
 
 async def _persist_provisional(flow: http.HTTPFlow) -> bool:
     state = _make_codex_state()
-    exchange_id = await recorder._persist_http_provisional_exchange(flow, state)
+    exchange_id = await recorder.persist_http_provisional_exchange(flow, state)
     assert exchange_id is not None
     state.provisional_exchange_id = exchange_id
     return await recorder._finalize_http_provisional_exchange(flow, state, None)

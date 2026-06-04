@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, cast
 
 import pytest
 
-from transport_matters.codex.exchange_derivation import _replay_codex_derived_artifacts
+from transport_matters.codex.exchange_derivation import replay_codex_derived_artifacts
 from transport_matters.ir import (
     InternalRequest,
     Message,
@@ -127,7 +127,7 @@ def _live_codex_derivation(
     audit: OverrideAudit | None = None,
     mutated_manually: bool = False,
 ) -> CodexDerivedTurnArtifacts:
-    derived = _replay_codex_derived_artifacts(
+    derived = replay_codex_derived_artifacts(
         cast(
             "http.HTTPFlow",
             SimpleNamespace(

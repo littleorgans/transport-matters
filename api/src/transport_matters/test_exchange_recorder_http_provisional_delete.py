@@ -18,7 +18,7 @@ async def test_delete_http_provisional_exchange_removes_pending_row_and_broadcas
 ) -> None:
     state = _make_state()
     flow = cast("http.HTTPFlow", _Flow())
-    exchange_id = await recorder._persist_http_provisional_exchange(flow, state)
+    exchange_id = await recorder.persist_http_provisional_exchange(flow, state)
 
     assert exchange_id is not None
     state.provisional_exchange_id = exchange_id
@@ -26,15 +26,15 @@ async def test_delete_http_provisional_exchange_removes_pending_row_and_broadcas
     assert await storage.read_index_entry(exchange_id) is not None
     events = broadcast.subscribe()
     deleted_calls: list[tuple[str, str | None]] = []
-    emit_deleted = recorder._emit_exchange_deleted
+    emit_deleted = recorder.emit_exchange_deleted
 
     def spy_emit_deleted(deleted_id: str, flow_id: str | None = None) -> None:
         deleted_calls.append((deleted_id, flow_id))
         emit_deleted(deleted_id, flow_id=flow_id)
 
-    monkeypatch.setattr(recorder, "_emit_exchange_deleted", spy_emit_deleted)
+    monkeypatch.setattr(recorder, "emit_exchange_deleted", spy_emit_deleted)
 
-    deleted = await recorder._delete_http_provisional_exchange(flow, state)
+    deleted = await recorder.delete_http_provisional_exchange(flow, state)
 
     assert deleted is True
     assert state.provisional_exchange_id is None
@@ -47,7 +47,7 @@ async def test_delete_http_provisional_exchange_removes_pending_row_and_broadcas
     }
     assert deleted_calls == [(exchange_id, flow.id)]
 
-    deleted_again = await recorder._delete_http_provisional_exchange(flow, state)
+    deleted_again = await recorder.delete_http_provisional_exchange(flow, state)
 
     assert deleted_again is True
     assert events.empty()
@@ -67,7 +67,7 @@ async def test_delete_http_provisional_exchange_returns_false_on_storage_failure
 
     monkeypatch.setattr(storage, "delete_exchange", raise_delete)
 
-    deleted = await recorder._delete_http_provisional_exchange(flow, state)
+    deleted = await recorder.delete_http_provisional_exchange(flow, state)
 
     assert deleted is False
     assert state.provisional_exchange_id == "exchange-fail"

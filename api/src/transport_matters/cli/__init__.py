@@ -15,8 +15,8 @@ Module layout:
   launch_runtime.py — shared launch plumbing
   __init__.py     — typer app, command registration, and re-exports
 
-Re-exports (`SIGNAL_EXIT`, `ProcessSupervisor`, `_port_in_use`,
-`_wait_for_port_ready`, `_print_banner`, `_run_children`) stay at
+Re-exports (`SIGNAL_EXIT`, `ProcessSupervisor`, `port_in_use`,
+`wait_for_port_ready`, `print_banner`, `run_children`) stay at
 package scope so existing imports and most test monkeypatch paths
 remain valid.
 """
@@ -41,18 +41,18 @@ from transport_matters.manifest import write as manifest_write
 from transport_matters.supervisor import SIGNAL_EXIT, ProcessSupervisor
 from transport_matters.workspace import run_root, workspace_id, workspace_root
 
-from .banner import _print_banner, _print_client_banner
+from .banner import print_banner, print_client_banner
 from .codex_cmd import run_codex
 from .diagnose import run_doctor
-from .help import _PlainCommand, _PlainGroup
+from .help import PlainCommand, PlainGroup
 from .identity import CLI_COMMAND
-from .instances import _list_instances
+from .instances import list_instances as list_instances_impl
 from .launch_runtime import resolve_mitmdump_executable
-from .net import _port_in_use, _wait_for_port_ready, validate_port_option
+from .net import port_in_use, validate_port_option, wait_for_port_ready
 from .paths import resolve_paths
 from .ports import PortAllocationError, allocate_port_pair
 from .prompt import inject_system_prompt, user_supplied_system_prompt
-from .runner import BindFailure, _run_children, _run_client_with_retry
+from .runner import BindFailure, run_children, run_client_with_retry
 from .start_cmd import run_start
 from .trust import resolve_codex_ca_certificate
 
@@ -64,18 +64,18 @@ __all__ = [
     "ProcessSupervisor",
     "WorkspaceLock",
     "WorkspaceLocked",
-    "_list_instances",
-    "_port_in_use",
-    "_print_banner",
-    "_run_children",
-    "_run_client_with_retry",
-    "_wait_for_port_ready",
     "allocate_port_pair",
     "inject_system_prompt",
+    "list_instances",
     "main",
     "manifest_write",
+    "port_in_use",
+    "print_banner",
+    "run_children",
+    "run_client_with_retry",
     "run_root",
     "user_supplied_system_prompt",
+    "wait_for_port_ready",
     "workspace_id",
     "workspace_root",
 ]
@@ -83,7 +83,7 @@ __all__ = [
 
 main = typer.Typer(
     name=CLI_COMMAND,
-    cls=_PlainGroup,
+    cls=PlainGroup,
     no_args_is_help=True,
     add_completion=False,
     rich_markup_mode=None,
@@ -198,7 +198,7 @@ def _root(
 
 @main.command(
     name="claude",
-    cls=_PlainCommand,
+    cls=PlainCommand,
     no_args_is_help=False,
     context_settings={
         "help_option_names": ["-h", "--help"],
@@ -346,17 +346,17 @@ def claude(
             get_scripts_dir=sysconfig.get_path,
         ),
         which=shutil.which,
-        port_in_use=_port_in_use,
+        port_in_use=port_in_use,
         allocate_port_pair=allocate_port_pair,
         inject_system_prompt=inject_system_prompt,
         user_supplied_system_prompt=user_supplied_system_prompt,
-        print_banner=_print_banner,
-        run_client_with_retry=_run_client_with_retry,
+        print_banner=print_banner,
+        run_client_with_retry=run_client_with_retry,
     )
 
 
 @main.command(
-    cls=_PlainCommand,
+    cls=PlainCommand,
     no_args_is_help=False,
     context_settings={
         "help_option_names": ["-h", "--help"],
@@ -496,16 +496,16 @@ def codex(
             get_scripts_dir=sysconfig.get_path,
         ),
         which=shutil.which,
-        port_in_use=_port_in_use,
+        port_in_use=port_in_use,
         allocate_port_pair=allocate_port_pair,
         resolve_codex_ca_certificate=resolve_codex_ca_certificate,
-        print_client_banner=_print_client_banner,
-        run_client_with_retry=_run_client_with_retry,
+        print_client_banner=print_client_banner,
+        run_client_with_retry=run_client_with_retry,
     )
 
 
 @main.command(
-    cls=_PlainCommand,
+    cls=PlainCommand,
     context_settings={"help_option_names": ["-h", "--help"]},
 )
 def doctor() -> None:
@@ -514,7 +514,7 @@ def doctor() -> None:
 
 
 @main.command(
-    cls=_PlainCommand,
+    cls=PlainCommand,
     context_settings={"help_option_names": ["-h", "--help"]},
 )
 def paths(
@@ -541,7 +541,7 @@ def paths(
 
 @main.command(
     name="list",
-    cls=_PlainCommand,
+    cls=PlainCommand,
     context_settings={"help_option_names": ["-h", "--help"]},
 )
 def list_instances(
@@ -551,11 +551,11 @@ def list_instances(
     ] = False,
 ) -> None:
     """List live Transport Matters instances."""
-    _list_instances(as_json=as_json)
+    list_instances_impl(as_json=as_json)
 
 
 @main.command(
-    cls=_PlainCommand,
+    cls=PlainCommand,
     context_settings={"help_option_names": ["-h", "--help"]},
 )
 def version() -> None:

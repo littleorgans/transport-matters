@@ -35,7 +35,7 @@ def validate_port_option(value: int | None) -> int | None:
     return value
 
 
-def _port_in_use(port: int) -> bool:
+def port_in_use(port: int) -> bool:
     """Return True if *port* on the IPv4 loopback has an active listener.
 
     We probe with ``connect_ex`` instead of ``bind``. Rebinding can fail
@@ -49,7 +49,7 @@ def _port_in_use(port: int) -> bool:
         return sock.connect_ex(("127.0.0.1", port)) == 0
 
 
-def _wait_for_port_ready(
+def wait_for_port_ready(
     host: str, port: int, *, timeout: float = 5.0, interval: float = 0.1
 ) -> bool:
     """Poll a TCP port until it accepts connections, or return False on timeout.

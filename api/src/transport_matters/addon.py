@@ -21,7 +21,7 @@ from transport_matters.codex.transport import (
     is_codex_websocket_flow,
 )
 from transport_matters.exchange_recorder import (
-    _delete_http_provisional_exchange,
+    delete_http_provisional_exchange,
     emit_exchange,
 )
 from transport_matters.exchange_stats import (
@@ -89,7 +89,7 @@ class TransportMattersAddon:
         request_state = get_request_flow_state(flow)
         if request_state is None or request_state.provisional_exchange_id is None:
             return
-        await _delete_http_provisional_exchange(flow, request_state)
+        await delete_http_provisional_exchange(flow, request_state)
 
 
 addons = [TransportMattersAddon()]

@@ -5,7 +5,7 @@ under the 700-LOC invariant. The typer command itself stays in
 ``cli/__init__.py`` as a thin wrapper that calls :func:`run_doctor`.
 
 Tests that previously patched ``transport_matters.cli.shutil.which`` /
-``transport_matters.cli._port_in_use`` continue to work because those
+``transport_matters.cli.port_in_use`` continue to work because those
 re-exports are still resolved at call time inside ``run_doctor``'s own module.
 """
 
@@ -22,7 +22,7 @@ from transport_matters.config import get_settings
 
 from .identity import CLI_COMMAND, PRODUCT_LABEL
 from .launch_runtime import resolve_mitmdump_executable
-from .net import _port_in_use
+from .net import port_in_use
 
 __all__ = ["run_doctor"]
 
@@ -122,7 +122,7 @@ def run_doctor() -> None:
         ("proxy port", settings.proxy_port),
         ("web port", settings.web_port),
     ):
-        if _port_in_use(port):
+        if port_in_use(port):
             typer.secho(
                 f"  warn  {label} {port} in use — "
                 f"pick a different port with --{label.split()[0]}-port",

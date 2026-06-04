@@ -3,22 +3,22 @@
 import pytest
 import typer
 
-from transport_matters.cli import _port_in_use
+from transport_matters.cli import port_in_use
 from transport_matters.cli.net import validate_port_option
 
 
 def test_port_in_use_detects_busy_port(busy_port: int) -> None:
-    assert _port_in_use(busy_port) is True
+    assert port_in_use(busy_port) is True
 
 
 def test_port_in_use_reports_free_port(free_port: int) -> None:
-    assert _port_in_use(free_port) is False
+    assert port_in_use(free_port) is False
 
 
 def test_port_in_use_ignores_recently_closed_listener(
     recently_closed_port: int,
 ) -> None:
-    assert _port_in_use(recently_closed_port) is False
+    assert port_in_use(recently_closed_port) is False
 
 
 # --------------------------------------------------------------------------- #

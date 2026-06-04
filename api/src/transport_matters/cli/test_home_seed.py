@@ -246,7 +246,7 @@ def test_claude_launch_seeds_home_dir(
     spy_run_client_children: MagicMock,
 ) -> None:
     monkeypatch.setattr("transport_matters.cli.shutil.which", _which_all())
-    monkeypatch.setattr("transport_matters.cli._port_in_use", lambda _: False)
+    monkeypatch.setattr("transport_matters.cli.port_in_use", lambda _: False)
     source = tmp_path / "default-claude"
     source.mkdir()
     _write_json(
@@ -289,7 +289,7 @@ def test_codex_launch_seeds_home_dir(
         "transport_matters.cli.shutil.which",
         _which_by_name({"mitmdump": "/bin/mitmdump", "codex": "/bin/codex"}),
     )
-    monkeypatch.setattr("transport_matters.cli._port_in_use", lambda _: False)
+    monkeypatch.setattr("transport_matters.cli.port_in_use", lambda _: False)
     source = tmp_path / "default-codex"
     source.mkdir()
     (source / "auth.json").write_bytes(b'{"tokens":{"id":"source"}}\n')

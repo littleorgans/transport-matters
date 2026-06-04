@@ -27,7 +27,7 @@ def test_start_defaults_storage_to_per_run_root(
 ) -> None:
     """Without ``--storage-dir`` the child env carries the per-run root."""
     monkeypatch.setattr("transport_matters.cli.shutil.which", _which_all())
-    monkeypatch.setattr("transport_matters.cli._port_in_use", lambda _: False)
+    monkeypatch.setattr("transport_matters.cli.port_in_use", lambda _: False)
     monkeypatch.delenv("TRANSPORT_MATTERS_STORAGE_DIR", raising=False)
 
     workdir = tmp_path / "project"
@@ -48,7 +48,7 @@ def test_start_same_cwd_runs_get_disjoint_storage(
 ) -> None:
     """Two starts in the *same* CWD resolve to distinct per-run roots."""
     monkeypatch.setattr("transport_matters.cli.shutil.which", _which_all())
-    monkeypatch.setattr("transport_matters.cli._port_in_use", lambda _: False)
+    monkeypatch.setattr("transport_matters.cli.port_in_use", lambda _: False)
     monkeypatch.delenv("TRANSPORT_MATTERS_STORAGE_DIR", raising=False)
 
     workdir = tmp_path / "project"
@@ -82,7 +82,7 @@ def test_start_nested_session_does_not_inherit_storage_dir(
     co-reside in the parent's store once K1 removed the workspace lock.
     """
     monkeypatch.setattr("transport_matters.cli.shutil.which", _which_all())
-    monkeypatch.setattr("transport_matters.cli._port_in_use", lambda _: False)
+    monkeypatch.setattr("transport_matters.cli.port_in_use", lambda _: False)
     parent_storage = tmp_path / "parent-run"
     parent_storage.mkdir()
     monkeypatch.setenv("TRANSPORT_MATTERS_STORAGE_DIR", str(parent_storage))
@@ -106,7 +106,7 @@ def test_start_explicit_storage_dir_overrides_workspace_root(
 ) -> None:
     """``--storage-dir`` still wins over the per-workspace default."""
     monkeypatch.setattr("transport_matters.cli.shutil.which", _which_all())
-    monkeypatch.setattr("transport_matters.cli._port_in_use", lambda _: False)
+    monkeypatch.setattr("transport_matters.cli.port_in_use", lambda _: False)
 
     workdir = tmp_path / "project"
     workdir.mkdir()
@@ -135,7 +135,7 @@ def test_start_flows_working_dir_into_transport_matters_cwd_env(
 ) -> None:
     """``TRANSPORT_MATTERS_CWD`` rides on the child env."""
     monkeypatch.setattr("transport_matters.cli.shutil.which", _which_all())
-    monkeypatch.setattr("transport_matters.cli._port_in_use", lambda _: False)
+    monkeypatch.setattr("transport_matters.cli.port_in_use", lambda _: False)
     monkeypatch.delenv("TRANSPORT_MATTERS_CWD", raising=False)
 
     workdir = tmp_path / "project"
@@ -154,7 +154,7 @@ def test_start_flows_run_id_into_child_envs(
     spy_run_client_children: MagicMock,
 ) -> None:
     monkeypatch.setattr("transport_matters.cli.shutil.which", _which_all())
-    monkeypatch.setattr("transport_matters.cli._port_in_use", lambda _: False)
+    monkeypatch.setattr("transport_matters.cli.port_in_use", lambda _: False)
     monkeypatch.delenv("TRANSPORT_MATTERS_RUN_ID", raising=False)
 
     workdir = tmp_path / "project"
@@ -176,7 +176,7 @@ def test_start_home_dir_sets_claude_config_dir_and_manifest(
     spy_run_client_children: MagicMock,
 ) -> None:
     monkeypatch.setattr("transport_matters.cli.shutil.which", _which_all())
-    monkeypatch.setattr("transport_matters.cli._port_in_use", lambda _: False)
+    monkeypatch.setattr("transport_matters.cli.port_in_use", lambda _: False)
     monkeypatch.setenv("CLAUDE_CONFIG_DIR", "/parent/claude")
     monkeypatch.chdir(tmp_path)
     captured: dict[str, Any] = {}
@@ -218,7 +218,7 @@ def test_start_unset_home_dir_omits_claude_config_dir(
     spy_run_client_children: MagicMock,
 ) -> None:
     monkeypatch.setattr("transport_matters.cli.shutil.which", _which_all())
-    monkeypatch.setattr("transport_matters.cli._port_in_use", lambda _: False)
+    monkeypatch.setattr("transport_matters.cli.port_in_use", lambda _: False)
     monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)
 
     workdir = tmp_path / "project"
@@ -236,7 +236,7 @@ def test_start_print_command_home_dir_does_not_create_dir(
     spy_run_client_children: MagicMock,
 ) -> None:
     monkeypatch.setattr("transport_matters.cli.shutil.which", _which_all())
-    monkeypatch.setattr("transport_matters.cli._port_in_use", lambda _: False)
+    monkeypatch.setattr("transport_matters.cli.port_in_use", lambda _: False)
     home_dir = tmp_path / "claude-home"
     workdir = tmp_path / "project"
     workdir.mkdir()
@@ -281,7 +281,7 @@ def test_start_writes_run_root_storage_into_manifest(
 ) -> None:
     """Manifest records the per-workspace path so ``list`` surfaces it."""
     monkeypatch.setattr("transport_matters.cli.shutil.which", _which_all())
-    monkeypatch.setattr("transport_matters.cli._port_in_use", lambda _: False)
+    monkeypatch.setattr("transport_matters.cli.port_in_use", lambda _: False)
     monkeypatch.delenv("TRANSPORT_MATTERS_STORAGE_DIR", raising=False)
 
     captured: dict[str, Any] = {}
@@ -315,7 +315,7 @@ def test_start_different_cwds_get_disjoint_storage(
 ) -> None:
     """Two starts in different CWDs must resolve to different storage roots."""
     monkeypatch.setattr("transport_matters.cli.shutil.which", _which_all())
-    monkeypatch.setattr("transport_matters.cli._port_in_use", lambda _: False)
+    monkeypatch.setattr("transport_matters.cli.port_in_use", lambda _: False)
     monkeypatch.delenv("TRANSPORT_MATTERS_STORAGE_DIR", raising=False)
 
     dir_a = tmp_path / "a"

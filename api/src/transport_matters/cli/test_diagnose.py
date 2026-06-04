@@ -2,7 +2,7 @@
 
 The doctor body lives in ``cli/diagnose.py``. ``shutil.which`` resolves
 through ``transport_matters.cli.shutil.which`` (re-exported at package scope) so
-existing patches keep working; ``_port_in_use`` is rebound by name in
+existing patches keep working; ``port_in_use`` is rebound by name in
 ``diagnose`` so tests must patch it at ``transport_matters.cli.diagnose``.
 """
 
@@ -25,9 +25,9 @@ def test_doctor_happy_path(
     tmp_storage: Path, monkeypatch: pytest.MonkeyPatch, free_port: int
 ) -> None:
     monkeypatch.setattr("transport_matters.cli.shutil.which", _which_all())
-    # Force the two default ports to appear free by patching _port_in_use
+    # Force the two default ports to appear free by patching port_in_use
     # at the module that actually consumes it (cli.diagnose, not cli).
-    monkeypatch.setattr("transport_matters.cli.diagnose._port_in_use", lambda _: False)
+    monkeypatch.setattr("transport_matters.cli.diagnose.port_in_use", lambda _: False)
     result = runner.invoke(main, ["doctor"])
     assert result.exit_code == 0
     assert "all checks passed" in result.stdout
@@ -56,7 +56,7 @@ def test_doctor_uses_transport_matters_storage_probe(
 
     monkeypatch.setattr(Path, "write_text", capture_write_text)
     monkeypatch.setattr("transport_matters.cli.shutil.which", _which_all())
-    monkeypatch.setattr("transport_matters.cli.diagnose._port_in_use", lambda _: False)
+    monkeypatch.setattr("transport_matters.cli.diagnose.port_in_use", lambda _: False)
 
     result = runner.invoke(main, ["doctor"])
 
@@ -78,7 +78,7 @@ def test_doctor_prefers_same_environment_mitmdump(
         "transport_matters.cli.diagnose.sysconfig.get_path", lambda name: "/tool/bin"
     )
     monkeypatch.setattr("transport_matters.cli.shutil.which", fake_which)
-    monkeypatch.setattr("transport_matters.cli.diagnose._port_in_use", lambda _: False)
+    monkeypatch.setattr("transport_matters.cli.diagnose.port_in_use", lambda _: False)
     result = runner.invoke(main, ["doctor"])
     assert result.exit_code == 0
     assert "ok    mitmdump — /tool/bin/mitmdump" in result.stdout
@@ -105,7 +105,7 @@ def test_doctor_skips_active_mitmdump_with_missing_shebang_interpreter(
         lambda name: str(scripts_dir),
     )
     monkeypatch.setenv("PATH", str(path_dir))
-    monkeypatch.setattr("transport_matters.cli.diagnose._port_in_use", lambda _: False)
+    monkeypatch.setattr("transport_matters.cli.diagnose.port_in_use", lambda _: False)
 
     result = runner.invoke(main, ["doctor"])
     assert result.exit_code == 0
@@ -117,7 +117,7 @@ def test_doctor_reports_missing_mitmdump(
     tmp_storage: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr("transport_matters.cli.shutil.which", _which_none())
-    monkeypatch.setattr("transport_matters.cli.diagnose._port_in_use", lambda _: False)
+    monkeypatch.setattr("transport_matters.cli.diagnose.port_in_use", lambda _: False)
     result = runner.invoke(main, ["doctor"])
     assert result.exit_code == 1
     assert "fail  mitmdump" in result.output
@@ -129,7 +129,7 @@ def test_doctor_warns_when_ports_are_busy(
     tmp_storage: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr("transport_matters.cli.shutil.which", _which_all())
-    monkeypatch.setattr("transport_matters.cli.diagnose._port_in_use", lambda _: True)
+    monkeypatch.setattr("transport_matters.cli.diagnose.port_in_use", lambda _: True)
     result = runner.invoke(main, ["doctor"])
     # Port warnings are not fatal, so exit code is still 0.
     assert result.exit_code == 0
@@ -146,7 +146,7 @@ def test_doctor_fails_when_storage_unwritable(
     blocker.write_text("i am a file, not a dir")
     monkeypatch.setenv("TRANSPORT_MATTERS_STORAGE_DIR", str(blocker))
     monkeypatch.setattr("transport_matters.cli.shutil.which", _which_all())
-    monkeypatch.setattr("transport_matters.cli.diagnose._port_in_use", lambda _: False)
+    monkeypatch.setattr("transport_matters.cli.diagnose.port_in_use", lambda _: False)
     from transport_matters import config
 
     config.get_settings.cache_clear()
@@ -162,7 +162,7 @@ def test_doctor_works_with_live_lock_in_same_cwd(
 ) -> None:
     """``doctor`` is read-only and must not touch the workspace lock."""
     monkeypatch.setattr("transport_matters.cli.shutil.which", _which_all())
-    monkeypatch.setattr("transport_matters.cli.diagnose._port_in_use", lambda _: False)
+    monkeypatch.setattr("transport_matters.cli.diagnose.port_in_use", lambda _: False)
     monkeypatch.chdir(tmp_path)
     with WorkspaceLock(workspace_root(tmp_path)):
         result = runner.invoke(main, ["doctor"])

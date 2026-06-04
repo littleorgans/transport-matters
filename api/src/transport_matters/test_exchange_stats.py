@@ -174,9 +174,9 @@ class _RaisingResponseAdapter:
 
 
 def test_parse_response_ir_marks_unparsable_response() -> None:
-    from transport_matters.exchange_stats import _parse_response_ir
+    from transport_matters.exchange_stats import parse_response_ir
 
-    res_ir, res_stats = _parse_response_ir(
+    res_ir, res_stats = parse_response_ir(
         _RaisingResponseAdapter(), b"<<garbage>>", "application/json", "ex-1"
     )
     assert res_ir is None

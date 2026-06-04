@@ -107,7 +107,7 @@ def build_res_stats(res_ir: InternalResponse) -> ResStats:
     )
 
 
-def _parse_response_ir(
+def parse_response_ir(
     adapter: Any,  # Any: adapter protocol has no shared base
     raw_res: bytes,
     content_type: str,

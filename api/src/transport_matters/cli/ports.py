@@ -29,14 +29,14 @@ import socket
 __all__ = ["PortAllocationError", "allocate_port_pair"]
 
 
-_DEFAULT_ATTEMPTS = 3
+DEFAULT_ATTEMPTS = 3
 
 
 class PortAllocationError(RuntimeError):
     """Raised when the OS could not give us two free TCP ports."""
 
 
-def allocate_port_pair(*, attempts: int = _DEFAULT_ATTEMPTS) -> tuple[int, int]:
+def allocate_port_pair(*, attempts: int = DEFAULT_ATTEMPTS) -> tuple[int, int]:
     """Return two distinct free TCP ports on 127.0.0.1.
 
     Opens two listening sockets bound to port 0 (kernel-assigned),

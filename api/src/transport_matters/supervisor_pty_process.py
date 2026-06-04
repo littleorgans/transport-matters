@@ -18,9 +18,9 @@ if TYPE_CHECKING:
 
 from transport_matters.supervisor_models import ManagedProcess
 from transport_matters.supervisor_pty import (
-    _PTY_JOIN_TIMEOUT,
-    _install_parent_cbreak,
-    _pty_shuttle,
+    PTY_JOIN_TIMEOUT,
+    install_parent_cbreak,
+    pty_shuttle,
 )
 
 
@@ -76,7 +76,7 @@ def spawn_with_pty(
     # would leave the user's terminal half-reconfigured forever.
     old_attrs: list[Any] | None  # termios attribute list is opaque
     try:
-        old_attrs = _install_parent_cbreak(stdin_fd)
+        old_attrs = install_parent_cbreak(stdin_fd)
     except termios.error:
         os.close(master_fd)
         os.close(slave_fd)
@@ -123,7 +123,7 @@ def spawn_with_pty(
         # Writing to fd 0 only works on shells that dup it from an
         # O_RDWR /dev/tty handle. fd 1 is the idiomatic target.
         shuttle_thread = threading.Thread(
-            target=_pty_shuttle,
+            target=pty_shuttle,
             args=(stdin_fd, stdout_fd, master_fd, stop_event),
             name=f"pty-shuttle:{name}",
             daemon=True,
@@ -159,7 +159,7 @@ def spawn_with_pty(
             with contextlib.suppress(Exception):
                 pty_popen.wait(timeout=1.0)
         if shuttle_thread is not None and shuttle_started:
-            shuttle_thread.join(timeout=_PTY_JOIN_TIMEOUT)
+            shuttle_thread.join(timeout=PTY_JOIN_TIMEOUT)
         if prev_sigwinch is not None:
             with contextlib.suppress(Exception):
                 signal.signal(signal.SIGWINCH, prev_sigwinch)
@@ -181,7 +181,7 @@ def teardown_pty(mp: ManagedProcess) -> None:
     if mp.shuttle_thread is not None:
         # Daemon thread; join best-effort. If it's blocked in a syscall
         # that doesn't honour the stop event we'd rather exit than hang.
-        mp.shuttle_thread.join(timeout=_PTY_JOIN_TIMEOUT)
+        mp.shuttle_thread.join(timeout=PTY_JOIN_TIMEOUT)
         mp.shuttle_thread = None
     if mp.prev_sigwinch_handler is not None:
         with contextlib.suppress(Exception):

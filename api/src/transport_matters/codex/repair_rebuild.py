@@ -17,11 +17,11 @@ from transport_matters.codex.repair_models import (
     build_repair_diagnostic,
 )
 from transport_matters.codex.repair_payloads import (
-    _coerce_datetime,
-    _int_field,
-    _parse_events_jsonl,
-    _parse_turn_json,
-    _string_field,
+    coerce_datetime,
+    int_field,
+    parse_events_jsonl,
+    parse_turn_json,
+    string_field,
 )
 from transport_matters.codex.session_metadata import (
     codex_session_id_from_header_lookup,
@@ -41,7 +41,7 @@ _OPERATOR_FACT_KINDS = {
 }
 
 
-def _rebuild_codex_derived_artifacts(
+def rebuild_codex_derived_artifacts(
     *,
     exchange_id: str,
     artifacts: ExchangeArtifacts,
@@ -63,12 +63,12 @@ def _rebuild_codex_derived_artifacts(
         )
         return None, tuple(diagnostics)
 
-    turn_payload, turn_parse_diagnostics = _parse_turn_json(derived_files.turn_json)
+    turn_payload, turn_parse_diagnostics = parse_turn_json(derived_files.turn_json)
     diagnostics.extend(turn_parse_diagnostics)
-    event_payloads, event_parse_diagnostics = _parse_events_jsonl(derived_files.events_jsonl)
+    event_payloads, event_parse_diagnostics = parse_events_jsonl(derived_files.events_jsonl)
     diagnostics.extend(event_parse_diagnostics)
 
-    preferred_start = _int_field(turn_payload, "request_message_index")
+    preferred_start = int_field(turn_payload, "request_message_index")
     request_message_index = _request_message_index(
         transport.messages,
         preferred_start=preferred_start,
@@ -144,9 +144,9 @@ def _rebuild_codex_derived_artifacts(
             exchange_id=exchange_id,
             session_id=session_id,
             turn_id=_turn_id(artifacts, turn_payload) or exchange_id,
-            turn_index=max(0, _int_field(turn_payload, "turn_index") or 0),
+            turn_index=max(0, int_field(turn_payload, "turn_index") or 0),
             request_message_index=request_message_index,
-            model=_string_field(turn_payload, "model") or artifacts.request_ir.model,
+            model=string_field(turn_payload, "model") or artifacts.request_ir.model,
         ),
         transport_messages=tuple(transport_messages),
         operator_facts=operator_facts,
@@ -232,14 +232,14 @@ def _session_id(
         )
         if session_id is not None:
             return session_id
-    return _string_field(turn_payload, "session_id")
+    return string_field(turn_payload, "session_id")
 
 
 def _turn_id(
     artifacts: ExchangeArtifacts,
     turn_payload: dict[str, Any] | None,
 ) -> str | None:
-    turn_id = _string_field(turn_payload, "turn_id")
+    turn_id = string_field(turn_payload, "turn_id")
     if turn_id is not None:
         return turn_id
     request_headers = _transport_request_headers(artifacts)
@@ -273,7 +273,7 @@ def _operator_facts(
         kind = event.get("kind")
         if kind not in _OPERATOR_FACT_KINDS or kind in facts:
             continue
-        ts = _coerce_datetime(event.get("ts"))
+        ts = coerce_datetime(event.get("ts"))
         if ts is None:
             diagnostics.append(
                 build_repair_diagnostic(

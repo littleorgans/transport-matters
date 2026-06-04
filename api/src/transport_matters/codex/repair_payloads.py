@@ -18,7 +18,7 @@ from transport_matters.codex.repair_models import (
 _DATETIME_ADAPTER = TypeAdapter(datetime)
 
 
-def _parse_turn_json(
+def parse_turn_json(
     payload: bytes | None,
 ) -> tuple[dict[str, Any] | None, tuple[CodexDerivedArtifactsDiagnostic, ...]]:
     if payload is None:
@@ -54,7 +54,7 @@ def _parse_turn_json(
     return data, ()
 
 
-def _parse_events_jsonl(
+def parse_events_jsonl(
     payload: bytes | None,
 ) -> tuple[
     tuple[dict[str, Any], ...],
@@ -105,22 +105,22 @@ def _parse_events_jsonl(
     return tuple(events), tuple(diagnostics)
 
 
-def _unsupported_versions(
+def unsupported_versions(
     turn_payload: dict[str, Any] | None,
     event_payloads: tuple[dict[str, Any], ...],
 ) -> tuple[int, ...]:
     versions: set[int] = set()
-    turn_version = _int_field(turn_payload, "derivation_version")
+    turn_version = int_field(turn_payload, "derivation_version")
     if turn_version is not None and not is_supported_codex_derivation_version(turn_version):
         versions.add(turn_version)
     for event in event_payloads:
-        event_version = _int_field(event, "derivation_version")
+        event_version = int_field(event, "derivation_version")
         if event_version is not None and not is_supported_codex_derivation_version(event_version):
             versions.add(event_version)
     return tuple(sorted(versions))
 
 
-def _coerce_datetime(value: object) -> datetime | None:
+def coerce_datetime(value: object) -> datetime | None:
     if value is None:
         return None
     try:
@@ -129,7 +129,7 @@ def _coerce_datetime(value: object) -> datetime | None:
         return None
 
 
-def _string_field(payload: dict[str, Any] | None, key: str) -> str | None:
+def string_field(payload: dict[str, Any] | None, key: str) -> str | None:
     if not isinstance(payload, dict):
         return None
     value = payload.get(key)
@@ -138,7 +138,7 @@ def _string_field(payload: dict[str, Any] | None, key: str) -> str | None:
     return None
 
 
-def _int_field(payload: dict[str, Any] | None, key: str) -> int | None:
+def int_field(payload: dict[str, Any] | None, key: str) -> int | None:
     if not isinstance(payload, dict):
         return None
     value = payload.get(key)
@@ -147,5 +147,5 @@ def _int_field(payload: dict[str, Any] | None, key: str) -> int | None:
     return value
 
 
-def _supported_versions() -> frozenset[int]:
+def supported_versions() -> frozenset[int]:
     return SUPPORTED_CODEX_DERIVATION_VERSIONS

@@ -9,21 +9,21 @@ from transport_matters import broadcast
 from transport_matters.client_version import detect_client_version
 from transport_matters.config import get_settings
 from transport_matters.exchange_recorder_artifacts import (
-    _derive_codex_http,
-    _extract_response,
-    _request_raw_bytes,
-    _stamped_pipeline_stats,
-)
-from transport_matters.exchange_recorder_artifacts import (
-    _persistable_curated_ir as _persistable_curated_ir,
-)
-from transport_matters.exchange_recorder_artifacts import (
-    _tag_http_error_status as _tag_http_error_status,
-)
-from transport_matters.exchange_recorder_artifacts import (
     build_request_artifacts as build_request_artifacts,
 )
-from transport_matters.exchange_recorder_unparsed import _unparsed_request_ir
+from transport_matters.exchange_recorder_artifacts import (
+    derive_codex_http,
+    extract_response,
+    request_raw_bytes,
+    stamped_pipeline_stats,
+)
+from transport_matters.exchange_recorder_artifacts import (
+    persistable_curated_ir as persistable_curated_ir,
+)
+from transport_matters.exchange_recorder_artifacts import (
+    tag_http_error_status as tag_http_error_status,
+)
+from transport_matters.exchange_recorder_unparsed import unparsed_request_ir
 from transport_matters.exchange_stats import build_pipeline_stats, build_req_stats
 from transport_matters.storage import (
     CodexTurnListSummary,
@@ -52,7 +52,7 @@ logger = logging.getLogger(__name__)
 _STORAGE_LAYOUT = DiskStorageLayout()
 
 
-async def _persist_exchange(
+async def persist_exchange(
     storage: StorageBackend,
     entry: IndexEntry,
     artifacts: ExchangeArtifacts,
@@ -108,14 +108,14 @@ def emit_exchange(
     broadcast.emit(payload)
 
 
-def _emit_exchange_deleted(exchange_id: str, flow_id: str | None = None) -> None:
+def emit_exchange_deleted(exchange_id: str, flow_id: str | None = None) -> None:
     payload: dict[str, object] = {"type": "exchange_deleted", "id": exchange_id}
     if flow_id is not None:
         payload["flow_id"] = flow_id
     broadcast.emit(payload)
 
 
-async def _persist_unparsed_exchange(
+async def persist_unparsed_exchange(
     flow: http.HTTPFlow,
     raw: bytes,
     provider_name: str,
@@ -135,7 +135,7 @@ async def _persist_unparsed_exchange(
             "Transport Matters may need updating to support this client version",
             client_version or "unknown client",
         )
-        ir = _unparsed_request_ir(raw, provider_name, client_version)
+        ir = unparsed_request_ir(raw, provider_name, client_version)
         req_stats = build_req_stats(ir)
 
         from transport_matters.storage import get_storage
@@ -154,20 +154,20 @@ async def _persist_unparsed_exchange(
             req=req_stats,
         )
         artifacts = ExchangeArtifacts(request_raw=raw, request_ir=ir)
-        if not await _persist_exchange(storage, entry, artifacts):
+        if not await persist_exchange(storage, entry, artifacts):
             return
         emit_exchange(ir, req_stats, None, exchange_id, ts, run_id, flow_id=flow.id)
     except Exception:
         logger.exception("Failed to record unparsed request for flow %s", flow.id)
 
 
-async def _persist_unparsed_http_exchange(
+async def persist_unparsed_http_exchange(
     flow: http.HTTPFlow,
     adapter: Any,  # Any: adapter protocol has no shared base
     codex_http: bool,
 ) -> None:
     """Record an HTTP request the adapter could not parse (raw bytes preserved)."""
-    await _persist_unparsed_exchange(flow, _request_raw_bytes(flow), adapter.name)
+    await persist_unparsed_exchange(flow, request_raw_bytes(flow), adapter.name)
 
 
 def _assign_track(
@@ -182,7 +182,7 @@ def _assign_track(
     return get_track_manager().record_exchange(run_id, ir, res_ir, exchange_id=exchange_id)
 
 
-def _persist_track_assignment(
+def persist_track_assignment(
     run_id: str | None,
     request_state: RequestFlowState,
     res_ir: InternalResponse | None,
@@ -203,13 +203,13 @@ def _persist_track_assignment(
     return request_state.track_assignment
 
 
-async def _persist_http_exchange(
+async def persist_http_exchange(
     flow: http.HTTPFlow,
     request_state: RequestFlowState,
     token_counter: TokenCountingClient | None,
 ) -> bool:
     if request_state.dropped:
-        return await _delete_http_provisional_exchange(flow, request_state)
+        return await delete_http_provisional_exchange(flow, request_state)
     if request_state.provisional_exchange_id is not None:
         finalized = await _finalize_http_provisional_exchange(flow, request_state, token_counter)
         if finalized:
@@ -225,15 +225,15 @@ async def _persist_http_exchange(
     audit = request_state.audit
     exchange_id = str(uuid.uuid4())
     ts = datetime.now(UTC)
-    raw_res, res_ir, res_stats = _extract_response(flow, adapter, exchange_id)
-    transport, codex_derived, codex_turn = _derive_codex_http(
+    raw_res, res_ir, res_stats = extract_response(flow, adapter, exchange_id)
+    transport, codex_derived, codex_turn = derive_codex_http(
         flow, request_state, exchange_id, raw_res, ts
     )
     req_stats = build_req_stats(curated_ir)
-    pipeline_stats = await _stamped_pipeline_stats(flow, request_state, token_counter, exchange_id)
+    pipeline_stats = await stamped_pipeline_stats(flow, request_state, token_counter, exchange_id)
 
     run_id = get_settings().run_id
-    track_assignment = _persist_track_assignment(
+    track_assignment = persist_track_assignment(
         run_id, request_state, res_ir, exchange_id=exchange_id
     )
     entry = IndexEntry(
@@ -258,7 +258,7 @@ async def _persist_http_exchange(
         events=codex_derived.events if codex_derived is not None else None,
         turn=codex_derived.turn if codex_derived is not None else None,
     )
-    if not await _persist_exchange(storage, entry, artifacts):
+    if not await persist_exchange(storage, entry, artifacts):
         return False
 
     emit_exchange(
@@ -277,7 +277,7 @@ async def _persist_http_exchange(
     return True
 
 
-async def _persist_http_provisional_exchange(
+async def persist_http_provisional_exchange(
     flow: http.HTTPFlow,
     request_state: RequestFlowState,
 ) -> str | None:
@@ -298,7 +298,7 @@ async def _persist_http_provisional_exchange(
     exchange_id = str(uuid.uuid4())
     ts = datetime.now(UTC)
     run_id = get_settings().run_id
-    track_assignment = _persist_track_assignment(
+    track_assignment = persist_track_assignment(
         run_id, request_state, None, exchange_id=exchange_id
     )
     entry = IndexEntry(
@@ -316,7 +316,7 @@ async def _persist_http_provisional_exchange(
     artifacts = ExchangeArtifacts(
         **build_request_artifacts(adapter, raw_req, ir, curated_ir, audit),
     )
-    if not await _persist_exchange(storage, entry, artifacts):
+    if not await persist_exchange(storage, entry, artifacts):
         return None
 
     emit_exchange(
@@ -334,7 +334,7 @@ async def _persist_http_provisional_exchange(
     return exchange_id
 
 
-async def _delete_http_provisional_exchange(
+async def delete_http_provisional_exchange(
     flow: http.HTTPFlow,
     request_state: RequestFlowState,
 ) -> bool:
@@ -354,7 +354,7 @@ async def _delete_http_provisional_exchange(
 
     request_state.provisional_exchange_id = None
     update_request_flow_state(flow, provisional_exchange_id=None)
-    _emit_exchange_deleted(exchange_id, flow_id=flow.id)
+    emit_exchange_deleted(exchange_id, flow_id=flow.id)
     return True
 
 
@@ -379,15 +379,15 @@ async def _finalize_http_provisional_exchange(
     raw_req = request_state.raw_request
     curated_ir = request_state.curated_request_ir
     audit = request_state.audit
-    raw_res, res_ir, res_stats = _extract_response(flow, adapter, exchange_id)
-    transport, codex_derived, codex_turn = _derive_codex_http(
+    raw_res, res_ir, res_stats = extract_response(flow, adapter, exchange_id)
+    transport, codex_derived, codex_turn = derive_codex_http(
         flow, request_state, exchange_id, raw_res, existing_entry.ts
     )
     req_stats = build_req_stats(curated_ir)
-    pipeline_stats = await _stamped_pipeline_stats(flow, request_state, token_counter, exchange_id)
+    pipeline_stats = await stamped_pipeline_stats(flow, request_state, token_counter, exchange_id)
 
     run_id = existing_entry.run_id
-    _persist_track_assignment(run_id, request_state, res_ir, exchange_id=exchange_id)
+    persist_track_assignment(run_id, request_state, res_ir, exchange_id=exchange_id)
     entry = existing_entry.model_copy(
         update={
             "req": req_stats,

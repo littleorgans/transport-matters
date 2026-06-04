@@ -18,13 +18,13 @@ import threading as threading
 from transport_matters.supervisor_core import ProcessSupervisor as ProcessSupervisor
 from transport_matters.supervisor_models import SIGNAL_EXIT as SIGNAL_EXIT
 from transport_matters.supervisor_models import ManagedProcess as ManagedProcess
-from transport_matters.supervisor_pty import _install_parent_cbreak as _install_parent_cbreak
-from transport_matters.supervisor_pty import _pty_shuttle as _pty_shuttle
+from transport_matters.supervisor_pty import install_parent_cbreak as install_parent_cbreak
+from transport_matters.supervisor_pty import pty_shuttle as pty_shuttle
 
 __all__ = [
     "SIGNAL_EXIT",
     "ManagedProcess",
     "ProcessSupervisor",
-    "_install_parent_cbreak",
-    "_pty_shuttle",
+    "install_parent_cbreak",
+    "pty_shuttle",
 ]
