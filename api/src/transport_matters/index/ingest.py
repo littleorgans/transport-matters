@@ -237,8 +237,9 @@ def _next_seq(conn: sqlite3.Connection, session_id: str | None) -> int | None:
     return int(row[0])
 
 
-# seq is deliberately absent from the DO UPDATE below: it is preserved per session across
-# re-ingest (§6.5), so a re-tail never renumbers an existing exchange.
+# seq on conflict = COALESCE(existing, freshly-computed): an already-assigned seq is preserved
+# (a re-tail never renumbers an exchange, §6.5), but an exchange first written UNcorrelated
+# (seq NULL) is back-filled when a later correlation upsert supplies its session (brief :45-56).
 _WIRE_UPSERT = """
 INSERT INTO wire_exchange (
     exchange_id, session_id, run_id, provider, model, ts, seq,
@@ -258,5 +259,6 @@ ON CONFLICT(exchange_id) DO UPDATE SET
     res_tokens         = excluded.res_tokens,
     stop_reason        = excluded.stop_reason,
     mutated_manually   = excluded.mutated_manually,
-    raw_dir            = excluded.raw_dir
+    raw_dir            = excluded.raw_dir,
+    seq                = COALESCE(wire_exchange.seq, excluded.seq)
 """

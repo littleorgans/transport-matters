@@ -133,6 +133,40 @@ class TestBuildWireJob:
             == 1
         )
 
+    def test_seq_backfilled_when_correlation_arrives_later(self, conn: sqlite3.Connection) -> None:
+        entry = make_index_entry()
+        # First write is uncorrelated: session_id and seq are both NULL.
+        build_wire_job(entry, make_artifacts(make_request_ir(session_id=None)), None).apply(conn)
+        assert conn.execute(
+            "SELECT session_id, seq FROM wire_exchange WHERE exchange_id = 'ex1'"
+        ).fetchone() == (None, None)
+        # A later correlation upsert backfills session_id AND assigns seq (not left NULL).
+        artifacts = make_artifacts(make_request_ir(session_id="sess-1"))
+        binding = bind_exchange(entry, artifacts, _run_facts())
+        build_wire_job(entry, artifacts, binding).apply(conn)
+        assert conn.execute(
+            "SELECT session_id, seq FROM wire_exchange WHERE exchange_id = 'ex1'"
+        ).fetchone() == ("sess-1", 0)
+
+    def test_seq_increments_per_session_and_is_preserved_on_reingest(
+        self, conn: sqlite3.Connection
+    ) -> None:
+        run_facts = _run_facts()
+        artifacts = make_artifacts(make_request_ir(session_id="sess-1"))
+        first = make_index_entry(exchange_id="a")
+        second = make_index_entry(exchange_id="b")
+        build_wire_job(first, artifacts, bind_exchange(first, artifacts, run_facts)).apply(conn)
+        build_wire_job(second, artifacts, bind_exchange(second, artifacts, run_facts)).apply(conn)
+        assert dict(conn.execute("SELECT exchange_id, seq FROM wire_exchange").fetchall()) == {
+            "a": 0,
+            "b": 1,
+        }
+        # Re-ingesting an already-correlated exchange must not renumber it.
+        build_wire_job(first, artifacts, bind_exchange(first, artifacts, run_facts)).apply(conn)
+        assert (
+            conn.execute("SELECT seq FROM wire_exchange WHERE exchange_id = 'a'").fetchone()[0] == 0
+        )
+
 
 class TestMakeIndexSink:
     def test_end_to_end_capture_creates_wire_and_session_rows(self, tmp_path: Path) -> None:
