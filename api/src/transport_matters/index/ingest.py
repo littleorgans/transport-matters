@@ -22,6 +22,7 @@ from transport_matters.workspace import workspace_id
 
 if TYPE_CHECKING:
     import sqlite3
+    from collections.abc import Callable
     from pathlib import Path
 
     from transport_matters.index.adapters.base import NormalizedTurn
@@ -142,11 +143,22 @@ def build_wire_job(
     return IndexJob(kind="wire", entity_id=entry.id, run_id=row.run_id or "", apply=apply)
 
 
-def make_index_sink(writer: IndexWriter, run_facts: RunFacts) -> ExchangeSink:
-    """Build the post-persist sink ``load_runtime`` registers: bind → build → submit (§6.4)."""
+def make_index_sink(
+    writer: IndexWriter,
+    run_facts: RunFacts,
+    on_binding: Callable[[SessionBinding], None] | None = None,
+) -> ExchangeSink:
+    """Build the post-persist sink ``load_runtime`` registers: bind → build → submit (§6.4).
+
+    ``on_binding`` (injected by ``load_runtime``, so ingest never imports the tailer — no cycle) is
+    invoked once per resolved wire binding so the transcript tailer can register that session's
+    cursor read-back style — the first wire frame is what reveals the session_id (§9.2/§15 risk 2).
+    """
 
     def sink(entry: IndexEntry, artifacts: ExchangeArtifacts) -> None:
         binding = bind_exchange(entry, artifacts, run_facts)
+        if binding is not None and on_binding is not None:
+            on_binding(binding)
         writer.submit(build_wire_job(entry, artifacts, binding))
 
     return sink
@@ -279,13 +291,28 @@ def build_transcript_job(turn: NormalizedTurn, binding: SessionBinding) -> Index
 
     The binding supplies the FK-parent ``session`` row; the turn supplies everything else. ``parts``
     are ``ir.ContentBlock``s, so identical content dedups to the same ``block.hash`` as the wire
-    side — which is what makes the §8.4 pivot/diff exact.
+    side — which is what makes the §8.4 pivot/diff exact. The job carries the lightweight live SSE
+    event (§9.4); the writer pushes it AFTER COMMIT.
     """
+    event: dict[str, object] = {
+        "type": "transcript_turn",
+        "session_id": turn.session_id,
+        "turn_id": turn.turn_id,
+        "run_id": turn.run_id,
+        "seq": turn.seq,
+        "role": turn.role,
+        "ts": turn.ts,
+        "is_sidechain": turn.is_sidechain,
+        "cli": turn.cli,
+        "provider": turn.provider,
+    }
 
     def apply(conn: sqlite3.Connection) -> None:
         _write_transcript(conn, binding, turn)
 
-    return IndexJob(kind="transcript", entity_id=turn.turn_id, run_id=turn.run_id, apply=apply)
+    return IndexJob(
+        kind="transcript", entity_id=turn.turn_id, run_id=turn.run_id, apply=apply, event=event
+    )
 
 
 def _write_transcript(

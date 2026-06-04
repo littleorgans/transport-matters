@@ -12,12 +12,13 @@ import queue
 import threading
 import time
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any  # Any: a live-event payload is a free-form JSON dict
 
 from transport_matters.index.db import connect
 from transport_matters.index.schema import apply_schema
 
 if TYPE_CHECKING:
+    import asyncio
     import sqlite3
     from collections.abc import Callable
 
@@ -39,6 +40,7 @@ class IndexJob:
     entity_id: str  # for failure logging
     run_id: str  # for dirty-marking on drop / rollback
     apply: Callable[[sqlite3.Connection], None]
+    event: dict[str, Any] | None = None  # live SSE payload emitted post-COMMIT (transcript turns)
 
 
 class _Stop:
@@ -57,6 +59,9 @@ class IndexWriter:
         batch_max: int = 64,
         flush_ms: int = 50,
         queue_max: int = _DEFAULT_QUEUE_MAX,
+        *,
+        loop: asyncio.AbstractEventLoop | None = None,
+        emit: Callable[[dict[str, Any]], None] | None = None,
     ) -> None:
         self._db_path = db_path
         self._batch_max = batch_max
@@ -65,6 +70,11 @@ class IndexWriter:
         self._thread: threading.Thread | None = None
         self._drain_on_stop = True
         self._dropped: dict[str, int] = {}
+        # Live-push (§9.4): after a successful COMMIT, emit each applied job's event on the event
+        # loop via call_soon_threadsafe — the ONLY safe cross-thread bridge to the loop-affine
+        # broadcast.emit (the writer is an OS thread). None loop/emit = no push (tests / tier-2-only).
+        self._loop = loop
+        self._emit = emit
 
     def start(self) -> None:
         """Spawn the writer thread (called once, from ``load_runtime()``)."""
@@ -158,6 +168,7 @@ class IndexWriter:
 
     def _commit_batch(self, conn: sqlite3.Connection, batch: list[IndexJob]) -> None:
         conn.execute("BEGIN IMMEDIATE")
+        applied: list[IndexJob] = []
         for i, job in enumerate(batch):
             savepoint = f"j{i}"
             conn.execute(f"SAVEPOINT {savepoint}")
@@ -174,7 +185,20 @@ class IndexWriter:
                 _log.exception("index job failed entity=%s run=%s", job.entity_id, job.run_id)
             else:
                 conn.execute(f"RELEASE {savepoint}")
+                applied.append(job)
         conn.execute("COMMIT")
+        self._emit_events(applied)
+
+    def _emit_events(self, applied: list[IndexJob]) -> None:
+        """Push committed jobs' live events onto the event loop AFTER COMMIT (§9.4), tying the
+        signal to durability: the moment the UI hears about a turn, a §8 query for it succeeds.
+        ``call_soon_threadsafe`` is the only safe cross-thread bridge to the loop-affine emit."""
+        loop, emit = self._loop, self._emit
+        if loop is None or emit is None:
+            return
+        for job in applied:
+            if job.event is not None:
+                loop.call_soon_threadsafe(emit, job.event)
 
     def _mark_dropped(self, job: IndexJob) -> None:
         self._dropped[job.run_id] = self._dropped.get(job.run_id, 0) + 1
