@@ -294,3 +294,37 @@ class TestMakeIndexSink:
             )
         finally:
             verify.close()
+
+    def test_owned_codex_session_row_carries_cli_and_descriptor(self, tmp_path: Path) -> None:
+        # Regression (d) at the unit level: an owned codex exchange lands a session row with
+        # cli="codex" + the owned source_descriptor (via bind_exchange → build_wire_job →
+        # upsert_session) BEFORE any transcript turn — directly killing the empty-session-row symptom.
+        db_path = str(tmp_path / "index.db")
+        writer = IndexWriter(db_path, flush_ms=5)
+        writer.start()
+        descriptor = encode_source_descriptor(
+            FileTailSource(path="/home/u/.codex/sessions/r-native-9.jsonl", format="codex_rollout")
+        )
+        sink = make_index_sink(
+            writer,
+            _run_facts(
+                cli="codex",
+                codex_native_session_id="native-9",
+                codex_source_descriptor=descriptor,
+            ),
+        )
+        sink(
+            make_index_entry(provider="codex"),
+            make_artifacts(make_request_ir(session_id="native-9")),
+        )
+        writer.stop(drain=True)
+
+        verify = connect(db_path)
+        try:
+            row = verify.execute(
+                "SELECT cli, source_descriptor FROM session WHERE session_id = ?",
+                (synth_session_id("run1", "codex", "native-9"),),
+            ).fetchone()
+            assert row == ("codex", descriptor)
+        finally:
+            verify.close()
