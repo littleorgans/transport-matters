@@ -40,7 +40,8 @@ def test_start_calls_run_client_children_with_claude_client(
     client = kwargs["client"]
     assert client.name == "claude"
     assert client.display_name == "Claude"
-    assert client.argv == ["/bin/claude"]
+    assert client.argv[0] == "/bin/claude"
+    assert client.argv[-2] == "--session-id"  # claude now mints + adopts the owned id by default
     assert client.env["ANTHROPIC_BASE_URL"] == "http://127.0.0.1:9900"
     assert client.cwd == workdir
     assert kwargs["proxy_port"] == 9900

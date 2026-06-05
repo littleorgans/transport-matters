@@ -129,11 +129,30 @@ def _default_claude_config_path(env: Mapping[str, str]) -> Path:
     return Path.home() / _CLAUDE_CONFIG_FILENAME
 
 
+def _default_claude_home(env: Mapping[str, str]) -> Path:
+    config_dir = env.get(_CLAUDE_CONFIG_ENV)
+    if config_dir:
+        return Path(config_dir).expanduser()
+    return Path.home() / ".claude"
+
+
 def _default_codex_home(env: Mapping[str, str]) -> Path:
     codex_home = env.get(_CODEX_HOME_ENV)
     if codex_home:
         return Path(codex_home).expanduser()
     return Path.home() / ".codex"
+
+
+def claude_projects_root(home_dir: Path | None, env: Mapping[str, str]) -> Path:
+    """The directory claude writes session transcripts to: ``<claude config home>/projects``.
+
+    The claude home is the managed ``--home-dir`` when set (it becomes the child's
+    ``CLAUDE_CONFIG_DIR`` in ``build_managed_child_env``), else claude's native default
+    (``$CLAUDE_CONFIG_DIR`` or ``~/.claude``). The managed-mint launcher (§5.2c) computes its owned
+    ``source_descriptor`` under this root so it lands exactly where ``claude --session-id`` writes —
+    same resolution as the child, so the descriptor never points off claude's real transcript root."""
+    home = home_dir if home_dir is not None else _default_claude_home(env)
+    return home / "projects"
 
 
 def codex_sessions_root(home_dir: Path | None, env: Mapping[str, str]) -> Path:

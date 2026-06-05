@@ -80,6 +80,24 @@ def _codex_wire_binding(native: str, descriptor: str | None) -> SessionBinding:
     )
 
 
+def _claude_wire_binding(session_id: str, descriptor: str | None) -> SessionBinding:
+    """A claude managed wire binding as ``bind_exchange`` resolves it (§5.2c): ``minted=True``,
+    session_id == the native id used directly, ``source_descriptor`` = the owned transcript path."""
+    return SessionBinding(
+        session_id=session_id,
+        provider="anthropic",
+        run_id=_RUN,
+        cwd="/w",
+        workspace_slug="s",
+        workspace_hash="h",
+        started_at="t",
+        cli="claude",
+        native_session_id=session_id,
+        minted=True,
+        source_descriptor=descriptor,
+    )
+
+
 def _binding(cwd: str = "/w") -> SessionBinding:
     return make_binding(_SESSION, cwd=cwd, workspace_slug="s", workspace_hash="h")
 
@@ -171,6 +189,33 @@ class TestRegisterCursor:
         assert isinstance(source, FileTailSource)
         assert source.path.endswith(f"-w/{_SESSION}.jsonl")
         assert cursors[0].byte_offset == 0  # catches turns written before registration
+
+    async def test_claude_managed_rebind_preserves_minted_and_owned_descriptor(
+        self, tmp_path: Path
+    ) -> None:
+        # Managed-mint (§5.2c): claude's wire binding is minted=True with the OWNED deterministic
+        # descriptor. The re-bind goes through ClaudeAdapter.bind, which returns minted=False (it
+        # cannot know the id was TM-injected), so register_session_cursor MUST preserve the wire
+        # side's authoritative minted + descriptor onto the cursor binding. Otherwise the transcript
+        # path's session-row upsert (minted = excluded.minted, last-writer-wins) clobbers minted back
+        # to 0 once a turn lands — breaking the §5.5 row and regression (f).
+        session = "019e0000-0000-7000-8000-00000000beef"
+        transcript = tmp_path / "owned.jsonl"
+        descriptor = encode_source_descriptor(
+            FileTailSource(path=str(transcript), format="claude_jsonl")
+        )
+        tailer = TranscriptTailer(lambda _job: None)
+        await register_session_cursor(
+            tailer, ClaudeAdapter(), _claude_wire_binding(session, descriptor)
+        )
+        (cursor,) = tailer._snapshot()
+        assert cursor.binding.minted is True  # NOT clobbered to False by the re-bind
+        assert cursor.binding.source_descriptor == descriptor
+        source = cursor.source
+        assert isinstance(source, FileTailSource)
+        assert source.path == str(
+            transcript
+        )  # tails the OWNED path, not locate's ~/.claude default
 
     async def test_codex_rebind_converges_and_uses_owned_descriptor(self, tmp_path: Path) -> None:
         # The transcript binding is RE-DERIVED through the adapter (bind() + RunContext go LIVE,

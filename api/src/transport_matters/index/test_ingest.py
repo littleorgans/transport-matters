@@ -38,8 +38,8 @@ def _run_facts(
     run_id: str | None = "run1",
     *,
     cli: str | None = None,
-    codex_native_session_id: str | None = None,
-    codex_source_descriptor: str | None = None,
+    owned_native_session_id: str | None = None,
+    owned_source_descriptor: str | None = None,
 ) -> RunFacts:
     return RunFacts(
         run_id=run_id,
@@ -48,8 +48,8 @@ def _run_facts(
         workspace_hash="hash",
         started_at="2026-06-05T00:00:00Z",
         cli=cli,
-        codex_native_session_id=codex_native_session_id,
-        codex_source_descriptor=codex_source_descriptor,
+        owned_native_session_id=owned_native_session_id,
+        owned_source_descriptor=owned_source_descriptor,
     )
 
 
@@ -94,13 +94,75 @@ class TestBindExchange:
             entry,
             artifacts,
             _run_facts(
-                cli="codex", codex_native_session_id="native-9", codex_source_descriptor=descriptor
+                cli="codex", owned_native_session_id="native-9", owned_source_descriptor=descriptor
             ),
         )
         assert binding is not None
         assert binding.cli == "codex"
         assert binding.source_descriptor == descriptor
         assert binding.session_id == synth_session_id("run1", "codex", "native-9")
+        # codex keeps its synth session_id (§3.4 PK) — owning the id does NOT make it minted (§5.2c).
+        assert binding.minted is False
+
+    def test_owned_claude_session_is_minted_and_described(self) -> None:
+        # Managed-mint (§5.2c): TM launched claude with ``--session-id <uuid>``, so claude adopts the
+        # owned uuid as its session_id AND writes it to the wire. When the wire id == the owned uuid
+        # the binding is minted=True (direct-id provider: the injected id IS the session_id) and
+        # carries the owned deterministic transcript descriptor, so the tailer byte-tails the owned
+        # path instead of ``locate``-ing it.
+        descriptor = encode_source_descriptor(
+            FileTailSource(
+                path="/home/u/.claude/projects/-w/owned-uuid.jsonl", format="claude_jsonl"
+            )
+        )
+        entry = make_index_entry(provider="anthropic")
+        artifacts = make_artifacts(make_request_ir(session_id="owned-uuid"))
+        binding = bind_exchange(
+            entry,
+            artifacts,
+            _run_facts(
+                cli="claude",
+                owned_native_session_id="owned-uuid",
+                owned_source_descriptor=descriptor,
+            ),
+        )
+        assert binding is not None
+        assert binding.session_id == "owned-uuid"  # native id used directly (== wire id)
+        assert binding.minted is True
+        assert binding.source_descriptor == descriptor
+        assert binding.cli == "claude"
+
+    def test_unowned_claude_session_is_not_minted(self) -> None:
+        # External adoption (regression c): a claude wire id TM did NOT launch (no owned id) is not
+        # minted and carries no descriptor — it falls back to the adapter's deterministic ``locate``.
+        entry = make_index_entry(provider="anthropic")
+        artifacts = make_artifacts(make_request_ir(session_id="external-uuid"))
+        binding = bind_exchange(entry, artifacts, _run_facts(cli="claude"))
+        assert binding is not None
+        assert binding.session_id == "external-uuid"
+        assert binding.minted is False
+        assert binding.source_descriptor is None
+
+    def test_claude_wire_id_mismatch_is_not_minted(self) -> None:
+        # A direct-id exchange whose wire id differs from the owned uuid (should not happen once claude
+        # adopts the injected id, but guard it) is treated as un-owned: not minted, no descriptor.
+        descriptor = encode_source_descriptor(
+            FileTailSource(path="/home/u/.claude/projects/-w/owned.jsonl", format="claude_jsonl")
+        )
+        entry = make_index_entry(provider="anthropic")
+        artifacts = make_artifacts(make_request_ir(session_id="other-uuid"))
+        binding = bind_exchange(
+            entry,
+            artifacts,
+            _run_facts(
+                cli="claude",
+                owned_native_session_id="owned-uuid",
+                owned_source_descriptor=descriptor,
+            ),
+        )
+        assert binding is not None
+        assert binding.minted is False
+        assert binding.source_descriptor is None
 
     def test_non_owned_codex_id_stays_undescribed(self) -> None:
         # A codex wire id TM did NOT seed (e.g. a forked subagent thread) must not borrow the owned
@@ -115,28 +177,12 @@ class TestBindExchange:
             artifacts,
             _run_facts(
                 cli="codex",
-                codex_native_session_id="native-OWNED",
-                codex_source_descriptor=descriptor,
+                owned_native_session_id="native-OWNED",
+                owned_source_descriptor=descriptor,
             ),
         )
         assert binding is not None
         assert binding.source_descriptor is None  # not the owned id → no descriptor
-
-    def test_anthropic_never_borrows_codex_descriptor(self) -> None:
-        # The owned descriptor is codex-specific; a non-readback provider never receives it even if
-        # its native id coincidentally equals the codex uuid.
-        descriptor = encode_source_descriptor(
-            FileTailSource(path="/home/u/.codex/sessions/r.jsonl", format="codex_rollout")
-        )
-        entry = make_index_entry(provider="anthropic")
-        artifacts = make_artifacts(make_request_ir(session_id="collide"))
-        binding = bind_exchange(
-            entry,
-            artifacts,
-            _run_facts(codex_native_session_id="collide", codex_source_descriptor=descriptor),
-        )
-        assert binding is not None
-        assert binding.source_descriptor is None
 
 
 class TestBuildWireJob:
@@ -322,7 +368,7 @@ class TestMakeIndexSink:
         sink = make_index_sink(
             cast("IndexWriter", _RecordingWriter()),
             _run_facts(
-                cli="codex", codex_native_session_id="native-9", codex_source_descriptor=descriptor
+                cli="codex", owned_native_session_id="native-9", owned_source_descriptor=descriptor
             ),
             lambda _binding: calls.append("on_binding"),
         )
@@ -379,8 +425,8 @@ class TestMakeIndexSink:
             writer,
             _run_facts(
                 cli="codex",
-                codex_native_session_id="native-9",
-                codex_source_descriptor=descriptor,
+                owned_native_session_id="native-9",
+                owned_source_descriptor=descriptor,
             ),
         )
         sink(

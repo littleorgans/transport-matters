@@ -450,14 +450,15 @@ def build_launch_env(
     web_port: int,
     run_id: str,
     cli: str | None = None,
-    codex_native_session_id: str | None = None,
-    codex_source_descriptor: str | None = None,
+    owned_native_session_id: str | None = None,
+    owned_source_descriptor: str | None = None,
 ) -> dict[str, str]:
     """Return the shared runtime environment for a launch attempt.
 
-    ``cli`` and the ``codex_*`` values are the §5.2b managed-mint contract: the codex launcher hands
-    the addon the harness cli plus the native uuid + source_descriptor of the rollout it owns, so the
-    addon stamps them onto the codex session row before cursor registration. Unset for claude."""
+    ``cli`` and the ``owned_*`` values are the §5.2b/§5.2c managed-mint contract (provider-neutral): a
+    mint-capable launcher hands the addon the harness cli plus the native id + source_descriptor of
+    the transcript it owns, so the addon stamps them onto the session row before cursor registration.
+    Both set by claude and codex managed launches; unset for un-owned (external-adoption) launches."""
     env = os.environ.copy()
     env[env_keys.STORAGE_DIR] = str(storage_dir)
     env[env_keys.WEB_PORT] = str(web_port)
@@ -466,10 +467,10 @@ def build_launch_env(
     env[env_keys.CWD] = str(working_dir)
     if cli is not None:
         env[env_keys.CLI] = cli
-    if codex_native_session_id is not None:
-        env[env_keys.CODEX_NATIVE_SESSION_ID] = codex_native_session_id
-    if codex_source_descriptor is not None:
-        env[env_keys.CODEX_SOURCE_DESCRIPTOR] = codex_source_descriptor
+    if owned_native_session_id is not None:
+        env[env_keys.OWNED_NATIVE_SESSION_ID] = owned_native_session_id
+    if owned_source_descriptor is not None:
+        env[env_keys.OWNED_SOURCE_DESCRIPTOR] = owned_source_descriptor
     return env
 
 

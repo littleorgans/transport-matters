@@ -1,6 +1,8 @@
 """Implementation of the `transport-matters claude` command."""
 
+import os
 import shutil
+from datetime import datetime
 from importlib.resources import as_file
 from pathlib import Path  # noqa: TC003
 from typing import TYPE_CHECKING
@@ -10,6 +12,7 @@ import typer
 
 from .home_seed import seed_home_dir
 from .identity import CLI_COMMAND
+from .launch_profile import ClaudeLaunchProfile, prepare_managed_session
 from .launch_runtime import (
     CLIENT_NAME_CLAUDE,
     build_launch_env,
@@ -26,6 +29,8 @@ from .runner import ManagedClient
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
     from importlib.resources.abc import Traversable
+
+    from .launch_profile import LaunchProfile, ManagedSession
 
 
 def _validate_upstream(upstream: str) -> None:
@@ -60,10 +65,17 @@ def _build_start_invocation(
     no_claude: bool,
     no_system_prompt: bool,
     debug: bool,
+    profile: LaunchProfile,
+    managed_session: ManagedSession | None,
     inject_system_prompt: Callable[..., list[str]],
     user_supplied_system_prompt: Callable[[list[str]], bool],
 ) -> Callable[[int, int], tuple[list[str], dict[str, str], ManagedClient | None]]:
-    """Build the retry-safe invocation factory for `transport-matters claude`."""
+    """Build the retry-safe invocation factory for `transport-matters claude`.
+
+    ``managed_session`` is the §5.2c owned session (minted ONCE before the retry loop, so every
+    attempt injects the SAME ``--session-id``): its native id + descriptor flow to the addon via the
+    launch env, and ``profile.client_argv`` injects the owned id so claude adopts it. ``None`` for an
+    un-owned launch (proxy-only or a user-pinned session) — claude rides the external-adoption path."""
 
     def build_invocation(
         proxy_port: int,
@@ -77,12 +89,20 @@ def _build_start_invocation(
                 web_port=web_port,
             )
 
+        native_session_id = (
+            managed_session.native_session_id if managed_session is not None else None
+        )
         env = build_launch_env(
             working_dir=working_dir,
             storage_dir=resolved_storage,
             proxy_port=proxy_port,
             web_port=web_port,
             run_id=run_id,
+            cli=CLIENT_NAME_CLAUDE,
+            owned_native_session_id=native_session_id,
+            owned_source_descriptor=(
+                managed_session.source_descriptor if managed_session is not None else None
+            ),
         )
         argv = build_mitmdump_argv(
             mitmdump=mitmdump,
@@ -103,7 +123,11 @@ def _build_start_invocation(
             client = ManagedClient(
                 name=CLIENT_NAME_CLAUDE,
                 display_name="Claude",
-                argv=[claude_path, *passthrough],
+                argv=profile.client_argv(
+                    client_path=claude_path,
+                    passthrough=passthrough,
+                    native_session_id=native_session_id,
+                ),
                 env=client_env,
                 cwd=working_dir,
             )
@@ -168,6 +192,22 @@ def run_start(
         validate_after_client_resolution=lambda: _validate_upstream(upstream),
     )
 
+    # Managed-mint (§5.2c): mint the owned uuid + compute the deterministic transcript descriptor ONCE,
+    # before the retry loop, so every attempt injects the same `--session-id`. ``write`` is gated on
+    # print-command (dry run touches no disk); claude needs no seed, so this only computes the
+    # descriptor. ``None`` when proxy-only or the user pinned a session (honor passthrough).
+    profile = ClaudeLaunchProfile()
+    managed_session = prepare_managed_session(
+        profile,
+        client_path=prepared.client_path,
+        passthrough=prepared.passthrough_user,
+        working_dir=prepared.working_dir,
+        home_dir=home_dir,
+        env=os.environ,
+        now=datetime.now().astimezone(),
+        write=not print_command,
+    )
+
     with as_file(prepared.addon_traversable) as addon_path:
         build_invocation = _build_start_invocation(
             addon_path=addon_path,
@@ -182,6 +222,8 @@ def run_start(
             no_claude=no_claude,
             no_system_prompt=no_system_prompt,
             debug=debug,
+            profile=profile,
+            managed_session=managed_session,
             inject_system_prompt=inject_system_prompt,
             user_supplied_system_prompt=user_supplied_system_prompt,
         )

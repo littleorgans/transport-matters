@@ -71,7 +71,11 @@ def test_start_empty_double_dash_is_noop(
     result = runner.invoke(main, ["claude", "--no-system-prompt", "--"])
     assert result.exit_code == 0, result.output
     spy_run_client_children.assert_called_once()
-    assert spy_run_client_children.call_args.kwargs["client"].argv == ["/bin/claude"]
+    # `--` with nothing after adds no passthrough; claude still mints its owned --session-id (§5.2c)
+    argv = spy_run_client_children.call_args.kwargs["client"].argv
+    assert argv[0] == "/bin/claude"
+    assert argv[-2] == "--session-id"
+    assert len(argv) == 3
 
 
 def test_start_dir_plus_passthrough(
@@ -116,4 +120,6 @@ def test_start_passthrough_forwards_to_managed_client(
     result = runner.invoke(main, ["claude", "--no-system-prompt", "--", "-p", "hello world"])
     assert result.exit_code == 0, result.output
     kwargs = spy_run_client_children.call_args.kwargs
-    assert kwargs["client"].argv == ["/bin/claude", "-p", "hello world"]
+    argv = kwargs["client"].argv
+    assert argv[:3] == ["/bin/claude", "-p", "hello world"]  # passthrough forwarded verbatim
+    assert argv[-2] == "--session-id"  # then the managed owned id is appended (§5.2c)

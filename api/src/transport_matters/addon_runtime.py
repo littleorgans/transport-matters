@@ -104,17 +104,17 @@ def load_runtime() -> AddonRuntime:
         index_writer.start()
         index_tailer = TranscriptTailer(index_writer.submit)
         index_tailer.start()
-        # Managed-mint (§5.2b): the codex launcher hands us the harness cli + the native id and
-        # source_descriptor of the rollout it owns; thread them so bind_exchange stamps the codex
+        # Managed-mint (§5.2b/§5.2c): a mint-capable launcher hands us the harness cli + the native id
+        # and source_descriptor of the transcript it owns; thread them so bind_exchange stamps the
         # session row (cli + descriptor) before cursor registration and the tailer tails the owned
-        # path. Absent for claude (cli stays None; descriptor stays unset).
+        # path. Set by claude and codex managed launches; absent for un-owned (external-adoption) runs.
         run_facts = build_run_facts(
             settings.run_id,
             settings.cwd,
             datetime.now(UTC).isoformat(),
             cli=settings.cli,
-            codex_native_session_id=settings.codex_native_session_id,
-            codex_source_descriptor=settings.codex_source_descriptor,
+            owned_native_session_id=settings.owned_native_session_id,
+            owned_source_descriptor=settings.owned_source_descriptor,
         )
         on_binding = _make_cursor_registrar(index_tailer, loop)
         set_exchange_sink(

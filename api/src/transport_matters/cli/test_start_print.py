@@ -129,7 +129,8 @@ def test_start_print_command_includes_claude_invocation(
     assert result.exit_code == 0
     lines = [line for line in result.stdout.splitlines() if line.strip()]
     assert any("/bin/mitmdump" in line for line in lines)
-    assert any(line == "/bin/claude" for line in lines)
+    # claude now mints by default: the printed invocation carries the owned --session-id (§5.2c)
+    assert any(line.startswith("/bin/claude") and "--session-id" in line for line in lines)
     spy_run_client_children.assert_not_called()
 
 

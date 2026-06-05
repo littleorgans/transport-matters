@@ -21,9 +21,10 @@ STORAGE_DIR = f"{ENV_PREFIX}STORAGE_DIR"
 RUN_ID = f"{ENV_PREFIX}RUN_ID"
 CWD = f"{ENV_PREFIX}CWD"
 CLI = f"{ENV_PREFIX}CLI"
-# Managed-mint (§5.2b): the launcher owns the codex rollout, so it hands the addon the native
-# uuid it minted (== the wire-observed thread id) and the JSON source_descriptor for the exact
-# pre-seeded rollout path. The addon stamps both onto the codex session row before cursor
-# registration, so the transcript tailer byte-tails the owned path instead of globbing for it.
-CODEX_NATIVE_SESSION_ID = f"{ENV_PREFIX}CODEX_NATIVE_SESSION_ID"
-CODEX_SOURCE_DESCRIPTOR = f"{ENV_PREFIX}CODEX_SOURCE_DESCRIPTOR"
+# Managed-mint (§5.2b/§5.2c): provider-neutral. The launcher owns the transcript a managed CLI will
+# write, so it hands the addon the native id it minted (== the wire-observed session id) and the JSON
+# source_descriptor for that owned transcript. The addon stamps both onto the session row whose wire
+# id matches, before cursor registration, so the tailer byte-tails the owned path instead of globbing.
+# Set by every mint-capable launch (codex: rollout; claude: deterministic transcript path).
+OWNED_NATIVE_SESSION_ID = f"{ENV_PREFIX}OWNED_NATIVE_SESSION_ID"
+OWNED_SOURCE_DESCRIPTOR = f"{ENV_PREFIX}OWNED_SOURCE_DESCRIPTOR"

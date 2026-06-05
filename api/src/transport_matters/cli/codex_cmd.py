@@ -1,11 +1,9 @@
 """Implementation of the `transport-matters codex` command."""
 
 import contextlib
-import json
 import os
 import shutil
 import tempfile
-import uuid
 from datetime import datetime
 from importlib.resources import as_file
 from pathlib import Path
@@ -13,15 +11,14 @@ from typing import TYPE_CHECKING
 
 import typer
 
-from .codex_session import CodexSessionSeed, resolve_codex_cli_version, seed_codex_session
-from .home_seed import codex_sessions_root, seed_home_dir
+from .home_seed import seed_home_dir
 from .identity import CLI_COMMAND, PRODUCT_LABEL
+from .launch_profile import CodexLaunchProfile, prepare_managed_session
 from .launch_runtime import (
     CLIENT_NAME_CODEX,
     build_launch_env,
     build_managed_child_env,
     build_mitmdump_argv,
-    managed_child_shell_env_excludes,
     prepare_launch,
     print_invocation,
     reject_passthrough_without_client,
@@ -39,6 +36,8 @@ from .trust import (
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping, Sequence
     from importlib.resources.abc import Traversable
+
+    from .launch_profile import LaunchProfile, ManagedSession
 
 
 def _resolve_codex_ca_certificate_or_exit(
@@ -140,11 +139,6 @@ def _build_proxy_only_codex_hint(
     )
 
 
-def _codex_shell_environment_policy_args() -> list[str]:
-    excluded = ",".join(json.dumps(key) for key in managed_child_shell_env_excludes())
-    return ["-c", f"shell_environment_policy.exclude=[{excluded}]"]
-
-
 def _build_codex_invocation(
     *,
     addon_path: Path,
@@ -157,19 +151,24 @@ def _build_codex_invocation(
     codex_path: str | None,
     codex_passthrough_user: Sequence[str],
     codex_ca_certificate: str | None,
-    codex_seed: CodexSessionSeed | None,
+    profile: LaunchProfile,
+    managed_session: ManagedSession | None,
     debug: bool,
 ) -> Callable[[int, int], tuple[list[str], dict[str, str], ManagedClient | None]]:
     """Build the retry-safe invocation factory for `transport-matters codex`.
 
-    ``codex_seed`` is the §5.2b managed-mint session (minted once, before the retry loop, so every
+    ``managed_session`` is the §5.2b/§5.2c owned session (minted once, before the retry loop, so every
     attempt resumes the SAME owned rollout): its native id + descriptor flow to the addon via the
-    launch env, and ``codex resume <native>`` continues the pre-seeded rollout TM owns."""
+    launch env, and ``profile.client_argv`` injects ``codex resume <native>`` to continue the
+    pre-seeded rollout TM owns. ``None`` for an un-owned launch (proxy-only or a user-pinned resume)."""
 
     def build_invocation(
         proxy_port: int,
         web_port: int,
     ) -> tuple[list[str], dict[str, str], ManagedClient | None]:
+        native_session_id = (
+            managed_session.native_session_id if managed_session is not None else None
+        )
         env = build_launch_env(
             working_dir=working_dir,
             storage_dir=resolved_storage,
@@ -177,11 +176,9 @@ def _build_codex_invocation(
             web_port=web_port,
             run_id=run_id,
             cli=CLIENT_NAME_CODEX,
-            codex_native_session_id=(
-                codex_seed.native_session_id if codex_seed is not None else None
-            ),
-            codex_source_descriptor=(
-                codex_seed.source_descriptor if codex_seed is not None else None
+            owned_native_session_id=native_session_id,
+            owned_source_descriptor=(
+                managed_session.source_descriptor if managed_session is not None else None
             ),
         )
 
@@ -208,19 +205,16 @@ def _build_codex_invocation(
                 proxy_url=proxy_url,
                 codex_ca_certificate=codex_ca_certificate,
             )
-            # Resume the owned, pre-seeded rollout (§5.2b) so codex appends to the path TM owns
-            # instead of minting a fresh native id + a rollout TM has to race to discover. Kept after
-            # the top-level `-c` policy and before user passthrough (resume's [PROMPT]/args).
-            resume_args = ["resume", codex_seed.native_session_id] if codex_seed is not None else []
+            # The codex profile owns the argv shape (§5.2c): the top-level `-c` policy, then
+            # ``resume <native>`` to continue the owned rollout, then user passthrough.
             client = ManagedClient(
                 name=CLIENT_NAME_CODEX,
                 display_name="Codex",
-                argv=[
-                    codex_path,
-                    *_codex_shell_environment_policy_args(),
-                    *resume_args,
-                    *codex_passthrough_user,
-                ],
+                argv=profile.client_argv(
+                    client_path=codex_path,
+                    passthrough=codex_passthrough_user,
+                    native_session_id=native_session_id,
+                ),
                 env=client_env,
                 cwd=working_dir,
             )
@@ -345,19 +339,22 @@ def run_codex(
             )
         elif not print_command:
             codex_ca_certificate = _resolve_proxy_only_codex_ca_hint(env=os.environ)
-        # Managed-mint (§5.2b): mint the native uuid + pre-seed the rollout ONCE, before the retry
-        # loop, so every attempt resumes the same owned session. ``write`` is gated on print-command
-        # (dry run must not touch disk); the descriptor/argv are still computed for the printout.
-        codex_seed: CodexSessionSeed | None = None
-        if prepared.client_path is not None:
-            codex_seed = seed_codex_session(
-                native_session_id=str(uuid.uuid4()),
-                now=datetime.now().astimezone(),
-                working_dir=prepared.working_dir,
-                cli_version=resolve_codex_cli_version(prepared.client_path),
-                sessions_root=codex_sessions_root(home_dir, os.environ),
-                write=not print_command,
-            )
+        # Managed-mint (§5.2b/§5.2c): mint the native uuid + pre-seed the rollout ONCE, before the
+        # retry loop, so every attempt resumes the same owned session. Codex flows through the SAME
+        # shared launch path claude uses (the codex profile owns the seed + argv shape); ``write`` is
+        # gated on print-command (dry run touches no disk). ``None`` when proxy-only or the user passed
+        # their own `resume` (honor passthrough).
+        profile = CodexLaunchProfile()
+        managed_session = prepare_managed_session(
+            profile,
+            client_path=prepared.client_path,
+            passthrough=prepared.passthrough_user,
+            working_dir=prepared.working_dir,
+            home_dir=home_dir,
+            env=os.environ,
+            now=datetime.now().astimezone(),
+            write=not print_command,
+        )
         build_invocation = _build_codex_invocation(
             addon_path=addon_path,
             force_http_fallback_addon_path=force_http_fallback_addon_path,
@@ -369,7 +366,8 @@ def run_codex(
             codex_path=prepared.client_path,
             codex_passthrough_user=prepared.passthrough_user,
             codex_ca_certificate=codex_ca_certificate,
-            codex_seed=codex_seed,
+            profile=profile,
+            managed_session=managed_session,
             debug=debug,
         )
 
