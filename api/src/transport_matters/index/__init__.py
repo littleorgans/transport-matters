@@ -28,7 +28,6 @@ from transport_matters.index.db import connect, index_db_path, transaction
 from transport_matters.index.ingest import build_transcript_job
 from transport_matters.index.models import (
     BlockEdge,
-    BlockRow,
     SessionRow,
     TranscriptTurnRow,
     WireExchangeRow,
@@ -40,7 +39,6 @@ from transport_matters.index.writer import IndexJob, IndexWriter
 __all__ = [
     "SESSION_NS",
     "BlockEdge",
-    "BlockRow",
     "FileTailSource",
     "IndexJob",
     "IndexWriter",

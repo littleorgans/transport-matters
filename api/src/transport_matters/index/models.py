@@ -1,25 +1,10 @@
 """Frozen Pydantic row models mirroring the tier-2 tables (§3.4-3.5).
 
 Read-side typed representations of each table. Nullability matches the DDL exactly so a
-``SELECT *`` round-trips into one of these without coercion. Identity/text columns on
-``BlockRow`` are immutable; only ``n_tokens`` is ever back-filled (§3.3).
+``SELECT *`` round-trips into one of these without coercion.
 """
 
 from pydantic import BaseModel, ConfigDict
-
-
-class BlockRow(BaseModel):
-    """One row of ``block``: a content-addressed unit shared across both streams."""
-
-    model_config = ConfigDict(frozen=True)
-
-    id: int
-    hash: str
-    kind: str
-    text: str
-    identity_canonical: str
-    n_tokens: int | None
-    created_at: str
 
 
 class SessionRow(BaseModel):

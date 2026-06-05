@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 from transport_matters import broadcast
 from transport_matters.index.adapters.base import FileTailSource, NormalizedTurn, SessionBinding
 from transport_matters.index.adapters.claude import ClaudeAdapter
+from transport_matters.index.conftest import make_binding
 from transport_matters.index.ingest import build_transcript_job
 from transport_matters.index.tailer import (
     TailCursor,
@@ -25,18 +26,7 @@ _SESSION = "00000000-0000-4000-8000-000000000001"
 
 
 def _binding(cwd: str = "/w") -> SessionBinding:
-    return SessionBinding(
-        session_id=_SESSION,
-        provider="anthropic",
-        run_id="run1",
-        cwd=cwd,
-        workspace_slug="s",
-        workspace_hash="h",
-        started_at="t",
-        cli="claude",
-        native_session_id=_SESSION,
-        minted=False,
-    )
+    return make_binding(_SESSION, cwd=cwd, workspace_slug="s", workspace_hash="h")
 
 
 def _user_line(uuid: str, text: str) -> str:
@@ -126,6 +116,40 @@ class TestRegisterCursor:
         assert isinstance(source, FileTailSource)
         assert source.path.endswith(f"-w/{_SESSION}.jsonl")
         assert cursors[0].byte_offset == 0  # catches turns written before registration
+
+    async def test_register_session_cursor_rebinds_readback_via_adapter(
+        self, tmp_path: Path, monkeypatch: object
+    ) -> None:
+        # The transcript binding is RE-DERIVED through the adapter (bind() + RunContext go LIVE here,
+        # audit #2): for codex read-back the synth session_id must reproduce the wire side's (§7.2),
+        # and the cursor binds the codex adapter's cli + rollout source.
+        from pathlib import Path as _Path
+
+        from transport_matters.index.adapters.codex import CodexAdapter
+        from transport_matters.index.sessions import synth_session_id
+
+        native = "019e0000-0000-7000-8000-00000000c0de"
+        monkeypatch.setattr(_Path, "home", lambda: tmp_path)  # type: ignore[attr-defined]
+        expected = synth_session_id("run1", "codex", native)
+        wire_binding = SessionBinding(
+            session_id=expected,
+            provider="codex",
+            run_id="run1",
+            cwd="/w",
+            workspace_slug="s",
+            workspace_hash="h",
+            started_at="t",
+            cli=None,  # the wire run_facts carries no cli; the adapter supplies it on re-bind
+            native_session_id=native,
+            minted=False,
+        )
+        tailer = TranscriptTailer(lambda _job: None)
+        await register_session_cursor(tailer, CodexAdapter(), wire_binding)
+        (cursor,) = tailer._snapshot()
+        assert cursor.binding.session_id == expected  # convergence: re-bind reproduces wire id
+        assert cursor.binding.cli == "codex"  # adapter-derived (was None on the wire binding)
+        assert isinstance(cursor.source, FileTailSource)
+        assert cursor.source.format == "codex_rollout"
 
 
 class TestLiveEvent:

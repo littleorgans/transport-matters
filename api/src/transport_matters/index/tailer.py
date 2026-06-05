@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from transport_matters.index.adapters.base import FileTailSource, TurnContext
+from transport_matters.index.adapters.base import FileTailSource, RunContext, TurnContext
 from transport_matters.index.ingest import build_transcript_job
 
 if TYPE_CHECKING:
@@ -171,10 +171,35 @@ class TranscriptTailer:
 async def register_session_cursor(
     tailer: TranscriptTailer, adapter: TranscriptAdapter, binding: SessionBinding
 ) -> None:
-    """Locate a bound session's transcript and register a tail cursor (read-back, §9.2/§15 risk 2).
+    """Re-bind via the adapter, locate the transcript, and register a tail cursor (§9.2/§15 risk 2).
+
+    The wire side resolved a provisional ``binding``; re-deriving it through ``adapter.bind`` makes the
+    adapter the single authority for session_id derivation (read-back synth / direct / mint) and gives
+    ``bind()`` + ``RunContext`` a production caller (audit #2). For a read-back provider the adapter MUST
+    reproduce the wire side's ``session_id`` (§7.2 convergence) since both synth from the same native id
+    threaded via ``RunContext``; a divergence would silently empty the pivot/diff join, so it is logged
+    and the wire id is kept.
 
     ``byte_offset = 0`` so turns written before registration (the one-frame startup lag) are caught
     on the first poll's full read.
     """
-    source = await adapter.locate(binding)
-    tailer.register(TailCursor(binding=binding, source=source, adapter=adapter))
+    run = RunContext(
+        run_id=binding.run_id,
+        cwd=binding.cwd,
+        workspace_slug=binding.workspace_slug,
+        workspace_hash=binding.workspace_hash,
+        cli=binding.cli or adapter.cli,
+        started_at=binding.started_at,
+        native_session_id=binding.native_session_id,
+    )
+    transcript_binding = await adapter.bind(run)
+    if transcript_binding.session_id != binding.session_id:
+        _log.warning(
+            "read-back session_id divergence (%s): wire=%s transcript=%s; keeping the wire id",
+            adapter.cli,
+            binding.session_id,
+            transcript_binding.session_id,
+        )
+        transcript_binding = binding
+    source = await adapter.locate(transcript_binding)
+    tailer.register(TailCursor(binding=transcript_binding, source=source, adapter=adapter))

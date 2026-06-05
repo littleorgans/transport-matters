@@ -6,15 +6,12 @@ import pytest
 from pydantic import ValidationError
 
 from transport_matters.index.adapters.base import SessionBinding
-from transport_matters.index.blocks import upsert_block
-from transport_matters.index.models import BlockRow, SessionRow
+from transport_matters.index.models import SessionRow
 from transport_matters.index.sessions import upsert_session
-from transport_matters.ir import TextBlock
 
 if TYPE_CHECKING:
     import sqlite3
 
-_BLOCK_COLS = ["id", "hash", "kind", "text", "identity_canonical", "n_tokens", "created_at"]
 _SESSION_COLS = [
     "session_id",
     "provider",
@@ -31,14 +28,6 @@ _SESSION_COLS = [
 
 
 class TestRowModelsMirrorTables:
-    def test_block_row_round_trips_from_select(self, conn: sqlite3.Connection) -> None:
-        block_id = upsert_block(conn, TextBlock(text="x"), n_tokens=3)
-        record = conn.execute(
-            f"SELECT {', '.join(_BLOCK_COLS)} FROM block WHERE id = ?", (block_id,)
-        ).fetchone()
-        row = BlockRow(**dict(zip(_BLOCK_COLS, record, strict=True)))
-        assert (row.id, row.kind, row.text, row.n_tokens) == (block_id, "text", "x", 3)
-
     def test_session_row_round_trips_from_select(self, conn: sqlite3.Connection) -> None:
         binding = SessionBinding(
             session_id="mint-1",
@@ -61,15 +50,19 @@ class TestRowModelsMirrorTables:
 
 
 class TestRowModelsFrozen:
-    def test_block_row_is_immutable(self) -> None:
-        row = BlockRow(
-            id=1,
-            hash="h",
-            kind="text",
-            text="t",
-            identity_canonical="c",
-            n_tokens=None,
-            created_at="2026-06-05T00:00:00Z",
+    def test_session_row_is_immutable(self) -> None:
+        row = SessionRow(
+            session_id="s",
+            provider="anthropic",
+            cli="claude",
+            run_id="run1",
+            cwd="/w",
+            workspace_slug="slug",
+            workspace_hash="hash",
+            native_session_id="s",
+            minted=0,
+            source_descriptor=None,
+            started_at="2026-06-05T00:00:00Z",
         )
         with pytest.raises(ValidationError):
-            row.n_tokens = 5  # type: ignore[misc]  # frozen models reject assignment at runtime
+            row.minted = 1  # type: ignore[misc]  # frozen models reject assignment at runtime
