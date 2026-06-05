@@ -167,20 +167,20 @@ def rebuild_if_stale(
     under a process-exclusive lock instead of letting the in-writer gate DROP the index to empty — the
     whole point of the slice, safe now that tier-1 is complete (8a/8b). Returns True iff a rebuild ran.
 
-    Single-flight by ORDERING + lock, not an epoch protocol: the rebuild runs before this process opens
-    any live connection, and :func:`exclusive_file_lock` serializes concurrent boots so exactly one
-    rebuild touches the shared db. The staleness check is re-run UNDER the lock (double-checked) so a
-    boot that blocked while a peer rebuilt sees a now-current db and skips its own destructive pass.
+    Single-flight by holding the lock across the WHOLE check+rebuild, not an epoch protocol. The lock
+    is acquired UNCONDITIONALLY before the staleness check (no lock-free pre-check): ``rebuild()`` seeds
+    current ``schema_meta`` at writer start, BEFORE ``backfill`` finishes, so a lock-free pre-check
+    could read "current" mid-rebuild and skip past a half-populated index. Acquiring first means a
+    concurrent boot BLOCKS until the in-flight rebuild fully completes, then checks (now genuinely
+    current AND complete) and skips. flock is cheap, so an uncontended boot acquires instantly.
     ``rebuild()`` remains the only drop/replay executor; this adds no second path.
     """
     workspaces_root = workspaces_root if workspaces_root is not None else default_workspaces_root()
     db_path = db_path if db_path is not None else index_db_path()
     lock_path = lock_path if lock_path is not None else index_rebuild_lock_path()
-    if not is_rebuild_needed(db_path):
-        return False
     with exclusive_file_lock(lock_path):
         if not is_rebuild_needed(db_path):
-            return False  # a concurrent boot rebuilt while we waited for the lock
+            return False
         _log.info(
             "tier-2 schema gate is stale; rebuilding the index from tier-1 before boot (§10.5)"
         )

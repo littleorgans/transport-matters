@@ -7,11 +7,7 @@ test proves the payoff: a session whose CLI transcript file is GONE still rebuil
 from the snapshot.
 """
 
-import importlib
-import json
 import shutil
-import threading
-import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -19,27 +15,27 @@ from transport_matters import manifest
 from transport_matters.index.adapters.base import (
     FileTailSource,
     SessionBinding,
-    encode_source_descriptor,
 )
 from transport_matters.index.adapters.claude import ClaudeAdapter
 from transport_matters.index.db import connect
 from transport_matters.index.ingest import RunFacts, make_index_sink
 from transport_matters.index.maintenance import iter_run_dirs
 from transport_matters.index.queries import session_diff
-from transport_matters.index.rebuild import (
-    backfill,
-    rebuild,
-    rebuild_if_stale,
-    reconcile,
-    replay_run,
-)
-from transport_matters.index.schema import apply_schema, is_rebuild_needed
-from transport_matters.index.sessions import synth_session_id
+from transport_matters.index.rebuild import backfill, rebuild, reconcile, replay_run
+from transport_matters.index.schema import apply_schema
 from transport_matters.index.tailer import TailCursor, TranscriptTailer
-from transport_matters.index.writer import IndexWriter
+from transport_matters.index.test_replay_support import (
+    _HASH,
+    _SLUG,
+    _counts,
+    _descriptor,
+    _drain,
+    _run_dir,
+    _seed_claude_run,
+    _seed_codex_run,
+    _write_wire,
+)
 from transport_matters.ir import Message, SystemPart, TextBlock
-from transport_matters.storage.disk_layout import DiskStorageLayout
-from transport_matters.storage.session_facts import OwnedSessionFacts, write_owned_session_facts
 from transport_matters.storage.test_exchange_support import (
     make_artifacts,
     make_index_entry,
@@ -50,177 +46,7 @@ from transport_matters.storage.test_exchange_support import (
 if TYPE_CHECKING:
     import sqlite3
 
-    import pytest
-
     from transport_matters.storage.base import ExchangeArtifacts, IndexEntry
-
-_SLUG = "proj"
-_HASH = "h1"
-
-
-# ── seed helpers ─────────────────────────────────────────────────────────────────────────
-
-
-def _run_dir(workspaces_root: Path, run_id: str) -> Path:
-    root = workspaces_root / _SLUG / _HASH / run_id
-    root.mkdir(parents=True)
-    return root
-
-
-def _write_wire(root: Path, entry: IndexEntry, artifacts: ExchangeArtifacts) -> None:
-    """Persist one exchange the way the recorder does: an ``index.jsonl`` line + IR artifacts."""
-    layout = DiskStorageLayout(root)
-    with layout.index_path.open("a", encoding="utf-8") as handle:
-        handle.write(entry.model_dump_json() + "\n")
-    exchange_dir = layout.new_exchange_dir(entry.id, now=entry.ts)
-    exchange_dir.mkdir(parents=True, exist_ok=True)
-    paths = layout.artifact_paths(exchange_dir)
-    paths.request_ir.write_text(artifacts.request_ir.model_dump_json(), encoding="utf-8")
-    if artifacts.response_ir is not None:
-        paths.response_ir.write_text(artifacts.response_ir.model_dump_json(), encoding="utf-8")
-
-
-def _claude_user(uuid: str, text: str, sid: str) -> str:
-    return json.dumps(
-        {
-            "type": "user",
-            "uuid": uuid,
-            "parentUuid": None,
-            "sessionId": sid,
-            "isSidechain": False,
-            "timestamp": "2026-06-05T12:00:00Z",
-            "message": {"role": "user", "content": text},
-        }
-    )
-
-
-def _claude_assistant(uuid: str, parent: str, text: str, sid: str) -> str:
-    return json.dumps(
-        {
-            "type": "assistant",
-            "uuid": uuid,
-            "parentUuid": parent,
-            "sessionId": sid,
-            "isSidechain": False,
-            "timestamp": "2026-06-05T12:00:01Z",
-            "message": {"role": "assistant", "content": [{"type": "text", "text": text}]},
-        }
-    )
-
-
-def _descriptor(path: Path) -> str:
-    return encode_source_descriptor(FileTailSource(path=str(path), format="claude_jsonl"))
-
-
-def _codex_session_meta(native: str) -> str:
-    return json.dumps({"type": "session_meta", "payload": {"id": native, "cwd": "/w"}})
-
-
-def _codex_response_item(text: str) -> str:
-    return json.dumps(
-        {
-            "type": "response_item",
-            "payload": {
-                "type": "message",
-                "role": "assistant",
-                "content": [{"type": "output_text", "text": text}],
-            },
-        }
-    )
-
-
-def _seed_codex_run(workspaces_root: Path, run_id: str, native: str) -> str:
-    """Seed an owned-codex run (read-back synth PK); return the synthesized ``session_id``.
-
-    codex is ``minted=False``: the session_id is ``synth_session_id(run_id, "codex", native)`` on
-    BOTH streams, and the snapshot is keyed by that synth id — so a faithful rebuild must reconstruct
-    it from ``sessions.json`` the same way (the explicit reviewer check for the read-back path).
-    """
-    session_id = synth_session_id(run_id, "codex", native)
-    root = _run_dir(workspaces_root, run_id)
-    request = make_request_ir(
-        session_id=native, messages=[Message(role="user", content=[TextBlock(text="ask")])]
-    )
-    entry = make_index_entry(exchange_id=f"{run_id}-ex1", run_id=run_id, provider="codex")
-    _write_wire(root, entry, make_artifacts(request, make_response_ir()))
-
-    snapshot = _codex_session_meta(native) + "\n" + _codex_response_item("codex answer") + "\n"
-    snapshot_path = DiskStorageLayout(root).transcript_snapshot_path(session_id)
-    snapshot_path.parent.mkdir(parents=True, exist_ok=True)
-    snapshot_path.write_text(snapshot, encoding="utf-8")
-
-    rollout = root / "rollout.jsonl"  # the descriptor target — never read by replay (snapshot wins)
-    descriptor = encode_source_descriptor(FileTailSource(path=str(rollout), format="codex_rollout"))
-    write_owned_session_facts(
-        root,
-        OwnedSessionFacts(
-            run_id=run_id,
-            cli="codex",
-            native_session_id=native,
-            minted=False,
-            source_descriptor=descriptor,
-        ),
-    )
-    return session_id
-
-
-def _seed_claude_run(
-    workspaces_root: Path, run_id: str, sid: str, *, write_cli_file: bool = True
-) -> tuple[Path, Path]:
-    """Seed a complete owned-claude run dir; return ``(root, cli_path)``.
-
-    Wire: one anthropic exchange whose response shares ``"answer"`` with the transcript (so the diff
-    has a real ``shared`` bucket — the cross-stream dedup linchpin). Transcript snapshot: a user turn
-    (``"hi"`` — transcript_only) + an assistant turn (``"answer"`` — shared). The CLI source file (the
-    descriptor target) is written only when *write_cli_file* — the killer demo deletes it.
-    """
-    root = _run_dir(workspaces_root, run_id)
-    request = make_request_ir(
-        session_id=sid,
-        system=[SystemPart(text="sys")],
-        messages=[Message(role="user", content=[TextBlock(text="ask")])],
-    )
-    entry = make_index_entry(exchange_id=f"{run_id}-ex1", run_id=run_id, provider="anthropic")
-    _write_wire(root, entry, make_artifacts(request, make_response_ir()))
-
-    snapshot = _claude_user("u1", "hi", sid) + "\n" + _claude_assistant("a1", "u1", "answer", sid)
-    snapshot += "\n"
-    snapshot_path = DiskStorageLayout(root).transcript_snapshot_path(sid)
-    snapshot_path.parent.mkdir(parents=True, exist_ok=True)
-    snapshot_path.write_text(snapshot, encoding="utf-8")
-
-    cli_path = root / "cli.jsonl"
-    if write_cli_file:
-        cli_path.write_text(snapshot, encoding="utf-8")
-    write_owned_session_facts(
-        root,
-        OwnedSessionFacts(
-            run_id=run_id,
-            cli="claude",
-            native_session_id=sid,
-            minted=True,
-            source_descriptor=_descriptor(cli_path),
-        ),
-    )
-    return root, cli_path
-
-
-def _drain(db_path: Path) -> IndexWriter:
-    writer = IndexWriter(str(db_path), flush_ms=5)
-    writer.start()
-    return writer
-
-
-def _counts(conn: sqlite3.Connection) -> dict[str, int]:
-    tables = (
-        "session",
-        "wire_exchange",
-        "transcript_turn",
-        "block",
-        "exchange_block",
-        "turn_block",
-    )
-    return {t: conn.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0] for t in tables}
 
 
 def _diff_hashes(conn: sqlite3.Connection, sid: str) -> dict[str, list[str]]:
@@ -518,170 +344,6 @@ class TestKillerDemo:
             assert _source_path(rebuilt, sid) == str(cli_path)
         finally:
             rebuilt.close()
-
-
-# ── boot auto-replay (slice 8c-ii): a stale gate REBUILDS from tier-1 before the live system ──
-
-
-def _seed_stale_tier2(db_path: Path) -> None:
-    """A current tier-2 db carrying a sentinel block, then a poisoned gated key (a derivation bump).
-
-    The sentinel proves the boot path DROPS rather than merges: after the rebuild it must be gone,
-    replaced by the tier-1 replay, never coexisting with it.
-    """
-    conn = connect(db_path)
-    try:
-        apply_schema(conn)
-        conn.execute(
-            "INSERT INTO block (hash, kind, text, identity_canonical) "
-            "VALUES ('stale-sentinel', 'text', 'gone after rebuild', '{}')"
-        )
-        conn.execute("UPDATE schema_meta SET value = '0' WHERE key = 'adapters_version'")
-    finally:
-        conn.close()
-
-
-class TestBootAutoReplay:
-    """§10.5 / §13.2: ``rebuild_if_stale`` — boot replays tier-1 instead of dropping to empty."""
-
-    def test_stale_gate_boot_rebuilds_from_tier1_not_empty(self, tmp_path: Path) -> None:
-        sid = "00000000-0000-4000-8000-000000000011"
-        _seed_claude_run(tmp_path, "run1", sid)
-
-        # The 8c-i killer-demo counts as the reference: an explicit rebuild → full tier-1 counts.
-        ref_db = tmp_path / "ref.db"
-        rebuild(tmp_path, db_path=ref_db)
-        ref = connect(ref_db)
-        try:
-            expected = _counts(ref)
-        finally:
-            ref.close()
-        assert expected["wire_exchange"] >= 1
-        assert expected["transcript_turn"] >= 1  # non-empty: there is real tier-1 to lose
-
-        db = tmp_path / "index.db"
-        _seed_stale_tier2(db)
-        assert is_rebuild_needed(db) is True
-
-        did = rebuild_if_stale(tmp_path, db_path=db, lock_path=tmp_path / "index.rebuild.lock")
-
-        assert did is True
-        got = connect(db)
-        try:
-            assert _counts(got) == expected  # rebuilt to full tier-1 counts, NOT dropped to empty
-            sentinel = got.execute(
-                "SELECT COUNT(*) FROM block WHERE hash = 'stale-sentinel'"
-            ).fetchone()[0]
-            assert sentinel == 0  # the stale db was DROPPED then replayed, not merged
-        finally:
-            got.close()
-        assert is_rebuild_needed(db) is False  # gate now current → the in-writer gate won't drop
-
-    def test_current_gate_boot_is_a_noop(self, tmp_path: Path) -> None:
-        sid = "00000000-0000-4000-8000-000000000022"
-        _seed_claude_run(tmp_path, "run1", sid)
-        db = tmp_path / "index.db"
-        rebuild(tmp_path, db_path=db)  # already current + populated
-        before = connect(db)
-        try:
-            counts_before = _counts(before)
-        finally:
-            before.close()
-
-        did = rebuild_if_stale(tmp_path, db_path=db, lock_path=tmp_path / "index.rebuild.lock")
-
-        assert did is False  # current gate → no destructive pass
-        after = connect(db)
-        try:
-            assert _counts(after) == counts_before  # untouched
-        finally:
-            after.close()
-
-    def test_missing_db_boot_rebuilds_from_tier1(self, tmp_path: Path) -> None:
-        sid = "00000000-0000-4000-8000-000000000033"
-        _seed_claude_run(tmp_path, "run1", sid)
-        db = tmp_path / "index.db"
-        assert not db.exists()
-
-        did = rebuild_if_stale(tmp_path, db_path=db, lock_path=tmp_path / "index.rebuild.lock")
-
-        assert did is True
-        got = connect(db)
-        try:
-            assert _counts(got)["wire_exchange"] >= 1  # populated from tier-1, from nothing
-        finally:
-            got.close()
-
-    def test_single_flight_serializes_and_runs_exactly_one_rebuild(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        # Two concurrent boots that both see the stale gate must serialize on the lock; the loser
-        # re-checks UNDER the lock, sees a now-current db, and skips — so rebuild() runs exactly once
-        # and never corrupts the db (no second drop racing the first). Deterministic: boot A is held
-        # mid-rebuild (db still intact) while boot B passes its cheap check and blocks on the lock.
-        sid = "00000000-0000-4000-8000-000000000044"
-        _seed_claude_run(tmp_path, "run1", sid)
-        db = tmp_path / "index.db"
-        _seed_stale_tier2(db)
-        lock_path = tmp_path / "index.rebuild.lock"
-
-        # rebuild_if_stale calls the module global ``rebuild``; patch it on the rebuild MODULE (the
-        # package __init__ re-exports the function under the same dotted path, so fetch the module via
-        # importlib) so the gate counts real drops. ``rebuild`` imported at top is the original.
-        rebuild_mod = importlib.import_module("transport_matters.index.rebuild")
-        real_rebuild = rebuild
-        calls: list[int] = []
-        a_in_rebuild = threading.Event()
-        a_may_proceed = threading.Event()
-
-        def gated_rebuild(workspaces_root: Path, *, db_path: Path | None = None) -> None:
-            a_in_rebuild.set()  # A holds the lock; the db is still intact (no drop yet)
-            assert a_may_proceed.wait(timeout=5)
-            calls.append(1)
-            real_rebuild(workspaces_root, db_path=db_path)
-
-        monkeypatch.setattr(rebuild_mod, "rebuild", gated_rebuild)
-
-        result: dict[str, bool] = {}
-        errors: list[BaseException] = []
-
-        def boot_a() -> None:
-            try:
-                rebuild_if_stale(tmp_path, db_path=db, lock_path=lock_path)
-            except BaseException as exc:  # surface a thread failure to the assert below
-                errors.append(exc)
-
-        def boot_b() -> None:
-            try:
-                result["b"] = rebuild_if_stale(tmp_path, db_path=db, lock_path=lock_path)
-            except BaseException as exc:  # surface a thread failure to the assert below
-                errors.append(exc)
-
-        ta = threading.Thread(target=boot_a)
-        ta.start()
-        assert a_in_rebuild.wait(timeout=5)  # A is under the lock, inside the gated rebuild
-        tb = threading.Thread(target=boot_b)
-        tb.start()
-        time.sleep(0.1)  # let B clear its cheap check on the intact db and block on the held lock
-        a_may_proceed.set()  # A now drops + replays for real, then releases the lock
-        ta.join(timeout=20)
-        tb.join(timeout=20)
-
-        assert not errors, errors
-        assert len(calls) == 1  # exactly one destructive rebuild despite two concurrent boots
-        assert result["b"] is False  # the waiting boot saw a current db and skipped its own pass
-        got = connect(db)
-        try:
-            assert _counts(got)["wire_exchange"] >= 1  # rebuilt + uncorrupted
-            assert (
-                got.execute("SELECT COUNT(*) FROM block WHERE hash = 'stale-sentinel'").fetchone()[
-                    0
-                ]
-                == 0
-            )
-        finally:
-            got.close()
-        assert is_rebuild_needed(db) is False
 
 
 # ── small test-local builders ───────────────────────────────────────────────────────────────
