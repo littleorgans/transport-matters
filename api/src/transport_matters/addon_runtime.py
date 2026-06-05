@@ -17,6 +17,7 @@ from transport_matters.counting import TokenCounter, set_counter, set_recent_aut
 from transport_matters.index.adapters import get_adapter
 from transport_matters.index.db import index_db_path
 from transport_matters.index.ingest import build_run_facts, make_index_sink
+from transport_matters.index.rebuild import rebuild_if_stale
 from transport_matters.index.tailer import TranscriptTailer, register_session_cursor
 from transport_matters.index.writer import IndexWriter
 from transport_matters.main import create_app
@@ -101,6 +102,12 @@ def load_runtime() -> AddonRuntime:
     index_writer: IndexWriter | None = None
     index_tailer: TranscriptTailer | None = None
     try:
+        # Boot auto-replay (§10.5, slice 8c-ii): if a gated derivation bump (or a missing db) left the
+        # schema gate stale, rebuild tier-2 from tier-1 under a lock BEFORE opening the live writer, so
+        # the bump auto-repopulates the index from tier-1 instead of the in-writer gate dropping it to
+        # empty. No-op on a current db; the lock inside serializes concurrent boots. Must run before any
+        # live connection opens (rebuild() deletes the db files), hence ahead of IndexWriter here.
+        rebuild_if_stale()
         index_writer = IndexWriter(str(index_db_path()), loop=loop, emit=broadcast.emit)
         index_writer.start()
         # Tier-1 transcript snapshot (§7.1/§11, slice 8b-i): tee consumed transcript bytes into the

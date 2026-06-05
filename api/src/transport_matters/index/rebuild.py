@@ -41,17 +41,20 @@ from transport_matters.index.adapters.base import (
     SessionBinding,
     decode_source_descriptor,
 )
-from transport_matters.index.db import index_db_path
+from transport_matters.index.db import index_db_path, index_rebuild_lock_path
 from transport_matters.index.ingest import RunFacts, bind_exchange, build_wire_job
 from transport_matters.index.maintenance import delete_run, gc_blocks, iter_run_dirs
+from transport_matters.index.schema import is_rebuild_needed
 from transport_matters.index.sessions import synth_session_id
 from transport_matters.index.tailer import TailCursor, ingest_records, iter_complete_records
 from transport_matters.index.writer import IndexJob, IndexWriter
 from transport_matters.ir import InternalRequest, InternalResponse
+from transport_matters.lock import exclusive_file_lock
 from transport_matters.manifest import read_all as read_live_manifests
 from transport_matters.storage.base import ExchangeArtifacts, IndexEntry
 from transport_matters.storage.disk_layout import DiskStorageLayout
 from transport_matters.storage.session_facts import read_run_session_facts
+from transport_matters.storage_roots import default_workspaces_root
 
 if TYPE_CHECKING:
     import sqlite3
@@ -149,6 +152,40 @@ def rebuild(workspaces_root: Path, *, db_path: Path | None = None) -> None:
         backfill(writer, workspaces_root)
     finally:
         writer.stop(drain=True)
+
+
+def rebuild_if_stale(
+    workspaces_root: Path | None = None,
+    *,
+    db_path: Path | None = None,
+    lock_path: Path | None = None,
+) -> bool:
+    """Boot-only auto-replay (§10.5, slice 8c-ii): rebuild from tier-1 iff the schema gate is stale.
+
+    The wiring the live system calls at startup, BEFORE it opens any writer connection. When the gate
+    is stale (a gated derivation bump, or a missing/uninitialized db) this rebuilds tier-2 from tier-1
+    under a process-exclusive lock instead of letting the in-writer gate DROP the index to empty — the
+    whole point of the slice, safe now that tier-1 is complete (8a/8b). Returns True iff a rebuild ran.
+
+    Single-flight by ORDERING + lock, not an epoch protocol: the rebuild runs before this process opens
+    any live connection, and :func:`exclusive_file_lock` serializes concurrent boots so exactly one
+    rebuild touches the shared db. The staleness check is re-run UNDER the lock (double-checked) so a
+    boot that blocked while a peer rebuilt sees a now-current db and skips its own destructive pass.
+    ``rebuild()`` remains the only drop/replay executor; this adds no second path.
+    """
+    workspaces_root = workspaces_root if workspaces_root is not None else default_workspaces_root()
+    db_path = db_path if db_path is not None else index_db_path()
+    lock_path = lock_path if lock_path is not None else index_rebuild_lock_path()
+    if not is_rebuild_needed(db_path):
+        return False
+    with exclusive_file_lock(lock_path):
+        if not is_rebuild_needed(db_path):
+            return False  # a concurrent boot rebuilt while we waited for the lock
+        _log.info(
+            "tier-2 schema gate is stale; rebuilding the index from tier-1 before boot (§10.5)"
+        )
+        rebuild(workspaces_root, db_path=db_path)
+    return True
 
 
 # ── tier-1 reads (sync; reuse the storage models + path policy, no backend instance) ─────

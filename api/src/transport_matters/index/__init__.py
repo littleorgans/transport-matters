@@ -26,7 +26,12 @@ from transport_matters.index.blocks import (
     identity_canonical,
     upsert_block,
 )
-from transport_matters.index.db import connect, index_db_path, transaction
+from transport_matters.index.db import (
+    connect,
+    index_db_path,
+    index_rebuild_lock_path,
+    transaction,
+)
 from transport_matters.index.ingest import build_transcript_job
 from transport_matters.index.maintenance import (
     RunDir,
@@ -41,8 +46,14 @@ from transport_matters.index.models import (
     TranscriptTurnRow,
     WireExchangeRow,
 )
-from transport_matters.index.rebuild import backfill, rebuild, reconcile, replay_run
-from transport_matters.index.schema import apply_schema, rebuild_fts
+from transport_matters.index.rebuild import (
+    backfill,
+    rebuild,
+    rebuild_if_stale,
+    reconcile,
+    replay_run,
+)
+from transport_matters.index.schema import apply_schema, is_rebuild_needed, rebuild_fts
 from transport_matters.index.sessions import SESSION_NS, synth_session_id, upsert_session
 from transport_matters.index.writer import IndexJob, IndexWriter
 
@@ -77,9 +88,12 @@ __all__ = [
     "get_adapter",
     "identity_canonical",
     "index_db_path",
+    "index_rebuild_lock_path",
+    "is_rebuild_needed",
     "iter_run_dirs",
     "rebuild",
     "rebuild_fts",
+    "rebuild_if_stale",
     "reconcile",
     "replay_run",
     "synth_session_id",

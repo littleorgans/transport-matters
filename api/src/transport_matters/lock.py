@@ -29,17 +29,41 @@ the lock keeps the import graph shallow.
 
 import fcntl
 import os
+from contextlib import contextmanager
 from typing import TYPE_CHECKING, Self
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
     from pathlib import Path
     from types import TracebackType
 
-__all__ = ["WorkspaceLock", "WorkspaceLocked"]
+__all__ = ["WorkspaceLock", "WorkspaceLocked", "exclusive_file_lock"]
 
 
 _LOCK_FILENAME = "lock"
 _MANIFEST_FILENAME = "manifest.json"
+
+
+@contextmanager
+def exclusive_file_lock(path: Path) -> Iterator[None]:
+    """Hold a BLOCKING exclusive ``flock`` on *path* for the duration of the ``with`` block.
+
+    Unlike :class:`WorkspaceLock` (non-blocking — it raises :class:`WorkspaceLocked` to fail fast on
+    contention), this BLOCKS until the lock is free so concurrent holders serialize rather than error.
+    The boot rebuild (slice 8c-ii) uses it as a single-flight gate: two boots that both observe a
+    stale schema gate must run their destructive replay one at a time, and the loser then re-checks
+    and skips. The lock is kernel-held, so it releases automatically if the holding process dies — no
+    stale-lock handling needed (same property as :class:`WorkspaceLock`).
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    # O_RDWR | O_CREAT (never "w") so acquiring the lock does not truncate a file a peer already holds.
+    fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o644)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)  # blocking: serialize concurrent holders, never fail-fast
+        yield
+    finally:
+        fcntl.flock(fd, fcntl.LOCK_UN)
+        os.close(fd)
 
 
 class WorkspaceLocked(Exception):
