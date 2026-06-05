@@ -131,6 +131,33 @@ class TestBindLocate:
         assert isinstance(source, FileTailSource)
         assert source.format == "claude_jsonl"
         assert source.path.endswith(f"-w/{_SESSION}.jsonl")  # cwd "/w" → slug "-w"
+        assert source.home_dir is None  # no managed home on this binding → native default
+
+    async def test_bind_carries_home_dir(self) -> None:
+        # bind propagates the managed --home-dir onto the binding like cwd, so it survives the re-bind
+        # and reaches locate (§11.1).
+        run = RunContext(
+            run_id="run1",
+            cwd="/w",
+            workspace_slug="s",
+            workspace_hash="h",
+            cli="claude",
+            started_at="t",
+            native_session_id=_SESSION,
+            home_dir="/managed/.claude",
+        )
+        binding = await ClaudeAdapter().bind(run)
+        assert binding.home_dir == "/managed/.claude"
+
+    async def test_locate_resolves_under_managed_home(self, tmp_path: Path) -> None:
+        # External-adoption-under-managed-home: a non-owned claude session whose binding carries the
+        # managed home resolves to <home>/projects/<slug>/<sid>.jsonl, NOT ~/.claude/projects (the real
+        # correctness gap §11.1 fixes). The descriptor also records the home explicitly.
+        binding = _binding().model_copy(update={"home_dir": str(tmp_path)})
+        source = await ClaudeAdapter().locate(binding)
+        assert isinstance(source, FileTailSource)
+        assert source.path == str(tmp_path / "projects" / "-w" / f"{_SESSION}.jsonl")
+        assert source.home_dir == str(tmp_path)
 
     def test_transcript_source_honors_projects_root(self, tmp_path: Path) -> None:
         # The launch `prepare` (§5.2c) and `locate` share ONE path computation. `prepare` passes the

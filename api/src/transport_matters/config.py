@@ -54,6 +54,11 @@ class Settings(BaseSettings):
     # (a non-owned id matches nothing and stays pending). ``None`` for unmanaged runs (dev, tests).
     owned_native_session_id: str | None = None
     owned_source_descriptor: str | None = None
+    # Managed ``--home-dir`` for this launch (§11.1), set by the CLI alongside ``cli``/``run_id``. The
+    # addon threads it onto the binding so ``locate`` resolves the transcript root under the managed
+    # home (external-adoption-under-managed-home) and the durable ``sessions.json`` records it. ``None``
+    # outside a managed launch or when no ``--home-dir`` was passed (the CLI's native home).
+    home_dir: Path | None = None
     breakpoint_timeout_s: float = 300.0
     breakpoint_skip_models: list[str] = []
 

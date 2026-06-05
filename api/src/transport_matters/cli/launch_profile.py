@@ -30,6 +30,7 @@ from typing import TYPE_CHECKING, ClassVar
 
 from transport_matters.index.adapters.base import encode_source_descriptor
 from transport_matters.index.adapters.claude import claude_transcript_source
+from transport_matters.storage.session_facts import OwnedSessionFacts, write_owned_session_facts
 
 from .codex_session import resolve_codex_cli_version, seed_codex_session
 from .home_seed import claude_projects_root, codex_sessions_root
@@ -66,6 +67,13 @@ class LaunchProfile(ABC):
     + ``client_argv``); a non-mint CLI simply has no profile and never reaches the managed path."""
 
     cli: ClassVar[str]
+    # Whether this profile's managed launch MINTS the session_id PK (claude: the injected
+    # ``--session-id`` is adopted as the PK → ``minted=True``) or merely owns the transcript while the
+    # PK is synthesized (codex read-back → ``minted=False``). The launch-side declaration of the same
+    # truth ``index.ingest.bind_exchange`` derives from the provider's read-back family; recorded here
+    # only for the durable per-run ``sessions.json`` (§11.1), so a §10.5 rebuild reads it without re-
+    # deriving. The two MUST agree per CLI (claude anthropic → True; codex read-back → False).
+    mints_session_id: ClassVar[bool]
 
     @abstractmethod
     def prepare(
@@ -101,6 +109,9 @@ class LaunchProfile(ABC):
 
 class ClaudeLaunchProfile(LaunchProfile):
     cli = CLIENT_NAME_CLAUDE
+    mints_session_id = (
+        True  # claude adopts the injected --session-id as its PK (bind_exchange twin)
+    )
 
     def prepare(
         self,
@@ -120,6 +131,7 @@ class ClaudeLaunchProfile(LaunchProfile):
             str(working_dir),
             native_session_id,
             projects_root=claude_projects_root(home_dir, env),
+            home_dir=home_dir,  # recorded explicitly on the descriptor (§11.1), not just baked in path
         )
         return encode_source_descriptor(source)
 
@@ -143,6 +155,9 @@ class ClaudeLaunchProfile(LaunchProfile):
 
 class CodexLaunchProfile(LaunchProfile):
     cli = CLIENT_NAME_CODEX
+    mints_session_id = (
+        False  # codex synthesizes the PK from the read-back native id (bind_exchange twin)
+    )
 
     def prepare(
         self,
@@ -163,6 +178,7 @@ class CodexLaunchProfile(LaunchProfile):
             working_dir=working_dir,
             cli_version=resolve_codex_cli_version(client_path),
             sessions_root=codex_sessions_root(home_dir, env),
+            home_dir=home_dir,  # recorded explicitly on the descriptor (§11.1), not just baked in path
             write=write,
         )
         return seed.source_descriptor
@@ -232,3 +248,31 @@ def prepare_managed_session(
         write=write,
     )
     return ManagedSession(native_session_id=native_session_id, source_descriptor=descriptor)
+
+
+def persist_owned_session_facts(
+    profile: LaunchProfile,
+    managed_session: ManagedSession,
+    *,
+    run_id: str,
+    storage_root: Path,
+    home_dir: Path | None,
+) -> Path:
+    """Persist the §11.1 durable owned-launch facts for a managed session under the run dir.
+
+    Shared by ``transport-matters claude`` and ``transport-matters codex`` (zero duplication). The
+    facts (native id, descriptor incl. ``home_dir``, cli, ``minted``) are launch-authoritative, so the
+    launcher writes them once — inside the per-run lock (the run dir is guaranteed to exist) and before
+    the retry loop — to ``<run_dir>/sessions.json``, surviving process exit for a §10.5 rebuild. The
+    minted value is the profile's launch-side declaration (:attr:`LaunchProfile.mints_session_id`)."""
+    return write_owned_session_facts(
+        storage_root,
+        OwnedSessionFacts(
+            run_id=run_id,
+            cli=profile.cli,
+            native_session_id=managed_session.native_session_id,
+            minted=profile.mints_session_id,
+            source_descriptor=managed_session.source_descriptor,
+            home_dir=str(home_dir) if home_dir is not None else None,
+        ),
+    )

@@ -122,6 +122,7 @@ def load_runtime() -> AddonRuntime:
             settings.cwd,
             datetime.now(UTC).isoformat(),
             cli=settings.cli,
+            home_dir=settings.home_dir,
             owned_native_session_id=settings.owned_native_session_id,
             owned_source_descriptor=settings.owned_source_descriptor,
         )

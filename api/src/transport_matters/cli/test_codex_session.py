@@ -66,6 +66,36 @@ class TestSeed:
         (line,) = text.splitlines()
         assert json.loads(line)["payload"]["id"] == _NATIVE
 
+    def test_seed_records_managed_home_dir_on_descriptor(self, tmp_path: Path) -> None:
+        # The managed --home-dir is recorded EXPLICITLY on the owned descriptor (§11.1) so a §10.5
+        # rebuild knows the codex home the rollout resolved under without the live env.
+        seed = seed_codex_session(
+            native_session_id=_NATIVE,
+            now=_now(),
+            working_dir=Path("/w"),
+            cli_version="0.137.0",
+            sessions_root=tmp_path / "sessions",
+            home_dir=tmp_path,
+            write=False,
+        )
+        source = decode_source_descriptor(seed.source_descriptor)
+        assert isinstance(source, FileTailSource)
+        assert source.home_dir == str(tmp_path)
+
+    def test_seed_without_home_dir_leaves_descriptor_home_none(self, tmp_path: Path) -> None:
+        # Native-home launch (no --home-dir): descriptor.home_dir is None (the path is still absolute).
+        seed = seed_codex_session(
+            native_session_id=_NATIVE,
+            now=_now(),
+            working_dir=Path("/w"),
+            cli_version="0.137.0",
+            sessions_root=tmp_path,
+            write=False,
+        )
+        source = decode_source_descriptor(seed.source_descriptor)
+        assert isinstance(source, FileTailSource)
+        assert source.home_dir is None
+
     def test_write_false_skips_the_file_but_still_describes_it(self, tmp_path: Path) -> None:
         # print-command (dry run) must not touch the filesystem, yet the printed argv still needs the
         # descriptor/path it WOULD own.

@@ -450,6 +450,7 @@ def build_launch_env(
     web_port: int,
     run_id: str,
     cli: str | None = None,
+    home_dir: Path | None = None,
     owned_native_session_id: str | None = None,
     owned_source_descriptor: str | None = None,
 ) -> dict[str, str]:
@@ -458,7 +459,11 @@ def build_launch_env(
     ``cli`` and the ``owned_*`` values are the §5.2b/§5.2c managed-mint contract (provider-neutral): a
     mint-capable launcher hands the addon the harness cli plus the native id + source_descriptor of
     the transcript it owns, so the addon stamps them onto the session row before cursor registration.
-    Both set by claude and codex managed launches; unset for un-owned (external-adoption) launches."""
+    Both set by claude and codex managed launches; unset for un-owned (external-adoption) launches.
+
+    ``home_dir`` is the managed ``--home-dir`` (when set): threaded so the addon stamps it onto every
+    binding (``bind_exchange``) and ``locate`` resolves the transcript root under the managed home;
+    distinct from the child's CLAUDE_CONFIG_DIR/CODEX_HOME (``build_managed_child_env``). Unset = native."""
     env = os.environ.copy()
     env[env_keys.STORAGE_DIR] = str(storage_dir)
     env[env_keys.WEB_PORT] = str(web_port)
@@ -467,6 +472,8 @@ def build_launch_env(
     env[env_keys.CWD] = str(working_dir)
     if cli is not None:
         env[env_keys.CLI] = cli
+    if home_dir is not None:
+        env[env_keys.HOME_DIR] = str(home_dir)
     if owned_native_session_id is not None:
         env[env_keys.OWNED_NATIVE_SESSION_ID] = owned_native_session_id
     if owned_source_descriptor is not None:

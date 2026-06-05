@@ -13,7 +13,11 @@ import typer
 
 from .home_seed import seed_home_dir
 from .identity import CLI_COMMAND, PRODUCT_LABEL
-from .launch_profile import CodexLaunchProfile, prepare_managed_session
+from .launch_profile import (
+    CodexLaunchProfile,
+    persist_owned_session_facts,
+    prepare_managed_session,
+)
 from .launch_runtime import (
     CLIENT_NAME_CODEX,
     build_launch_env,
@@ -176,6 +180,7 @@ def _build_codex_invocation(
             web_port=web_port,
             run_id=run_id,
             cli=CLIENT_NAME_CODEX,
+            home_dir=home_dir,
             owned_native_session_id=native_session_id,
             owned_source_descriptor=(
                 managed_session.source_descriptor if managed_session is not None else None
@@ -385,6 +390,17 @@ def run_codex(
             )
 
         def run_launch(write_manifest_for: Callable[[int, int], None]) -> None:
+            # Durable owned-launch facts (§11.1): written once here, inside the per-run lock (the run
+            # dir exists) and before the retry loop, so a §10.5 rebuild reads the owned state without
+            # the live env. ``None`` for proxy-only / user-pinned resume (nothing owned to persist).
+            if managed_session is not None:
+                persist_owned_session_facts(
+                    profile,
+                    managed_session,
+                    run_id=prepared.run_id,
+                    storage_root=prepared.resolved_storage,
+                    home_dir=home_dir,
+                )
             _run_codex_launch(
                 proxy_port=prepared.proxy_port,
                 web_port=prepared.web_port,

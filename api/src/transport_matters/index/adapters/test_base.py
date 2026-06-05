@@ -34,3 +34,19 @@ class TestSourceDescriptorCodec:
         assert isinstance(decoded, FileTailSource)
         assert decoded.path == "/p"
         assert decoded.encoding == "utf-8"  # default applied
+        # An OLD descriptor predating slice 8b-ii has no ``home_dir`` → decodes to None (graceful, no
+        # error): the additive optional field needs no ADAPTERS_VERSION bump / no drop+rebuild (§11.1).
+        assert decoded.home_dir is None
+
+    def test_home_dir_round_trips(self) -> None:
+        # The managed --home-dir is carried EXPLICITLY on the descriptor (not just baked into the path)
+        # so a §10.5 rebuild re-resolves the transcript root without the live launch env (§11.1).
+        source = FileTailSource(
+            path="/managed/.claude/projects/-w/sid.jsonl",
+            format="claude_jsonl",
+            home_dir="/managed/.claude",
+        )
+        decoded = decode_source_descriptor(encode_source_descriptor(source))
+        assert isinstance(decoded, FileTailSource)
+        assert decoded == source
+        assert decoded.home_dir == "/managed/.claude"

@@ -78,17 +78,27 @@ def seed_codex_session(
     working_dir: Path,
     cli_version: str,
     sessions_root: Path,
+    home_dir: Path | None = None,
     write: bool = True,
 ) -> CodexSessionSeed:
     """Seed the owned rollout (one newline-terminated ``session_meta`` line) and return the binding
     seed. ``write=False`` (print-command dry run) computes the path/descriptor without touching disk.
-    """
+
+    ``home_dir`` is the managed ``--home-dir`` (when set), recorded EXPLICITLY on the descriptor so a
+    §10.5 rebuild knows the codex home the rollout path resolved under without the live env; ``None``
+    = codex's native home (``sessions_root`` is already ``<home>/sessions`` either way)."""
     path = codex_rollout_path(native_session_id, now, sessions_root=sessions_root)
     if write:
         path.parent.mkdir(parents=True, exist_ok=True)
         record = build_session_meta(native_session_id, now, str(working_dir), cli_version)
         path.write_text(json.dumps(record) + "\n", encoding="utf-8")
-    descriptor = encode_source_descriptor(FileTailSource(path=str(path), format="codex_rollout"))
+    descriptor = encode_source_descriptor(
+        FileTailSource(
+            path=str(path),
+            format="codex_rollout",
+            home_dir=str(home_dir) if home_dir is not None else None,
+        )
+    )
     return CodexSessionSeed(native_session_id=native_session_id, source_descriptor=descriptor)
 
 

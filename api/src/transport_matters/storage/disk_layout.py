@@ -9,6 +9,7 @@ from transport_matters.storage_roots import default_storage_root
 _DEFAULT_ROOT = default_storage_root()
 _INDEX_FILENAME = "index.jsonl"
 _INDEX_TMP_FILENAME = "index.jsonl.tmp"
+_SESSIONS_FILENAME = "sessions.json"
 _ENTRY_FILENAME = "entry.json"
 _REQUEST_RAW_FILENAME = "request.raw"
 _REQUEST_IR_FILENAME = "request.ir.json"
@@ -56,6 +57,15 @@ class DiskStorageLayout:
     @property
     def index_tmp_path(self) -> Path:
         return self.root / _INDEX_TMP_FILENAME
+
+    @property
+    def sessions_facts_path(self) -> Path:
+        """The run dir's durable owned-launch facts ``<run_dir>/sessions.json`` (§11.1, slice 8b-ii).
+
+        Sits beside ``index.jsonl`` (the durable run marker ``iter_run_dirs`` enumerates) so a §10.5
+        rebuild reads the owned native id + descriptor (incl. home_dir) + cli + minted without the live
+        launch env. Unlike the manifest (a liveness beacon unlinked on exit), it persists with the run."""
+        return self.root / _SESSIONS_FILENAME
 
     @property
     def transcripts_dir(self) -> Path:
