@@ -87,9 +87,15 @@ class TranscriptTailer:
         self,
         submit: Callable[[IndexJob], None],
         *,
+        snapshot: Callable[[str, int, bytes], None] | None = None,
         interval_s: float = _DEFAULT_FILE_INTERVAL_S,
     ) -> None:
         self._submit = submit
+        # Injected tier-1 transcript snapshot writer (§7.1/§11, slice 8b-i): tee the consumed bytes
+        # so tier-1 owns the transcript. A plain callable keeps the storage write API OUT of the
+        # index-layer tailer (DAG); built + injected at load_runtime, None when no disk backend.
+        # (Named ``_snapshot_writer`` — ``_snapshot`` is the unrelated cursor-list snapshot below.)
+        self._snapshot_writer = snapshot
         self._interval_s = interval_s
         self._cursors: dict[str, TailCursor] = {}
         self._lock = threading.Lock()
@@ -158,6 +164,13 @@ class TranscriptTailer:
             handle.seek(cursor.byte_offset)
             data = handle.read()
         records, consumed = iter_complete_records(data)
+        # Tee the consumed bytes into tier-1 BEFORE normalize (slice 8b-i): the raw prefix keeps ALL
+        # records byte-faithfully — including the non-conversational ones normalize drops — so a
+        # rebuild owns the transcript. Off the §7.1 wire hot path (tailer thread); a snapshot error
+        # propagates to poll()'s try/except, leaving byte_offset un-advanced for a self-healing retry,
+        # so the snapshot and tier-2 turns stay consistent (both advance together or neither).
+        if self._snapshot_writer is not None and consumed:
+            self._snapshot_writer(cursor.binding.session_id, cursor.byte_offset, data[:consumed])
         for record in records:
             self._ingest_record(cursor, record, source.path)
         cursor.byte_offset += consumed

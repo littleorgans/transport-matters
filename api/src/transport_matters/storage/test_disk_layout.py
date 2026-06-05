@@ -62,6 +62,19 @@ def test_artifact_paths_keep_existing_filenames(tmp_path: Path) -> None:
     assert paths.turn == exchange_dir / "turn.json"
 
 
+def test_transcript_snapshot_path_is_per_session_under_run_dir(tmp_path: Path) -> None:
+    # Slice 8b-i: the tier-1 transcript snapshot is a per-session jsonl under a `transcripts/`
+    # child of the run dir (storage_root). Per-session so a run dir hosting >1 session keeps
+    # them apart and a future rebuild maps the file stem 1:1 back to the session_id.
+    layout = DiskStorageLayout(tmp_path)
+    session_id = "019e0000-0000-7000-8000-00000000c0de"
+
+    assert layout.transcripts_dir == tmp_path / "transcripts"
+    assert layout.transcript_snapshot_path(session_id) == (
+        tmp_path / "transcripts" / f"{session_id}.jsonl"
+    )
+
+
 def test_exchange_suffix_paths_keep_existing_names(tmp_path: Path) -> None:
     layout = DiskStorageLayout(tmp_path)
     exchange_dir = tmp_path / "20250601T120000Z-abcdef01"

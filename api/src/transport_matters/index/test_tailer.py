@@ -179,6 +179,71 @@ class TestTailerPoll:
         assert len(submitted) == 1  # unregistered → no further submits
 
 
+class TestSnapshotTee:
+    """Slice 8b-i: the tailer tees the consumed transcript bytes into the injected snapshot writer."""
+
+    def test_poll_tees_consumed_bytes_at_cursor_offset(self, tmp_path: Path) -> None:
+        # The tee mirrors the CLI cursor: one call per poll with (session_id, start_offset, consumed
+        # bytes) — the SAME bytes iter_complete_records consumed, the trailing partial excluded.
+        path = tmp_path / "t.jsonl"
+        first = _user_line("u1", "hi") + "\n"
+        path.write_text(first + '{"type":"user","uuid":"u2"')  # complete record + a partial
+        tees: list[tuple[str, int, bytes]] = []
+        submitted: list[IndexJob] = []
+        tailer = TranscriptTailer(
+            submitted.append,
+            snapshot=lambda sid, off, data: tees.append((sid, off, data)),
+        )
+        tailer.register(_cursor(str(path)))
+
+        tailer.poll()
+        assert tees == [(_SESSION, 0, first.encode())]  # consumed prefix only, NOT the partial
+
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write(
+                f',"parentUuid":null,"sessionId":"{_SESSION}","isSidechain":false,'
+                '"timestamp":"t","message":{"role":"user","content":"x"}}\n'
+            )
+        tailer.poll()
+        # second tee starts exactly where the first ended (no overlap, no gap) → byte-faithful copy
+        assert tees[0][1] + len(tees[0][2]) == tees[1][1]
+        assert b"".join(data for _, _, data in tees) == path.read_bytes()
+
+    def test_tees_non_conversational_records_normalize_drops(self, tmp_path: Path) -> None:
+        # session_meta is non-conversational: normalize returns None (no job), but the snapshot MUST
+        # still capture it byte-faithfully so a future normalize change can re-derive it (§5.2).
+        native = "019e0000-0000-7000-8000-00000000c0de"
+        path = tmp_path / "rollout.jsonl"
+        meta_line = _codex_session_meta(native) + "\n"
+        path.write_text(meta_line)
+        tees: list[tuple[str, int, bytes]] = []
+        submitted: list[IndexJob] = []
+        tailer = TranscriptTailer(
+            submitted.append,
+            snapshot=lambda sid, off, data: tees.append((sid, off, data)),
+        )
+        tailer.register(
+            TailCursor(
+                binding=_codex_wire_binding(native, None),
+                source=FileTailSource(path=str(path), format="codex_rollout"),
+                adapter=CodexAdapter(),
+            )
+        )
+
+        tailer.poll()
+        assert submitted == []  # session_meta is not a turn
+        assert b"".join(data for _, _, data in tees) == meta_line.encode()  # but it IS snapshotted
+
+    def test_poll_without_snapshot_callback_is_safe(self, tmp_path: Path) -> None:
+        path = tmp_path / "t.jsonl"
+        path.write_text(_user_line("u1", "hi") + "\n")
+        submitted: list[IndexJob] = []
+        tailer = TranscriptTailer(submitted.append)  # no snapshot injected (default None)
+        tailer.register(_cursor(str(path)))
+        tailer.poll()
+        assert [job.entity_id for job in submitted] == ["u1"]  # tier-2 unaffected
+
+
 class TestRegisterCursor:
     async def test_register_session_cursor_locates_and_registers(self) -> None:
         tailer = TranscriptTailer(lambda _job: None)
