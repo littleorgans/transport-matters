@@ -197,9 +197,14 @@ def make_index_sink(
 
     def sink(entry: IndexEntry, artifacts: ExchangeArtifacts) -> None:
         binding = bind_exchange(entry, artifacts, run_facts)
+        # Accept the wire job (which upserts the session row with cli + source_descriptor for a
+        # managed-codex session, §5.2b) BEFORE scheduling cursor registration, so the canonical row
+        # write is enqueued ahead of the tailer. The empty-row symptom is independently impossible —
+        # the transcript binding also carries cli + descriptor — but submitting wire-first keeps the
+        # wire side the canonical row creator and matches the brief's persist-before-register order.
+        writer.submit(build_wire_job(entry, artifacts, binding, storage_root=storage_root))
         if binding is not None and on_binding is not None:
             on_binding(binding)
-        writer.submit(build_wire_job(entry, artifacts, binding, storage_root=storage_root))
 
     return sink
 

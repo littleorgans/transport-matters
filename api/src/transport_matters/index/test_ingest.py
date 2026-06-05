@@ -1,13 +1,24 @@
 """Wire ingest: binding resolution, field mapping, ordered edges, idempotency (§13.2 + §7.1)."""
 
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
-from transport_matters.index.adapters.base import FileTailSource, encode_source_descriptor
+from transport_matters.index.adapters.base import (
+    FileTailSource,
+    NormalizedTurn,
+    encode_source_descriptor,
+)
+from transport_matters.index.conftest import make_binding
 from transport_matters.index.db import connect
-from transport_matters.index.ingest import RunFacts, bind_exchange, build_wire_job, make_index_sink
+from transport_matters.index.ingest import (
+    RunFacts,
+    bind_exchange,
+    build_transcript_job,
+    build_wire_job,
+    make_index_sink,
+)
 from transport_matters.index.sessions import synth_session_id
-from transport_matters.index.writer import IndexWriter
+from transport_matters.index.writer import IndexJob, IndexWriter
 from transport_matters.ir import Message, SystemPart, TextBlock
 from transport_matters.storage.base import ReqStats, ResStats
 from transport_matters.storage.disk_layout import DiskStorageLayout
@@ -294,6 +305,65 @@ class TestMakeIndexSink:
             )
         finally:
             verify.close()
+
+    def test_sink_submits_wire_job_before_registering_cursor(self) -> None:
+        # §5.2b ordering: the wire job (which upserts the session row with cli + source_descriptor)
+        # must be accepted BEFORE cursor registration is scheduled — the canonical row write is
+        # enqueued first, so the tailer never starts ahead of it.
+        calls: list[str] = []
+
+        class _RecordingWriter:
+            def submit(self, job: IndexJob) -> None:
+                calls.append(f"submit:{job.kind}")
+
+        descriptor = encode_source_descriptor(
+            FileTailSource(path="/home/u/.codex/sessions/r.jsonl", format="codex_rollout")
+        )
+        sink = make_index_sink(
+            cast("IndexWriter", _RecordingWriter()),
+            _run_facts(
+                cli="codex", codex_native_session_id="native-9", codex_source_descriptor=descriptor
+            ),
+            lambda _binding: calls.append("on_binding"),
+        )
+        sink(
+            make_index_entry(provider="codex"),
+            make_artifacts(make_request_ir(session_id="native-9")),
+        )
+        assert calls == ["submit:wire", "on_binding"]  # row job accepted BEFORE cursor registration
+
+    def test_owned_codex_transcript_turn_also_populates_session_row(
+        self, conn: sqlite3.Connection
+    ) -> None:
+        # The other half of "row never empty regardless of order": a transcript turn landing FIRST
+        # still yields cli=codex + source_descriptor, because the cursor's transcript_binding carries
+        # cli (adapter.bind) + descriptor (register_session_cursor model_copy). Combined with the wire
+        # path, whichever stream creates the row, it is non-empty (§5.2b empty-row symptom killed).
+        descriptor = encode_source_descriptor(
+            FileTailSource(path="/home/u/.codex/sessions/r.jsonl", format="codex_rollout")
+        )
+        binding = make_binding(
+            synth_session_id("run1", "codex", "native-9"),
+            provider="codex",
+            cli="codex",
+            native_session_id="native-9",
+        ).model_copy(update={"source_descriptor": descriptor})
+        turn = NormalizedTurn(
+            turn_id="t1",
+            session_id=binding.session_id,
+            run_id="run1",
+            provider="codex",
+            cli="codex",
+            role="assistant",
+            seq=0,
+            is_sidechain=False,
+        )
+        build_transcript_job(turn, binding).apply(conn)
+        row = conn.execute(
+            "SELECT cli, source_descriptor FROM session WHERE session_id = ?",
+            (binding.session_id,),
+        ).fetchone()
+        assert row == ("codex", descriptor)
 
     def test_owned_codex_session_row_carries_cli_and_descriptor(self, tmp_path: Path) -> None:
         # Regression (d) at the unit level: an owned codex exchange lands a session row with
