@@ -38,6 +38,7 @@ def _run_facts(
     run_id: str | None = "run1",
     *,
     cli: str | None = None,
+    home_dir: Path | None = None,
     owned_native_session_id: str | None = None,
     owned_source_descriptor: str | None = None,
 ) -> RunFacts:
@@ -48,6 +49,7 @@ def _run_facts(
         workspace_hash="hash",
         started_at="2026-06-05T00:00:00Z",
         cli=cli,
+        home_dir=home_dir,
         owned_native_session_id=owned_native_session_id,
         owned_source_descriptor=owned_source_descriptor,
     )
@@ -71,6 +73,25 @@ class TestBindExchange:
         assert binding.native_session_id == "native-9"
         assert binding.session_id == synth_session_id("run1", "codex", "native-9")
         assert binding.minted is False
+
+    def test_home_dir_stamped_on_every_binding(self) -> None:
+        # The managed --home-dir (§11.1) is stamped on EVERY binding (not gated on ``is_owned``): an
+        # external-adoption claude session under a managed home has no owned descriptor and falls to
+        # ``locate``, which needs the home on the binding to resolve the transcript root.
+        entry = make_index_entry(provider="anthropic")
+        artifacts = make_artifacts(make_request_ir(session_id="sess-1"))
+        binding = bind_exchange(
+            entry, artifacts, _run_facts(cli="claude", home_dir=Path("/managed"))
+        )
+        assert binding is not None
+        assert binding.home_dir == "/managed"  # serialized to str on the binding
+
+    def test_home_dir_none_off_native_run(self) -> None:
+        entry = make_index_entry(provider="anthropic")
+        artifacts = make_artifacts(make_request_ir(session_id="sess-1"))
+        binding = bind_exchange(entry, artifacts, _run_facts())
+        assert binding is not None
+        assert binding.home_dir is None
 
     def test_no_correlation_id_returns_none(self) -> None:
         artifacts = make_artifacts(make_request_ir(session_id=None))

@@ -28,3 +28,8 @@ CLI = f"{ENV_PREFIX}CLI"
 # Set by every mint-capable launch (codex: rollout; claude: deterministic transcript path).
 OWNED_NATIVE_SESSION_ID = f"{ENV_PREFIX}OWNED_NATIVE_SESSION_ID"
 OWNED_SOURCE_DESCRIPTOR = f"{ENV_PREFIX}OWNED_SOURCE_DESCRIPTOR"
+# Managed ``--home-dir`` for this launch (§11.1). The child gets the home via CLAUDE_CONFIG_DIR /
+# CODEX_HOME (``build_managed_child_env``); the addon gets it HERE so ``bind_exchange`` stamps it onto
+# the binding and ``locate`` resolves the transcript root under the managed home (the manifest also
+# carries it but is unlinked on exit, so it cannot be the addon's durable channel). Unset = native home.
+HOME_DIR = f"{ENV_PREFIX}HOME_DIR"

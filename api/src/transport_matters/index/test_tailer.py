@@ -294,6 +294,21 @@ class TestRegisterCursor:
         assert source.path.endswith(f"-w/{_SESSION}.jsonl")
         assert cursors[0].byte_offset == 0  # catches turns written before registration
 
+    async def test_external_adoption_under_managed_home_locates_under_home(
+        self, tmp_path: Path
+    ) -> None:
+        # External-adoption-under-managed-home (§11.1): a claude wire binding with NO owned descriptor
+        # but a managed ``home_dir`` re-binds through RunContext (which carries home_dir like cwd), so
+        # ``locate`` resolves the transcript under <home>/projects — NOT ~/.claude — and the cursor
+        # binding keeps the home. This is the real correctness gap the locate fix closes.
+        wire = _binding(cwd="/w").model_copy(update={"home_dir": str(tmp_path)})
+        tailer = TranscriptTailer(lambda _job: None)
+        await register_session_cursor(tailer, ClaudeAdapter(), wire)
+        (cursor,) = tailer._snapshot()
+        assert cursor.binding.home_dir == str(tmp_path)  # survived the re-bind
+        assert isinstance(cursor.source, FileTailSource)
+        assert cursor.source.path == str(tmp_path / "projects" / "-w" / f"{_SESSION}.jsonl")
+
     async def test_claude_managed_rebind_preserves_minted_and_owned_descriptor(
         self, tmp_path: Path
     ) -> None:

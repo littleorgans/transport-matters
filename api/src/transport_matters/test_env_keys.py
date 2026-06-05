@@ -22,3 +22,4 @@ def test_keys_match_wire_names() -> None:
     assert env_keys.CLI == "TRANSPORT_MATTERS_CLI"
     assert env_keys.OWNED_NATIVE_SESSION_ID == "TRANSPORT_MATTERS_OWNED_NATIVE_SESSION_ID"
     assert env_keys.OWNED_SOURCE_DESCRIPTOR == "TRANSPORT_MATTERS_OWNED_SOURCE_DESCRIPTOR"
+    assert env_keys.HOME_DIR == "TRANSPORT_MATTERS_HOME_DIR"

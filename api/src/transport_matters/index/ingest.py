@@ -52,6 +52,10 @@ class RunFacts:
     workspace_hash: str
     started_at: str
     cli: str | None = None
+    # Managed ``--home-dir`` for this run (§11.1), threaded from the launch env. Stamped onto EVERY
+    # binding (not just owned) so ``locate`` resolves the transcript root under the managed home for an
+    # external-adoption-under-managed-home claude session. ``None`` off a non-managed / native-home run.
+    home_dir: Path | None = None
     # Managed-mint (§5.2b/§5.2c): provider-neutral. The native id the launcher minted (== the
     # wire-observed session id) and the JSON ``source_descriptor`` of the transcript it owns.
     # ``bind_exchange`` stamps the descriptor onto the session whose wire id matches
@@ -67,6 +71,7 @@ def build_run_facts(
     started_at: str,
     cli: str | None = None,
     *,
+    home_dir: Path | None = None,
     owned_native_session_id: str | None = None,
     owned_source_descriptor: str | None = None,
 ) -> RunFacts:
@@ -82,6 +87,7 @@ def build_run_facts(
         workspace_hash=workspace_hash,
         started_at=started_at,
         cli=cli,
+        home_dir=home_dir,
         owned_native_session_id=owned_native_session_id,
         owned_source_descriptor=owned_source_descriptor,
     )
@@ -133,6 +139,9 @@ def bind_exchange(
         native_session_id=correlation_id,
         minted=is_owned and not readback,
         source_descriptor=source_descriptor,
+        # Stamped on EVERY binding (not gated on ``is_owned``): an external-adoption claude session
+        # under a managed home has no owned descriptor and falls to ``locate``, which needs it (§11.1).
+        home_dir=str(run_facts.home_dir) if run_facts.home_dir is not None else None,
     )
 
 

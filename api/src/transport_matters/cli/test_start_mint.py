@@ -10,6 +10,8 @@ from typer.testing import CliRunner
 
 from transport_matters.cli import main
 from transport_matters.index.adapters.base import FileTailSource, decode_source_descriptor
+from transport_matters.storage.session_facts import read_run_session_facts
+from transport_matters.workspace import workspace_root
 
 from ._helpers import _which_by_name
 
@@ -57,6 +59,53 @@ def test_claude_managed_mint_injects_session_id_and_owns_descriptor(
 
     # NO seed: unlike codex, claude --session-id creates the transcript, so prepare touched no disk
     assert not Path(source.path).exists()
+
+
+def test_claude_managed_mint_writes_durable_session_facts_under_home_dir(
+    tmp_storage: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    spy_run_client_children: MagicMock,
+) -> None:
+    # §11.1 durable owned-launch facts: under --home-dir the descriptor records the managed home AND
+    # <run_dir>/sessions.json carries the owned facts (native id, descriptor incl. home_dir, cli,
+    # minted) so a §10.5 rebuild reads owned state WITHOUT the live env. The home reaches the addon via
+    # the OWNED_* env channel (HOME_DIR), not only the manifest (which unlinks on exit).
+    monkeypatch.setattr(
+        "transport_matters.cli.shutil.which",
+        _which_by_name({"mitmdump": "/bin/mitmdump", "claude": "/bin/claude"}),
+    )
+    monkeypatch.setattr("transport_matters.cli.port_in_use", lambda _: False)
+    monkeypatch.chdir(tmp_path)
+    workdir = tmp_path / "project"
+    workdir.mkdir()
+
+    result = runner.invoke(
+        main, ["claude", str(workdir), "--home-dir", "homes/claude", "--no-system-prompt"]
+    )
+    assert result.exit_code == 0, result.output
+    expected_home = (tmp_path / "homes" / "claude").resolve()
+
+    env = spy_run_client_children.call_args.kwargs["mitmdump_env"]
+    native = env["TRANSPORT_MATTERS_OWNED_NATIVE_SESSION_ID"]
+    # the managed home reaches the addon via the env channel (not just the unlinked manifest)
+    assert env["TRANSPORT_MATTERS_HOME_DIR"] == str(expected_home)
+    # the owned descriptor records the home explicitly and the path resolves under it
+    source = decode_source_descriptor(env["TRANSPORT_MATTERS_OWNED_SOURCE_DESCRIPTOR"])
+    assert isinstance(source, FileTailSource)
+    assert source.home_dir == str(expected_home)
+    assert source.path.startswith(str(expected_home / "projects"))
+
+    # durable sessions.json beside index.jsonl in the run dir, readable after the launch returns
+    run_dir = workspace_root(workdir) / env["TRANSPORT_MATTERS_RUN_ID"]
+    facts = read_run_session_facts(run_dir)
+    assert facts is not None
+    (owned,) = facts.sessions
+    assert owned.native_session_id == native
+    assert owned.cli == "claude"
+    assert owned.minted is True  # claude adopts the injected --session-id as its session_id PK
+    assert owned.home_dir == str(expected_home)
+    assert owned.source_descriptor == env["TRANSPORT_MATTERS_OWNED_SOURCE_DESCRIPTOR"]
 
 
 def test_claude_user_supplied_session_skips_mint(

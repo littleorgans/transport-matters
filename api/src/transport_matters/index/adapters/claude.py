@@ -41,7 +41,7 @@ _CONVERSATIONAL = frozenset({"user", "assistant"})
 
 
 def claude_transcript_source(
-    cwd: str, session_id: str, *, projects_root: Path | None = None
+    cwd: str, session_id: str, *, projects_root: Path | None = None, home_dir: Path | None = None
 ) -> FileTailSource:
     """The deterministic claude transcript for a session: ``<projects_root>/<cwd-slug>/<sid>.jsonl``.
 
@@ -51,10 +51,26 @@ def claude_transcript_source(
     byte-tails a path claude never wrote (transcript_turn=0), so the slug MUST match claude exactly.
     The default root is claude's native ``~/.claude/projects`` (the external-adoption ``locate``
     path); the managed launcher (§5.2c) passes the home-aware root so the owned ``source_descriptor``
-    it mints lands where ``claude --session-id <sid>`` writes. One definition keeps launch + read DRY."""
-    root = projects_root if projects_root is not None else Path.home() / ".claude" / "projects"
+    it mints lands where ``claude --session-id <sid>`` writes. One definition keeps launch + read DRY.
+
+    ``home_dir`` is the managed ``--home-dir`` (when set) recorded EXPLICITLY on the descriptor so a
+    §10.5 rebuild knows the root the path resolved under without the live env; ``None`` = native home.
+    It is carried alongside ``projects_root`` (which is ``<home_dir>/projects``) rather than derived
+    from it, since the read-side ``locate`` only has the binding's ``home_dir``, not the projects root.
+    When only ``home_dir`` is supplied (the ``locate`` path), the projects root is ``<home_dir>/projects``
+    — the one read-side definition of that mapping (the launch side passes ``projects_root`` directly)."""
+    if projects_root is not None:
+        root = projects_root
+    elif home_dir is not None:
+        root = home_dir / "projects"
+    else:
+        root = Path.home() / ".claude" / "projects"
     slug = re.sub(r"[^a-zA-Z0-9]", "-", cwd)
-    return FileTailSource(path=str(root / slug / f"{session_id}.jsonl"), format="claude_jsonl")
+    return FileTailSource(
+        path=str(root / slug / f"{session_id}.jsonl"),
+        format="claude_jsonl",
+        home_dir=str(home_dir) if home_dir is not None else None,
+    )
 
 
 class ClaudeAdapter(TranscriptAdapter):
@@ -77,13 +93,20 @@ class ClaudeAdapter(TranscriptAdapter):
             started_at=run.started_at,
             native_session_id=run.native_session_id,
             minted=False,
+            home_dir=run.home_dir,  # carried like cwd so ``locate`` resolves under the managed home
         )
 
     async def locate(self, binding: SessionBinding) -> TranscriptSource:
         # External-adoption fallback (§5.2c): a claude session TM did not launch (no owned descriptor)
-        # resolves to claude's deterministic native path. Managed launches never reach here — their
-        # owned descriptor is decoded directly by the tailer.
-        return claude_transcript_source(binding.cwd, binding.session_id)
+        # resolves to claude's deterministic path. Under a managed ``--home-dir`` the binding carries
+        # ``home_dir`` (threaded from RunFacts), so the path resolves under the managed projects root
+        # rather than ``~/.claude`` — the real correctness gap this fixes. Managed launches never reach
+        # here: their owned descriptor is decoded directly by the tailer.
+        return claude_transcript_source(
+            binding.cwd,
+            binding.session_id,
+            home_dir=Path(binding.home_dir) if binding.home_dir is not None else None,
+        )
 
     def normalize(self, record: RawRecord, ctx: TurnContext) -> NormalizedTurn | None:
         if record.get("type") not in _CONVERSATIONAL:

@@ -232,6 +232,7 @@ async def register_session_cursor(
         cli=binding.cli or adapter.cli,
         started_at=binding.started_at,
         native_session_id=binding.native_session_id,
+        home_dir=binding.home_dir,  # carried like cwd so adapter.bind/locate resolves under managed home
     )
     transcript_binding = await adapter.bind(run)
     if transcript_binding.session_id != binding.session_id:

@@ -57,6 +57,7 @@ class CodexAdapter(TranscriptAdapter):
             started_at=run.started_at,
             native_session_id=run.native_session_id,
             minted=False,
+            home_dir=run.home_dir,  # carried like cwd (codex has no ``locate``, but the binding stays honest)
         )
 
     # No ``locate``: codex is MANAGED-MINT (§5.2b). The launcher mints the native uuid, pre-seeds the

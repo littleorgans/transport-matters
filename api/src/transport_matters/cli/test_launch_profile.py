@@ -12,6 +12,7 @@ from transport_matters.cli.launch_profile import (
     CodexLaunchProfile,
     LaunchProfile,
     ManagedSession,
+    persist_owned_session_facts,
     prepare_managed_session,
 )
 from transport_matters.index.adapters.base import (
@@ -19,6 +20,7 @@ from transport_matters.index.adapters.base import (
     decode_source_descriptor,
     encode_source_descriptor,
 )
+from transport_matters.storage.session_facts import read_run_session_facts
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
@@ -78,6 +80,7 @@ class TestClaudeProfile:
         assert isinstance(source, FileTailSource)
         assert source.format == "claude_jsonl"
         assert source.path == str(tmp_path / "projects" / "-Users-x-proj" / "owned-uuid.jsonl")
+        assert source.home_dir == str(tmp_path)  # managed home recorded explicitly (§11.1)
         assert not Path(source.path).exists()  # no seed — claude creates it
 
 
@@ -119,6 +122,7 @@ class TestCodexProfile:
         assert isinstance(source, FileTailSource)
         assert source.format == "codex_rollout"
         assert source.path.startswith(str(tmp_path / "sessions"))
+        assert source.home_dir == str(tmp_path)  # managed home recorded explicitly (§11.1)
         assert Path(source.path).exists()  # codex needs the seed on disk
 
 
@@ -218,6 +222,7 @@ class _FakeMintProfile(LaunchProfile):
     """A hypothetical third mint-capable CLI — implemented as ONE small profile, nothing else."""
 
     cli = "fakecli"
+    mints_session_id = False
 
     def prepare(
         self,
@@ -266,3 +271,47 @@ def test_dry_a_new_mint_capable_cli_plugs_into_the_shared_path(tmp_path: Path) -
         client_path="/bin/fake", passthrough=["hi"], native_session_id=session.native_session_id
     )
     assert argv == ["/bin/fake", f"--id={session.native_session_id}", "hi"]
+
+
+class TestPersistOwnedSessionFacts:
+    def test_mints_session_id_matches_bind_exchange_per_cli(self) -> None:
+        # The launch-side declaration must agree with bind_exchange's read-side derivation: claude
+        # adopts the injected --session-id as its PK (minted), codex synthesizes the PK (not minted).
+        assert ClaudeLaunchProfile().mints_session_id is True
+        assert CodexLaunchProfile().mints_session_id is False
+
+    def test_writes_durable_facts_from_profile_and_managed_session(self, tmp_path: Path) -> None:
+        # §11.1: the launcher persists the owned facts once, sourcing cli + minted from the profile and
+        # native id + descriptor from the ManagedSession, under the run dir (== storage_root).
+        descriptor = encode_source_descriptor(
+            FileTailSource(path="/p", format="claude_jsonl", home_dir=str(tmp_path))
+        )
+        managed = ManagedSession(native_session_id="owned-uuid", source_descriptor=descriptor)
+        path = persist_owned_session_facts(
+            ClaudeLaunchProfile(),
+            managed,
+            run_id="run-1",
+            storage_root=tmp_path,
+            home_dir=tmp_path,
+        )
+        assert path == tmp_path / "sessions.json"
+        facts = read_run_session_facts(tmp_path)
+        assert facts is not None
+        (owned,) = facts.sessions
+        assert owned.run_id == "run-1"
+        assert owned.cli == "claude"
+        assert owned.native_session_id == "owned-uuid"
+        assert owned.minted is True
+        assert owned.source_descriptor == descriptor
+        assert owned.home_dir == str(tmp_path)
+
+    def test_native_home_records_none(self, tmp_path: Path) -> None:
+        descriptor = encode_source_descriptor(FileTailSource(path="/p", format="codex_rollout"))
+        managed = ManagedSession(native_session_id="native-1", source_descriptor=descriptor)
+        persist_owned_session_facts(
+            CodexLaunchProfile(), managed, run_id="run-1", storage_root=tmp_path, home_dir=None
+        )
+        facts = read_run_session_facts(tmp_path)
+        assert facts is not None
+        assert facts.sessions[0].minted is False  # codex synth PK
+        assert facts.sessions[0].home_dir is None

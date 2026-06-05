@@ -31,6 +31,19 @@ def test_settings_use_transport_matters_env_prefix(
     assert settings.debug is True
 
 
+def test_settings_read_managed_home_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # The managed --home-dir reaches the addon via the OWNED_* env channel (§11.1) so bind_exchange
+    # stamps it onto the binding and locate resolves the transcript root under the managed home.
+    home = tmp_path / "managed-home"
+    monkeypatch.setenv("TRANSPORT_MATTERS_HOME_DIR", str(home))
+    assert get_settings().home_dir == home
+
+
+def test_settings_home_dir_defaults_none(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("TRANSPORT_MATTERS_HOME_DIR", raising=False)
+    assert get_settings().home_dir is None
+
+
 def test_settings_default_storage_root_uses_transport_matters(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
