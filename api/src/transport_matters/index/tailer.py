@@ -7,8 +7,9 @@ trailing line waits for the next poll (§15 risk 6) — normalizes each, and sub
 ``IndexJob`` to the writer. The tailer never writes tier-2 directly; the writer emits the live
 event after COMMIT (§9.4).
 
-``iter_complete_records`` is the ONE record-iterate path, shared with §11 backfill (closed file)
-— there is no second iteration to drift (DRY). DAG: imports ``index`` + ``adapters`` only.
+``iter_complete_records`` is the ONE record-iterate path and ``ingest_records`` the ONE
+record→turn loop, both shared with §11 replay (closed snapshot) — there is no second iteration to
+drift (DRY). DAG: imports ``index`` + ``adapters`` only.
 """
 
 import json
@@ -27,7 +28,7 @@ from transport_matters.index.adapters.base import (
 from transport_matters.index.ingest import build_transcript_job
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Iterable
 
     from transport_matters.index.adapters.base import (
         RawRecord,
@@ -78,6 +79,39 @@ class TailCursor:
     )
     model: str | None = None  # last model hint (e.g. codex turn_context.model), threaded onto turns
     stat_signature: tuple[int, float] | None = None  # (size, mtime) to skip unchanged files
+
+
+def ingest_records(
+    records: Iterable[RawRecord],
+    cursor: TailCursor,
+    source_path: str,
+    submit: Callable[[IndexJob], None],
+) -> None:
+    """Normalize a batch of records through the cursor's running state, submitting one job per turn.
+
+    The single record→turn loop (§9.3), shared by live-tail (``_poll_cursor`` over a growing file)
+    and §11 replay (over a closed snapshot): both thread ``seq`` / ``parent_id`` / ``model`` across
+    records identically, so a rebuild reproduces the live turn ids/order exactly (the byte-identical
+    DIFF linchpin). Advances the cursor in place; a non-conversational record (``normalize`` → None)
+    still advances ``seq`` and may set ``model`` (codex ``turn_context``), never ``parent_id``.
+    """
+    for record in records:
+        hint = cursor.adapter.model_hint(record)
+        if hint is not None:
+            cursor.model = hint
+        ctx = TurnContext(
+            binding=cursor.binding,
+            source_path=source_path,
+            seq=cursor.seq,
+            source_line=cursor.seq,
+            parent_id=cursor.parent_id,
+            model=cursor.model,
+        )
+        turn = cursor.adapter.normalize(record, ctx)
+        cursor.seq += 1
+        if turn is not None:
+            submit(build_transcript_job(turn, cursor.binding))
+            cursor.parent_id = turn.turn_id
 
 
 class TranscriptTailer:
@@ -171,31 +205,12 @@ class TranscriptTailer:
         # if the file is unchanged — tier-1 snapshot and tier-2 turns advance together or neither.
         if self._snapshot_writer is not None and consumed:
             self._snapshot_writer(cursor.binding.session_id, cursor.byte_offset, data[:consumed])
-        for record in records:
-            self._ingest_record(cursor, record, source.path)
+        # The ONE record→turn loop, shared verbatim with §11 replay (rebuild.py) — see ingest_records.
+        ingest_records(records, cursor, source.path, self._submit)
         cursor.byte_offset += consumed
         # Mark this stat consumed LAST (mirroring byte_offset): only a fully-successful poll skips the
         # next unchanged read. A mid-poll raise leaves the old signature so the stat guard re-enters.
         cursor.stat_signature = signature
-
-    def _ingest_record(self, cursor: TailCursor, record: RawRecord, source_path: str) -> None:
-        # A non-turn record may carry the active model (codex turn_context); thread it forward (§5.2).
-        hint = cursor.adapter.model_hint(record)
-        if hint is not None:
-            cursor.model = hint
-        ctx = TurnContext(
-            binding=cursor.binding,
-            source_path=source_path,
-            seq=cursor.seq,
-            source_line=cursor.seq,
-            parent_id=cursor.parent_id,
-            model=cursor.model,
-        )
-        turn = cursor.adapter.normalize(record, ctx)
-        cursor.seq += 1
-        if turn is not None:
-            self._submit(build_transcript_job(turn, cursor.binding))
-            cursor.parent_id = turn.turn_id
 
 
 async def register_session_cursor(
