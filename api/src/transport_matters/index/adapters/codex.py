@@ -60,10 +60,14 @@ class CodexAdapter(TranscriptAdapter):
         )
 
     # No ``locate``: codex is MANAGED-MINT (§5.2b). The launcher mints the native uuid, pre-seeds the
-    # rollout, and stamps the owned ``source_descriptor`` onto the binding, so the tailer byte-tails
-    # the owned path directly. The old read-back glob (any wire frame ⇒ TM launched it ⇒ TM owns the
-    # uuid + path) is deleted; discovery is unreachable for anything TM sees. The base default
-    # ``locate`` returns None, so a codex id with no owned descriptor stays pending (§15 risk 2).
+    # rollout, and stamps the owned ``source_descriptor`` onto any wire binding whose
+    # ``metadata.session_id`` matches that uuid, so the tailer byte-tails the owned path. The old
+    # read-back glob (any wire frame ⇒ TM launched it ⇒ TM owns the uuid + path) is deleted; discovery
+    # is unreachable for anything TM sees. Uncorrelated codex non-conversational requests, such as
+    # memory-style calls, carry no session id, bind to ``None``, and land as NULL ``wire_exchange``
+    # rows; handshake-failure frames are tier-1 only and create no tier-2 wire row. These recur several
+    # times per session, not a single frame-1 phantom (§15 risk 2). The base default ``locate`` returns
+    # None, so codex ids with no owned descriptor register no cursor.
 
     def model_hint(self, record: RawRecord) -> str | None:
         # codex's model lives on the `turn_context` record (which normalize skips); the tailer threads
