@@ -71,6 +71,15 @@ class CodexAdapter(TranscriptAdapter):
         path = matches[-1] if matches else root / f"rollout-{native}.jsonl"
         return FileTailSource(path=str(path), format="codex_rollout")
 
+    def model_hint(self, record: RawRecord) -> str | None:
+        # codex's model lives on the `turn_context` record (which normalize skips); the tailer threads
+        # it forward via ctx.model so each response_item turn carries the active model (§5.2).
+        if record.get("type") != "turn_context":
+            return None
+        payload = record.get("payload")
+        model = payload.get("model") if isinstance(payload, dict) else None
+        return model if isinstance(model, str) else None
+
     def normalize(self, record: RawRecord, ctx: TurnContext) -> NormalizedTurn | None:
         # Only response_items are durable conversation items; session_meta/turn_context/event_msg
         # are skipped (the last are streaming UI events, duplicative of the response_items) (§5.2).

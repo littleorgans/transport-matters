@@ -71,6 +71,7 @@ class TailCursor:
     parent_id: str | None = (
         None  # last emitted turn_id (linear-chain fallback for native-less formats)
     )
+    model: str | None = None  # last model hint (e.g. codex turn_context.model), threaded onto turns
     stat_signature: tuple[int, float] | None = None  # (size, mtime) to skip unchanged files
 
 
@@ -154,12 +155,17 @@ class TranscriptTailer:
         cursor.byte_offset += consumed
 
     def _ingest_record(self, cursor: TailCursor, record: RawRecord, source_path: str) -> None:
+        # A non-turn record may carry the active model (codex turn_context); thread it forward (§5.2).
+        hint = cursor.adapter.model_hint(record)
+        if hint is not None:
+            cursor.model = hint
         ctx = TurnContext(
             binding=cursor.binding,
             source_path=source_path,
             seq=cursor.seq,
             source_line=cursor.seq,
             parent_id=cursor.parent_id,
+            model=cursor.model,
         )
         turn = cursor.adapter.normalize(record, ctx)
         cursor.seq += 1

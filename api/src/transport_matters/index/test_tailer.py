@@ -18,6 +18,7 @@ from transport_matters.index.tailer import (
 from transport_matters.index.writer import IndexWriter
 
 if TYPE_CHECKING:
+    import sqlite3
     from pathlib import Path
 
     from transport_matters.index.writer import IndexJob
@@ -150,6 +151,45 @@ class TestRegisterCursor:
         assert cursor.binding.cli == "codex"  # adapter-derived (was None on the wire binding)
         assert isinstance(cursor.source, FileTailSource)
         assert cursor.source.format == "codex_rollout"
+
+
+class TestCodexModelThreading:
+    def test_tail_threads_turn_context_model_onto_codex_turns(
+        self, conn: sqlite3.Connection
+    ) -> None:
+        # codex carries its model in a separate `turn_context` record (which normalize skips), so the
+        # tailer must thread it forward — else every codex transcript_turn lands model=NULL (review F1).
+        from pathlib import Path as _Path
+
+        from transport_matters.index.adapters.codex import CodexAdapter
+        from transport_matters.index.sessions import synth_session_id
+
+        fixture = (
+            _Path(__file__).resolve().parents[3] / "tests" / "fixtures" / "codex_rollout.jsonl"
+        )
+        native = "019e0000-0000-7000-8000-00000000c0de"
+        binding = make_binding(
+            synth_session_id("run1", "codex", native),
+            provider="codex",
+            cli="codex",
+            native_session_id=native,
+        )
+        jobs: list[IndexJob] = []
+        tailer = TranscriptTailer(jobs.append)
+        tailer.register(
+            TailCursor(
+                binding=binding,
+                source=FileTailSource(path=str(fixture), format="codex_rollout"),
+                adapter=CodexAdapter(),
+            )
+        )
+        tailer.poll()
+        for job in jobs:
+            job.apply(conn)
+
+        models = [m for (m,) in conn.execute("SELECT model FROM transcript_turn").fetchall()]
+        assert models  # the 7 response_items became turns
+        assert all(m == "gpt-5-codex" for m in models)  # threaded from turn_context.payload.model
 
 
 class TestLiveEvent:
