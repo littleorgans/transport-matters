@@ -49,7 +49,16 @@ class TestClaudeProfile:
         assert profile.user_supplied_session(["-r"]) is True
         assert profile.user_supplied_session(["--continue"]) is True
         assert profile.user_supplied_session(["-c"]) is True
+        # equals form must be detected too (claude accepts ``--flag=value``)
+        assert (
+            profile.user_supplied_session(["--session-id=00000000-0000-4000-8000-000000000001"])
+            is True
+        )
+        assert profile.user_supplied_session(["--resume=their-id"]) is True
         assert profile.user_supplied_session(["-p", "hello"]) is False
+        assert (
+            profile.user_supplied_session(["--model=opus"]) is False
+        )  # unrelated =flag, no false positive
 
     def test_prepare_mints_descriptor_under_home_aware_root_without_seeding(
         self, tmp_path: Path
@@ -154,6 +163,23 @@ class TestPrepareManagedSession:
                 ClaudeLaunchProfile(),
                 client_path="/bin/claude",
                 passthrough=["--resume", "their-id"],
+                working_dir=Path("/w"),
+                home_dir=tmp_path,
+                env={},
+                now=_now(),
+                write=True,
+            )
+            is None
+        )
+
+    def test_none_when_user_pinned_a_session_equals_form(self, tmp_path: Path) -> None:
+        # The equals form (``--session-id=<uuid>``) must be honored like the space form: TM mints
+        # NOTHING, so no second --session-id is injected and no owned descriptor is recorded.
+        assert (
+            prepare_managed_session(
+                ClaudeLaunchProfile(),
+                client_path="/bin/claude",
+                passthrough=["--session-id=00000000-0000-4000-8000-000000000001"],
                 working_dir=Path("/w"),
                 home_dir=tmp_path,
                 env={},

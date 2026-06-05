@@ -134,7 +134,11 @@ class ClaudeLaunchProfile(LaunchProfile):
         return [client_path, *passthrough, *session]
 
     def user_supplied_session(self, passthrough: Sequence[str]) -> bool:
-        return any(arg in _CLAUDE_SESSION_FLAGS for arg in passthrough)
+        # Match both the space form (``--session-id <uuid>``, a bare flag token) and the equals form
+        # (``--session-id=<uuid>``, a single token, which claude accepts): either pins the user's
+        # session, so TM must not mint a second id. Splitting on ``=`` normalizes ``--flag=value`` →
+        # ``--flag`` and leaves bare tokens unchanged, with no false positive on unrelated ``=`` args.
+        return any(arg.split("=", 1)[0] in _CLAUDE_SESSION_FLAGS for arg in passthrough)
 
 
 class CodexLaunchProfile(LaunchProfile):
