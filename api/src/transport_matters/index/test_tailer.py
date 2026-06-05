@@ -179,6 +179,110 @@ class TestTailerPoll:
         assert len(submitted) == 1  # unregistered → no further submits
 
 
+class TestSnapshotTee:
+    """Slice 8b-i: the tailer tees the consumed transcript bytes into the injected snapshot writer."""
+
+    def test_poll_tees_consumed_bytes_at_cursor_offset(self, tmp_path: Path) -> None:
+        # The tee mirrors the CLI cursor: one call per poll with (session_id, start_offset, consumed
+        # bytes) — the SAME bytes iter_complete_records consumed, the trailing partial excluded.
+        path = tmp_path / "t.jsonl"
+        first = _user_line("u1", "hi") + "\n"
+        path.write_text(first + '{"type":"user","uuid":"u2"')  # complete record + a partial
+        tees: list[tuple[str, int, bytes]] = []
+        submitted: list[IndexJob] = []
+        tailer = TranscriptTailer(
+            submitted.append,
+            snapshot=lambda sid, off, data: tees.append((sid, off, data)),
+        )
+        tailer.register(_cursor(str(path)))
+
+        tailer.poll()
+        assert tees == [(_SESSION, 0, first.encode())]  # consumed prefix only, NOT the partial
+
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write(
+                f',"parentUuid":null,"sessionId":"{_SESSION}","isSidechain":false,'
+                '"timestamp":"t","message":{"role":"user","content":"x"}}\n'
+            )
+        tailer.poll()
+        # second tee starts exactly where the first ended (no overlap, no gap) → byte-faithful copy
+        assert tees[0][1] + len(tees[0][2]) == tees[1][1]
+        assert b"".join(data for _, _, data in tees) == path.read_bytes()
+
+    def test_tees_non_conversational_records_normalize_drops(self, tmp_path: Path) -> None:
+        # session_meta is non-conversational: normalize returns None (no job), but the snapshot MUST
+        # still capture it byte-faithfully so a future normalize change can re-derive it (§5.2).
+        native = "019e0000-0000-7000-8000-00000000c0de"
+        path = tmp_path / "rollout.jsonl"
+        meta_line = _codex_session_meta(native) + "\n"
+        path.write_text(meta_line)
+        tees: list[tuple[str, int, bytes]] = []
+        submitted: list[IndexJob] = []
+        tailer = TranscriptTailer(
+            submitted.append,
+            snapshot=lambda sid, off, data: tees.append((sid, off, data)),
+        )
+        tailer.register(
+            TailCursor(
+                binding=_codex_wire_binding(native, None),
+                source=FileTailSource(path=str(path), format="codex_rollout"),
+                adapter=CodexAdapter(),
+            )
+        )
+
+        tailer.poll()
+        assert submitted == []  # session_meta is not a turn
+        assert b"".join(data for _, _, data in tees) == meta_line.encode()  # but it IS snapshotted
+
+    def test_snapshot_failure_does_not_advance_and_retries_next_poll(self, tmp_path: Path) -> None:
+        # The tee is coupled to the cursor advance: a snapshot raise must NOT advance byte_offset AND
+        # must NOT set stat_signature, so the very next poll RETRIES even though the CLI file is
+        # unchanged (no waiting for the file to grow). Keeps tier-1 snapshot + tier-2 turns consistent.
+        path = tmp_path / "t.jsonl"
+        path.write_text(_user_line("u1", "hi") + "\n")
+        calls: list[int] = []
+
+        def failing_snapshot(_sid: str, _off: int, _data: bytes) -> None:
+            calls.append(1)
+            raise OSError("disk full")
+
+        submitted: list[IndexJob] = []
+        tailer = TranscriptTailer(submitted.append, snapshot=failing_snapshot)
+        tailer.register(_cursor(str(path)))
+
+        tailer.poll()  # snapshot raises → poll() swallows + logs
+        tailer.poll()  # CLI file UNCHANGED → must retry, not skip at the stat guard
+
+        assert len(calls) == 2  # retried on the unchanged file
+        assert submitted == []  # ingest never ran (snapshot raised first)
+        (cursor,) = tailer._snapshot()
+        assert cursor.byte_offset == 0  # not advanced past un-snapshotted bytes
+        assert cursor.stat_signature is None  # not advanced → this is what re-enables the retry
+
+    def test_unchanged_file_after_success_is_not_reread(self, tmp_path: Path) -> None:
+        # The stat-skip optimization must survive moving stat_signature: after a SUCCESSFUL poll an
+        # unchanged re-poll does not re-tee (stat_signature is set once the poll fully succeeds).
+        path = tmp_path / "t.jsonl"
+        path.write_text(_user_line("u1", "hi") + "\n")
+        tees: list[tuple[str, int, bytes]] = []
+        tailer = TranscriptTailer(
+            lambda _job: None, snapshot=lambda s, o, d: tees.append((s, o, d))
+        )
+        tailer.register(_cursor(str(path)))
+        tailer.poll()
+        tailer.poll()  # unchanged → skipped at the stat guard, not re-teed
+        assert len(tees) == 1
+
+    def test_poll_without_snapshot_callback_is_safe(self, tmp_path: Path) -> None:
+        path = tmp_path / "t.jsonl"
+        path.write_text(_user_line("u1", "hi") + "\n")
+        submitted: list[IndexJob] = []
+        tailer = TranscriptTailer(submitted.append)  # no snapshot injected (default None)
+        tailer.register(_cursor(str(path)))
+        tailer.poll()
+        assert [job.entity_id for job in submitted] == ["u1"]  # tier-2 unaffected
+
+
 class TestRegisterCursor:
     async def test_register_session_cursor_locates_and_registers(self) -> None:
         tailer = TranscriptTailer(lambda _job: None)

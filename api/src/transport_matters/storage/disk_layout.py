@@ -20,6 +20,7 @@ _RESPONSE_IR_FILENAME = "response.ir.json"
 _TRANSPORT_FILENAME = "transport.json"
 _EVENTS_FILENAME = "events.jsonl"
 _TURN_FILENAME = "turn.json"
+_TRANSCRIPTS_DIRNAME = "transcripts"
 _TMP_SUFFIX = ".tmp"
 _BACKUP_SUFFIX = ".bak"
 _DELETE_SUFFIX = ".del"
@@ -55,6 +56,20 @@ class DiskStorageLayout:
     @property
     def index_tmp_path(self) -> Path:
         return self.root / _INDEX_TMP_FILENAME
+
+    @property
+    def transcripts_dir(self) -> Path:
+        """The run dir's tier-1 transcript-snapshot directory (§7.1/§11, slice 8b-i)."""
+        return self.root / _TRANSCRIPTS_DIRNAME
+
+    def transcript_snapshot_path(self, session_id: str) -> Path:
+        """Per-session owned transcript snapshot ``<run_dir>/transcripts/<session_id>.jsonl``.
+
+        Per-session (not per-run): a run dir may host more than one session, and the file stem is
+        the ``session_id`` verbatim so a future rebuild maps it back 1:1. ``session_id`` is a
+        uuid (claude native / codex synth via ``uuid5``), so it is a safe filename as-is.
+        """
+        return self.transcripts_dir / f"{session_id}.jsonl"
 
     def artifact_paths(self, exchange_dir: Path) -> ExchangeArtifactPaths:
         return ExchangeArtifactPaths(

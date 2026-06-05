@@ -22,6 +22,7 @@ from transport_matters.index.writer import IndexWriter
 from transport_matters.main import create_app
 from transport_matters.storage import init_storage
 from transport_matters.storage.exchange_sink import clear_exchange_sink, set_exchange_sink
+from transport_matters.storage.transcript_snapshot import make_transcript_snapshot_writer
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -102,7 +103,15 @@ def load_runtime() -> AddonRuntime:
     try:
         index_writer = IndexWriter(str(index_db_path()), loop=loop, emit=broadcast.emit)
         index_writer.start()
-        index_tailer = TranscriptTailer(index_writer.submit)
+        # Tier-1 transcript snapshot (§7.1/§11, slice 8b-i): tee consumed transcript bytes into the
+        # run dir so tier-1 owns the transcript even if the CLI GCs its own file. Built here closing
+        # over the workspace-scoped storage_root (same root the wire artifacts use), injected into
+        # the tailer as a plain callable — the index-layer tailer never imports a storage write API
+        # (DAG). None when there is no disk backend (the snapshot has nowhere durable to land).
+        snapshot_writer = (
+            make_transcript_snapshot_writer(storage_root) if storage_root is not None else None
+        )
+        index_tailer = TranscriptTailer(index_writer.submit, snapshot=snapshot_writer)
         index_tailer.start()
         # Managed-mint (§5.2b/§5.2c): a mint-capable launcher hands us the harness cli + the native id
         # and source_descriptor of the transcript it owns; thread them so bind_exchange stamps the
