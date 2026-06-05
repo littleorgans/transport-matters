@@ -1,8 +1,9 @@
 """Tier-2 capture-and-retrieval substrate (the rebuildable SQLite projection of tier-1).
 
 Core store + single-writer actor (slice 1), wire ingest + sink (slice 2), read/query API
-(slice 3), and the transcript adapter port + claude adapter + transcript ingest (slice 4a).
-The file tailer and live ``transcript_turn`` event land in slice 4b.
+(slice 3), the transcript adapter port + claude adapter + transcript ingest (slice 4a), the
+file tailer + live ``transcript_turn`` event (slice 4b), and the durable run enumerator +
+tier-2 delete + block GC (slice 8a, ``maintenance.py``).
 """
 
 from transport_matters.index.adapters import get_adapter
@@ -26,6 +27,13 @@ from transport_matters.index.blocks import (
 )
 from transport_matters.index.db import connect, index_db_path, transaction
 from transport_matters.index.ingest import build_transcript_job
+from transport_matters.index.maintenance import (
+    RunDir,
+    delete_exchange,
+    delete_run,
+    gc_blocks,
+    iter_run_dirs,
+)
 from transport_matters.index.models import (
     BlockEdge,
     SessionRow,
@@ -46,6 +54,7 @@ __all__ = [
     "NormalizedTurn",
     "PullSource",
     "RunContext",
+    "RunDir",
     "SessionBinding",
     "SessionRow",
     "TranscriptAdapter",
@@ -59,9 +68,13 @@ __all__ = [
     "block_text",
     "build_transcript_job",
     "connect",
+    "delete_exchange",
+    "delete_run",
+    "gc_blocks",
     "get_adapter",
     "identity_canonical",
     "index_db_path",
+    "iter_run_dirs",
     "rebuild_fts",
     "synth_session_id",
     "transaction",
