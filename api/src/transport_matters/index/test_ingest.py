@@ -3,6 +3,7 @@
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from transport_matters.index.adapters.base import FileTailSource, encode_source_descriptor
 from transport_matters.index.db import connect
 from transport_matters.index.ingest import RunFacts, bind_exchange, build_wire_job, make_index_sink
 from transport_matters.index.sessions import synth_session_id
@@ -22,13 +23,22 @@ if TYPE_CHECKING:
     import sqlite3
 
 
-def _run_facts(run_id: str | None = "run1") -> RunFacts:
+def _run_facts(
+    run_id: str | None = "run1",
+    *,
+    cli: str | None = None,
+    codex_native_session_id: str | None = None,
+    codex_source_descriptor: str | None = None,
+) -> RunFacts:
     return RunFacts(
         run_id=run_id,
         cwd=Path("/w"),
         workspace_slug="slug",
         workspace_hash="hash",
         started_at="2026-06-05T00:00:00Z",
+        cli=cli,
+        codex_native_session_id=codex_native_session_id,
+        codex_source_descriptor=codex_source_descriptor,
     )
 
 
@@ -58,6 +68,64 @@ class TestBindExchange:
     def test_no_run_id_returns_none(self) -> None:
         artifacts = make_artifacts(make_request_ir(session_id="sess-1"))
         assert bind_exchange(make_index_entry(), artifacts, _run_facts(run_id=None)) is None
+
+    def test_owned_codex_session_stamps_descriptor_and_cli(self) -> None:
+        # Managed-mint (§5.2b): the launcher minted native-9 and pre-seeded its rollout, handing the
+        # addon the owned descriptor + cli via run_facts. When the wire id matches the owned uuid the
+        # binding carries both, so the session row is populated (cli + source_descriptor) BEFORE any
+        # transcript turn lands and the tailer byte-tails the owned path instead of globbing.
+        descriptor = encode_source_descriptor(
+            FileTailSource(path="/home/u/.codex/sessions/r-native-9.jsonl", format="codex_rollout")
+        )
+        entry = make_index_entry(provider="codex")
+        artifacts = make_artifacts(make_request_ir(session_id="native-9"))
+        binding = bind_exchange(
+            entry,
+            artifacts,
+            _run_facts(
+                cli="codex", codex_native_session_id="native-9", codex_source_descriptor=descriptor
+            ),
+        )
+        assert binding is not None
+        assert binding.cli == "codex"
+        assert binding.source_descriptor == descriptor
+        assert binding.session_id == synth_session_id("run1", "codex", "native-9")
+
+    def test_non_owned_codex_id_stays_undescribed(self) -> None:
+        # A codex wire id TM did NOT seed (e.g. a forked subagent thread) must not borrow the owned
+        # session's descriptor — it stays pending (no cursor) rather than mis-joining (regression c).
+        descriptor = encode_source_descriptor(
+            FileTailSource(path="/home/u/.codex/sessions/r-owned.jsonl", format="codex_rollout")
+        )
+        entry = make_index_entry(provider="codex")
+        artifacts = make_artifacts(make_request_ir(session_id="native-OTHER"))
+        binding = bind_exchange(
+            entry,
+            artifacts,
+            _run_facts(
+                cli="codex",
+                codex_native_session_id="native-OWNED",
+                codex_source_descriptor=descriptor,
+            ),
+        )
+        assert binding is not None
+        assert binding.source_descriptor is None  # not the owned id → no descriptor
+
+    def test_anthropic_never_borrows_codex_descriptor(self) -> None:
+        # The owned descriptor is codex-specific; a non-readback provider never receives it even if
+        # its native id coincidentally equals the codex uuid.
+        descriptor = encode_source_descriptor(
+            FileTailSource(path="/home/u/.codex/sessions/r.jsonl", format="codex_rollout")
+        )
+        entry = make_index_entry(provider="anthropic")
+        artifacts = make_artifacts(make_request_ir(session_id="collide"))
+        binding = bind_exchange(
+            entry,
+            artifacts,
+            _run_facts(codex_native_session_id="collide", codex_source_descriptor=descriptor),
+        )
+        assert binding is not None
+        assert binding.source_descriptor is None
 
 
 class TestBuildWireJob:

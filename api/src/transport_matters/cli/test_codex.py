@@ -132,6 +132,56 @@ def test_codex_sets_proxy_env_on_managed_child(
     assert kwargs["mitmdump_argv"][:3] == ["/bin/mitmdump", "--mode", "regular"]
 
 
+def test_codex_managed_mint_seeds_rollout_and_resumes(
+    tmp_storage: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    spy_run_client_children: MagicMock,
+) -> None:
+    # Managed-mint (§5.2b): the launcher mints the native uuid, pre-seeds the rollout, hands the
+    # addon the owned native id + source_descriptor via env, and launches `codex resume <native>`.
+    # tmp_storage points $HOME at tmp_path, so the seed lands under tmp_path/.codex (isolated).
+    from transport_matters.index.adapters.base import FileTailSource, decode_source_descriptor
+
+    monkeypatch.setattr(
+        "transport_matters.cli.shutil.which",
+        _which_by_name({"mitmdump": "/bin/mitmdump", "codex": "/bin/codex"}),
+    )
+    monkeypatch.setattr("transport_matters.cli.port_in_use", lambda _: False)
+    monkeypatch.setattr(
+        "transport_matters.cli.resolve_codex_ca_certificate",
+        lambda *, env, bundle_dir: tmp_path / "ca.pem",
+    )
+
+    result = runner.invoke(main, ["codex", ".", "--", "exec", "ping"])
+    assert result.exit_code == 0, result.output
+
+    kwargs = spy_run_client_children.call_args.kwargs
+    env = kwargs["mitmdump_env"]
+    client = kwargs["client"]
+
+    # the addon learns the owned codex identity through the env contract
+    assert env["TRANSPORT_MATTERS_CLI"] == "codex"
+    native = env["TRANSPORT_MATTERS_CODEX_NATIVE_SESSION_ID"]
+    source = decode_source_descriptor(env["TRANSPORT_MATTERS_CODEX_SOURCE_DESCRIPTOR"])
+    assert isinstance(source, FileTailSource)
+    assert source.format == "codex_rollout"
+    assert native in Path(source.path).name  # the rollout filename carries the owned uuid
+
+    # the codex child is launched to RESUME the owned session (head + passthrough tail preserved)
+    assert client.argv[0] == "/bin/codex"
+    assert client.argv[1] == "-c"
+    resume_at = client.argv.index("resume")
+    assert client.argv[resume_at + 1] == native
+    assert client.argv[-2:] == ["exec", "ping"]
+
+    # the rollout is pre-seeded with exactly the minimal session_meta keyed on the owned uuid
+    seeded = Path(source.path)
+    assert seeded.exists()
+    (line,) = seeded.read_text(encoding="utf-8").splitlines()
+    assert json.loads(line)["payload"]["id"] == native
+
+
 def test_codex_home_dir_sets_codex_home_manifest_and_keeps_ca(
     tmp_storage: Path,
     tmp_path: Path,

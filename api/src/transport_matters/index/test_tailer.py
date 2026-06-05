@@ -5,10 +5,17 @@ import json
 from typing import TYPE_CHECKING
 
 from transport_matters import broadcast
-from transport_matters.index.adapters.base import FileTailSource, NormalizedTurn, SessionBinding
+from transport_matters.index.adapters.base import (
+    FileTailSource,
+    NormalizedTurn,
+    SessionBinding,
+    encode_source_descriptor,
+)
 from transport_matters.index.adapters.claude import ClaudeAdapter
+from transport_matters.index.adapters.codex import CodexAdapter
 from transport_matters.index.conftest import make_binding
 from transport_matters.index.ingest import build_transcript_job
+from transport_matters.index.sessions import synth_session_id
 from transport_matters.index.tailer import (
     TailCursor,
     TranscriptTailer,
@@ -24,6 +31,53 @@ if TYPE_CHECKING:
     from transport_matters.index.writer import IndexJob
 
 _SESSION = "00000000-0000-4000-8000-000000000001"
+_RUN = "run1"
+
+
+def _codex_session_meta(native: str) -> str:
+    return json.dumps(
+        {
+            "type": "session_meta",
+            "payload": {
+                "id": native,
+                "timestamp": "2026-06-05T10:00:00.000Z",
+                "cwd": "/w",
+                "originator": "codex-tui",
+                "cli_version": "0.137.0",
+            },
+        }
+    )
+
+
+def _codex_response_item(text: str) -> str:
+    return json.dumps(
+        {
+            "type": "response_item",
+            "payload": {
+                "type": "message",
+                "role": "assistant",
+                "content": [{"type": "output_text", "text": text}],
+            },
+        }
+    )
+
+
+def _codex_wire_binding(native: str, descriptor: str | None) -> SessionBinding:
+    """A codex wire binding as ``bind_exchange`` resolves it: synth session_id, cli unset on the
+    wire side, ``source_descriptor`` present only for the session the launcher owns (§5.2b)."""
+    return SessionBinding(
+        session_id=synth_session_id(_RUN, "codex", native),
+        provider="codex",
+        run_id=_RUN,
+        cwd="/w",
+        workspace_slug="s",
+        workspace_hash="h",
+        started_at="t",
+        cli=None,
+        native_session_id=native,
+        minted=False,
+        source_descriptor=descriptor,
+    )
 
 
 def _binding(cwd: str = "/w") -> SessionBinding:
@@ -92,26 +146,6 @@ class TestTailerPoll:
         tailer.poll()
         assert [job.entity_id for job in submitted] == ["u1", "u2"]  # partial completed → consumed
 
-    def test_poll_is_graceful_when_rollout_missing(self, tmp_path: Path) -> None:
-        # The frame-1 phantom (a codex window-id with no rollout, §15 risk 2) registers a cursor on a
-        # non-existent path. Poll must no-op cleanly — no error, no submitted jobs — and stay ready if
-        # the file ever appears (the cursor is isolated; it never mis-joins the real thread).
-        from transport_matters.index.adapters.codex import CodexAdapter
-
-        submitted: list[IndexJob] = []
-        tailer = TranscriptTailer(submitted.append)
-        missing = tmp_path / "rollout-does-not-exist.jsonl"
-        tailer.register(
-            TailCursor(
-                binding=_binding(),
-                source=FileTailSource(path=str(missing), format="codex_rollout"),
-                adapter=CodexAdapter(),
-            )
-        )
-        tailer.poll()  # must not raise on a missing path
-        tailer.poll()  # idempotent: still no busy-read / error
-        assert submitted == []
-
     def test_register_is_idempotent(self, tmp_path: Path) -> None:
         submitted: list[IndexJob] = []
         tailer = TranscriptTailer(submitted.append)
@@ -138,39 +172,104 @@ class TestRegisterCursor:
         assert source.path.endswith(f"-w/{_SESSION}.jsonl")
         assert cursors[0].byte_offset == 0  # catches turns written before registration
 
-    async def test_register_session_cursor_rebinds_readback_via_adapter(
-        self, tmp_path: Path, monkeypatch: object
-    ) -> None:
-        # The transcript binding is RE-DERIVED through the adapter (bind() + RunContext go LIVE here,
+    async def test_codex_rebind_converges_and_uses_owned_descriptor(self, tmp_path: Path) -> None:
+        # The transcript binding is RE-DERIVED through the adapter (bind() + RunContext go LIVE,
         # audit #2): for codex read-back the synth session_id must reproduce the wire side's (§7.2),
-        # and the cursor binds the codex adapter's cli + rollout source.
-        from pathlib import Path as _Path
-
-        from transport_matters.index.adapters.codex import CodexAdapter
-        from transport_matters.index.sessions import synth_session_id
-
+        # and the cursor binds the codex adapter's cli. Managed-mint (§5.2b): the source is the OWNED
+        # rollout from the wire binding's source_descriptor — NOT a ~/.codex glob (the glob is gone).
         native = "019e0000-0000-7000-8000-00000000c0de"
-        monkeypatch.setattr(_Path, "home", lambda: tmp_path)  # type: ignore[attr-defined]
-        expected = synth_session_id("run1", "codex", native)
-        wire_binding = SessionBinding(
-            session_id=expected,
-            provider="codex",
-            run_id="run1",
-            cwd="/w",
-            workspace_slug="s",
-            workspace_hash="h",
-            started_at="t",
-            cli=None,  # the wire run_facts carries no cli; the adapter supplies it on re-bind
-            native_session_id=native,
-            minted=False,
+        rollout = tmp_path / f"rollout-2026-06-05T10-00-00-{native}.jsonl"
+        descriptor = encode_source_descriptor(
+            FileTailSource(path=str(rollout), format="codex_rollout")
         )
+        wire_binding = _codex_wire_binding(native, descriptor)
         tailer = TranscriptTailer(lambda _job: None)
         await register_session_cursor(tailer, CodexAdapter(), wire_binding)
         (cursor,) = tailer._snapshot()
-        assert cursor.binding.session_id == expected  # convergence: re-bind reproduces wire id
+        assert cursor.binding.session_id == wire_binding.session_id  # convergence: same synth id
         assert cursor.binding.cli == "codex"  # adapter-derived (was None on the wire binding)
         assert isinstance(cursor.source, FileTailSource)
         assert cursor.source.format == "codex_rollout"
+        assert cursor.source.path == str(rollout)  # the OWNED path, byte-for-byte (no glob)
+
+    async def test_owned_descriptor_cursor_tails_deterministically(self, tmp_path: Path) -> None:
+        # Regression (a): seed the minimal rollout, register the cursor from the descriptor, append
+        # one response_item, poll → EXACTLY one transcript job, tailed from the exact owned path.
+        native = "019e0000-0000-7000-8000-0000000000aa"
+        rollout = tmp_path / f"rollout-2026-06-05T10-00-00-{native}.jsonl"
+        rollout.write_text(_codex_session_meta(native) + "\n", encoding="utf-8")
+        descriptor = encode_source_descriptor(
+            FileTailSource(path=str(rollout), format="codex_rollout")
+        )
+        submitted: list[IndexJob] = []
+        tailer = TranscriptTailer(submitted.append)
+        await register_session_cursor(
+            tailer, CodexAdapter(), _codex_wire_binding(native, descriptor)
+        )
+
+        tailer.poll()  # only session_meta present → a normal no-op, NOT a locate miss
+        assert submitted == []
+        with rollout.open("a", encoding="utf-8") as handle:
+            handle.write(_codex_response_item("hello") + "\n")
+        tailer.poll()
+        assert [job.kind for job in submitted] == ["transcript"]  # exactly one turn
+        (cursor,) = tailer._snapshot()
+        assert isinstance(cursor.source, FileTailSource)
+        assert cursor.source.path == str(rollout)  # tailed from the exact owned path
+
+    async def test_non_owned_codex_binding_registers_no_cursor(self) -> None:
+        # Regression (c): a codex wire id TM did not seed has no owned descriptor (bind_exchange left
+        # it None). register_session_cursor registers NO cursor — it stays pending: no glob, no
+        # error, no busy-poll (the old window-id phantom path is gone).
+        submitted: list[IndexJob] = []
+        tailer = TranscriptTailer(submitted.append)
+        await register_session_cursor(
+            tailer,
+            CodexAdapter(),
+            _codex_wire_binding("019e0000-0000-7000-8000-0000000000ff", None),
+        )
+        assert tailer._snapshot() == []  # nothing registered
+        tailer.poll()  # nothing to poll
+        assert submitted == []
+
+    async def test_five_managed_sessions_same_cwd_no_cross_binding(self, tmp_path: Path) -> None:
+        # Regression (b): 5 managed codex sessions in the SAME cwd, each a unique uuid + owned
+        # rollout path, one response each. Assert zero cross-binding — every cursor tails ITS own
+        # path and emits ITS own session's turn (no newest-glob: each path is owned, not discovered).
+        natives = [f"019e0000-0000-7000-8000-0000000{i:05d}" for i in range(5)]
+        paths: list[str] = []
+        submitted: list[IndexJob] = []
+        tailer = TranscriptTailer(submitted.append)
+        for i, native in enumerate(natives):
+            rollout = tmp_path / f"rollout-2026-06-05T10-00-0{i}-{native}.jsonl"
+            rollout.write_text(
+                _codex_session_meta(native) + "\n" + _codex_response_item(f"msg-{i}") + "\n",
+                encoding="utf-8",
+            )
+            paths.append(str(rollout))
+            descriptor = encode_source_descriptor(
+                FileTailSource(path=str(rollout), format="codex_rollout")
+            )
+            await register_session_cursor(
+                tailer, CodexAdapter(), _codex_wire_binding(native, descriptor)
+            )
+
+        cursors = tailer._snapshot()
+        assert len(cursors) == 5  # five distinct cursors (distinct synth session_ids)
+        # each cursor is bound to ITS OWN owned path — no two share, none point at "newest"
+        source_paths = set()
+        for c in cursors:
+            assert isinstance(c.source, FileTailSource)
+            source_paths.add(c.source.path)
+        assert source_paths == set(paths)
+        expected_ids = {synth_session_id(_RUN, "codex", n) for n in natives}
+        assert {c.binding.session_id for c in cursors} == expected_ids
+
+        tailer.poll()
+        # one turn per session, and each turn's session_id is the one whose rollout it came from
+        emitted = {job.event["session_id"] for job in submitted if job.event is not None}
+        assert len(submitted) == 5
+        assert emitted == expected_ids  # zero cross-binding
 
 
 class TestCodexModelThreading:

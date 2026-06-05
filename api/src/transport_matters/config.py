@@ -44,6 +44,16 @@ class Settings(BaseSettings):
     # outside ``transport-matters claude`` (dev, tests); in that case the
     # endpoint falls back to :meth:`Path.cwd`.
     cwd: Path | None = None
+    # Harness cli (``claude`` | ``codex`` | ...) for this launch, set by the CLI alongside
+    # ``run_id``/``cwd``. Flowed so the wire binding (and thus the ``session`` row) carries the cli
+    # before any transcript turn lands. ``None`` outside a managed launch (dev, tests).
+    cli: str | None = None
+    # Managed-mint (§5.2b): the codex native uuid the launcher minted (== the wire-observed thread
+    # id) and the JSON ``source_descriptor`` for the pre-seeded rollout it owns. The addon stamps the
+    # descriptor onto the codex session whose wire id matches ``codex_native_session_id`` (a non-owned
+    # codex id matches nothing and stays pending). ``None`` for non-codex / unmanaged runs.
+    codex_native_session_id: str | None = None
+    codex_source_descriptor: str | None = None
     breakpoint_timeout_s: float = 300.0
     breakpoint_skip_models: list[str] = []
 

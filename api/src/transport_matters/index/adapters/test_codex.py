@@ -14,7 +14,6 @@ from typing import TYPE_CHECKING
 import pytest
 
 from transport_matters.index.adapters.base import (
-    FileTailSource,
     RunContext,
     SessionBinding,
     TurnContext,
@@ -216,20 +215,11 @@ class TestBindLocate:
         with pytest.raises(ValueError, match="native_session_id"):
             await CodexAdapter().bind(run)
 
-    async def test_locate_globs_rollout_by_native_uuid(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        # codex's rollout path encodes the native uuid as the filename suffix; locate globs for it.
-        sessions = tmp_path / ".codex" / "sessions" / "2026" / "06" / "01"
-        sessions.mkdir(parents=True)
-        rollout = sessions / f"rollout-2026-06-01T10-00-00-{_NATIVE}.jsonl"
-        rollout.write_text("{}\n", encoding="utf-8")
-        monkeypatch.setattr(Path, "home", lambda: tmp_path)
-
-        source = await CodexAdapter().locate(_binding())
-        assert isinstance(source, FileTailSource)
-        assert source.format == "codex_rollout"
-        assert source.path == str(rollout)
+    async def test_does_not_discover_a_source(self) -> None:
+        # codex is MANAGED-MINT (§5.2b): it owns the rollout path via source_descriptor and does NOT
+        # implement locate — the old ~/.codex glob is deleted. The inherited base default returns
+        # None, so a binding with no owned descriptor registers no cursor (stays pending).
+        assert await CodexAdapter().locate(_binding()) is None
 
 
 class TestRegistry:

@@ -1,12 +1,13 @@
 import json
 import stat
 import tomllib
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from typer.testing import CliRunner
 
 from transport_matters.cli import main
-from transport_matters.cli.home_seed import seed_home_dir
+from transport_matters.cli.home_seed import codex_sessions_root, seed_home_dir
 from transport_matters.cli.launch_runtime import CLIENT_NAME_CLAUDE, CLIENT_NAME_CODEX
 
 from ._helpers import _which_all, _which_by_name
@@ -14,10 +15,23 @@ from ._helpers import _which_all, _which_by_name
 runner = CliRunner()
 
 if TYPE_CHECKING:
-    from pathlib import Path
     from unittest.mock import MagicMock
 
     import pytest
+
+
+class TestCodexSessionsRoot:
+    def test_managed_home_dir_wins(self) -> None:
+        # --home-dir is the child's CODEX_HOME, so the launcher seeds under it.
+        assert codex_sessions_root(Path("/managed/home"), {}) == Path("/managed/home/sessions")
+
+    def test_falls_back_to_codex_home_env(self) -> None:
+        root = codex_sessions_root(None, {"CODEX_HOME": "/custom/codex"})
+        assert root == Path("/custom/codex/sessions")
+
+    def test_falls_back_to_native_default(self) -> None:
+        # No managed home and no CODEX_HOME → codex's native ~/.codex/sessions.
+        assert codex_sessions_root(None, {}).parts[-2:] == (".codex", "sessions")
 
 
 def test_claude_seed_fresh_home_copies_metadata_and_trust(

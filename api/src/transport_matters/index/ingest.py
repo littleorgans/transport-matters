@@ -52,10 +52,22 @@ class RunFacts:
     workspace_hash: str
     started_at: str
     cli: str | None = None
+    # Managed-mint (§5.2b): the codex native uuid the launcher minted (== the wire-observed thread
+    # id) and the JSON ``source_descriptor`` of the rollout it pre-seeded. ``bind_exchange`` stamps
+    # the descriptor onto the codex session whose wire id matches ``codex_native_session_id``; a
+    # non-owned codex id matches nothing and stays pending (no cursor). ``None`` off a codex launch.
+    codex_native_session_id: str | None = None
+    codex_source_descriptor: str | None = None
 
 
 def build_run_facts(
-    run_id: str | None, cwd: Path | None, started_at: str, cli: str | None = None
+    run_id: str | None,
+    cwd: Path | None,
+    started_at: str,
+    cli: str | None = None,
+    *,
+    codex_native_session_id: str | None = None,
+    codex_source_descriptor: str | None = None,
 ) -> RunFacts:
     """Assemble per-run static facts, deriving the workspace identity from ``cwd``."""
     slug, workspace_hash = ("", "")
@@ -69,6 +81,8 @@ def build_run_facts(
         workspace_hash=workspace_hash,
         started_at=started_at,
         cli=cli,
+        codex_native_session_id=codex_native_session_id,
+        codex_source_descriptor=codex_source_descriptor,
     )
 
 
@@ -94,6 +108,15 @@ def bind_exchange(
         if readback
         else correlation_id
     )
+    # Managed-mint (§5.2b): when this read-back exchange IS the codex session the launcher minted
+    # and pre-seeded (its wire id == the owned native uuid), carry the owned rollout descriptor so
+    # the session row is populated and the tailer byte-tails the owned path (no glob). A codex id TM
+    # did not seed matches nothing → descriptor stays None → stays pending (no cursor, regression c).
+    source_descriptor = (
+        run_facts.codex_source_descriptor
+        if readback and correlation_id == run_facts.codex_native_session_id
+        else None
+    )
     return SessionBinding(
         session_id=session_id,
         provider=entry.provider,
@@ -105,6 +128,7 @@ def bind_exchange(
         cli=run_facts.cli,
         native_session_id=correlation_id,
         minted=False,
+        source_descriptor=source_descriptor,
     )
 
 
