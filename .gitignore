@@ -60,3 +60,6 @@ DOCS/
 LESSONS.md
 PROJECT.md
 TLDR.md
+# ...but the root agent-grounding stack is committed (layered-tldr-agent-grounding)
+!/PROJECT.md
+!/TLDR.md

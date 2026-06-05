@@ -236,6 +236,10 @@ Useful flags:
 - Prior runs in the same workspace remain available through history.
 - Codex transport is websocket based, so the raw transport view is often the fastest way to debug protocol failures.
 
+---
+
+See [PROJECT.md](./PROJECT.md) for more.
+
 ## License
 
 Apache 2.0
