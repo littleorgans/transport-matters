@@ -13,6 +13,7 @@ from transport_matters.codex.protocol import (
     CODEX_TOOL_OUTPUT_ITEM_TYPES,
     decode_tool_arguments,
 )
+from transport_matters.codex.session_metadata import codex_session_id_from_provider_metadata
 from transport_matters.ir import (
     ContentBlock,
     ImageBlock,
@@ -376,11 +377,16 @@ def _parse_metadata(raw: object) -> RequestMetadata:
                 return value
         return None
 
+    provider_metadata = dict(raw)
     return RequestMetadata(
-        session_id=string_value("session_id", "sessionId"),
+        # Codex carries no top-level session_id in client_metadata; the id (== the rollout thread
+        # uuid, §7.2) is nested in client_metadata["x-codex-turn-metadata"]. Resolve via the shared
+        # resolver so bind_exchange's direct read of metadata.session_id sees it — else every codex
+        # wire_exchange row lands session_id NULL and never joins its transcript.
+        session_id=codex_session_id_from_provider_metadata(provider_metadata),
         device_id=string_value("device_id", "deviceId"),
         account_id=string_value("account_id", "accountId"),
-        provider_metadata=dict(raw),
+        provider_metadata=provider_metadata,
     )
 
 

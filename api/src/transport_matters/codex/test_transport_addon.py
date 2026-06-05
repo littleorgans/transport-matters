@@ -184,7 +184,9 @@ async def test_addon_websocket_message_derives_session_from_current_codex_header
     assert len(entries) == 1
 
     artifacts = await storage.read_exchange(entries[0].id)
-    assert artifacts.request_ir.metadata.session_id is None
+    # The parser now resolves the codex id from the nested x-codex-turn-metadata into
+    # metadata.session_id (§7.2 read-back correlation) — previously this was None.
+    assert artifacts.request_ir.metadata.session_id == "sess-real"
     assert artifacts.events is not None
     assert artifacts.turn is not None
     assert artifacts.turn.session_id == "sess-real"

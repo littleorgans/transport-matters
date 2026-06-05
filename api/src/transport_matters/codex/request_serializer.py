@@ -19,6 +19,7 @@ from transport_matters.codex.protocol import (
     CODEX_TOOL_OUTPUT_ITEM_TYPES,
     RAW_TOOL_ARGUMENTS_KEY,
 )
+from transport_matters.codex.session_metadata import codex_session_id_from_provider_metadata
 from transport_matters.ir import (
     ContentBlock,
     ImageBlock,
@@ -258,12 +259,19 @@ def _tool_to_dict(tool: ToolDef) -> dict[str, Any]:
 def _metadata_to_dict(meta: RequestMetadata) -> dict[str, Any]:
     payload = dict(meta.provider_metadata)
 
+    # session_id is resolved from the nested client_metadata["x-codex-turn-metadata"] at parse time
+    # (§7.2); re-adding it top-level would mutate the forwarded frame (the codex client never sent a
+    # top-level session_id) — keep the wire verbatim when the id is already encoded. A genuinely new
+    # id (e.g. a future proxy mint) still gets written.
+    already_encoded = codex_session_id_from_provider_metadata(payload)
     for names, value in (
         (("session_id", "sessionId"), meta.session_id),
         (("device_id", "deviceId"), meta.device_id),
         (("account_id", "accountId"), meta.account_id),
     ):
         if value is None:
+            continue
+        if names[0] == "session_id" and value == already_encoded:
             continue
         key = next((name for name in names if name in payload), names[0])
         payload[key] = value
