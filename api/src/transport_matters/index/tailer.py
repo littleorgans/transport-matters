@@ -159,21 +159,24 @@ class TranscriptTailer:
         signature = (stat.st_size, stat.st_mtime)
         if cursor.stat_signature == signature:
             return  # unchanged file
-        cursor.stat_signature = signature
         with path.open("rb") as handle:
             handle.seek(cursor.byte_offset)
             data = handle.read()
         records, consumed = iter_complete_records(data)
         # Tee the consumed bytes into tier-1 BEFORE normalize (slice 8b-i): the raw prefix keeps ALL
         # records byte-faithfully — including the non-conversational ones normalize drops — so a
-        # rebuild owns the transcript. Off the §7.1 wire hot path (tailer thread); a snapshot error
-        # propagates to poll()'s try/except, leaving byte_offset un-advanced for a self-healing retry,
-        # so the snapshot and tier-2 turns stay consistent (both advance together or neither).
+        # rebuild owns the transcript. Off the §7.1 wire hot path (tailer thread). A snapshot error
+        # propagates to poll()'s try/except, leaving byte_offset AND stat_signature un-advanced (both
+        # are set only after the whole poll succeeds, below), so the NEXT poll re-reads + retries even
+        # if the file is unchanged — tier-1 snapshot and tier-2 turns advance together or neither.
         if self._snapshot_writer is not None and consumed:
             self._snapshot_writer(cursor.binding.session_id, cursor.byte_offset, data[:consumed])
         for record in records:
             self._ingest_record(cursor, record, source.path)
         cursor.byte_offset += consumed
+        # Mark this stat consumed LAST (mirroring byte_offset): only a fully-successful poll skips the
+        # next unchanged read. A mid-poll raise leaves the old signature so the stat guard re-enters.
+        cursor.stat_signature = signature
 
     def _ingest_record(self, cursor: TailCursor, record: RawRecord, source_path: str) -> None:
         # A non-turn record may carry the active model (codex turn_context); thread it forward (§5.2).

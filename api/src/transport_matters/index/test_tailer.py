@@ -234,6 +234,45 @@ class TestSnapshotTee:
         assert submitted == []  # session_meta is not a turn
         assert b"".join(data for _, _, data in tees) == meta_line.encode()  # but it IS snapshotted
 
+    def test_snapshot_failure_does_not_advance_and_retries_next_poll(self, tmp_path: Path) -> None:
+        # The tee is coupled to the cursor advance: a snapshot raise must NOT advance byte_offset AND
+        # must NOT set stat_signature, so the very next poll RETRIES even though the CLI file is
+        # unchanged (no waiting for the file to grow). Keeps tier-1 snapshot + tier-2 turns consistent.
+        path = tmp_path / "t.jsonl"
+        path.write_text(_user_line("u1", "hi") + "\n")
+        calls: list[int] = []
+
+        def failing_snapshot(_sid: str, _off: int, _data: bytes) -> None:
+            calls.append(1)
+            raise OSError("disk full")
+
+        submitted: list[IndexJob] = []
+        tailer = TranscriptTailer(submitted.append, snapshot=failing_snapshot)
+        tailer.register(_cursor(str(path)))
+
+        tailer.poll()  # snapshot raises → poll() swallows + logs
+        tailer.poll()  # CLI file UNCHANGED → must retry, not skip at the stat guard
+
+        assert len(calls) == 2  # retried on the unchanged file
+        assert submitted == []  # ingest never ran (snapshot raised first)
+        (cursor,) = tailer._snapshot()
+        assert cursor.byte_offset == 0  # not advanced past un-snapshotted bytes
+        assert cursor.stat_signature is None  # not advanced → this is what re-enables the retry
+
+    def test_unchanged_file_after_success_is_not_reread(self, tmp_path: Path) -> None:
+        # The stat-skip optimization must survive moving stat_signature: after a SUCCESSFUL poll an
+        # unchanged re-poll does not re-tee (stat_signature is set once the poll fully succeeds).
+        path = tmp_path / "t.jsonl"
+        path.write_text(_user_line("u1", "hi") + "\n")
+        tees: list[tuple[str, int, bytes]] = []
+        tailer = TranscriptTailer(
+            lambda _job: None, snapshot=lambda s, o, d: tees.append((s, o, d))
+        )
+        tailer.register(_cursor(str(path)))
+        tailer.poll()
+        tailer.poll()  # unchanged → skipped at the stat guard, not re-teed
+        assert len(tees) == 1
+
     def test_poll_without_snapshot_callback_is_safe(self, tmp_path: Path) -> None:
         path = tmp_path / "t.jsonl"
         path.write_text(_user_line("u1", "hi") + "\n")

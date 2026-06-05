@@ -16,6 +16,7 @@ Proves the acceptance bullets short of launching a real CLI (that is Stuart's ro
 from __future__ import annotations
 
 import json
+import shutil
 from typing import TYPE_CHECKING
 
 from transport_matters.index.adapters.base import FileTailSource, SessionBinding
@@ -189,3 +190,38 @@ def test_retail_from_fresh_process_does_not_duplicate_snapshot(tmp_path: Path) -
 
     assert snap.read_bytes() == first  # idempotent: no duplicated records
     assert first == codex_file.read_bytes()
+
+
+def test_snapshot_dir_removed_midrun_halts_tier2_advance(tmp_path: Path) -> None:
+    # Probe (b): if transcripts/ is lost mid-run, the next poll's snapshot hits a gap and RAISES;
+    # poll() catches it, so byte_offset does NOT advance and the new turn is NOT submitted — tier-2
+    # never gets ahead of a snapshot hole. Loud (logged), not a silent advance.
+    workspaces_root = tmp_path / "workspaces"
+    run_dir = _run_dir(workspaces_root)
+    codex_file = tmp_path / "rollout.jsonl"
+    codex_file.write_text(_codex_session_meta() + "\n" + _codex_response_item("first") + "\n")
+
+    submitted: list[IndexJob] = []
+    tailer = TranscriptTailer(submitted.append, snapshot=make_transcript_snapshot_writer(run_dir))
+    tailer.register(
+        TailCursor(
+            binding=_codex_binding(),
+            source=FileTailSource(path=str(codex_file), format="codex_rollout"),
+            adapter=CodexAdapter(),
+        )
+    )
+
+    tailer.poll()  # first turn captured + snapshotted
+    assert [job.kind for job in submitted] == ["transcript"]
+    (cursor,) = tailer._snapshot()
+    advanced = cursor.byte_offset
+    assert advanced > 0
+
+    shutil.rmtree(run_dir / "transcripts")  # snapshot dir lost mid-run
+    with codex_file.open("a", encoding="utf-8") as handle:
+        handle.write(_codex_response_item("second") + "\n")
+
+    tailer.poll()  # gap → snapshot raises → poll() swallows → NO advance, NO new submit
+
+    assert [job.kind for job in submitted] == ["transcript"]  # 'second' NOT submitted past the hole
+    assert cursor.byte_offset == advanced  # byte_offset held at the un-snapshotted boundary

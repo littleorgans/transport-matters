@@ -7,8 +7,13 @@ consumed prefix, idempotently across re-tails (a fresh process re-reads the CLI 
 
 from typing import TYPE_CHECKING
 
+import pytest
+
 from transport_matters.storage.disk_layout import DiskStorageLayout
-from transport_matters.storage.transcript_snapshot import make_transcript_snapshot_writer
+from transport_matters.storage.transcript_snapshot import (
+    TranscriptSnapshotGapError,
+    make_transcript_snapshot_writer,
+)
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -72,16 +77,18 @@ def test_retail_from_offset_zero_appends_only_the_new_tail(tmp_path: Path) -> No
     assert _snap_path(tmp_path).read_bytes() == grown  # appended only the new tail, no dup prefix
 
 
-def test_gap_ahead_of_snapshot_is_skipped_not_holed(tmp_path: Path) -> None:
-    # Defensive: if a prior append was lost, start_offset can run AHEAD of the snapshot size. We do
-    # NOT have the missing [snap_size, start_offset) bytes here, so writing would punch a non-prefix
-    # hole. Skip instead — the snapshot stays a valid (if short) prefix; never corrupt.
+def test_gap_ahead_of_snapshot_raises_rather_than_silently_advancing(tmp_path: Path) -> None:
+    # A gap (start_offset > snapshot size) means the snapshot is missing [snap_size, start_offset).
+    # Writing the new bytes would punch a non-prefix hole AND silently let the tailer advance past
+    # un-snapshotted data, breaking the byte-faithful-prefix guarantee. So it is a HARD failure: the
+    # tailer's poll() catches it and does NOT advance, surfacing the fault instead of losing data.
     snapshot = make_transcript_snapshot_writer(tmp_path)
     snapshot(_SID, 0, b"aa")
 
-    snapshot(_SID, 5, b"cc")  # start_offset 5 > snapshot size 2 → gap
+    with pytest.raises(TranscriptSnapshotGapError):
+        snapshot(_SID, 5, b"cc")  # start_offset 5 > snapshot size 2 → gap
 
-    assert _snap_path(tmp_path).read_bytes() == b"aa"
+    assert _snap_path(tmp_path).read_bytes() == b"aa"  # still a valid prefix, no hole punched
 
 
 def test_sessions_are_isolated_into_separate_files(tmp_path: Path) -> None:
