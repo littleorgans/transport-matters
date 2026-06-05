@@ -252,3 +252,35 @@ async def test_close_runtime_clears_counter_and_auth() -> None:
 
     assert _counter is None
     assert _recent_auth is None
+
+
+def test_load_runtime_rebuilds_index_before_opening_writer(monkeypatch: pytest.MonkeyPatch) -> None:
+    """load_runtime must run the boot rebuild (rebuild_if_stale) BEFORE constructing the live
+    IndexWriter (§10.5, slice 8c-ii). rebuild() deletes the index.db files, so a live writer opened
+    first would be stranded on the old inode. This pins that ordering — a load-bearing invariant a
+    future refactor could silently break. The IndexWriter stub raises a BaseException so load_runtime
+    aborts before the uvicorn serve task binds a port (``except Exception`` does not catch it).
+    """
+    order: list[str] = []
+
+    class _StopBoot(BaseException):
+        pass
+
+    def fake_rebuild_if_stale(*args: object, **kwargs: object) -> bool:
+        order.append("rebuild_if_stale")
+        return False
+
+    def fake_index_writer(*args: object, **kwargs: object) -> object:
+        order.append("IndexWriter")
+        raise _StopBoot
+
+    monkeypatch.setattr(addon_runtime, "init_storage", lambda *a, **k: object())
+    monkeypatch.setattr(addon_runtime, "TokenCounter", lambda *a, **k: object())
+    monkeypatch.setattr(httpx, "AsyncClient", lambda *a, **k: object())
+    monkeypatch.setattr(addon_runtime, "rebuild_if_stale", fake_rebuild_if_stale)
+    monkeypatch.setattr(addon_runtime, "IndexWriter", fake_index_writer)
+
+    with pytest.raises(_StopBoot):
+        addon_runtime.load_runtime()
+
+    assert order == ["rebuild_if_stale", "IndexWriter"]

@@ -174,6 +174,11 @@ def rebuild_if_stale(
     concurrent boot BLOCKS until the in-flight rebuild fully completes, then checks (now genuinely
     current AND complete) and skips. flock is cheap, so an uncontended boot acquires instantly.
     ``rebuild()`` remains the only drop/replay executor; this adds no second path.
+
+    Known limitation (§10.5 scope): the lock serializes boot-vs-boot only. It does NOT guard against an
+    already-running instance's live writer on the global ``index.db`` (cross-instance quiescence would
+    need an epoch protocol, deliberately out of scope here) — but tier-2 is a rebuildable projection,
+    so a writer stranded by a concurrent boot rebuild self-heals on its own next boot.
     """
     workspaces_root = workspaces_root if workspaces_root is not None else default_workspaces_root()
     db_path = db_path if db_path is not None else index_db_path()
