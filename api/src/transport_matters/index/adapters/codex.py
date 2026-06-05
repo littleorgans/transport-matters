@@ -65,6 +65,10 @@ class CodexAdapter(TranscriptAdapter):
     async def locate(self, binding: SessionBinding) -> TranscriptSource:
         # The rollout's ISO start is not independently known, but the thread uuid is a unique
         # filename suffix, so glob on it (§5.2). Newest match wins (resume/fork writes a new file).
+        # No match → a non-existent fallback path: this is the §15 risk-2 startup artifact (the first
+        # codex frame carries the pre-thread window-id, which has no rollout). The tailer's poll
+        # no-ops cleanly on a missing path (no error, no busy-read), so it stays an isolated
+        # uncorrelated session and never mis-joins the real thread.
         native = binding.native_session_id
         root = Path.home() / ".codex" / "sessions"
         matches = sorted(root.glob(f"**/rollout-*-{native}.jsonl"))

@@ -92,6 +92,26 @@ class TestTailerPoll:
         tailer.poll()
         assert [job.entity_id for job in submitted] == ["u1", "u2"]  # partial completed → consumed
 
+    def test_poll_is_graceful_when_rollout_missing(self, tmp_path: Path) -> None:
+        # The frame-1 phantom (a codex window-id with no rollout, §15 risk 2) registers a cursor on a
+        # non-existent path. Poll must no-op cleanly — no error, no submitted jobs — and stay ready if
+        # the file ever appears (the cursor is isolated; it never mis-joins the real thread).
+        from transport_matters.index.adapters.codex import CodexAdapter
+
+        submitted: list[IndexJob] = []
+        tailer = TranscriptTailer(submitted.append)
+        missing = tmp_path / "rollout-does-not-exist.jsonl"
+        tailer.register(
+            TailCursor(
+                binding=_binding(),
+                source=FileTailSource(path=str(missing), format="codex_rollout"),
+                adapter=CodexAdapter(),
+            )
+        )
+        tailer.poll()  # must not raise on a missing path
+        tailer.poll()  # idempotent: still no busy-read / error
+        assert submitted == []
+
     def test_register_is_idempotent(self, tmp_path: Path) -> None:
         submitted: list[IndexJob] = []
         tailer = TranscriptTailer(submitted.append)
