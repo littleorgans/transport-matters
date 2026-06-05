@@ -2,8 +2,9 @@
 
 Core store + single-writer actor (slice 1), wire ingest + sink (slice 2), read/query API
 (slice 3), the transcript adapter port + claude adapter + transcript ingest (slice 4a), the
-file tailer + live ``transcript_turn`` event (slice 4b), and the durable run enumerator +
-tier-2 delete + block GC (slice 8a, ``maintenance.py``).
+file tailer + live ``transcript_turn`` event (slice 4b), the durable run enumerator +
+tier-2 delete + block GC (slice 8a, ``maintenance.py``), and the replay core that rebuilds
+tier-2 from tier-1 alone (slice 8c-i, ``rebuild.py``).
 """
 
 from transport_matters.index.adapters import get_adapter
@@ -40,6 +41,7 @@ from transport_matters.index.models import (
     TranscriptTurnRow,
     WireExchangeRow,
 )
+from transport_matters.index.rebuild import backfill, rebuild, reconcile, replay_run
 from transport_matters.index.schema import apply_schema, rebuild_fts
 from transport_matters.index.sessions import SESSION_NS, synth_session_id, upsert_session
 from transport_matters.index.writer import IndexJob, IndexWriter
@@ -63,6 +65,7 @@ __all__ = [
     "TurnContext",
     "WireExchangeRow",
     "apply_schema",
+    "backfill",
     "block_hash",
     "block_kind",
     "block_text",
@@ -75,7 +78,10 @@ __all__ = [
     "identity_canonical",
     "index_db_path",
     "iter_run_dirs",
+    "rebuild",
     "rebuild_fts",
+    "reconcile",
+    "replay_run",
     "synth_session_id",
     "transaction",
     "upsert_block",
