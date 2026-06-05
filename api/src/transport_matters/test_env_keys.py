@@ -19,3 +19,6 @@ def test_keys_match_wire_names() -> None:
     assert env_keys.STORAGE_DIR == "TRANSPORT_MATTERS_STORAGE_DIR"
     assert env_keys.RUN_ID == "TRANSPORT_MATTERS_RUN_ID"
     assert env_keys.CWD == "TRANSPORT_MATTERS_CWD"
+    assert env_keys.CLI == "TRANSPORT_MATTERS_CLI"
+    assert env_keys.CODEX_NATIVE_SESSION_ID == "TRANSPORT_MATTERS_CODEX_NATIVE_SESSION_ID"
+    assert env_keys.CODEX_SOURCE_DESCRIPTOR == "TRANSPORT_MATTERS_CODEX_SOURCE_DESCRIPTOR"

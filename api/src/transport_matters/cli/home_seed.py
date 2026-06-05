@@ -136,6 +136,17 @@ def _default_codex_home(env: Mapping[str, str]) -> Path:
     return Path.home() / ".codex"
 
 
+def codex_sessions_root(home_dir: Path | None, env: Mapping[str, str]) -> Path:
+    """The directory codex writes session rollouts to: ``<codex home>/sessions``.
+
+    The codex home is the managed ``--home-dir`` when set (it becomes the child's ``CODEX_HOME`` in
+    ``build_managed_child_env``), else codex's native default (``$CODEX_HOME`` or ``~/.codex``). The
+    managed-mint launcher (§5.2b) seeds its owned rollout here so it lands exactly where the resumed
+    codex appends — same resolution as the child, so the seed never lands off codex's real root."""
+    home = home_dir if home_dir is not None else _default_codex_home(env)
+    return home / "sessions"
+
+
 def _read_json_object_if_exists(path: Path) -> dict[str, Any]:
     try:
         raw = path.read_text(encoding="utf-8")

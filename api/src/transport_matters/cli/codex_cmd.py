@@ -5,13 +5,16 @@ import json
 import os
 import shutil
 import tempfile
+import uuid
+from datetime import datetime
 from importlib.resources import as_file
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 import typer
 
-from .home_seed import seed_home_dir
+from .codex_session import CodexSessionSeed, resolve_codex_cli_version, seed_codex_session
+from .home_seed import codex_sessions_root, seed_home_dir
 from .identity import CLI_COMMAND, PRODUCT_LABEL
 from .launch_runtime import (
     CLIENT_NAME_CODEX,
@@ -154,9 +157,14 @@ def _build_codex_invocation(
     codex_path: str | None,
     codex_passthrough_user: Sequence[str],
     codex_ca_certificate: str | None,
+    codex_seed: CodexSessionSeed | None,
     debug: bool,
 ) -> Callable[[int, int], tuple[list[str], dict[str, str], ManagedClient | None]]:
-    """Build the retry-safe invocation factory for `transport-matters codex`."""
+    """Build the retry-safe invocation factory for `transport-matters codex`.
+
+    ``codex_seed`` is the §5.2b managed-mint session (minted once, before the retry loop, so every
+    attempt resumes the SAME owned rollout): its native id + descriptor flow to the addon via the
+    launch env, and ``codex resume <native>`` continues the pre-seeded rollout TM owns."""
 
     def build_invocation(
         proxy_port: int,
@@ -168,6 +176,13 @@ def _build_codex_invocation(
             proxy_port=proxy_port,
             web_port=web_port,
             run_id=run_id,
+            cli=CLIENT_NAME_CODEX,
+            codex_native_session_id=(
+                codex_seed.native_session_id if codex_seed is not None else None
+            ),
+            codex_source_descriptor=(
+                codex_seed.source_descriptor if codex_seed is not None else None
+            ),
         )
 
         proxy_url = loopback_http_url(proxy_port)
@@ -193,12 +208,17 @@ def _build_codex_invocation(
                 proxy_url=proxy_url,
                 codex_ca_certificate=codex_ca_certificate,
             )
+            # Resume the owned, pre-seeded rollout (§5.2b) so codex appends to the path TM owns
+            # instead of minting a fresh native id + a rollout TM has to race to discover. Kept after
+            # the top-level `-c` policy and before user passthrough (resume's [PROMPT]/args).
+            resume_args = ["resume", codex_seed.native_session_id] if codex_seed is not None else []
             client = ManagedClient(
                 name=CLIENT_NAME_CODEX,
                 display_name="Codex",
                 argv=[
                     codex_path,
                     *_codex_shell_environment_policy_args(),
+                    *resume_args,
                     *codex_passthrough_user,
                 ],
                 env=client_env,
@@ -325,6 +345,19 @@ def run_codex(
             )
         elif not print_command:
             codex_ca_certificate = _resolve_proxy_only_codex_ca_hint(env=os.environ)
+        # Managed-mint (§5.2b): mint the native uuid + pre-seed the rollout ONCE, before the retry
+        # loop, so every attempt resumes the same owned session. ``write`` is gated on print-command
+        # (dry run must not touch disk); the descriptor/argv are still computed for the printout.
+        codex_seed: CodexSessionSeed | None = None
+        if prepared.client_path is not None:
+            codex_seed = seed_codex_session(
+                native_session_id=str(uuid.uuid4()),
+                now=datetime.now().astimezone(),
+                working_dir=prepared.working_dir,
+                cli_version=resolve_codex_cli_version(prepared.client_path),
+                sessions_root=codex_sessions_root(home_dir, os.environ),
+                write=not print_command,
+            )
         build_invocation = _build_codex_invocation(
             addon_path=addon_path,
             force_http_fallback_addon_path=force_http_fallback_addon_path,
@@ -336,6 +369,7 @@ def run_codex(
             codex_path=prepared.client_path,
             codex_passthrough_user=prepared.passthrough_user,
             codex_ca_certificate=codex_ca_certificate,
+            codex_seed=codex_seed,
             debug=debug,
         )
 

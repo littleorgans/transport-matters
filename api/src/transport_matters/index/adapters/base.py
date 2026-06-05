@@ -14,7 +14,7 @@ directly — no proxy mint yet; codex synthesizes), so there is no separate reso
 from abc import ABC, abstractmethod
 from typing import Annotated, Any, ClassVar, Literal  # Any: native records are provider JSON
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 
 from transport_matters.ir import ContentBlock
 
@@ -66,6 +66,21 @@ class PullSource(BaseModel):
 
 
 TranscriptSource = Annotated[FileTailSource | PullSource, Field(discriminator="kind")]
+
+# One codec for ``SessionBinding.source_descriptor``: the launcher encodes the owned source it
+# minted (§5.2b managed-mint) and the tailer decodes it back to the discriminated TranscriptSource
+# — one definition keeps the on-wire descriptor shape DRY across the launch and read-back sides.
+_SOURCE_ADAPTER: TypeAdapter[FileTailSource | PullSource] = TypeAdapter(TranscriptSource)
+
+
+def encode_source_descriptor(source: TranscriptSource) -> str:
+    """Serialize a ``TranscriptSource`` to the ``SessionBinding.source_descriptor`` JSON string."""
+    return _SOURCE_ADAPTER.dump_json(source).decode("utf-8")
+
+
+def decode_source_descriptor(descriptor: str) -> TranscriptSource:
+    """Parse a ``source_descriptor`` JSON string back to its ``TranscriptSource`` (by ``kind``)."""
+    return _SOURCE_ADAPTER.validate_json(descriptor)
 
 
 class RunContext(BaseModel):
@@ -132,9 +147,15 @@ class TranscriptAdapter(ABC):
         """Establish the session_id (the correlation key). claude: native id used directly,
         minted=False (no proxy --session-id mint yet); codex: read-back synth (§3.4)."""
 
-    @abstractmethod
-    async def locate(self, binding: SessionBinding) -> TranscriptSource:
-        """Resolve where the transcript lives (a deterministic path for claude, glob/db for read-back)."""
+    async def locate(self, binding: SessionBinding) -> TranscriptSource | None:
+        """Read-back discovery: resolve where the transcript lives from the binding alone.
+
+        Used by adapters whose path is derivable at registration (claude's deterministic
+        ``~/.claude`` path, §5.1). Managed-mint adapters (codex §5.2b) instead OWN the path: the
+        launcher stamps ``source_descriptor`` onto the binding, so they never discover and do not
+        override this. The default returns ``None`` — a binding with neither a ``source_descriptor``
+        nor a ``locate`` override registers no cursor and stays pending (§15 risk 2)."""
+        return None
 
     @abstractmethod
     def normalize(self, record: RawRecord, ctx: TurnContext) -> NormalizedTurn | None:

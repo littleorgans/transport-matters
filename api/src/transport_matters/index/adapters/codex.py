@@ -10,11 +10,9 @@ both streams (§3.3).
 
 import json
 import uuid
-from pathlib import Path
 from typing import TYPE_CHECKING, Any  # Any: rollout records are provider-shaped JSON
 
 from transport_matters.index.adapters.base import (
-    FileTailSource,
     NormalizedTurn,
     SessionBinding,
     TranscriptAdapter,
@@ -32,7 +30,6 @@ if TYPE_CHECKING:
     from transport_matters.index.adapters.base import (
         RawRecord,
         RunContext,
-        TranscriptSource,
         TurnContext,
     )
     from transport_matters.ir import ContentBlock
@@ -62,18 +59,11 @@ class CodexAdapter(TranscriptAdapter):
             minted=False,
         )
 
-    async def locate(self, binding: SessionBinding) -> TranscriptSource:
-        # The rollout's ISO start is not independently known, but the thread uuid is a unique
-        # filename suffix, so glob on it (§5.2). Newest match wins (resume/fork writes a new file).
-        # No match → a non-existent fallback path: this is the §15 risk-2 startup artifact (the first
-        # codex frame carries the pre-thread window-id, which has no rollout). The tailer's poll
-        # no-ops cleanly on a missing path (no error, no busy-read), so it stays an isolated
-        # uncorrelated session and never mis-joins the real thread.
-        native = binding.native_session_id
-        root = Path.home() / ".codex" / "sessions"
-        matches = sorted(root.glob(f"**/rollout-*-{native}.jsonl"))
-        path = matches[-1] if matches else root / f"rollout-{native}.jsonl"
-        return FileTailSource(path=str(path), format="codex_rollout")
+    # No ``locate``: codex is MANAGED-MINT (§5.2b). The launcher mints the native uuid, pre-seeds the
+    # rollout, and stamps the owned ``source_descriptor`` onto the binding, so the tailer byte-tails
+    # the owned path directly. The old read-back glob (any wire frame ⇒ TM launched it ⇒ TM owns the
+    # uuid + path) is deleted; discovery is unreachable for anything TM sees. The base default
+    # ``locate`` returns None, so a codex id with no owned descriptor stays pending (§15 risk 2).
 
     def model_hint(self, record: RawRecord) -> str | None:
         # codex's model lives on the `turn_context` record (which normalize skips); the tailer threads

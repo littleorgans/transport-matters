@@ -1,12 +1,24 @@
 """Wire ingest: binding resolution, field mapping, ordered edges, idempotency (§13.2 + §7.1)."""
 
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
+from transport_matters.index.adapters.base import (
+    FileTailSource,
+    NormalizedTurn,
+    encode_source_descriptor,
+)
+from transport_matters.index.conftest import make_binding
 from transport_matters.index.db import connect
-from transport_matters.index.ingest import RunFacts, bind_exchange, build_wire_job, make_index_sink
+from transport_matters.index.ingest import (
+    RunFacts,
+    bind_exchange,
+    build_transcript_job,
+    build_wire_job,
+    make_index_sink,
+)
 from transport_matters.index.sessions import synth_session_id
-from transport_matters.index.writer import IndexWriter
+from transport_matters.index.writer import IndexJob, IndexWriter
 from transport_matters.ir import Message, SystemPart, TextBlock
 from transport_matters.storage.base import ReqStats, ResStats
 from transport_matters.storage.disk_layout import DiskStorageLayout
@@ -22,13 +34,22 @@ if TYPE_CHECKING:
     import sqlite3
 
 
-def _run_facts(run_id: str | None = "run1") -> RunFacts:
+def _run_facts(
+    run_id: str | None = "run1",
+    *,
+    cli: str | None = None,
+    codex_native_session_id: str | None = None,
+    codex_source_descriptor: str | None = None,
+) -> RunFacts:
     return RunFacts(
         run_id=run_id,
         cwd=Path("/w"),
         workspace_slug="slug",
         workspace_hash="hash",
         started_at="2026-06-05T00:00:00Z",
+        cli=cli,
+        codex_native_session_id=codex_native_session_id,
+        codex_source_descriptor=codex_source_descriptor,
     )
 
 
@@ -58,6 +79,64 @@ class TestBindExchange:
     def test_no_run_id_returns_none(self) -> None:
         artifacts = make_artifacts(make_request_ir(session_id="sess-1"))
         assert bind_exchange(make_index_entry(), artifacts, _run_facts(run_id=None)) is None
+
+    def test_owned_codex_session_stamps_descriptor_and_cli(self) -> None:
+        # Managed-mint (§5.2b): the launcher minted native-9 and pre-seeded its rollout, handing the
+        # addon the owned descriptor + cli via run_facts. When the wire id matches the owned uuid the
+        # binding carries both, so the session row is populated (cli + source_descriptor) BEFORE any
+        # transcript turn lands and the tailer byte-tails the owned path instead of globbing.
+        descriptor = encode_source_descriptor(
+            FileTailSource(path="/home/u/.codex/sessions/r-native-9.jsonl", format="codex_rollout")
+        )
+        entry = make_index_entry(provider="codex")
+        artifacts = make_artifacts(make_request_ir(session_id="native-9"))
+        binding = bind_exchange(
+            entry,
+            artifacts,
+            _run_facts(
+                cli="codex", codex_native_session_id="native-9", codex_source_descriptor=descriptor
+            ),
+        )
+        assert binding is not None
+        assert binding.cli == "codex"
+        assert binding.source_descriptor == descriptor
+        assert binding.session_id == synth_session_id("run1", "codex", "native-9")
+
+    def test_non_owned_codex_id_stays_undescribed(self) -> None:
+        # A codex wire id TM did NOT seed (e.g. a forked subagent thread) must not borrow the owned
+        # session's descriptor — it stays pending (no cursor) rather than mis-joining (regression c).
+        descriptor = encode_source_descriptor(
+            FileTailSource(path="/home/u/.codex/sessions/r-owned.jsonl", format="codex_rollout")
+        )
+        entry = make_index_entry(provider="codex")
+        artifacts = make_artifacts(make_request_ir(session_id="native-OTHER"))
+        binding = bind_exchange(
+            entry,
+            artifacts,
+            _run_facts(
+                cli="codex",
+                codex_native_session_id="native-OWNED",
+                codex_source_descriptor=descriptor,
+            ),
+        )
+        assert binding is not None
+        assert binding.source_descriptor is None  # not the owned id → no descriptor
+
+    def test_anthropic_never_borrows_codex_descriptor(self) -> None:
+        # The owned descriptor is codex-specific; a non-readback provider never receives it even if
+        # its native id coincidentally equals the codex uuid.
+        descriptor = encode_source_descriptor(
+            FileTailSource(path="/home/u/.codex/sessions/r.jsonl", format="codex_rollout")
+        )
+        entry = make_index_entry(provider="anthropic")
+        artifacts = make_artifacts(make_request_ir(session_id="collide"))
+        binding = bind_exchange(
+            entry,
+            artifacts,
+            _run_facts(codex_native_session_id="collide", codex_source_descriptor=descriptor),
+        )
+        assert binding is not None
+        assert binding.source_descriptor is None
 
 
 class TestBuildWireJob:
@@ -224,5 +303,98 @@ class TestMakeIndexSink:
                 ).fetchone()[0]
                 == "sess-1"
             )
+        finally:
+            verify.close()
+
+    def test_sink_submits_wire_job_before_registering_cursor(self) -> None:
+        # §5.2b ordering: the wire job (which upserts the session row with cli + source_descriptor)
+        # must be accepted BEFORE cursor registration is scheduled — the canonical row write is
+        # enqueued first, so the tailer never starts ahead of it.
+        calls: list[str] = []
+
+        class _RecordingWriter:
+            def submit(self, job: IndexJob) -> None:
+                calls.append(f"submit:{job.kind}")
+
+        descriptor = encode_source_descriptor(
+            FileTailSource(path="/home/u/.codex/sessions/r.jsonl", format="codex_rollout")
+        )
+        sink = make_index_sink(
+            cast("IndexWriter", _RecordingWriter()),
+            _run_facts(
+                cli="codex", codex_native_session_id="native-9", codex_source_descriptor=descriptor
+            ),
+            lambda _binding: calls.append("on_binding"),
+        )
+        sink(
+            make_index_entry(provider="codex"),
+            make_artifacts(make_request_ir(session_id="native-9")),
+        )
+        assert calls == ["submit:wire", "on_binding"]  # row job accepted BEFORE cursor registration
+
+    def test_owned_codex_transcript_turn_also_populates_session_row(
+        self, conn: sqlite3.Connection
+    ) -> None:
+        # The other half of "row never empty regardless of order": a transcript turn landing FIRST
+        # still yields cli=codex + source_descriptor, because the cursor's transcript_binding carries
+        # cli (adapter.bind) + descriptor (register_session_cursor model_copy). Combined with the wire
+        # path, whichever stream creates the row, it is non-empty (§5.2b empty-row symptom killed).
+        descriptor = encode_source_descriptor(
+            FileTailSource(path="/home/u/.codex/sessions/r.jsonl", format="codex_rollout")
+        )
+        binding = make_binding(
+            synth_session_id("run1", "codex", "native-9"),
+            provider="codex",
+            cli="codex",
+            native_session_id="native-9",
+        ).model_copy(update={"source_descriptor": descriptor})
+        turn = NormalizedTurn(
+            turn_id="t1",
+            session_id=binding.session_id,
+            run_id="run1",
+            provider="codex",
+            cli="codex",
+            role="assistant",
+            seq=0,
+            is_sidechain=False,
+        )
+        build_transcript_job(turn, binding).apply(conn)
+        row = conn.execute(
+            "SELECT cli, source_descriptor FROM session WHERE session_id = ?",
+            (binding.session_id,),
+        ).fetchone()
+        assert row == ("codex", descriptor)
+
+    def test_owned_codex_session_row_carries_cli_and_descriptor(self, tmp_path: Path) -> None:
+        # Regression (d) at the unit level: an owned codex exchange lands a session row with
+        # cli="codex" + the owned source_descriptor (via bind_exchange → build_wire_job →
+        # upsert_session) BEFORE any transcript turn — directly killing the empty-session-row symptom.
+        db_path = str(tmp_path / "index.db")
+        writer = IndexWriter(db_path, flush_ms=5)
+        writer.start()
+        descriptor = encode_source_descriptor(
+            FileTailSource(path="/home/u/.codex/sessions/r-native-9.jsonl", format="codex_rollout")
+        )
+        sink = make_index_sink(
+            writer,
+            _run_facts(
+                cli="codex",
+                codex_native_session_id="native-9",
+                codex_source_descriptor=descriptor,
+            ),
+        )
+        sink(
+            make_index_entry(provider="codex"),
+            make_artifacts(make_request_ir(session_id="native-9")),
+        )
+        writer.stop(drain=True)
+
+        verify = connect(db_path)
+        try:
+            row = verify.execute(
+                "SELECT cli, source_descriptor FROM session WHERE session_id = ?",
+                (synth_session_id("run1", "codex", "native-9"),),
+            ).fetchone()
+            assert row == ("codex", descriptor)
         finally:
             verify.close()

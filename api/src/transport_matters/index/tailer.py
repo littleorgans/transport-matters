@@ -18,7 +18,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from transport_matters.index.adapters.base import FileTailSource, RunContext, TurnContext
+from transport_matters.index.adapters.base import (
+    FileTailSource,
+    RunContext,
+    TurnContext,
+    decode_source_descriptor,
+)
 from transport_matters.index.ingest import build_transcript_job
 
 if TYPE_CHECKING:
@@ -139,8 +144,11 @@ class TranscriptTailer:
         if not isinstance(source, FileTailSource):
             return  # PullSource (opencode) polling is slice 7
         path = Path(source.path)
-        if not path.exists():
-            return
+        # Managed-mint owns the path (pre-seeded session_meta) and claude's locate yields an existing
+        # path, so the file is always present by registration; "exists but no response_item yet" is a
+        # normal no-op handled below by the unchanged-stat guard. A genuinely missing path is a real
+        # fault now (not a guessed glob), surfaced by poll()'s exception logging — not silently
+        # swallowed by an early-return (§5.2b: the discovery-miss path is deleted).
         stat = path.stat()
         signature = (stat.st_size, stat.st_mtime)
         if cursor.stat_signature == signature:
@@ -177,7 +185,7 @@ class TranscriptTailer:
 async def register_session_cursor(
     tailer: TranscriptTailer, adapter: TranscriptAdapter, binding: SessionBinding
 ) -> None:
-    """Re-bind via the adapter, locate the transcript, and register a tail cursor (§9.2/§15 risk 2).
+    """Re-bind via the adapter, resolve the transcript source, and register a tail cursor (§9.2).
 
     The wire side resolved a provisional ``binding``; re-deriving it through ``adapter.bind`` makes the
     adapter the single authority for session_id derivation (read-back synth / direct / mint) and gives
@@ -185,6 +193,11 @@ async def register_session_cursor(
     reproduce the wire side's ``session_id`` (§7.2 convergence) since both synth from the same native id
     threaded via ``RunContext``; a divergence would silently empty the pivot/diff join, so it is logged
     and the wire id is kept.
+
+    Source resolution (§5.2b managed-mint): if the binding carries a launcher-owned ``source_descriptor``
+    (codex), the cursor tails that exact owned path — no discovery. Otherwise the adapter ``locate``s it
+    (claude's deterministic path). A binding with neither (a codex id TM did not seed) resolves to
+    ``None`` and registers no cursor: it stays pending rather than mis-joining (§15 risk 2).
 
     ``byte_offset = 0`` so turns written before registration (the one-frame startup lag) are caught
     on the first poll's full read.
@@ -207,5 +220,18 @@ async def register_session_cursor(
             transcript_binding.session_id,
         )
         transcript_binding = binding
-    source = await adapter.locate(transcript_binding)
+    elif binding.source_descriptor is not None:
+        # carry the launcher-owned descriptor onto the re-bound binding so the cursor tails the owned
+        # path AND the transcript upsert persists the descriptor too (COALESCE-safe, §7.3).
+        transcript_binding = transcript_binding.model_copy(
+            update={"source_descriptor": binding.source_descriptor}
+        )
+    if transcript_binding.source_descriptor is not None:
+        source: TranscriptSource | None = decode_source_descriptor(
+            transcript_binding.source_descriptor
+        )
+    else:
+        source = await adapter.locate(transcript_binding)
+    if source is None:
+        return  # no owned descriptor, no locate → stays pending (codex non-owned id, §15 risk 2)
     tailer.register(TailCursor(binding=transcript_binding, source=source, adapter=adapter))
