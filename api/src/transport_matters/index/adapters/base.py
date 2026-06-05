@@ -140,3 +140,9 @@ class TranscriptAdapter(ABC):
     def normalize(self, record: RawRecord, ctx: TurnContext) -> NormalizedTurn | None:
         """Pure: map ONE native record to a turn, or None to skip a non-conversational record.
         Prefer native fields (id, parentUuid, role, ts); fall back to ctx (seq, parent_id, model)."""
+
+    def model_hint(self, record: RawRecord) -> str | None:
+        """A model name carried by a NON-turn record (e.g. codex's ``turn_context``) that
+        ``normalize`` skips. The tailer threads it forward onto subsequent turns via ``ctx.model``.
+        Default: ``None`` — formats that carry the model on each turn record (claude) need no hint."""
+        return None

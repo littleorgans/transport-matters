@@ -1,4 +1,4 @@
-"""Tests for close_runtime teardown logic."""
+"""Tests for close_runtime teardown logic and the read-back cursor registrar."""
 
 import asyncio
 
@@ -6,10 +6,12 @@ import httpx
 import pytest
 import uvicorn
 
+from transport_matters import addon_runtime, pause_session
 from transport_matters import breakpoint as bp
-from transport_matters import pause_session
 from transport_matters.addon_runtime import AddonRuntime, close_runtime
 from transport_matters.counting import TokenCounter, set_counter, set_recent_auth
+from transport_matters.index.adapters.base import SessionBinding
+from transport_matters.index.tailer import TranscriptTailer
 from transport_matters.main import create_app
 
 # ---------------------------------------------------------------------------
@@ -186,6 +188,45 @@ async def test_close_runtime_cancels_stubborn_serve_task(
 
     assert serve_task.cancelled()
     assert client.is_closed
+
+
+def _codex_binding() -> SessionBinding:
+    return SessionBinding(
+        session_id="sess-codex",
+        provider="codex",
+        run_id="run1",
+        cwd="/w",
+        workspace_slug="s",
+        workspace_hash="h",
+        started_at="t",
+        cli="codex",
+        native_session_id="019e0000-0000-7000-8000-00000000c0de",
+        minted=False,
+    )
+
+
+async def test_cursor_registrar_registers_codex_session(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A codex wire binding (read-back) must resolve to the codex adapter and schedule its cursor.
+
+    The registrar maps wire provider → cli via _PROVIDER_CLI; codex was claude-only before slice 5,
+    so a codex binding silently no-op'd (no transcript tail) — this guards the codex mapping.
+    """
+    calls: list[tuple[str, str]] = []
+
+    async def fake_register(
+        tailer: TranscriptTailer, adapter: object, binding: SessionBinding
+    ) -> None:
+        calls.append((getattr(adapter, "cli", "?"), binding.session_id))
+
+    monkeypatch.setattr(addon_runtime, "register_session_cursor", fake_register)
+    registrar = addon_runtime._make_cursor_registrar(
+        TranscriptTailer(lambda job: None), asyncio.get_running_loop()
+    )
+
+    registrar(_codex_binding())
+    await asyncio.sleep(0.05)  # let the scheduled coroutine run
+
+    assert calls == [("codex", "sess-codex")]
 
 
 async def test_close_runtime_clears_counter_and_auth() -> None:

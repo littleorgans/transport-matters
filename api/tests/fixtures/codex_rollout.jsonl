@@ -1,0 +1,11 @@
+{"timestamp": "2026-06-01T10:00:00.000Z", "type": "session_meta", "payload": {"id": "019e0000-0000-7000-8000-00000000c0de", "timestamp": "2026-06-01T10:00:00.000Z", "cwd": "/w", "originator": "codex-tui", "cli_version": "0.130.0", "instructions": "be terse"}}
+{"timestamp": "2026-06-01T10:00:01.000Z", "type": "turn_context", "payload": {"cwd": "/w", "approval_policy": "on-request", "sandbox_policy": {"mode": "workspace-write"}, "model": "gpt-5-codex", "summary": "auto"}}
+{"timestamp": "2026-06-01T10:00:02.000Z", "type": "event_msg", "payload": {"type": "agent_message", "message": "working on it"}}
+{"timestamp": "2026-06-01T10:00:02.500Z", "type": "event_msg", "payload": {"type": "token_count", "info": {"total_token_usage": {"input_tokens": 10, "output_tokens": 5, "total_tokens": 15}}}}
+{"timestamp": "2026-06-01T10:00:03.000Z", "type": "response_item", "payload": {"type": "message", "id": null, "role": "user", "content": [{"type": "input_text", "text": "run the tests"}]}}
+{"timestamp": "2026-06-01T10:00:04.000Z", "type": "response_item", "payload": {"type": "message", "id": null, "role": "developer", "content": [{"type": "input_text", "text": "<environment_context><cwd>/w</cwd></environment_context>"}]}}
+{"timestamp": "2026-06-01T10:00:05.000Z", "type": "response_item", "payload": {"type": "reasoning", "summary": [{"type": "summary_text", "text": "Planning the run"}], "content": null, "encrypted_content": "ENC-SECRET-PAYLOAD"}}
+{"timestamp": "2026-06-01T10:00:06.000Z", "type": "response_item", "payload": {"type": "function_call", "name": "shell", "arguments": "{\"command\":[\"bash\",\"-lc\",\"pytest\"],\"timeout_ms\":120000}", "call_id": "call_1"}}
+{"timestamp": "2026-06-01T10:00:07.000Z", "type": "response_item", "payload": {"type": "function_call_output", "call_id": "call_1", "output": "{\"output\":\"all green\"}"}}
+{"timestamp": "2026-06-01T10:00:08.000Z", "type": "response_item", "payload": {"type": "message", "id": null, "role": "assistant", "content": [{"type": "output_text", "text": "Tests pass."}]}}
+{"timestamp": "2026-06-01T10:00:09.000Z", "type": "response_item", "payload": {"type": "custom_tool_call", "status": "completed", "call_id": "call_2", "name": "apply_patch", "input": "*** Begin Patch\n*** End Patch"}}

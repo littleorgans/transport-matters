@@ -13,8 +13,10 @@ def get_adapter(cli: str) -> TranscriptAdapter:
     package-init cycle: ``base`` stays a leaf that ``sessions``/``ingest`` can import freely)."""
     if not _REGISTRY:
         from transport_matters.index.adapters.claude import ClaudeAdapter
+        from transport_matters.index.adapters.codex import CodexAdapter
 
         _REGISTRY[ClaudeAdapter.cli] = ClaudeAdapter()
+        _REGISTRY[CodexAdapter.cli] = CodexAdapter()
     adapter = _REGISTRY.get(cli)
     if adapter is None:
         raise KeyError(f"no transcript adapter registered for cli {cli!r}")

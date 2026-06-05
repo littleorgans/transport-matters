@@ -31,9 +31,10 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Wire provider → harness cli, for read-back transcript cursor registration (§9.2). claude only
-# for now (slice 4b); codex/gemini/opencode join in slices 5/6.
-_PROVIDER_CLI = {"anthropic": "claude"}
+# Wire provider → harness cli, for read-back transcript cursor registration (§9.2). claude (slice
+# 4b) + codex (slice 5, read-back: the first codex wire frame reveals the synth session_id, so the
+# binding resolves at finalize and on_binding schedules the rollout tail). gemini/opencode join later.
+_PROVIDER_CLI = {"anthropic": "claude", "codex": "codex"}
 
 
 def _running_loop() -> asyncio.AbstractEventLoop | None:

@@ -14,6 +14,7 @@ from transport_matters.index.adapters.base import (
 )
 from transport_matters.index.adapters.claude import ClaudeAdapter
 from transport_matters.index.blocks import identity_canonical
+from transport_matters.index.conftest import make_binding
 from transport_matters.ir import (
     ImageBlock,
     TextBlock,
@@ -33,18 +34,7 @@ _SESSION = "00000000-0000-4000-8000-000000000001"
 
 
 def _binding() -> SessionBinding:
-    return SessionBinding(
-        session_id=_SESSION,
-        provider="anthropic",
-        run_id="run1",
-        cwd="/w",
-        workspace_slug="slug",
-        workspace_hash="hash",
-        started_at="t",
-        cli="claude",
-        native_session_id=_SESSION,
-        minted=False,
-    )
+    return make_binding(_SESSION)
 
 
 def _normalize_fixture() -> list[NormalizedTurn | None]:

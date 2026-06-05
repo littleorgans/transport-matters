@@ -8,27 +8,20 @@ to one row. The raw partial-unique / multiple-NULL guard is proven at the DDL le
 import uuid
 from typing import TYPE_CHECKING
 
-from transport_matters.index.adapters.base import SessionBinding
+from transport_matters.index.conftest import make_binding
 from transport_matters.index.sessions import SESSION_NS, synth_session_id, upsert_session
 
 if TYPE_CHECKING:
     import sqlite3
 
+    from transport_matters.index.adapters.base import SessionBinding
+
 
 def _binding(
     session_id: str, *, cli: str | None = None, provider: str = "anthropic", run: str = "run1"
 ) -> SessionBinding:
-    return SessionBinding(
-        session_id=session_id,
-        provider=provider,
-        run_id=run,
-        cwd="/w",
-        workspace_slug="slug",
-        workspace_hash="hash",
-        started_at="2026-06-05T00:00:00Z",
-        cli=cli,
-        native_session_id=session_id,
-        minted=False,
+    return make_binding(
+        session_id, provider=provider, cli=cli, run_id=run, started_at="2026-06-05T00:00:00Z"
     )
 
 
