@@ -111,17 +111,22 @@ def backfill(writer: IndexWriter, workspaces_root: Path, run_id: str | None = No
 def reconcile(writer: IndexWriter, conn: sqlite3.Connection, workspaces_root: Path) -> None:
     """Repair tier-2 against the durable on-disk run set, both directions (§10.4).
 
-    A tier-1 dir with no tier-2 rows → replay; a tier-2 ``run_id`` with no dir → delete + GC. The
-    **live set** (``manifest.read_all`` — the running-run beacon) is skipped in BOTH directions:
-    never backfill a run a live writer still owns, never evict one mid-flight. *conn* only READS the
-    current tier-2 run set; every mutation goes through *writer* (single-writer), so orphan eviction
-    is one atomic job (all deletes + one GC sweep in a single per-job SAVEPOINT).
+    A tier-1 dir that is **missing OR under-counted** in tier-2 → replay; a tier-2 ``run_id`` with no
+    dir → delete + GC. *Under-counted* means a partially-indexed run (e.g. a §6.3 backpressure drop):
+    its tier-1 ``index.jsonl`` entry count exceeds its tier-2 ``wire_exchange`` rows, so replay fills
+    the gap (idempotent, §3.7 — over-replaying a fully-indexed run is a safe no-op). The **live set**
+    (``manifest.read_all`` — the running-run beacon) is skipped in BOTH directions: never backfill a
+    run a live writer still owns, never evict one mid-flight. *conn* only READS the current tier-2
+    state; every mutation goes through *writer* (single-writer), so orphan eviction is one atomic job
+    (all deletes + one GC sweep in a single per-job SAVEPOINT).
     """
     live = {m.run_id for m in read_live_manifests(workspaces_root)}
     on_disk = {run_dir.run_id: run_dir for run_dir in iter_run_dirs(workspaces_root)}
     tier2 = _tier2_run_ids(conn)
     for run_id, run_dir in on_disk.items():
-        if run_id not in live and run_id not in tier2:
+        if run_id in live:
+            continue
+        if run_id not in tier2 or _is_undercounted(conn, run_dir):
             replay_run(writer, run_dir)
     orphans = sorted(rid for rid in tier2 if rid not in on_disk and rid not in live)
     if orphans:
@@ -290,6 +295,20 @@ def _tier2_run_ids(conn: sqlite3.Connection) -> set[str]:
         "UNION SELECT run_id FROM transcript_turn WHERE run_id IS NOT NULL"
     ).fetchall()
     return {row[0] for row in rows}
+
+
+def _is_undercounted(conn: sqlite3.Connection, run_dir: RunDir) -> bool:
+    """Whether a run's tier-1 ``index.jsonl`` holds more exchanges than tier-2 has wire rows (§10.4).
+
+    The under-count repair trigger: a §6.3 backpressure drop (or a partial earlier replay) leaves a
+    durable run with fewer ``wire_exchange`` rows than its tier-1 index. Compares the de-duped tier-1
+    entry count (the same set replay would submit) against ``COUNT(*) FROM wire_exchange`` for the run.
+    """
+    tier1 = len(_read_run_index(run_dir.root))
+    row = conn.execute(
+        "SELECT COUNT(*) FROM wire_exchange WHERE run_id = ?", (run_dir.run_id,)
+    ).fetchone()
+    return tier1 > int(row[0])
 
 
 def _evict_job(run_ids: list[str]) -> IndexJob:

@@ -354,6 +354,47 @@ class TestBackfill:
 
 
 class TestReconcile:
+    def test_replays_undercounted_run(self, tmp_path: Path) -> None:
+        # §10.4 under-count repair: a run already in tier-2 but with FEWER wire rows than its tier-1
+        # index (a §6.3 backpressure drop) must be replayed, not skipped. Seed one exchange, index it,
+        # then append a second exchange to tier-1 only → tier-1=2, tier-2=1 → reconcile fills the gap.
+        root = _run_dir(tmp_path, "run1")
+        _write_wire(root, *_uncounted_exchange("ex1"))
+        db = tmp_path / "index.db"
+        seed = _drain(db)
+        backfill(seed, tmp_path)
+        seed.stop(drain=True)
+        conn = connect(db)
+        try:
+            assert (
+                conn.execute("SELECT COUNT(*) FROM wire_exchange WHERE run_id = 'run1'").fetchone()[
+                    0
+                ]
+                == 1
+            )  # tier-2 under-counts the run after the first pass
+        finally:
+            conn.close()
+
+        _write_wire(root, *_uncounted_exchange("ex2"))  # tier-1 now holds 2, tier-2 still 1
+        reader = connect(db)
+        writer = _drain(db)
+        try:
+            reconcile(writer, reader, tmp_path)
+        finally:
+            writer.stop(drain=True)
+            reader.close()
+
+        conn = connect(db)
+        try:
+            assert (
+                conn.execute("SELECT COUNT(*) FROM wire_exchange WHERE run_id = 'run1'").fetchone()[
+                    0
+                ]
+                == 2
+            )  # under-counted run replayed → tier-2 matches tier-1
+        finally:
+            conn.close()
+
     def test_backfills_missing_and_evicts_orphan(self, tmp_path: Path) -> None:
         # run1 is on disk only (missing from tier-2 → backfill); run-orphan is in tier-2 only
         # (its dir was rm -rf'd → evict + GC). Build tier-2 with the orphan first, then delete its dir.
@@ -479,6 +520,15 @@ def _exchange(sid: str, run_id: str) -> tuple[IndexEntry, ExchangeArtifacts]:
     )
     entry = make_index_entry(exchange_id=f"{run_id}-ex1", run_id=run_id, provider="anthropic")
     return entry, make_artifacts(request, make_response_ir())
+
+
+def _uncounted_exchange(exchange_id: str) -> tuple[IndexEntry, ExchangeArtifacts]:
+    """A distinct wire exchange under one session, for the §10.4 under-count regression."""
+    request = make_request_ir(
+        session_id="s-uc", messages=[Message(role="user", content=[TextBlock(text=exchange_id)])]
+    )
+    entry = make_index_entry(exchange_id=exchange_id, run_id="run1", provider="anthropic")
+    return entry, make_artifacts(request)
 
 
 def _live_run_facts(run_id: str, sid: str, cli_path: Path) -> RunFacts:
