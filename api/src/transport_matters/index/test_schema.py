@@ -7,10 +7,15 @@ mock would hide. The Python encoders/wrappers are proven separately in ``test_bl
 """
 
 import sqlite3
+from typing import TYPE_CHECKING
 
 import pytest
 
-from transport_matters.index.schema import apply_schema, rebuild_fts
+from transport_matters.index.db import connect
+from transport_matters.index.schema import apply_schema, is_rebuild_needed, rebuild_fts
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 def _upsert_block_raw(
@@ -180,3 +185,68 @@ class TestSchemaGate:
         assert reseeded["adapters_version"] == "1"
         assert reseeded["identity_canonical"] == "identity_canonical:v1"
         assert reseeded["session_ns"]  # re-seeded
+
+
+class TestRebuildNeeded:
+    """``is_rebuild_needed``: the boot staleness probe driving slice-8c-ii auto-replay (§10.5).
+
+    Path-based (not the ``conn`` fixture): it owns opening its own read-only connection, so each
+    case builds a real on-disk db and probes by path.
+    """
+
+    @staticmethod
+    def _current_db(path: Path) -> None:
+        connection = connect(path)
+        try:
+            apply_schema(connection)
+        finally:
+            connection.close()
+
+    def test_missing_db_needs_rebuild_without_creating_it(self, tmp_path: Path) -> None:
+        missing = tmp_path / "index.db"
+        assert is_rebuild_needed(missing) is True
+        assert not missing.exists()  # no side effect: the probe never creates the file
+
+    def test_current_db_is_not_stale(self, tmp_path: Path) -> None:
+        path = tmp_path / "index.db"
+        self._current_db(path)
+        assert is_rebuild_needed(path) is False
+
+    def test_empty_file_without_schema_meta_needs_rebuild(self, tmp_path: Path) -> None:
+        path = tmp_path / "index.db"
+        path.touch()  # a 0-byte file: exists but holds no schema_meta table
+        assert is_rebuild_needed(path) is True
+
+    def test_changed_gated_key_needs_rebuild(self, tmp_path: Path) -> None:
+        path = tmp_path / "index.db"
+        self._current_db(path)
+        conn = connect(path)
+        try:
+            conn.execute("UPDATE schema_meta SET value = '0' WHERE key = 'adapters_version'")
+        finally:
+            conn.close()
+        assert is_rebuild_needed(path) is True
+
+    def test_missing_gated_key_needs_rebuild(self, tmp_path: Path) -> None:
+        # An old shape predating a gated key (e.g. before adapters_version) must rebuild rather than
+        # silently re-seed onto the stale schema — the same rule the in-writer gate enforces (§3.2).
+        path = tmp_path / "index.db"
+        self._current_db(path)
+        conn = connect(path)
+        try:
+            conn.execute("DELETE FROM schema_meta WHERE key = 'adapters_version'")
+        finally:
+            conn.close()
+        assert is_rebuild_needed(path) is True
+
+    def test_non_gated_key_change_is_not_stale(self, tmp_path: Path) -> None:
+        # block_hash_algo is recorded for provenance but NOT gated → changing it must not force a
+        # rebuild; the probe keys off the gated set only, mirroring the in-writer gate.
+        path = tmp_path / "index.db"
+        self._current_db(path)
+        conn = connect(path)
+        try:
+            conn.execute("UPDATE schema_meta SET value = 'sha999' WHERE key = 'block_hash_algo'")
+        finally:
+            conn.close()
+        assert is_rebuild_needed(path) is False

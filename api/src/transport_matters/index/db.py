@@ -41,6 +41,16 @@ def index_db_path() -> Path:
     return default_storage_root() / "index.db"
 
 
+def index_rebuild_lock_path() -> Path:
+    """Path of the boot rebuild lock, a sibling of ``index.db`` (§10.5, slice 8c-ii).
+
+    A single global lock guards the destructive boot replay so two concurrent boots never rebuild the
+    one global ``index.db`` at once. It lives beside the db it protects rather than per-workspace
+    because the db itself is global (``default_storage_root``), not workspace-scoped.
+    """
+    return default_storage_root() / "index.rebuild.lock"
+
+
 def connect(path: str | Path, *, read_only: bool = False) -> sqlite3.Connection:
     """Open a tier-2 connection in manual-transaction mode with the appropriate PRAGMAs.
 

@@ -7,10 +7,12 @@ idempotent, self-healing entry point.
 
 from typing import TYPE_CHECKING
 
+from transport_matters.index.db import connect
 from transport_matters.index.sessions import SESSION_NS
 
 if TYPE_CHECKING:
     import sqlite3
+    from pathlib import Path
 
 SCHEMA_VERSION = "1"
 BLOCK_HASH_ALGO = "blake2b-256"
@@ -180,13 +182,44 @@ def rebuild_fts(conn: sqlite3.Connection) -> None:
     conn.execute("INSERT INTO block_fts(block_fts) VALUES ('rebuild')")
 
 
+def is_rebuild_needed(db_path: Path) -> bool:
+    """True iff tier-2 must be rebuilt from tier-1 before the live system starts (§10.5, slice 8c-ii).
+
+    The boot staleness probe: True when the db is absent, has no ``schema_meta`` (an uninitialized or
+    pre-gate shape), or any gated key differs from the current code constants. This is the same gated
+    signal the in-writer gate (:func:`apply_schema`) reads to DROP, but here it drives a REBUILD from
+    tier-1 instead of leaving the index empty — safe now that tier-1 is complete (8a/8b). No side
+    effects: it guards on ``exists`` so it never creates the db file, and reads through the WAL-safe
+    ``query_only`` connection (:func:`db.connect` ``read_only``) the §8 query surface uses rather than
+    a ``mode=ro`` URI, which can trip read-only-WAL lock pitfalls on an unclean ``-wal`` at boot.
+    """
+    if not db_path.exists():
+        return True
+    conn = connect(db_path, read_only=True)
+    try:
+        stored = _stored_gated_meta(conn)
+    finally:
+        conn.close()
+    return stored is None or _gated_values_differ(stored)
+
+
 def _gated_mismatch(conn: sqlite3.Connection) -> bool:
+    # A fresh db (no schema_meta yet) needs no DROP: apply_schema creates + seeds it below.
+    stored = _stored_gated_meta(conn)
+    return stored is not None and _gated_values_differ(stored)
+
+
+def _stored_gated_meta(conn: sqlite3.Connection) -> dict[str, str] | None:
+    """Stored ``schema_meta`` key→value pairs, or None when the table does not exist yet."""
     if not _has_table(conn, "schema_meta"):
-        return False  # fresh db: nothing to rebuild; apply_schema creates + seeds below
-    stored = dict(conn.execute("SELECT key, value FROM schema_meta").fetchall())
-    # A MISSING gated key (an old shape predating the key, e.g. before adapters_version) is a
-    # mismatch too: stored.get returns None, which never equals the code constant, so it forces
-    # drop + rebuild rather than silently seeding the new key onto the stale schema (§3.2).
+        return None
+    return dict(conn.execute("SELECT key, value FROM schema_meta").fetchall())
+
+
+def _gated_values_differ(stored: dict[str, str]) -> bool:
+    # A MISSING gated key (an old shape predating the key, e.g. before adapters_version) differs too:
+    # stored.get returns None, which never equals the code constant, so it forces drop + rebuild
+    # rather than silently seeding the new key onto the stale schema (§3.2).
     return any(stored.get(key) != _SCHEMA_META[key] for key in _GATED_KEYS)
 
 

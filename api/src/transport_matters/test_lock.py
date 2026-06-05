@@ -3,12 +3,13 @@
 import signal
 import subprocess
 import sys
+import threading
 import time
 from typing import TYPE_CHECKING
 
 import pytest
 
-from transport_matters.lock import WorkspaceLock, WorkspaceLocked
+from transport_matters.lock import WorkspaceLock, WorkspaceLocked, exclusive_file_lock
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -133,3 +134,73 @@ def test_lock_releases_when_holder_process_dies(tmp_path: Path) -> None:
             last_exc = exc
             time.sleep(0.05)
     raise AssertionError("lock was not released after child death") from last_exc
+
+
+# --------------------------------------------------------------------------- #
+# exclusive_file_lock — the blocking single-flight primitive (slice 8c-ii)     #
+# --------------------------------------------------------------------------- #
+
+
+def test_exclusive_file_lock_creates_parent_and_file(tmp_path: Path) -> None:
+    lock_path = tmp_path / "nested" / "index.rebuild.lock"
+    assert not lock_path.parent.exists()
+    with exclusive_file_lock(lock_path):
+        assert lock_path.exists()
+        assert lock_path.parent.is_dir()
+
+
+def test_exclusive_file_lock_releases_on_exit(tmp_path: Path) -> None:
+    lock_path = tmp_path / "x.lock"
+    with exclusive_file_lock(lock_path):
+        pass
+    with exclusive_file_lock(lock_path):  # re-acquire after a clean release
+        pass
+
+
+def test_exclusive_file_lock_releases_on_exception(tmp_path: Path) -> None:
+    lock_path = tmp_path / "x.lock"
+
+    class Boom(Exception):
+        pass
+
+    with pytest.raises(Boom), exclusive_file_lock(lock_path):
+        raise Boom
+    with exclusive_file_lock(lock_path):  # the exception path still releases
+        pass
+
+
+def test_exclusive_file_lock_blocks_until_holder_releases(tmp_path: Path) -> None:
+    """A second acquirer BLOCKS (it does not fail fast) until the first releases, so concurrent
+    holders serialize. This is the single-flight property the boot rebuild relies on — the opposite
+    of :class:`WorkspaceLock`, which raises on contention.
+    """
+    lock_path = tmp_path / "x.lock"
+    order: list[str] = []
+    first_holding = threading.Event()
+    release_first = threading.Event()
+
+    def first() -> None:
+        with exclusive_file_lock(lock_path):
+            order.append("first-acquired")
+            first_holding.set()
+            assert release_first.wait(timeout=5)
+            order.append("first-releasing")
+
+    def second() -> None:
+        assert first_holding.wait(timeout=5)
+        order.append("second-trying")
+        with exclusive_file_lock(lock_path):
+            order.append("second-acquired")
+
+    t1 = threading.Thread(target=first)
+    t2 = threading.Thread(target=second)
+    t1.start()
+    assert first_holding.wait(timeout=5)
+    t2.start()
+    time.sleep(0.1)  # second has appended "second-trying" and is now blocked on the held lock
+    assert "second-trying" in order
+    assert "second-acquired" not in order  # blocked, not failed, while first still holds
+    release_first.set()
+    t1.join(timeout=5)
+    t2.join(timeout=5)
+    assert order == ["first-acquired", "second-trying", "first-releasing", "second-acquired"]
