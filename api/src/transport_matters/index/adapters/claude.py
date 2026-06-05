@@ -7,6 +7,7 @@ so the transcript binds on that native id used directly, ``minted=False``. Parts
 ``ir.ContentBlock`` verbatim so identical content dedups to one block across both streams (§3.3).
 """
 
+import re
 from pathlib import Path
 from typing import TYPE_CHECKING, Any  # Any: native jsonl records are provider-shaped JSON
 
@@ -39,6 +40,23 @@ if TYPE_CHECKING:
 _CONVERSATIONAL = frozenset({"user", "assistant"})
 
 
+def claude_transcript_source(
+    cwd: str, session_id: str, *, projects_root: Path | None = None
+) -> FileTailSource:
+    """The deterministic claude transcript for a session: ``<projects_root>/<cwd-slug>/<sid>.jsonl``.
+
+    ``cwd-slug`` is claude's on-disk projects slug: EVERY non-alphanumeric char of the cwd becomes
+    ``-`` (case preserved), verified on real claude 2.1.165 (``/private/tmp/tm_slug.probe_AB9`` →
+    ``-private-tmp-tm-slug-probe-AB9``). A naive ``/``→``-`` leaves dots/underscores and the tailer
+    byte-tails a path claude never wrote (transcript_turn=0), so the slug MUST match claude exactly.
+    The default root is claude's native ``~/.claude/projects`` (the external-adoption ``locate``
+    path); the managed launcher (§5.2c) passes the home-aware root so the owned ``source_descriptor``
+    it mints lands where ``claude --session-id <sid>`` writes. One definition keeps launch + read DRY."""
+    root = projects_root if projects_root is not None else Path.home() / ".claude" / "projects"
+    slug = re.sub(r"[^a-zA-Z0-9]", "-", cwd)
+    return FileTailSource(path=str(root / slug / f"{session_id}.jsonl"), format="claude_jsonl")
+
+
 class ClaudeAdapter(TranscriptAdapter):
     provider = "anthropic"
     cli = "claude"
@@ -62,9 +80,10 @@ class ClaudeAdapter(TranscriptAdapter):
         )
 
     async def locate(self, binding: SessionBinding) -> TranscriptSource:
-        slug = binding.cwd.replace("/", "-")  # claude's on-disk projects slug
-        path = Path.home() / ".claude" / "projects" / slug / f"{binding.session_id}.jsonl"
-        return FileTailSource(path=str(path), format="claude_jsonl")
+        # External-adoption fallback (§5.2c): a claude session TM did not launch (no owned descriptor)
+        # resolves to claude's deterministic native path. Managed launches never reach here — their
+        # owned descriptor is decoded directly by the tailer.
+        return claude_transcript_source(binding.cwd, binding.session_id)
 
     def normalize(self, record: RawRecord, ctx: TurnContext) -> NormalizedTurn | None:
         if record.get("type") not in _CONVERSATIONAL:

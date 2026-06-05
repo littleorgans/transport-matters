@@ -162,8 +162,8 @@ def test_codex_managed_mint_seeds_rollout_and_resumes(
 
     # the addon learns the owned codex identity through the env contract
     assert env["TRANSPORT_MATTERS_CLI"] == "codex"
-    native = env["TRANSPORT_MATTERS_CODEX_NATIVE_SESSION_ID"]
-    source = decode_source_descriptor(env["TRANSPORT_MATTERS_CODEX_SOURCE_DESCRIPTOR"])
+    native = env["TRANSPORT_MATTERS_OWNED_NATIVE_SESSION_ID"]
+    source = decode_source_descriptor(env["TRANSPORT_MATTERS_OWNED_SOURCE_DESCRIPTOR"])
     assert isinstance(source, FileTailSource)
     assert source.format == "codex_rollout"
     assert native in Path(source.path).name  # the rollout filename carries the owned uuid

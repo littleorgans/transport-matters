@@ -52,12 +52,13 @@ class RunFacts:
     workspace_hash: str
     started_at: str
     cli: str | None = None
-    # Managed-mint (§5.2b): the codex native uuid the launcher minted (== the wire-observed thread
-    # id) and the JSON ``source_descriptor`` of the rollout it pre-seeded. ``bind_exchange`` stamps
-    # the descriptor onto the codex session whose wire id matches ``codex_native_session_id``; a
-    # non-owned codex id matches nothing and stays pending (no cursor). ``None`` off a codex launch.
-    codex_native_session_id: str | None = None
-    codex_source_descriptor: str | None = None
+    # Managed-mint (§5.2b/§5.2c): provider-neutral. The native id the launcher minted (== the
+    # wire-observed session id) and the JSON ``source_descriptor`` of the transcript it owns.
+    # ``bind_exchange`` stamps the descriptor onto the session whose wire id matches
+    # ``owned_native_session_id``; a non-owned id matches nothing and stays pending (no cursor).
+    # ``None`` off a managed launch (claude: deterministic path; codex: pre-seeded rollout).
+    owned_native_session_id: str | None = None
+    owned_source_descriptor: str | None = None
 
 
 def build_run_facts(
@@ -66,8 +67,8 @@ def build_run_facts(
     started_at: str,
     cli: str | None = None,
     *,
-    codex_native_session_id: str | None = None,
-    codex_source_descriptor: str | None = None,
+    owned_native_session_id: str | None = None,
+    owned_source_descriptor: str | None = None,
 ) -> RunFacts:
     """Assemble per-run static facts, deriving the workspace identity from ``cwd``."""
     slug, workspace_hash = ("", "")
@@ -81,8 +82,8 @@ def build_run_facts(
         workspace_hash=workspace_hash,
         started_at=started_at,
         cli=cli,
-        codex_native_session_id=codex_native_session_id,
-        codex_source_descriptor=codex_source_descriptor,
+        owned_native_session_id=owned_native_session_id,
+        owned_source_descriptor=owned_source_descriptor,
     )
 
 
@@ -94,10 +95,17 @@ def bind_exchange(
     The correlation id is the wire-observed ``RequestMetadata.session_id`` — an INPUT only,
     routed through the canonical ``SessionBinding`` (§4.2). anthropic/gemini use the native id
     DIRECTLY as the session_id (== claude's transcript ``sessionId`` — the HARD-GATE correlation
-    linchpin; no proxy ``--session-id`` mint yet); read-back providers synth a stable PK (§3.4).
-    ``minted=False`` and ``native_session_id`` is always the raw id. Absent correlation id or
-    run id → ``None`` (``wire_exchange.session_id`` stays NULL; a later correlation upsert
-    backfills it).
+    linchpin); read-back providers synth a stable PK (§3.4). ``native_session_id`` is always the
+    raw id. Absent correlation id or run id → ``None`` (``wire_exchange.session_id`` stays NULL; a
+    later correlation upsert backfills it).
+
+    Managed-mint (§5.2b/§5.2c) is provider-neutral: when this exchange IS the session the launcher
+    minted (its wire id == ``owned_native_session_id``), it carries the owned transcript descriptor
+    so the session row is populated and the tailer byte-tails the owned path (no discovery). A wire id
+    TM did not own matches nothing → descriptor stays ``None`` → stays pending (regression c).
+    ``minted`` is ``True`` only for a direct-id provider that adopts the injected ``--session-id`` as
+    its session_id used directly (claude); a read-back provider (codex) keeps its synth session_id
+    (the §3.4 idempotency PK), so it owns the rollout path but stays ``minted=False``.
     """
     correlation_id = artifacts.request_ir.metadata.session_id
     if correlation_id is None or run_facts.run_id is None:
@@ -108,15 +116,11 @@ def bind_exchange(
         if readback
         else correlation_id
     )
-    # Managed-mint (§5.2b): when this read-back exchange IS the codex session the launcher minted
-    # and pre-seeded (its wire id == the owned native uuid), carry the owned rollout descriptor so
-    # the session row is populated and the tailer byte-tails the owned path (no glob). A codex id TM
-    # did not seed matches nothing → descriptor stays None → stays pending (no cursor, regression c).
-    source_descriptor = (
-        run_facts.codex_source_descriptor
-        if readback and correlation_id == run_facts.codex_native_session_id
-        else None
+    is_owned = (
+        run_facts.owned_native_session_id is not None
+        and correlation_id == run_facts.owned_native_session_id
     )
+    source_descriptor = run_facts.owned_source_descriptor if is_owned else None
     return SessionBinding(
         session_id=session_id,
         provider=entry.provider,
@@ -127,7 +131,7 @@ def bind_exchange(
         started_at=run_facts.started_at,
         cli=run_facts.cli,
         native_session_id=correlation_id,
-        minted=False,
+        minted=is_owned and not readback,
         source_descriptor=source_descriptor,
     )
 

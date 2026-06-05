@@ -12,7 +12,7 @@ from transport_matters.index.adapters.base import (
     SessionBinding,
     TurnContext,
 )
-from transport_matters.index.adapters.claude import ClaudeAdapter
+from transport_matters.index.adapters.claude import ClaudeAdapter, claude_transcript_source
 from transport_matters.index.blocks import identity_canonical
 from transport_matters.index.conftest import make_binding
 from transport_matters.ir import (
@@ -131,3 +131,23 @@ class TestBindLocate:
         assert isinstance(source, FileTailSource)
         assert source.format == "claude_jsonl"
         assert source.path.endswith(f"-w/{_SESSION}.jsonl")  # cwd "/w" → slug "-w"
+
+    def test_transcript_source_honors_projects_root(self, tmp_path: Path) -> None:
+        # The launch `prepare` (§5.2c) and `locate` share ONE path computation. `prepare` passes the
+        # home-aware projects root so the owned descriptor matches exactly where claude will write.
+        source = claude_transcript_source("/Users/x/proj", "sid-123", projects_root=tmp_path)
+        assert isinstance(source, FileTailSource)
+        assert source.format == "claude_jsonl"
+        assert source.path == str(tmp_path / "-Users-x-proj" / "sid-123.jsonl")
+
+    def test_transcript_source_slugs_every_non_alphanumeric_like_claude(
+        self, tmp_path: Path
+    ) -> None:
+        # claude slugs the cwd by replacing EVERY non-alphanumeric char (/, ., _) with '-', case
+        # preserved (VERIFIED on real claude 2.1.165: /private/tmp/tm_slug.probe_AB9 ->
+        # -private-tmp-tm-slug-probe-AB9). A naive '/'->'-' leaves the dot/underscore, so the tailer
+        # byte-tails a path claude never wrote → transcript_turn=0 (caught only on a real run).
+        source = claude_transcript_source(
+            "/private/tmp/tm_slug.probe_AB9", "sid", projects_root=tmp_path
+        )
+        assert source.path == str(tmp_path / "-private-tmp-tm-slug-probe-AB9" / "sid.jsonl")

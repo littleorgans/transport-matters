@@ -176,7 +176,9 @@ def test_start_no_system_prompt_skips_injection(
     assert result.exit_code == 0, result.output
     argv = spy_run_client_children.call_args.kwargs["client"].argv
     assert "--append-system-prompt" not in argv
-    assert argv == ["/bin/claude"]
+    # no system prompt injected; claude still mints its owned --session-id by default (§5.2c)
+    assert argv[0] == "/bin/claude"
+    assert argv[-2] == "--session-id"
 
 
 def test_start_user_supplied_system_prompt_wins(

@@ -7,7 +7,11 @@ from typing import TYPE_CHECKING, Any
 from typer.testing import CliRunner
 
 from transport_matters.cli import main
-from transport_matters.cli.home_seed import codex_sessions_root, seed_home_dir
+from transport_matters.cli.home_seed import (
+    claude_projects_root,
+    codex_sessions_root,
+    seed_home_dir,
+)
 from transport_matters.cli.launch_runtime import CLIENT_NAME_CLAUDE, CLIENT_NAME_CODEX
 
 from ._helpers import _which_all, _which_by_name
@@ -32,6 +36,20 @@ class TestCodexSessionsRoot:
     def test_falls_back_to_native_default(self) -> None:
         # No managed home and no CODEX_HOME → codex's native ~/.codex/sessions.
         assert codex_sessions_root(None, {}).parts[-2:] == (".codex", "sessions")
+
+
+class TestClaudeProjectsRoot:
+    def test_managed_home_dir_wins(self) -> None:
+        # --home-dir is the child's CLAUDE_CONFIG_DIR, so the launcher computes the owned path under it.
+        assert claude_projects_root(Path("/managed/home"), {}) == Path("/managed/home/projects")
+
+    def test_falls_back_to_claude_config_dir_env(self) -> None:
+        root = claude_projects_root(None, {"CLAUDE_CONFIG_DIR": "/custom/claude"})
+        assert root == Path("/custom/claude/projects")
+
+    def test_falls_back_to_native_default(self) -> None:
+        # No managed home and no CLAUDE_CONFIG_DIR → claude's native ~/.claude/projects.
+        assert claude_projects_root(None, {}).parts[-2:] == (".claude", "projects")
 
 
 def test_claude_seed_fresh_home_copies_metadata_and_trust(

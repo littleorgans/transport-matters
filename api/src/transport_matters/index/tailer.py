@@ -194,10 +194,16 @@ async def register_session_cursor(
     threaded via ``RunContext``; a divergence would silently empty the pivot/diff join, so it is logged
     and the wire id is kept.
 
-    Source resolution (§5.2b managed-mint): if the binding carries a launcher-owned ``source_descriptor``
-    (codex), the cursor tails that exact owned path — no discovery. Otherwise the adapter ``locate``s it
-    (claude's deterministic path). A binding with neither (a codex id TM did not seed) resolves to
+    Source resolution (§5.2b/§5.2c managed-mint): if the binding carries a launcher-owned
+    ``source_descriptor`` (claude or codex managed), the cursor tails that exact owned path — no
+    discovery. Otherwise the adapter ``locate``s it (claude's deterministic ``~/.claude`` path, the
+    external-adoption fallback). A binding with neither (a codex id TM did not seed) resolves to
     ``None`` and registers no cursor: it stays pending rather than mis-joining (§15 risk 2).
+
+    The re-bind re-derives only session_id + native id, so the wire side's authoritative ``minted``
+    (§5.2c) and owned descriptor are carried back onto the transcript binding — otherwise the
+    transcript path's session upsert (``minted = excluded.minted``, last-writer-wins) would clobber a
+    managed claude session's ``minted=1`` to 0 once a turn lands.
 
     ``byte_offset = 0`` so turns written before registration (the one-frame startup lag) are caught
     on the first poll's full read.
@@ -220,11 +226,18 @@ async def register_session_cursor(
             transcript_binding.session_id,
         )
         transcript_binding = binding
-    elif binding.source_descriptor is not None:
-        # carry the launcher-owned descriptor onto the re-bound binding so the cursor tails the owned
-        # path AND the transcript upsert persists the descriptor too (COALESCE-safe, §7.3).
+    else:
+        # Carry the wire side's authoritative minted (§5.2c) + launcher-owned descriptor (§5.2b) onto
+        # the re-bound binding: the cursor tails the owned path, the transcript upsert persists the
+        # descriptor, and minted survives the re-bind (which always reports False for direct-id
+        # adapters). COALESCE-style on the descriptor: keep the re-bound one only when the wire side
+        # had none, so an external-adoption claude binding still falls through to ``locate``.
         transcript_binding = transcript_binding.model_copy(
-            update={"source_descriptor": binding.source_descriptor}
+            update={
+                "minted": binding.minted,
+                "source_descriptor": binding.source_descriptor
+                or transcript_binding.source_descriptor,
+            }
         )
     if transcript_binding.source_descriptor is not None:
         source: TranscriptSource | None = decode_source_descriptor(
