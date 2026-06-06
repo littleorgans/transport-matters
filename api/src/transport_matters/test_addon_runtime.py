@@ -50,7 +50,7 @@ def _reset_state() -> None:
 
 
 # ---------------------------------------------------------------------------
-# close_runtime(None) — bp.clear_all only
+# close_runtime(None), bp.clear_all only
 # ---------------------------------------------------------------------------
 
 
@@ -209,7 +209,7 @@ async def test_cursor_registrar_registers_codex_session(monkeypatch: pytest.Monk
     """A codex wire binding (read-back) must resolve to the codex adapter and schedule its cursor.
 
     The registrar maps wire provider → cli via _PROVIDER_CLI; codex was claude-only before slice 5,
-    so a codex binding silently no-op'd (no transcript tail) — this guards the codex mapping.
+    so a codex binding silently no-op'd (no transcript tail), this guards the codex mapping.
     """
     calls: list[tuple[str, str]] = []
 
@@ -254,12 +254,14 @@ async def test_close_runtime_clears_counter_and_auth() -> None:
     assert _recent_auth is None
 
 
-def test_load_runtime_rebuilds_index_before_opening_writer(monkeypatch: pytest.MonkeyPatch) -> None:
-    """load_runtime must run the boot rebuild (rebuild_if_stale) BEFORE constructing the live
-    IndexWriter (§10.5, slice 8c-ii). rebuild() deletes the index.db files, so a live writer opened
-    first would be stranded on the old inode. This pins that ordering — a load-bearing invariant a
-    future refactor could silently break. The IndexWriter stub raises a BaseException so load_runtime
-    aborts before the uvicorn serve task binds a port (``except Exception`` does not catch it).
+def test_load_runtime_rebuilds_index_before_opening_session_writer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """load_runtime must run the boot rebuild before constructing the live session writer.
+
+    rebuild() deletes the index.db files, so a live writer opened first would be stranded on the old
+    inode. This pins that ordering. The SessionWriter stub raises a BaseException so load_runtime
+    aborts before the uvicorn serve task binds a port.
     """
     order: list[str] = []
 
@@ -270,17 +272,23 @@ def test_load_runtime_rebuilds_index_before_opening_writer(monkeypatch: pytest.M
         order.append("rebuild_if_stale")
         return False
 
-    def fake_index_writer(*args: object, **kwargs: object) -> object:
-        order.append("IndexWriter")
+    def fake_session_writer(*args: object, **kwargs: object) -> object:
+        order.append("SessionWriter")
         raise _StopBoot
 
+    loop = asyncio.new_event_loop()
     monkeypatch.setattr(addon_runtime, "init_storage", lambda *a, **k: object())
     monkeypatch.setattr(addon_runtime, "TokenCounter", lambda *a, **k: object())
     monkeypatch.setattr(httpx, "AsyncClient", lambda *a, **k: object())
+    monkeypatch.setattr(addon_runtime, "_running_loop", lambda: loop)
     monkeypatch.setattr(addon_runtime, "rebuild_if_stale", fake_rebuild_if_stale)
-    monkeypatch.setattr(addon_runtime, "IndexWriter", fake_index_writer)
+    monkeypatch.setattr(addon_runtime, "create_async_pool", lambda: object())
+    monkeypatch.setattr(addon_runtime, "SessionWriter", fake_session_writer)
 
-    with pytest.raises(_StopBoot):
-        addon_runtime.load_runtime()
+    try:
+        with pytest.raises(_StopBoot):
+            addon_runtime.load_runtime()
+    finally:
+        loop.close()
 
-    assert order == ["rebuild_if_stale", "IndexWriter"]
+    assert order == ["rebuild_if_stale", "SessionWriter"]

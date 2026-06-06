@@ -2,13 +2,13 @@ r"""The transcript file tailer (§9.2/§9.3): poll-driven, complete-record-only,
 
 One tailer thread per process (sibling to the §6 writer). It owns per-session cursors, polls each
 ``FileTailSource`` path on a short interval, reads appended bytes, parses **complete** (newline-
-terminated) records — advancing ``byte_offset`` only past the last ``\n`` so a half-written
-trailing line waits for the next poll (§15 risk 6) — normalizes each, and submits a transcript
+terminated) records, advancing ``byte_offset`` only past the last ``\n`` so a half-written
+trailing line waits for the next poll (§15 risk 6), normalizes each, and submits a transcript
 ``IndexJob`` to the writer. The tailer never writes tier-2 directly; the writer emits the live
 event after COMMIT (§9.4).
 
 ``iter_complete_records`` is the ONE record-iterate path and ``ingest_records`` the ONE
-record→turn loop, both shared with §11 replay (closed snapshot) — there is no second iteration to
+record→turn loop, both shared with §11 replay (closed snapshot), there is no second iteration to
 drift (DRY). DAG: imports ``index`` + ``adapters`` only.
 """
 
@@ -17,7 +17,7 @@ import logging
 import threading
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
 
 from transport_matters.index.adapters.base import (
     FileTailSource,
@@ -31,6 +31,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Iterable
 
     from transport_matters.index.adapters.base import (
+        NormalizedTurn,
         RawRecord,
         SessionBinding,
         TranscriptAdapter,
@@ -81,37 +82,78 @@ class TailCursor:
     stat_signature: tuple[int, float] | None = None  # (size, mtime) to skip unchanged files
 
 
-def ingest_records(
+def ingest_records[RecordWrite](
     records: Iterable[RawRecord],
     cursor: TailCursor,
     source_path: str,
-    submit: Callable[[IndexJob], None],
+    submit: Callable[[RecordWrite], None] | None = None,
+    *,
+    build_record: Callable[[RawRecord, NormalizedTurn | None, TurnContext], RecordWrite | None]
+    | None = None,
+    submit_batch: Callable[[SessionBinding, list[RecordWrite]], None] | None = None,
 ) -> None:
-    """Normalize a batch of records through the cursor's running state, submitting one job per turn.
+    """Normalize records through the cursor state, then submit the built rows atomically.
 
     The single record→turn loop (§9.3), shared by live-tail (``_poll_cursor`` over a growing file)
     and §11 replay (over a closed snapshot): both thread ``seq`` / ``parent_id`` / ``model`` across
     records identically, so a rebuild reproduces the live turn ids/order exactly (the byte-identical
-    DIFF linchpin). Advances the cursor in place; a non-conversational record (``normalize`` → None)
-    still advances ``seq`` and may set ``model`` (codex ``turn_context``), never ``parent_id``.
+    DIFF linchpin). A non-conversational record (``normalize`` → None) still advances ``seq`` and
+    may set ``model`` (codex ``turn_context``), never ``parent_id``.
     """
+    builder = build_record or cast(
+        "Callable[[RawRecord, NormalizedTurn | None, TurnContext], RecordWrite | None]",
+        _build_transcript_job_record,
+    )
+    batch_submit = submit_batch or _per_record_submit(submit)
+    seq = cursor.seq
+    parent_id = cursor.parent_id
+    model = cursor.model
+    writes: list[RecordWrite] = []
     for record in records:
         hint = cursor.adapter.model_hint(record)
         if hint is not None:
-            cursor.model = hint
+            model = hint
         ctx = TurnContext(
             binding=cursor.binding,
             source_path=source_path,
-            seq=cursor.seq,
-            source_line=cursor.seq,
-            parent_id=cursor.parent_id,
-            model=cursor.model,
+            seq=seq,
+            source_line=seq,
+            parent_id=parent_id,
+            model=model,
         )
         turn = cursor.adapter.normalize(record, ctx)
-        cursor.seq += 1
+        write = builder(record, turn, ctx)
+        if write is not None:
+            writes.append(write)
+        seq += 1
         if turn is not None:
-            submit(build_transcript_job(turn, cursor.binding))
-            cursor.parent_id = turn.turn_id
+            parent_id = turn.turn_id
+    if writes:
+        batch_submit(cursor.binding, writes)
+    cursor.seq = seq
+    cursor.parent_id = parent_id
+    cursor.model = model
+
+
+def _build_transcript_job_record(
+    _record: RawRecord, turn: NormalizedTurn | None, ctx: TurnContext
+) -> IndexJob | None:
+    if turn is None:
+        return None
+    return build_transcript_job(turn, ctx.binding)
+
+
+def _per_record_submit[RecordWrite](
+    submit: Callable[[RecordWrite], None] | None,
+) -> Callable[[SessionBinding, list[RecordWrite]], None]:
+    if submit is None:
+        raise ValueError("submit or submit_batch is required")
+
+    def submit_each(_binding: SessionBinding, writes: list[RecordWrite]) -> None:
+        for write in writes:
+            submit(write)
+
+    return submit_each
 
 
 class TranscriptTailer:
@@ -119,16 +161,21 @@ class TranscriptTailer:
 
     def __init__(
         self,
-        submit: Callable[[IndexJob], None],
+        submit: Callable[[Any], None] | None = None,
         *,
+        build_record: Callable[[RawRecord, NormalizedTurn | None, TurnContext], Any | None]
+        | None = None,
+        submit_batch: Callable[[SessionBinding, list[Any]], None] | None = None,
         snapshot: Callable[[str, int, bytes], None] | None = None,
         interval_s: float = _DEFAULT_FILE_INTERVAL_S,
     ) -> None:
         self._submit = submit
+        self._build_record = build_record
+        self._submit_batch = submit_batch
         # Injected tier-1 transcript snapshot writer (§7.1/§11, slice 8b-i): tee the consumed bytes
         # so tier-1 owns the transcript. A plain callable keeps the storage write API OUT of the
         # index-layer tailer (DAG); built + injected at load_runtime, None when no disk backend.
-        # (Named ``_snapshot_writer`` — ``_snapshot`` is the unrelated cursor-list snapshot below.)
+        # (Named ``_snapshot_writer``, ``_snapshot`` is the unrelated cursor-list snapshot below.)
         self._snapshot_writer = snapshot
         self._interval_s = interval_s
         self._cursors: dict[str, TailCursor] = {}
@@ -187,7 +234,7 @@ class TranscriptTailer:
         # Managed-mint owns the path (pre-seeded session_meta) and claude's locate yields an existing
         # path, so the file is always present by registration; "exists but no response_item yet" is a
         # normal no-op handled below by the unchanged-stat guard. A genuinely missing path is a real
-        # fault now (not a guessed glob), surfaced by poll()'s exception logging — not silently
+        # fault now (not a guessed glob), surfaced by poll()'s exception logging, not silently
         # swallowed by an early-return (§5.2b: the discovery-miss path is deleted).
         stat = path.stat()
         signature = (stat.st_size, stat.st_mtime)
@@ -198,15 +245,22 @@ class TranscriptTailer:
             data = handle.read()
         records, consumed = iter_complete_records(data)
         # Tee the consumed bytes into tier-1 BEFORE normalize (slice 8b-i): the raw prefix keeps ALL
-        # records byte-faithfully — including the non-conversational ones normalize drops — so a
+        # records byte-faithfully, including the non-conversational ones normalize drops, so a
         # rebuild owns the transcript. Off the §7.1 wire hot path (tailer thread). A snapshot error
         # propagates to poll()'s try/except, leaving byte_offset AND stat_signature un-advanced (both
         # are set only after the whole poll succeeds, below), so the NEXT poll re-reads + retries even
-        # if the file is unchanged — tier-1 snapshot and tier-2 turns advance together or neither.
+        # if the file is unchanged, tier-1 snapshot and tier-2 turns advance together or neither.
         if self._snapshot_writer is not None and consumed:
             self._snapshot_writer(cursor.binding.session_id, cursor.byte_offset, data[:consumed])
-        # The ONE record→turn loop, shared verbatim with §11 replay (rebuild.py) — see ingest_records.
-        ingest_records(records, cursor, source.path, self._submit)
+        # The ONE record→turn loop, shared verbatim with §11 replay (rebuild.py), see ingest_records.
+        ingest_records(
+            records,
+            cursor,
+            source.path,
+            self._submit,
+            build_record=self._build_record,
+            submit_batch=self._submit_batch,
+        )
         cursor.byte_offset += consumed
         # Mark this stat consumed LAST (mirroring byte_offset): only a fully-successful poll skips the
         # next unchanged read. A mid-poll raise leaves the old signature so the stat guard re-enters.
@@ -226,13 +280,13 @@ async def register_session_cursor(
     and the wire id is kept.
 
     Source resolution (§5.2b/§5.2c managed-mint): if the binding carries a launcher-owned
-    ``source_descriptor`` (claude or codex managed), the cursor tails that exact owned path — no
+    ``source_descriptor`` (claude or codex managed), the cursor tails that exact owned path, no
     discovery. Otherwise the adapter ``locate``s it (claude's deterministic ``~/.claude`` path, the
     external-adoption fallback). A binding with neither (a codex id TM did not seed) resolves to
     ``None`` and registers no cursor: it stays pending rather than mis-joining (§15 risk 2).
 
     The re-bind re-derives only session_id + native id, so the wire side's authoritative ``minted``
-    (§5.2c) and owned descriptor are carried back onto the transcript binding — otherwise the
+    (§5.2c) and owned descriptor are carried back onto the transcript binding, otherwise the
     transcript path's session upsert (``minted = excluded.minted``, last-writer-wins) would clobber a
     managed claude session's ``minted=1`` to 0 once a turn lands.
 
