@@ -33,3 +33,4 @@ OWNED_SOURCE_DESCRIPTOR = f"{ENV_PREFIX}OWNED_SOURCE_DESCRIPTOR"
 # the binding and ``locate`` resolves the transcript root under the managed home (the manifest also
 # carries it but is unlinked on exit, so it cannot be the addon's durable channel). Unset = native home.
 HOME_DIR = f"{ENV_PREFIX}HOME_DIR"
+DATABASE_URL = f"{ENV_PREFIX}DATABASE_URL"

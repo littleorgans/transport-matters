@@ -4,6 +4,7 @@ from pathlib import Path
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from transport_matters.env_keys import ENV_PREFIX
+from transport_matters.session_config import DEFAULT_DATABASE_URL
 from transport_matters.storage_roots import default_storage_root
 
 
@@ -61,6 +62,9 @@ class Settings(BaseSettings):
     home_dir: Path | None = None
     breakpoint_timeout_s: float = 300.0
     breakpoint_skip_models: list[str] = []
+    database_url: str = DEFAULT_DATABASE_URL
+    session_pool_min_size: int = 1
+    session_pool_max_size: int = 10
 
     cors_origins: list[str] = [
         "http://localhost:3000",
