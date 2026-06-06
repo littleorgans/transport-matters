@@ -88,7 +88,11 @@ raw-options = { root = "..", version_scheme = "no-guess-dev" }
 [tool.hatch.build.targets.wheel]
 packages = ["src/transport_matters"]
 exclude = ["**/test_*.py", "**/conftest.py", "src/transport_matters/session/testing.py"]
-artifacts = ["src/transport_matters/www/**", "migrations/**"]
+artifacts = [
+    "src/transport_matters/www/**",
+    "src/transport_matters/settings.example.toml",
+    "migrations/**",
+]
 
 [tool.hatch.build.targets.wheel.force-include]
 "migrations" = "migrations"

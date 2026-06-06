@@ -18,7 +18,13 @@ from pathlib import Path
 import typer
 
 from transport_matters import __version__
-from transport_matters.config import get_settings
+from transport_matters.config import (
+    DATABASE_URL_GUIDANCE,
+    MissingDatabaseConfigError,
+    get_settings,
+    resolve_database_url,
+)
+from transport_matters.session.migrate import current_revision, migration_head
 
 from .identity import CLI_COMMAND, PRODUCT_LABEL
 from .launch_runtime import resolve_mitmdump_executable
@@ -130,6 +136,35 @@ def run_doctor() -> None:
             )
         else:
             _ok(label, str(port))
+
+    # Session store: configured, reachable, and at the migration head.
+    try:
+        database_url = resolve_database_url(settings)
+    except MissingDatabaseConfigError as exc:
+        _fail("session store", f"{exc}")
+    else:
+        try:
+            current = current_revision(database_url)
+        except Exception as exc:
+            _fail(
+                "session store",
+                f"cannot reach the configured database: {exc}\n{DATABASE_URL_GUIDANCE}",
+            )
+        else:
+            head = migration_head()
+            if current is None:
+                _fail(
+                    "session store",
+                    "schema not initialised — run "
+                    f"`{CLI_COMMAND} db upgrade` (launching also auto-migrates)",
+                )
+            elif current != head:
+                _fail(
+                    "session store",
+                    f"schema behind head ({current} != {head}) — run `{CLI_COMMAND} db upgrade`",
+                )
+            else:
+                _ok("session store", f"schema at {head}")
 
     typer.echo("")
     if failures:

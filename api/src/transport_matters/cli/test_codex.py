@@ -69,7 +69,7 @@ def test_codex_print_command_does_not_create_workspace_run_dir(
 
     result = runner.invoke(
         main,
-        ["codex", "--work-dir", str(workdir), "--home-dir", str(home_dir), "--print-command"],
+        ["codex", "--work-dir", str(workdir), "--agent-home-dir", str(home_dir), "--print-command"],
     )
 
     assert result.exit_code == 0, result.output
@@ -220,7 +220,7 @@ def test_codex_home_dir_sets_codex_home_manifest_and_keeps_ca(
         [
             "codex",
             str(workdir),
-            "--home-dir",
+            "--agent-home-dir",
             "homes/codex",
             "--proxy-port",
             "9000",

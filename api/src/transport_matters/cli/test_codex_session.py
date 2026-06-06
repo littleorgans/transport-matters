@@ -67,7 +67,7 @@ class TestSeed:
         assert json.loads(line)["payload"]["id"] == _NATIVE
 
     def test_seed_records_managed_home_dir_on_descriptor(self, tmp_path: Path) -> None:
-        # The managed --home-dir is recorded EXPLICITLY on the owned descriptor (§11.1) so a §10.5
+        # The managed --agent-home-dir is recorded EXPLICITLY on the owned descriptor (§11.1) so a §10.5
         # rebuild knows the codex home the rollout resolved under without the live env.
         seed = seed_codex_session(
             native_session_id=_NATIVE,
@@ -83,7 +83,7 @@ class TestSeed:
         assert source.home_dir == str(tmp_path)
 
     def test_seed_without_home_dir_leaves_descriptor_home_none(self, tmp_path: Path) -> None:
-        # Native-home launch (no --home-dir): descriptor.home_dir is None (the path is still absolute).
+        # Native-home launch (no --agent-home-dir): descriptor.home_dir is None (the path is still absolute).
         seed = seed_codex_session(
             native_session_id=_NATIVE,
             now=_now(),

@@ -39,7 +39,7 @@ class TestSourceDescriptorCodec:
         assert decoded.home_dir is None
 
     def test_home_dir_round_trips(self) -> None:
-        # The managed --home-dir is carried EXPLICITLY on the descriptor (not just baked into the path)
+        # The managed --agent-home-dir is carried EXPLICITLY on the descriptor (not just baked into the path)
         # so a §10.5 rebuild re-resolves the transcript root without the live launch env (§11.1).
         source = FileTailSource(
             path="/managed/.claude/projects/-w/sid.jsonl",

@@ -1,4 +1,5 @@
-# Copy to ~/.transport-matters/settings.toml and edit.
+# Copy to $TRANSPORT_MATTERS_HOME/settings.toml (default ~/.transport-matters/settings.toml) and edit.
+# Transport Matters creates this file from the packaged example on first launch.
 # TRANSPORT_MATTERS_* env vars override these values.
 [database]
 # Operator Postgres connection used by Transport Matters.

@@ -1,5 +1,11 @@
 set shell := ["bash", "-cu"]
 
+# Default the test-DB URL so `just test`/`just ci` work against the local docker
+# Postgres (`docker compose up -d`) without per-shell env setup. An exported
+# TRANSPORT_MATTERS_TEST_DATABASE_URL still wins (CI sets its own, off :55432).
+# The app itself stays loud when unconfigured; this is dev-workflow only.
+export TRANSPORT_MATTERS_TEST_DATABASE_URL := env_var_or_default("TRANSPORT_MATTERS_TEST_DATABASE_URL", "postgresql://tm:tm@localhost:55432/postgres")
+
 # Default task
 default: check test
 

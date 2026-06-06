@@ -198,7 +198,7 @@ def test_start_home_dir_sets_claude_config_dir_and_manifest(
         [
             "claude",
             str(workdir),
-            "--home-dir",
+            "--agent-home-dir",
             "homes/claude",
             "--no-system-prompt",
         ],
@@ -246,7 +246,7 @@ def test_start_print_command_home_dir_does_not_create_dir(
         [
             "claude",
             str(workdir),
-            "--home-dir",
+            "--agent-home-dir",
             str(home_dir),
             "--no-system-prompt",
             "--print-command",

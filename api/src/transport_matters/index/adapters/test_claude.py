@@ -131,7 +131,7 @@ class TestBindLocate:
         assert source.home_dir is None  # no managed home on this binding → native default
 
     async def test_bind_carries_home_dir(self) -> None:
-        # bind propagates the managed --home-dir onto the binding like cwd, so it survives the re-bind
+        # bind propagates the managed --agent-home-dir onto the binding like cwd, so it survives the re-bind
         # and reaches locate (§11.1).
         run = RunContext(
             run_id="run1",

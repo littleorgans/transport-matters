@@ -43,7 +43,7 @@ class OwnedSessionFacts(BaseModel):
     minted: bool  # True = native id adopted as the session_id PK (claude); False = synth PK (codex)
     source_descriptor: str  # JSON ``TranscriptSource`` of the owned transcript, incl. ``home_dir``
     home_dir: str | None = (
-        None  # managed ``--home-dir`` the transcript root resolves under; None = native
+        None  # managed ``--agent-home-dir`` the transcript root resolves under; None = native
     )
 
 

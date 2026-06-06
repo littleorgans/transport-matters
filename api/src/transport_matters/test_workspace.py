@@ -155,13 +155,14 @@ def test_workspace_id_is_hashable() -> None:
 # --------------------------------------------------------------------------- #
 
 
-def test_workspace_root_composes_slug_and_hash() -> None:
+def test_workspace_root_composes_slug_and_hash(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The workspaces tree lives under $TRANSPORT_MATTERS_HOME (default ~/.transport-matters).
+    monkeypatch.setenv("TRANSPORT_MATTERS_HOME", str(tmp_path))
     cwd = Path("/tmp/project/api")
     wid = workspace_id(cwd)
-    assert (
-        workspace_root(cwd)
-        == Path.home() / ".transport-matters" / "workspaces" / wid.slug / wid.hash
-    )
+    assert workspace_root(cwd) == tmp_path / "workspaces" / wid.slug / wid.hash
 
 
 def test_workspace_root_does_not_create_directory(tmp_path: Path) -> None:

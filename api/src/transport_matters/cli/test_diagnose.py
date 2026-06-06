@@ -7,18 +7,30 @@ existing patches keep working; ``port_in_use`` is rebound by name in
 """
 
 from pathlib import Path
-from typing import TYPE_CHECKING
 
+import pytest
 from typer.testing import CliRunner
 
 from transport_matters.cli import WorkspaceLock, main, workspace_root
 
 from ._helpers import _plain, _which_all, _which_none
 
-if TYPE_CHECKING:
-    import pytest
-
 runner = CliRunner()
+
+
+@pytest.fixture(autouse=True)
+def _healthy_session_store(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Stub the doctor session-store check healthy by default.
+
+    Doctor tests assert on the python/mitmdump/storage/port checks, not on a real
+    Postgres. The dedicated session-store tests below re-patch these to exercise the
+    failure path.
+    """
+    monkeypatch.setattr(
+        "transport_matters.cli.diagnose.resolve_database_url", lambda _s: "postgresql://stub/db"
+    )
+    monkeypatch.setattr("transport_matters.cli.diagnose.current_revision", lambda _u: "rev-head")
+    monkeypatch.setattr("transport_matters.cli.diagnose.migration_head", lambda: "rev-head")
 
 
 def test_doctor_happy_path(
@@ -35,6 +47,26 @@ def test_doctor_happy_path(
     assert "ok    mitmdump" in result.stdout
     assert "ok    addon" in result.stdout
     assert "ok    storage" in result.stdout
+    assert "ok    session store" in result.stdout
+
+
+def test_doctor_reports_session_store_unconfigured(
+    tmp_storage: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from transport_matters.config import MissingDatabaseConfigError
+
+    def _raise(_settings: object) -> str:
+        raise MissingDatabaseConfigError("set TRANSPORT_MATTERS_DATABASE_URL")
+
+    monkeypatch.setattr("transport_matters.cli.shutil.which", _which_all())
+    monkeypatch.setattr("transport_matters.cli.diagnose.port_in_use", lambda _: False)
+    monkeypatch.setattr("transport_matters.cli.diagnose.resolve_database_url", _raise)
+
+    result = runner.invoke(main, ["doctor"])
+
+    assert result.exit_code == 1
+    assert "fail  session store" in result.output
+    assert "TRANSPORT_MATTERS_DATABASE_URL" in result.output
 
 
 def test_doctor_uses_transport_matters_storage_probe(

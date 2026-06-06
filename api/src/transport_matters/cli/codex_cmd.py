@@ -23,6 +23,7 @@ from .launch_runtime import (
     build_launch_env,
     build_managed_child_env,
     build_mitmdump_argv,
+    preflight_session_store_or_exit,
     prepare_launch,
     print_invocation,
     reject_passthrough_without_client,
@@ -273,6 +274,33 @@ def _run_codex_launch(
     )
 
 
+def _resolve_codex_addons_and_ca(
+    *,
+    stack: contextlib.ExitStack,
+    force_http_fallback: bool,
+    require_force_http_fallback_addon: Callable[[], Traversable],
+    client_path: str | None,
+    print_command: bool,
+    resolve_codex_ca_certificate: Callable[..., Path],
+) -> tuple[Path | None, str | None]:
+    """Resolve the optional force-HTTP-fallback addon path and the Codex CA bundle."""
+    force_http_fallback_addon_path: Path | None = None
+    if force_http_fallback:
+        force_http_fallback_addon_path = Path(
+            stack.enter_context(as_file(require_force_http_fallback_addon()))
+        )
+    codex_ca_certificate: str | None = None
+    if client_path is not None:
+        codex_ca_certificate = _resolve_codex_ca_certificate_or_exit(
+            stack=stack,
+            print_command=print_command,
+            resolve_codex_ca_certificate=resolve_codex_ca_certificate,
+        )
+    elif not print_command:
+        codex_ca_certificate = _resolve_proxy_only_codex_ca_hint(env=os.environ)
+    return force_http_fallback_addon_path, codex_ca_certificate
+
+
 def run_codex(
     *,
     directory: Path | None,
@@ -303,6 +331,11 @@ def run_codex(
         flag="--no-codex",
     )
 
+    # Hard-block the launch if the session store is unconfigured/unreachable, so the
+    # canvas never opens against a dead store (a dry --print-command run is exempt).
+    if not print_command:
+        preflight_session_store_or_exit()
+
     prepared = prepare_launch(
         passthrough=codex_passthrough,
         directory=directory,
@@ -329,21 +362,14 @@ def run_codex(
         as_file(prepared.addon_traversable) as addon_path,
         contextlib.ExitStack() as stack,
     ):
-        force_http_fallback_addon_path: Path | None = None
-        if force_http_fallback:
-            force_http_fallback_traversable = require_force_http_fallback_addon()
-            force_http_fallback_addon_path = Path(
-                stack.enter_context(as_file(force_http_fallback_traversable))
-            )
-        codex_ca_certificate = None
-        if prepared.client_path is not None:
-            codex_ca_certificate = _resolve_codex_ca_certificate_or_exit(
-                stack=stack,
-                print_command=print_command,
-                resolve_codex_ca_certificate=resolve_codex_ca_certificate,
-            )
-        elif not print_command:
-            codex_ca_certificate = _resolve_proxy_only_codex_ca_hint(env=os.environ)
+        force_http_fallback_addon_path, codex_ca_certificate = _resolve_codex_addons_and_ca(
+            stack=stack,
+            force_http_fallback=force_http_fallback,
+            require_force_http_fallback_addon=require_force_http_fallback_addon,
+            client_path=prepared.client_path,
+            print_command=print_command,
+            resolve_codex_ca_certificate=resolve_codex_ca_certificate,
+        )
         # Managed-mint (§5.2b/§5.2c): mint the native uuid + pre-seed the rollout ONCE, before the
         # retry loop, so every attempt resumes the same owned session. Codex flows through the SAME
         # shared launch path claude uses (the codex profile owns the seed + argv shape); ``write`` is
