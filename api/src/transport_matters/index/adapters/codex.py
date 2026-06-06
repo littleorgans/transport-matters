@@ -65,8 +65,8 @@ class CodexAdapter(TranscriptAdapter):
     # ``metadata.session_id`` matches that uuid, so the tailer byte-tails the owned path. The old
     # read-back glob (any wire frame ⇒ TM launched it ⇒ TM owns the uuid + path) is deleted; discovery
     # is unreachable for anything TM sees. Uncorrelated codex non-conversational requests, such as
-    # memory-style calls, carry no session id, bind to ``None``, and land as NULL ``wire_exchange``
-    # rows; handshake-failure frames are tier-1 only and create no tier-2 wire row. These recur several
+    # memory-style calls, carry no session id, bind to ``None``, and land as null exchange metadata
+    # rows; handshake-failure frames are tier-1 only and create no indexed wire row. These recur several
     # times per session, not a single frame-1 phantom (§15 risk 2). The base default ``locate`` returns
     # None, so codex ids with no owned descriptor register no cursor.
 

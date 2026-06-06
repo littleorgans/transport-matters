@@ -258,9 +258,9 @@ async def _persist_codex_exchange(
     if not await persist_exchange(storage, entry, artifacts):
         return False
 
-    # Tier-1 persisted (durable) — hand the exchange to the injected tier-2 sink (§6.4/§7.1),
-    # mirroring the claude recorder. Best-effort: emit_to_index swallows any failure so the wire
-    # path never fails because of tier-2. Without this, codex captured ZERO tier-2 rows (#23).
+    # Tier-1 persisted. Hand the exchange to the optional post-persist sink, mirroring the
+    # Claude recorder. Best-effort: emit_to_index swallows any failure so the wire path never
+    # fails because of an observer.
     emit_to_index(entry, artifacts)
     emit_exchange(
         ir,
@@ -411,9 +411,9 @@ async def finalize_codex_provisional_exchange(
         return False
 
     _mark_codex_exchange_finalized(state, exchange_id)
-    # codex's PRIMARY (streaming) durable seam — feed the tier-2 sink here, exactly once, with the
-    # completed exchange (mirrors claude #23). The no-provisional branches return via
-    # _persist_codex_exchange above (which emits there), so there is no double-emit. Best-effort.
+    # Codex's primary streaming durable seam feeds the observer here, exactly once, with the
+    # completed exchange. The no-provisional branches return via _persist_codex_exchange above,
+    # which emits there, so there is no double emit. Best-effort.
     emit_to_index(entry, artifacts)
     _emit_codex_entry_exchange(
         flow=flow,

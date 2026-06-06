@@ -183,11 +183,11 @@ async def test_finalize_http_provisional_exchange_returns_false_for_missing_entr
     assert await storage.read_index(limit=10, offset=0) == []
 
 
-async def test_finalize_http_provisional_exchange_feeds_tier2_sink() -> None:
-    """Regression: the provisional->finalize path is Claude's PRIMARY (streaming) path, so it
-    MUST hand the completed exchange to the injected tier-2 sink. Before this fix emit_to_index
-    was only reached on the dead non-provisional branch, so a real Claude run captured zero
-    tier-2 rows (wire_exchange + transcript_turn) despite tier-1 persisting fine.
+async def test_finalize_http_provisional_exchange_feeds_post_persist_sink() -> None:
+    """Regression: Claude's primary streaming path finalizes provisional exchanges, so it
+    hands the completed exchange to the post-persist observer. Before this fix emit_to_index
+    was only reached on the dead non-provisional branch, so a real Claude run persisted tier-1 but
+    never notified observers.
     """
     captured: list[tuple[IndexEntry, ExchangeArtifacts]] = []
     set_exchange_sink(lambda entry, artifacts: captured.append((entry, artifacts)))
@@ -197,8 +197,7 @@ async def test_finalize_http_provisional_exchange_feeds_tier2_sink() -> None:
 
         exchange_id = await recorder.persist_http_provisional_exchange(flow, state)
         assert exchange_id is not None
-        # The provisional row is request-only (no response yet): tier-2 must NOT fire here,
-        # because build_wire_job needs entry.res — capture happens once, at finalize.
+        # The provisional row is request-only. The observer must not fire until finalize.
         assert captured == []
 
         state.provisional_exchange_id = exchange_id
@@ -206,7 +205,7 @@ async def test_finalize_http_provisional_exchange_feeds_tier2_sink() -> None:
         finalized = await recorder._finalize_http_provisional_exchange(flow, state, None)
 
         assert finalized is True
-        # Finalize feeds the tier-2 sink exactly once, with the completed exchange.
+        # Finalize feeds the observer exactly once, with the completed exchange.
         assert len(captured) == 1
         sink_entry, sink_artifacts = captured[0]
         assert sink_entry.id == exchange_id

@@ -228,6 +228,20 @@ class TestTailerPoll:
         tailer.poll()
         assert len(submitted) == 1  # unregistered → no further submits
 
+    def test_missing_exact_source_waits_without_advancing(self, tmp_path: Path) -> None:
+        path = tmp_path / "later.jsonl"
+        submitted: list[EventWrite] = []
+        tailer = _event_tailer(submitted)
+        cursor = _cursor(str(path))
+        tailer.register(cursor)
+
+        tailer.poll()
+
+        assert submitted == []
+        assert cursor.byte_offset == 0
+        assert cursor.seq == 0
+        assert cursor.stat_signature is None
+
     def test_cursor_state_advances_only_after_submit_success(self, tmp_path: Path) -> None:
         path = tmp_path / "t.jsonl"
         path.write_text(_user_line("u1", "hi") + "\n")
@@ -323,7 +337,7 @@ class TestSnapshotTee:
     def test_snapshot_failure_does_not_advance_and_retries_next_poll(self, tmp_path: Path) -> None:
         # The tee is coupled to the cursor advance: a snapshot raise must NOT advance byte_offset AND
         # must NOT set stat_signature, so the very next poll RETRIES even though the CLI file is
-        # unchanged (no waiting for the file to grow). Keeps tier-1 snapshot + tier-2 turns consistent.
+        # unchanged (no waiting for the file to grow). Keeps tier-1 snapshot + events consistent.
         path = tmp_path / "t.jsonl"
         path.write_text(_user_line("u1", "hi") + "\n")
         calls: list[int] = []
@@ -364,12 +378,12 @@ class TestSnapshotTee:
         tailer = _event_tailer(submitted)  # no snapshot injected (default None)
         tailer.register(_cursor(str(path)))
         tailer.poll()
-        assert [write.event.native_turn_id for write in submitted] == ["u1"]  # tier-2 unaffected
+        assert [write.event.native_turn_id for write in submitted] == ["u1"]
 
 
 class TestRegisterCursor:
     async def test_register_session_cursor_locates_and_registers(self) -> None:
-        tailer = TranscriptTailer(lambda _job: None)
+        tailer = TranscriptTailer()
         await register_session_cursor(tailer, ClaudeAdapter(), _binding(cwd="/w"))
         cursors = tailer._snapshot()
         assert len(cursors) == 1
@@ -386,7 +400,7 @@ class TestRegisterCursor:
         # ``locate`` resolves the transcript under <home>/projects, NOT ~/.claude, and the cursor
         # binding keeps the home. This is the real correctness gap the locate fix closes.
         wire = _binding(cwd="/w").model_copy(update={"home_dir": str(tmp_path)})
-        tailer = TranscriptTailer(lambda _job: None)
+        tailer = TranscriptTailer()
         await register_session_cursor(tailer, ClaudeAdapter(), wire)
         (cursor,) = tailer._snapshot()
         assert cursor.binding.home_dir == str(tmp_path)  # survived the re-bind
@@ -407,7 +421,7 @@ class TestRegisterCursor:
         descriptor = encode_source_descriptor(
             FileTailSource(path=str(transcript), format="claude_jsonl")
         )
-        tailer = TranscriptTailer(lambda _job: None)
+        tailer = TranscriptTailer()
         await register_session_cursor(
             tailer, ClaudeAdapter(), _claude_wire_binding(session, descriptor)
         )
@@ -431,7 +445,7 @@ class TestRegisterCursor:
             FileTailSource(path=str(rollout), format="codex_rollout")
         )
         wire_binding = _codex_wire_binding(native, descriptor)
-        tailer = TranscriptTailer(lambda _job: None)
+        tailer = TranscriptTailer()
         await register_session_cursor(tailer, CodexAdapter(), wire_binding)
         (cursor,) = tailer._snapshot()
         assert cursor.binding.session_id == wire_binding.session_id  # convergence: same synth id

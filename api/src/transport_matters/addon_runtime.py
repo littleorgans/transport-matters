@@ -1,5 +1,7 @@
 """Addon lifecycle helpers."""
 
+from __future__ import annotations
+
 import asyncio
 import contextlib
 import logging
@@ -14,29 +16,28 @@ from transport_matters import breakpoint as bp
 from transport_matters.config import get_settings
 from transport_matters.counting import TokenCounter, set_counter, set_recent_auth
 from transport_matters.index.adapters import get_adapter
-from transport_matters.index.ingest import build_run_facts, make_index_sink
-from transport_matters.index.rebuild import rebuild_if_stale
+from transport_matters.index.adapters.base import RunContext
 from transport_matters.index.tailer import TranscriptTailer, register_session_cursor
 from transport_matters.main import create_app
 from transport_matters.session.ingest import EventWrite, build_event, build_event_batch
 from transport_matters.session.pool import create_async_pool
 from transport_matters.session.writer import SessionWriter
 from transport_matters.storage import init_storage
-from transport_matters.storage.exchange_sink import clear_exchange_sink, set_exchange_sink
 from transport_matters.storage.transcript_snapshot import make_transcript_snapshot_writer
+from transport_matters.workspace import workspace_id
 
 if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
 
+    from transport_matters.config import Settings
     from transport_matters.index.adapters.base import SessionBinding
 
 logger = logging.getLogger(__name__)
 
-# Wire provider → harness cli, for read-back transcript cursor registration (§9.2). claude (slice
-# 4b) + codex (slice 5, read-back: the first codex wire frame reveals the synth session_id, so the
-# binding resolves at finalize and on_binding schedules the rollout tail). gemini/opencode join later.
+# Wire provider → harness cli, for read-back transcript cursor registration (§9.2).
 _PROVIDER_CLI = {"anthropic": "claude", "codex": "codex"}
+_DIRECT_MINT_PROVIDERS = frozenset({"anthropic"})
 
 
 def _running_loop() -> asyncio.AbstractEventLoop | None:
@@ -63,6 +64,46 @@ def _make_cursor_registrar(
     return register
 
 
+def _launch_run_context(settings: Settings, started_at: str) -> RunContext | None:
+    """Build the owned transcript registration context from launch settings, if complete."""
+    if settings.run_id is None or settings.cwd is None or settings.cli is None:
+        return None
+    if settings.owned_native_session_id is None:
+        return None
+    workspace = workspace_id(settings.cwd)
+    return RunContext(
+        run_id=settings.run_id,
+        cwd=str(settings.cwd),
+        workspace_slug=workspace.slug,
+        workspace_hash=workspace.hash,
+        cli=settings.cli,
+        started_at=started_at,
+        native_session_id=settings.owned_native_session_id,
+        home_dir=str(settings.home_dir) if settings.home_dir is not None else None,
+    )
+
+
+async def _register_owned_cursor(
+    tailer: TranscriptTailer, settings: Settings, started_at: str
+) -> None:
+    """Register the launcher-owned transcript cursor without the retired exchange sink."""
+    try:
+        run = _launch_run_context(settings, started_at)
+        if run is None:
+            return
+        adapter = get_adapter(run.cli)
+        binding = await adapter.bind(run)
+        binding = binding.model_copy(
+            update={
+                "minted": adapter.provider in _DIRECT_MINT_PROVIDERS,
+                "source_descriptor": settings.owned_source_descriptor,
+            }
+        )
+        await register_session_cursor(tailer, adapter, binding)
+    except Exception:
+        logger.exception("owned transcript cursor registration failed")
+
+
 @dataclass(slots=True)
 class AddonRuntime:
     http_client: httpx.AsyncClient
@@ -78,10 +119,8 @@ def load_runtime() -> AddonRuntime:
     storage = init_storage(root=settings.storage_dir)
     from transport_matters.storage.disk import DiskStorageBackend
 
-    # The tier-1 storage root is workspace-scoped (settings.storage_dir) while the tier-2 index.db
-    # is global (index_db_path == default root). raw_dir is an absolute tier-1 pointer, so the sink
-    # must stamp it with the BACKEND's real root, not the default, else GET /raw 404s on a pointer
-    # that dangles off the wrong root (roadtest2 #1).
+    # The tier-1 storage root is workspace-scoped. The snapshot writer must use the backend's real
+    # root so copied transcript bytes land beside the live run artifacts.
     storage_root: Path | None = None
     if isinstance(storage, DiskStorageBackend):
         storage_root = storage.root
@@ -95,21 +134,15 @@ def load_runtime() -> AddonRuntime:
     token_counter = TokenCounter(http_client)
     set_counter(token_counter)
 
-    # Tier-2 capture (slices 2/4): the single-writer actor with post-COMMIT live push (§9.4), the
-    # injected post-persist sink (§6.4), and the transcript tailer (§9.2). Best-effort, a tier-2
-    # startup failure must never stop the proxy (§7.1).
+    # Session capture: the Postgres writer, transcript tailer, and tier-1 transcript snapshot.
+    # Best-effort startup failure must never stop the proxy (§7.1).
     loop = _running_loop()
     session_writer: SessionWriter | None = None
     index_tailer: TranscriptTailer | None = None
     try:
-        # Boot auto-replay (§10.5, slice 8c-ii): if a gated derivation bump (or a missing db) left the
-        # schema gate stale, rebuild tier-2 from tier-1 under a lock BEFORE opening the live writer, so
-        # the bump auto-repopulates the index from tier-1 instead of the in-writer gate dropping it to
-        # empty. No-op on a current db; the lock inside serializes concurrent boots. Must run before any
-        # live connection opens (rebuild() deletes the db files), hence ahead of writer wiring here.
-        rebuild_if_stale()
         if loop is None:
             raise RuntimeError("server loop is unavailable for session writer")
+        started_at = datetime.now(UTC).isoformat()
         writer = SessionWriter(create_async_pool(), loop=loop)
         session_writer = writer
         # Tier-1 transcript snapshot (§7.1/§11, slice 8b-i): tee consumed transcript bytes into the
@@ -132,25 +165,12 @@ def load_runtime() -> AddonRuntime:
             snapshot=snapshot_writer,
         )
         index_tailer.start()
-        # Managed-mint (§5.2b/§5.2c): a mint-capable launcher hands us the harness cli + the native id
-        # and source_descriptor of the transcript it owns; thread them so bind_exchange stamps the
-        # session row (cli + descriptor) before cursor registration and the tailer tails the owned
-        # path. Set by claude and codex managed launches; absent for un-owned (external-adoption) runs.
-        run_facts = build_run_facts(
-            settings.run_id,
-            settings.cwd,
-            datetime.now(UTC).isoformat(),
-            cli=settings.cli,
-            home_dir=settings.home_dir,
-            owned_native_session_id=settings.owned_native_session_id,
-            owned_source_descriptor=settings.owned_source_descriptor,
+        loop.create_task(
+            _register_owned_cursor(index_tailer, settings, started_at),
+            name="register-owned-transcript-cursor",
         )
-        on_binding = _make_cursor_registrar(index_tailer, loop)
-        set_exchange_sink(make_index_sink(None, run_facts, on_binding, storage_root=storage_root))
     except Exception:
-        logger.exception(
-            "tier-2 capture failed to start; wire/transcript capture disabled this run"
-        )
+        logger.exception("session capture failed to start; transcript capture disabled this run")
         session_writer = index_tailer = None
 
     app = create_app()
@@ -177,10 +197,7 @@ async def close_runtime(runtime: AddonRuntime | None) -> None:
     await bp.clear_all()
     if runtime is None:
         return
-    # Tier-2 (slices 2/4): unregister the sink, then stop the tailer FIRST (its final drain submits
-    # any last turns) and drain + checkpoint + close the writer. Both join background threads, so
-    # run them off the event loop.
-    clear_exchange_sink()
+    # Stop the tailer FIRST. Its final drain submits any last events before the writer closes.
     loop = asyncio.get_running_loop()
     tailer = runtime.index_tailer
     if tailer is not None:

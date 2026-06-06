@@ -19,7 +19,6 @@ from transport_matters.index.adapters.base import (
     TurnContext,
 )
 from transport_matters.index.adapters.codex import CodexAdapter
-from transport_matters.index.blocks import identity_canonical
 from transport_matters.index.conftest import make_binding
 from transport_matters.index.sessions import SESSION_NS, synth_session_id
 from transport_matters.ir import (
@@ -105,8 +104,6 @@ class TestNormalize:
         assert isinstance(thinking, ThinkingBlock)
         assert thinking.text == "Planning the run"
         assert thinking.provider_data == {"encrypted_content": "ENC-SECRET-PAYLOAD"}
-        # encrypted_content lives in provider_data → stripped from identity (cross-stream dedup, §3.3)
-        assert "ENC-SECRET-PAYLOAD" not in identity_canonical(thinking)
 
     def test_function_call_tool_use_parses_arguments(self) -> None:
         call = _turns()[3]

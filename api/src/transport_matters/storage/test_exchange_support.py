@@ -1,4 +1,4 @@
-"""Synthetic IndexEntry / ExchangeArtifacts builders for the tier-2 ingest + sink tests."""
+"""Synthetic IndexEntry and ExchangeArtifacts builders for post-persist sink tests."""
 
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING

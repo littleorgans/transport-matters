@@ -6,7 +6,7 @@ holding the durable ``index.jsonl`` marker, and CLI transcript files in a separa
 tailer byte-tails (the live read source is unchanged — we only TEE a copy).
 
 Proves the acceptance bullets short of launching a real CLI (that is Stuart's road-test):
-  * a poll writes BOTH a tier-2 transcript job AND the tier-1 snapshot,
+  * a poll writes BOTH session events AND the tier-1 snapshot,
   * the snapshot is byte-faithful to the consumed CLI file, INCLUDING the non-conversational records
     (codex ``session_meta``) that ``normalize`` drops,
   * the snapshot lands under the run dir and ``iter_run_dirs`` finds that run dir,
@@ -22,16 +22,15 @@ from typing import TYPE_CHECKING
 from transport_matters.index.adapters.base import FileTailSource, SessionBinding
 from transport_matters.index.adapters.claude import ClaudeAdapter
 from transport_matters.index.adapters.codex import CodexAdapter
-from transport_matters.index.maintenance import iter_run_dirs
 from transport_matters.index.sessions import synth_session_id
 from transport_matters.index.tailer import TailCursor, TranscriptTailer
+from transport_matters.session.backfill import iter_run_dirs
+from transport_matters.session.ingest import EventWrite, build_event
 from transport_matters.storage.disk_layout import DiskStorageLayout
 from transport_matters.storage.transcript_snapshot import make_transcript_snapshot_writer
 
 if TYPE_CHECKING:
     from pathlib import Path
-
-    from transport_matters.index.writer import IndexJob
 
 _RUN = "run1"
 _CLAUDE_SID = "019e0000-0000-7000-8000-0000000c1a0d"
@@ -124,8 +123,12 @@ def test_claude_and_codex_poll_writes_tier1_snapshot_byte_faithfully(tmp_path: P
     codex_file = cli_home / "rollout.jsonl"
     codex_file.write_text(_codex_session_meta() + "\n" + _codex_response_item("hello") + "\n")
 
-    submitted: list[IndexJob] = []
-    tailer = TranscriptTailer(submitted.append, snapshot=make_transcript_snapshot_writer(run_dir))
+    submitted: list[EventWrite] = []
+    tailer = TranscriptTailer(
+        build_record=build_event,
+        submit_batch=lambda _binding, events: submitted.extend(events),
+        snapshot=make_transcript_snapshot_writer(run_dir),
+    )
     tailer.register(
         TailCursor(
             binding=_claude_binding(),
@@ -143,8 +146,8 @@ def test_claude_and_codex_poll_writes_tier1_snapshot_byte_faithfully(tmp_path: P
 
     tailer.poll()
 
-    # BOTH tiers: tier-2 turns were submitted AND tier-1 snapshots were written.
-    assert [job.kind for job in submitted] == ["transcript", "transcript"]  # claude + codex turn
+    # Session events were submitted and tier-1 snapshots were written.
+    assert [write.event.kind for write in submitted] == ["turn", "meta", "turn"]
 
     claude_snap = layout.transcript_snapshot_path(_CLAUDE_SID)
     codex_snap = layout.transcript_snapshot_path(synth_session_id(_RUN, "codex", _CODEX_NATIVE))
@@ -171,7 +174,9 @@ def test_retail_from_fresh_process_does_not_duplicate_snapshot(tmp_path: Path) -
         # A fresh process: new tailer + new cursor at byte_offset=0, re-reading the WHOLE CLI file,
         # but reusing the durable snapshot file (a new writer over the same run dir).
         tailer = TranscriptTailer(
-            lambda _job: None, snapshot=make_transcript_snapshot_writer(run_dir)
+            build_record=build_event,
+            submit_batch=lambda _binding, _events: None,
+            snapshot=make_transcript_snapshot_writer(run_dir),
         )
         tailer.register(
             TailCursor(
@@ -192,17 +197,21 @@ def test_retail_from_fresh_process_does_not_duplicate_snapshot(tmp_path: Path) -
     assert first == codex_file.read_bytes()
 
 
-def test_snapshot_dir_removed_midrun_halts_tier2_advance(tmp_path: Path) -> None:
+def test_snapshot_dir_removed_midrun_halts_session_event_advance(tmp_path: Path) -> None:
     # Probe (b): if transcripts/ is lost mid-run, the next poll's snapshot hits a gap and RAISES;
-    # poll() catches it, so byte_offset does NOT advance and the new turn is NOT submitted — tier-2
-    # never gets ahead of a snapshot hole. Loud (logged), not a silent advance.
+    # poll() catches it, so byte_offset does NOT advance and the new turn is NOT submitted.
+    # Session events never get ahead of a snapshot hole. Loud (logged), not a silent advance.
     workspaces_root = tmp_path / "workspaces"
     run_dir = _run_dir(workspaces_root)
     codex_file = tmp_path / "rollout.jsonl"
     codex_file.write_text(_codex_session_meta() + "\n" + _codex_response_item("first") + "\n")
 
-    submitted: list[IndexJob] = []
-    tailer = TranscriptTailer(submitted.append, snapshot=make_transcript_snapshot_writer(run_dir))
+    submitted: list[EventWrite] = []
+    tailer = TranscriptTailer(
+        build_record=build_event,
+        submit_batch=lambda _binding, events: submitted.extend(events),
+        snapshot=make_transcript_snapshot_writer(run_dir),
+    )
     tailer.register(
         TailCursor(
             binding=_codex_binding(),
@@ -212,7 +221,7 @@ def test_snapshot_dir_removed_midrun_halts_tier2_advance(tmp_path: Path) -> None
     )
 
     tailer.poll()  # first turn captured + snapshotted
-    assert [job.kind for job in submitted] == ["transcript"]
+    assert [write.event.kind for write in submitted] == ["meta", "turn"]
     (cursor,) = tailer._snapshot()
     advanced = cursor.byte_offset
     assert advanced > 0
@@ -223,5 +232,5 @@ def test_snapshot_dir_removed_midrun_halts_tier2_advance(tmp_path: Path) -> None
 
     tailer.poll()  # gap → snapshot raises → poll() swallows → NO advance, NO new submit
 
-    assert [job.kind for job in submitted] == ["transcript"]  # 'second' NOT submitted past the hole
+    assert [write.event.kind for write in submitted] == ["meta", "turn"]
     assert cursor.byte_offset == advanced  # byte_offset held at the un-snapshotted boundary

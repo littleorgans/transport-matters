@@ -5,7 +5,7 @@ Codex puts NO top-level ``session_id`` in ``client_metadata``; the id lives nest
 ``request_ir.metadata.session_id`` directly, so the parser must resolve it from the turn-metadata.
 Verified on a real capture: the turn-metadata ``thread_id`` equals the rollout ``payload.id``
 (``019e9553-...``), so this is the id the wire side must correlate on. Without this, every codex
-``wire_exchange`` row gets ``session_id`` NULL and never joins its transcript.
+exchange metadata gets ``session_id`` NULL and never joins its transcript.
 """
 
 import json

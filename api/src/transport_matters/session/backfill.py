@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
@@ -12,7 +13,6 @@ from transport_matters.index.adapters.base import (
     SessionBinding,
     decode_source_descriptor,
 )
-from transport_matters.index.maintenance import RunDir, iter_run_dirs
 from transport_matters.index.sessions import synth_session_id
 from transport_matters.index.tailer import iter_complete_records
 from transport_matters.storage.disk_layout import DiskStorageLayout
@@ -23,6 +23,21 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 ReplayRecord = tuple[SessionBinding, RawRecord, int, FileTailSource]
+_RUN_INDEX_GLOB = "*/*/*/index.jsonl"
+
+
+@dataclass(frozen=True)
+class RunDir:
+    """A durable run directory discovered by ``iter_run_dirs``."""
+
+    root: Path
+    run_id: str
+
+
+def iter_run_dirs(workspaces_root: Path) -> Iterator[RunDir]:
+    """Yield every durable run dir under *workspaces_root*."""
+    for index_path in workspaces_root.glob(_RUN_INDEX_GLOB):
+        yield RunDir(root=index_path.parent, run_id=index_path.parent.name)
 
 
 def replay_transcript_run(run_dir: RunDir | Path) -> Iterator[ReplayRecord]:

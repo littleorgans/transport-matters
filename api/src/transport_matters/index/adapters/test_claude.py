@@ -13,7 +13,6 @@ from transport_matters.index.adapters.base import (
     TurnContext,
 )
 from transport_matters.index.adapters.claude import ClaudeAdapter, claude_transcript_source
-from transport_matters.index.blocks import identity_canonical
 from transport_matters.index.conftest import make_binding
 from transport_matters.ir import (
     ImageBlock,
@@ -78,8 +77,6 @@ class TestNormalize:
         }
         assert isinstance(text, TextBlock) and text.text == "Running them now."
         assert isinstance(tool_use, ToolUseBlock) and tool_use.name == "Bash"
-        # The signature lives in provider_data → stripped from identity (cross-stream dedup, §3.3).
-        assert "sig-abc" not in identity_canonical(thinking)
 
     def test_tool_result_image_and_unknown(self) -> None:
         turns = [t for t in _normalize_fixture() if t is not None]
@@ -173,7 +170,7 @@ class TestBindLocate:
         # claude slugs the cwd by replacing EVERY non-alphanumeric char (/, ., _) with '-', case
         # preserved (VERIFIED on real claude 2.1.165: /private/tmp/tm_slug.probe_AB9 ->
         # -private-tmp-tm-slug-probe-AB9). A naive '/'->'-' leaves the dot/underscore, so the tailer
-        # byte-tails a path claude never wrote → transcript_turn=0 (caught only on a real run).
+        # byte-tails a path claude never wrote, caught only on a real run.
         source = claude_transcript_source(
             "/private/tmp/tm_slug.probe_AB9", "sid", projects_root=tmp_path
         )
