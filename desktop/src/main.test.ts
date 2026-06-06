@@ -254,6 +254,30 @@ describe("desktop main process", () => {
     expect(stopBackend).toHaveBeenCalledWith(backend);
   });
 
+  it("opens a Python supplied hosted route without backend startup", async () => {
+    const createWindow = vi.fn(
+      () => ({ loadURL, once, show }) as unknown as BrowserWindow,
+    );
+    const quit = vi.fn();
+    const whenReady = vi.fn(async () => undefined);
+    const on = vi.fn();
+
+    const { registerHostedDesktopLifecycle } = await import("./main.js");
+
+    registerHostedDesktopLifecycle({
+      appSource: { on, quit, whenReady },
+      createWindow,
+      routeUrl: "http://127.0.0.1:9901/canvas",
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+
+    expect(createWindow).toHaveBeenCalledWith({
+      rendererUrl: "http://127.0.0.1:9901/canvas",
+    });
+    expect(on).toHaveBeenCalledWith("activate", expect.any(Function));
+    expect(on).toHaveBeenCalledWith("window-all-closed", expect.any(Function));
+  });
+
   it("records package smoke readiness after creating the main window", async () => {
     const createWindow = vi.fn(
       () => ({ loadURL, once, show }) as unknown as BrowserWindow,

@@ -28,9 +28,10 @@ _ROOT_HELP = dedent(f"""\
     Context control plane for coding agents
 
     Commands
-      claude    Run proxy + Claude Code together (one command, one session)
-      codex     Run proxy + Codex together (ChatGPT transport path)
-      list      List live Transport Matters instances
+  claude    Run proxy + Claude Code together (one command, one session)
+  codex     Run proxy + Codex together (ChatGPT transport path)
+  desktop   Run an interactive agent and open the Electron canvas
+  list      List live Transport Matters instances
       doctor    Diagnose the local environment
       paths     Show storage and package locations
       version   Print installed version
@@ -41,7 +42,7 @@ _ROOT_HELP = dedent(f"""\
       $ {CLI_COMMAND} codex               # proxy + codex in cwd
       $ {CLI_COMMAND} claude --no-claude  # proxy only
 
-    Environment
+  Environment
       TRANSPORT_MATTERS_PROXY_PORT       pin proxy port (default: kernel-allocated)
       TRANSPORT_MATTERS_WEB_PORT         pin web UI port (default: kernel-allocated)
       TRANSPORT_MATTERS_STORAGE_DIR      addon/paths/doctor data dir; launches use per-run storage
@@ -154,7 +155,48 @@ _CODEX_HELP = dedent(f"""\
       $ {CLI_COMMAND} codex --no-codex
       $ {CLI_COMMAND} codex --home-dir ~/.codex-test
       $ {CLI_COMMAND} codex --codex-bin /opt/homebrew/bin/codex
-      $ {CLI_COMMAND} codex --print-command
+    $ {CLI_COMMAND} codex --print-command
+""")
+
+_DESKTOP_HELP = dedent(f"""\
+    Start the Transport Matters desktop canvas.
+
+    Starts the selected agent in this terminal, exactly like the `claude`
+    or `codex` command, then opens the Electron canvas as a detached viewer
+    pointed at the same backend. The default agent is Claude.
+
+    Options
+          --agent claude|codex   Agent to launch (default: claude)
+          --work-dir PATH        Working dir for the agent and canvas (default: cwd)
+      -p, --proxy-port INT       Proxy listener port (default: kernel-allocated free port)
+      -w, --web-port INT         Web UI port (default: kernel-allocated free port)
+      -d, --storage-dir PATH     Data directory (default ~/.transport-matters/)
+          --home-dir PATH        Agent home for config and transcripts
+          --debug                Verbose mitmproxy output
+          --print-command        Print the child invocations and exit
+
+    Claude options
+      -u, --upstream URL         Upstream provider URL (default https://api.anthropic.com)
+          --claude-bin PATH      Path to Claude Code (default: `claude` on PATH)
+          --no-claude            Run proxy only; skip spawning Claude Code
+          --no-system-prompt     Skip the auto-injected Transport Matters system prompt
+
+    Codex options
+          --codex-bin PATH       Path to Codex (default: `codex` on PATH)
+          --no-codex             Run proxy only; skip spawning Codex
+          --force-http-fallback  Test mode: force the HTTPS Responses path
+      -h, --help                 Show this message and exit
+
+    Pass-through
+      Anything after `--` is forwarded verbatim to the selected agent.
+        $ {CLI_COMMAND} desktop -- --model sonnet
+        $ {CLI_COMMAND} desktop --agent codex -- exec "fix the failing test"
+
+    Examples
+      $ {CLI_COMMAND} desktop
+      $ {CLI_COMMAND} desktop --work-dir ~/my-project
+      $ {CLI_COMMAND} desktop --agent codex
+      $ {CLI_COMMAND} desktop --proxy-port 9000 --web-port 9001
 """)
 
 _DOCTOR_HELP = dedent(f"""\
@@ -219,6 +261,7 @@ _LIST_HELP = dedent(f"""\
 _SUBCOMMAND_HELP = {
     "claude": _CLAUDE_HELP,
     "codex": _CODEX_HELP,
+    "desktop": _DESKTOP_HELP,
     "list": _LIST_HELP,
     "doctor": _DOCTOR_HELP,
     "paths": _PATHS_HELP,
