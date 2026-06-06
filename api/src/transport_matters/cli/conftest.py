@@ -84,24 +84,33 @@ def tmp_storage(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     return storage
 
 
-@pytest.fixture
-def spy_run_client_children(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
-    """Replace ``_run_client_children`` so ``start`` never forks.
+@pytest.fixture(autouse=True)
+def _stub_launch_preflight(monkeypatch: pytest.MonkeyPatch) -> None:
+    """No-op the shared session-store preflight for all CLI tests.
 
-    The shared retry harness looks up ``_run_client_children`` via
-    runner's own module namespace, so that is where the patch must land.
-
-    Also neutralises the shared session-store preflight (which would otherwise
-    hard-block these launch tests without a reachable Postgres). Each launch
-    lifecycle imports the name into its own module, so the patch lands there.
-    The preflight has its own dedicated tests in ``test_launch_preflight``.
+    The launch lifecycles (``run_start``/``run_codex``) hard-block when the session
+    store is unreachable. These CLI tests exercise launch *mechanics*, not the DB gate,
+    and must not require a live runtime Postgres — CI provides only the TEST database, so
+    any test that invokes a real launch (without ``--print-command``) would otherwise
+    exit 2 with "cannot reach the session store". Each lifecycle imports the name into its
+    own module, so the patch lands there. The gate itself is covered directly in
+    ``test_launch_preflight.py`` and end-to-end in the integration launch smoke.
     """
-    spy = MagicMock()
-    monkeypatch.setattr("transport_matters.cli.runner._run_client_children", spy)
     monkeypatch.setattr(
         "transport_matters.cli.start_cmd.preflight_session_store_or_exit", lambda: None
     )
     monkeypatch.setattr(
         "transport_matters.cli.codex_cmd.preflight_session_store_or_exit", lambda: None
     )
+
+
+@pytest.fixture
+def spy_run_client_children(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
+    """Replace ``_run_client_children`` so ``start`` never forks.
+
+    The shared retry harness looks up ``_run_client_children`` via
+    runner's own module namespace, so that is where the patch must land.
+    """
+    spy = MagicMock()
+    monkeypatch.setattr("transport_matters.cli.runner._run_client_children", spy)
     return spy

@@ -144,6 +144,15 @@ just install-local
 
 That gives you a global `transport-matters` command backed by this checkout, with `mitmdump` in the same tool environment.
 
+The test suite needs a local Postgres for the session store. Start it once, then run the suite:
+
+```bash
+docker compose up -d   # local Postgres on 127.0.0.1:55432
+cd api && just test
+```
+
+`just test`/`just ci` default `TRANSPORT_MATTERS_TEST_DATABASE_URL` to that local Postgres; export your own to override.
+
 Then from any target project:
 
 ```bash
