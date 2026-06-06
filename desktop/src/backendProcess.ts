@@ -72,6 +72,7 @@ export function buildBackendLaunch(
   return {
     args: [
       options.client,
+      "--work-dir",
       options.workspaceDir,
       "--web-port",
       webPort,

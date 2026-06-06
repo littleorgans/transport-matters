@@ -152,6 +152,86 @@ class LaunchRetryExhaustedOutcome:
 LaunchOutcome = LaunchExitOutcome | LaunchBindFailureOutcome
 
 
+def _bind_backend_ready_hook(
+    hook: Callable[[dict[str, str], Path, ManagedClient | None, int, int], None],
+    *,
+    launch_env: dict[str, str],
+    resolved_storage: Path,
+    client: ManagedClient | None,
+    proxy_port: int,
+    web_port: int,
+) -> Callable[[], None]:
+    def notify_backend_ready() -> None:
+        hook(launch_env, resolved_storage, client, proxy_port, web_port)
+
+    return notify_backend_ready
+
+
+def _notify_backend_ready(
+    sup: ProcessSupervisor,
+    on_backend_ready: Callable[[], None],
+) -> None:
+    try:
+        on_backend_ready()
+    except Exception:
+        sup.terminate_all()
+        raise
+
+
+def _wait_web_ui_ready_for_hook(
+    *,
+    sup: ProcessSupervisor,
+    proxy_port: int,
+    web_port: int,
+    log_path: Path | None,
+) -> LaunchOutcome | None:
+    if wait_for_port_ready("127.0.0.1", web_port):
+        return None
+    sup.terminate_all()
+    if log_path is not None:
+        failing = failing_ports_from_log(log_path, (proxy_port, web_port))
+        if failing is not None:
+            return LaunchBindFailureOutcome(
+                BindFailure(
+                    proxy_port=proxy_port,
+                    web_port=web_port,
+                    failing_ports=failing,
+                    log_path=log_path,
+                )
+            )
+    return LaunchExitOutcome(
+        exit_code=1,
+        error="web UI did not come up within 5s.",
+        log_path=log_path,
+    )
+
+
+def _proxy_not_ready_outcome(
+    *,
+    sup: ProcessSupervisor,
+    proxy_port: int,
+    web_port: int,
+    log_path: Path,
+) -> LaunchOutcome:
+    failing = failing_ports_from_log(log_path, (proxy_port, web_port))
+    if failing is not None:
+        sup.terminate_all()
+        return LaunchBindFailureOutcome(
+            BindFailure(
+                proxy_port=proxy_port,
+                web_port=web_port,
+                failing_ports=failing,
+                log_path=log_path,
+            )
+        )
+    sup.terminate_all()
+    return LaunchExitOutcome(
+        exit_code=1,
+        error="mitmdump did not come up within 5s.",
+        log_path=log_path,
+    )
+
+
 def format_retry_exhaustion(outcome: LaunchRetryExhaustedOutcome) -> list[str]:
     attempted_str = ", ".join(f"({p}, {w})" for p, w in outcome.attempted)
     lines = [
@@ -299,6 +379,8 @@ def run_client_with_retry(
     print_banner_for: Callable[[int, int], None],
     write_manifest_for: Callable[[int, int], None],
     resolved_storage: Path,
+    on_backend_ready: Callable[[dict[str, str], Path, ManagedClient | None, int, int], None]
+    | None = None,
 ) -> None:
     """Run the spawn lifecycle with bounded allocate-→-spawn retry.
 
@@ -323,6 +405,16 @@ def run_client_with_retry(
             )
         print_banner_for(proxy_port, web_port)
         mitmdump_argv, child_env, client = build_invocation(proxy_port, web_port)
+        notify_backend_ready = None
+        if on_backend_ready is not None:
+            notify_backend_ready = _bind_backend_ready_hook(
+                on_backend_ready,
+                launch_env=child_env,
+                resolved_storage=resolved_storage,
+                client=client,
+                proxy_port=proxy_port,
+                web_port=web_port,
+            )
         try:
             _run_client_children(
                 mitmdump_argv=mitmdump_argv,
@@ -331,6 +423,7 @@ def run_client_with_retry(
                 client=client,
                 proxy_port=proxy_port,
                 web_port=web_port,
+                on_backend_ready=notify_backend_ready,
             )
             return
         except BindFailure as exc:
@@ -400,6 +493,7 @@ def _run_client_children(
     client: ManagedClient | None,
     proxy_port: int,
     web_port: int,
+    on_backend_ready: Callable[[], None] | None = None,
 ) -> None:
     """Run child processes and translate the structured outcome to CLI exit."""
     outcome = run_client_children_until_outcome(
@@ -409,6 +503,7 @@ def _run_client_children(
         client=client,
         proxy_port=proxy_port,
         web_port=web_port,
+        on_backend_ready=on_backend_ready,
     )
     _raise_launch_outcome(outcome)
 
@@ -431,6 +526,7 @@ def run_client_children_until_outcome(
     client: ManagedClient | None,
     proxy_port: int,
     web_port: int,
+    on_backend_ready: Callable[[], None] | None = None,
 ) -> LaunchOutcome:
     """Own both child processes end to end.
 
@@ -461,6 +557,16 @@ def run_client_children_until_outcome(
         if client is None:
             # Proxy-only. mitmdump owns the terminal so its output is live.
             sup.spawn("mitmdump", mitmdump_argv, env=mitmdump_env, foreground=True)
+            if on_backend_ready is not None:
+                outcome = _wait_web_ui_ready_for_hook(
+                    sup=sup,
+                    proxy_port=proxy_port,
+                    web_port=web_port,
+                    log_path=None,
+                )
+                if outcome is not None:
+                    return outcome
+                _notify_backend_ready(sup, on_backend_ready)
             name, rc = sup.wait_one("mitmdump")
             if name == SIGNAL_EXIT:
                 sup.terminate_all()
@@ -479,21 +585,10 @@ def run_client_children_until_outcome(
             # Distinguish "port stolen between allocate and spawn"
             # (retryable upstairs) from "config is broken" (don't retry).
             # The log scan returns None for non-bind failures.
-            failing = failing_ports_from_log(mitmdump_log, (proxy_port, web_port))
-            if failing is not None:
-                sup.terminate_all()
-                return LaunchBindFailureOutcome(
-                    BindFailure(
-                        proxy_port=proxy_port,
-                        web_port=web_port,
-                        failing_ports=failing,
-                        log_path=mitmdump_log,
-                    )
-                )
-            sup.terminate_all()
-            return LaunchExitOutcome(
-                exit_code=1,
-                error="mitmdump did not come up within 5s.",
+            return _proxy_not_ready_outcome(
+                sup=sup,
+                proxy_port=proxy_port,
+                web_port=web_port,
                 log_path=mitmdump_log,
             )
 
@@ -503,6 +598,17 @@ def run_client_children_until_outcome(
         if sup.received_signal is not None:
             sup.terminate_all()
             return LaunchExitOutcome(0)
+
+        if on_backend_ready is not None:
+            outcome = _wait_web_ui_ready_for_hook(
+                sup=sup,
+                proxy_port=proxy_port,
+                web_port=web_port,
+                log_path=mitmdump_log,
+            )
+            if outcome is not None:
+                return outcome
+            _notify_backend_ready(sup, on_backend_ready)
 
         # Spawn the client attached to a real PTY. The supervisor falls
         # back to inherited stdio with a warning if our stdin isn't a

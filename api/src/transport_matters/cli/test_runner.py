@@ -213,6 +213,50 @@ def test_run_client_children_handles_custom_client_exit_then_proxy_lifecycle(
     fake_sup.terminate_all.assert_called_once()
 
 
+def test_run_client_children_backend_ready_hook_runs_before_client_spawn(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: list[str] = []
+    fake_sup = MagicMock()
+    fake_sup.received_signal = None
+    fake_sup.wait_any.return_value = ("sample-client", 0)
+    fake_sup.wait_one.return_value = ("mitmdump", 0)
+    fake_sup.spawn.side_effect = lambda name, *_args, **_kwargs: events.append(f"spawn:{name}")
+
+    def _ready(_host: str, port: int) -> bool:
+        events.append(f"ready:{port}")
+        return True
+
+    monkeypatch.setattr("transport_matters.cli.runner.ProcessSupervisor", lambda: fake_sup)
+    monkeypatch.setattr("transport_matters.cli.runner.wait_for_port_ready", _ready)
+
+    outcome = run_client_children_until_outcome(
+        mitmdump_argv=["/bin/mitmdump"],
+        mitmdump_env={},
+        storage_dir=tmp_path,
+        client=ManagedClient(
+            name="sample-client",
+            display_name="Sample Client",
+            argv=["/bin/sample-client"],
+            env={},
+            cwd=tmp_path,
+        ),
+        proxy_port=8787,
+        web_port=8788,
+        on_backend_ready=lambda: events.append("hook"),
+    )
+
+    assert outcome == LaunchExitOutcome(0)
+    assert events[:5] == [
+        "spawn:mitmdump",
+        "ready:8787",
+        "ready:8788",
+        "hook",
+        "spawn:sample-client",
+    ]
+
+
 def test_run_client_children_proxy_only_runs_mitmdump_in_foreground(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

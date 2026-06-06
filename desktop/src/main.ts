@@ -54,11 +54,21 @@ export interface AppReadySource {
   whenReady(): Promise<void>;
 }
 
+export interface AppWindowLifecycleSource extends AppReadySource {
+  on(event: "activate" | "window-all-closed", listener: () => void): void;
+}
+
 export interface DesktopPackageSmokeOptions {
   appSource?: AppReadySource;
   createWindow?: (options: MainWindowOptions) => BrowserWindow;
   env?: NodeJS.ProcessEnv;
   writeFile?: (path: string, data: string) => void;
+}
+
+export interface HostedDesktopLifecycleOptions {
+  appSource?: AppWindowLifecycleSource;
+  createWindow?: (options: MainWindowOptions) => BrowserWindow;
+  routeUrl: string;
 }
 
 export function resolvePreloadPath(): string {
@@ -147,6 +157,24 @@ export function bindBackendQuitCleanup(
   });
 }
 
+export function bindHostedWindowLifecycle(
+  appSource: AppWindowLifecycleSource,
+  rendererUrl: string,
+  createWindow: (options: MainWindowOptions) => BrowserWindow = createMainWindow,
+): void {
+  appSource.on("activate", () => {
+    if (BrowserWindow.getAllWindows().length === 0) {
+      createWindow({ rendererUrl });
+    }
+  });
+
+  appSource.on("window-all-closed", () => {
+    if (process.platform !== "darwin") {
+      appSource.quit();
+    }
+  });
+}
+
 export function showBackendStartupFailure(
   error: unknown,
   quitApp = app.quit.bind(app),
@@ -163,6 +191,7 @@ export function registerAppLifecycle(): void {
 
   void app.whenReady().then(() => {
     const startupOptions = resolveBackendStartupOptions();
+    const rendererUrl = rendererUrlForPort(startupOptions.webPort);
     void startBackendAndCreateWindow(startupOptions, {
       launchBackend: (options) => {
         backend = launchBackendProcess(options);
@@ -170,20 +199,20 @@ export function registerAppLifecycle(): void {
       },
     }).catch(showBackendStartupFailure);
 
-    app.on("activate", () => {
-      if (BrowserWindow.getAllWindows().length === 0) {
-        createMainWindow({
-          rendererUrl: rendererUrlForPort(startupOptions.webPort),
-        });
-      }
-    });
+    bindHostedWindowLifecycle(app, rendererUrl);
   });
+}
 
-  app.on("window-all-closed", () => {
-    if (process.platform !== "darwin") {
-      app.quit();
-    }
+export function registerHostedDesktopLifecycle(
+  options: HostedDesktopLifecycleOptions,
+): void {
+  const appSource = options.appSource ?? app;
+  const createWindow = options.createWindow ?? createMainWindow;
+
+  void appSource.whenReady().then(() => {
+    createWindow({ rendererUrl: options.routeUrl });
   });
+  bindHostedWindowLifecycle(appSource, options.routeUrl, createWindow);
 }
 
 export function registerDesktopPackageSmoke(
@@ -222,6 +251,12 @@ export function registerDesktopLifecycleFromEnv(
 ): void {
   if (env[ENV.DESKTOP_PACKAGE_SMOKE] === "1") {
     registerDesktopPackageSmoke({ env });
+    return;
+  }
+
+  const routeUrl = env[ENV.DESKTOP_ROUTE_URL];
+  if (routeUrl !== undefined) {
+    registerHostedDesktopLifecycle({ routeUrl });
     return;
   }
 

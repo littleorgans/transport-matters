@@ -2,7 +2,7 @@
 
 This package is the `[project.scripts]` entry point installed by `pip` /
 `uv tool install` / the `install.sh` bootstrap. It exposes two launch
-commands (`claude`, `codex`) plus support commands (`doctor`, `paths`,
+commands (`claude`, `codex`, `desktop`) plus support commands (`doctor`, `paths`,
 `list`, `version`).
 
 Module layout:
@@ -12,6 +12,7 @@ Module layout:
   runner.py       — supervisor-driven child lifecycles
   start_cmd.py    — `transport-matters claude` implementation
   codex_cmd.py    — `transport-matters codex` implementation
+  desktop_cmd.py  — `transport-matters desktop` validation + Electron viewer hook
   launch_runtime.py — shared launch plumbing
   __init__.py     — typer app, command registration, and re-exports
 
@@ -21,17 +22,19 @@ package scope so existing imports and most test monkeypatch paths
 remain valid.
 """
 
+from __future__ import annotations
+
 import shutil
 import sysconfig
 from functools import partial
 from importlib.resources import files
 from pathlib import Path  # noqa: TC003
-from typing import TYPE_CHECKING, Annotated
+from typing import TYPE_CHECKING, Annotated, TypedDict
 
 import typer
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
+    from collections.abc import Callable, Iterable
     from importlib.resources.abc import Traversable
 
 from transport_matters import __version__
@@ -43,11 +46,13 @@ from transport_matters.workspace import run_root, workspace_id, workspace_root
 
 from .banner import print_banner, print_client_banner
 from .codex_cmd import run_codex
+from .desktop_cmd import prepare_desktop_launch
 from .diagnose import run_doctor
 from .help import PlainCommand, PlainGroup
 from .identity import CLI_COMMAND
 from .instances import list_instances as list_instances_impl
 from .launch_options import (  # noqa: TC001
+    AgentOption,
     ClaudeBinOption,
     ClaudeUpstreamOption,
     CodexBinOption,
@@ -71,6 +76,23 @@ from .prompt import inject_system_prompt, user_supplied_system_prompt
 from .runner import BindFailure, run_children, run_client_with_retry
 from .start_cmd import run_start
 from .trust import resolve_codex_ca_certificate
+
+
+class _SharedDesktopLaunchKwargs(TypedDict):
+    directory: Path | None
+    proxy_port: int | None
+    web_port: int | None
+    storage_dir: Path | None
+    home_dir: Path | None
+    debug: bool
+    print_command: bool
+    require_addon: Callable[[], Traversable]
+    resolve_mitmdump: Callable[[], str | None]
+    which: Callable[[str], str | None]
+    port_in_use: Callable[[int], bool]
+    allocate_port_pair: Callable[[], tuple[int, int]]
+    run_client_with_retry: Callable[..., None]
+
 
 __all__ = [
     "SIGNAL_EXIT",
@@ -318,6 +340,91 @@ def codex(
         resolve_codex_ca_certificate=resolve_codex_ca_certificate,
         print_client_banner=print_client_banner,
         run_client_with_retry=run_client_with_retry,
+    )
+
+
+@main.command(
+    name="desktop",
+    cls=PlainCommand,
+    no_args_is_help=False,
+    context_settings={
+        "help_option_names": ["-h", "--help"],
+        "allow_extra_args": True,
+        "ignore_unknown_options": True,
+    },
+)
+def desktop(
+    ctx: typer.Context,
+    agent: AgentOption = "claude",
+    work_dir: WorkDirOption = None,
+    proxy_port: ProxyPortOption = None,
+    web_port: WebPortOption = None,
+    storage_dir: StorageDirOption = None,
+    home_dir: HomeDirOption = None,
+    debug: DebugOption = False,
+    print_command: PrintCommandOption = False,
+    upstream: ClaudeUpstreamOption = "https://api.anthropic.com",
+    claude_bin: ClaudeBinOption = None,
+    no_claude: NoClaudeOption = False,
+    no_system_prompt: NoSystemPromptOption = False,
+    codex_bin: CodexBinOption = None,
+    no_codex: NoCodexOption = False,
+    force_http_fallback: ForceHttpFallbackOption = False,
+) -> None:
+    """Start the canvas desktop viewer alongside an interactive agent."""
+    passthrough = _split_passthrough(ctx)
+    plan = prepare_desktop_launch(
+        ctx=ctx,
+        agent=agent,
+        base_run_client_with_retry=run_client_with_retry,
+        launch_viewer=not print_command,
+    )
+    resolved_home_dir = _resolve_home_dir_option(
+        home_dir,
+        create=not print_command,
+    )
+    shared_launch_kwargs: _SharedDesktopLaunchKwargs = {
+        "directory": work_dir,
+        "proxy_port": proxy_port,
+        "web_port": web_port,
+        "storage_dir": storage_dir,
+        "home_dir": resolved_home_dir,
+        "debug": debug,
+        "print_command": print_command,
+        "require_addon": _require_addon,
+        "resolve_mitmdump": partial(
+            resolve_mitmdump_executable,
+            which=shutil.which,
+            get_scripts_dir=sysconfig.get_path,
+        ),
+        "which": shutil.which,
+        "port_in_use": port_in_use,
+        "allocate_port_pair": allocate_port_pair,
+        "run_client_with_retry": plan.run_client_with_retry,
+    }
+    if plan.agent == "claude":
+        run_start(
+            **shared_launch_kwargs,
+            claude_passthrough=passthrough,
+            upstream=upstream,
+            claude_bin=claude_bin,
+            no_claude=no_claude,
+            no_system_prompt=no_system_prompt,
+            inject_system_prompt=inject_system_prompt,
+            user_supplied_system_prompt=user_supplied_system_prompt,
+            print_banner=print_banner,
+        )
+        return
+
+    run_codex(
+        **shared_launch_kwargs,
+        codex_passthrough=passthrough,
+        codex_bin=codex_bin,
+        no_codex=no_codex,
+        force_http_fallback=force_http_fallback,
+        require_force_http_fallback_addon=_require_force_http_fallback_addon,
+        resolve_codex_ca_certificate=resolve_codex_ca_certificate,
+        print_client_banner=print_client_banner,
     )
 
 

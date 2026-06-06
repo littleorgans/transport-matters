@@ -37,6 +37,7 @@ describe("backend process launch", () => {
     expect(launch).toEqual({
       args: [
         "claude",
+        "--work-dir",
         "/tmp/workspace",
         "--web-port",
         "9901",
@@ -64,6 +65,7 @@ describe("backend process launch", () => {
 
     expect(launch.args).toEqual([
       "codex",
+      "--work-dir",
       "/tmp/workspace",
       "--web-port",
       "9903",
@@ -93,7 +95,15 @@ describe("backend process launch", () => {
 
     expect(spawnBackend).toHaveBeenCalledWith(
       "transport-matters",
-      ["claude", "/tmp/workspace", "--web-port", "9901", "--proxy-port", "9900"],
+      [
+        "claude",
+        "--work-dir",
+        "/tmp/workspace",
+        "--web-port",
+        "9901",
+        "--proxy-port",
+        "9900",
+      ],
       {
         cwd: "/tmp/workspace",
         env: {
