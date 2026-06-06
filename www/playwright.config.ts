@@ -1,7 +1,15 @@
 import { defineConfig, devices } from "@playwright/test";
 
 const DEV_SERVER_URL = "http://127.0.0.1:4173";
-const DEV_SERVER_COMMAND = "pnpm dev --host 127.0.0.1 --port 4173 --strictPort";
+const USE_PREVIEW_SERVER =
+  process.env.PLAYWRIGHT_USE_PREVIEW === "1" ||
+  process.argv.some(
+    (arg, index, args) =>
+      arg === "--project=perf" || (arg === "--project" && args[index + 1] === "perf"),
+  );
+const DEV_SERVER_COMMAND = USE_PREVIEW_SERVER
+  ? "pnpm build && pnpm preview --host 127.0.0.1 --port 4173 --strictPort"
+  : "pnpm dev --host 127.0.0.1 --port 4173 --strictPort";
 
 export default defineConfig({
   testDir: "./tests",
@@ -30,12 +38,13 @@ export default defineConfig({
 
     // ── Visual regression — chromium only to keep snapshots reproducible ──
     { name: "visual", testDir: "./tests/visual", use: { ...devices["Desktop Chrome"] } },
+    { name: "perf", testDir: "./tests/perf", use: { ...devices["Desktop Chrome"] } },
   ],
   webServer: {
     // Use a repo-specific strict port so Playwright never "reuses" an
     // unrelated Vite app already listening on the default 5173.
     command: DEV_SERVER_COMMAND,
     url: DEV_SERVER_URL,
-    reuseExistingServer: !process.env.CI,
+    reuseExistingServer: !process.env.CI && !USE_PREVIEW_SERVER,
   },
 });

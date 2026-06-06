@@ -85,6 +85,14 @@ async function requestJson<T>(
   return (await res.json()) as T;
 }
 
+export async function requestApiJson<T>(
+  path: string,
+  fallback: string,
+  init?: RequestInit,
+): Promise<T> {
+  return requestJson<T>(path, init, fallback);
+}
+
 async function requestVoid(
   path: string,
   init: RequestInit | undefined,

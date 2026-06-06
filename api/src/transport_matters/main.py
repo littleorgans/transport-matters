@@ -5,6 +5,8 @@ from typing import TYPE_CHECKING, Any
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from transport_matters.api.v1.router import api_router
 from transport_matters.config import MissingDatabaseConfigError, get_settings, resolve_database_url
@@ -13,6 +15,9 @@ from transport_matters.session.pool import create_async_pool
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
+
+    from starlette.responses import Response
+    from starlette.types import Scope
 
 LOG_FORMAT = "%(asctime)s %(levelname)-8s %(message)s"
 
@@ -42,6 +47,33 @@ LOG_CONFIG: dict[str, Any] = {
 }
 
 logger = logging.getLogger(__name__)
+
+
+class SpaStaticFiles(StaticFiles):
+    async def get_response(self, path: str, scope: Scope) -> Response:
+        try:
+            return await super().get_response(path, scope)
+        except StarletteHTTPException as exc:
+            if (
+                exc.status_code != 404
+                or _looks_like_api_path(path, scope)
+                or _looks_like_asset_path(path)
+            ):
+                raise
+            return await super().get_response("index.html", scope)
+
+
+def _looks_like_api_path(path: str, scope: Scope) -> bool:
+    scope_path = scope.get("path")
+    if isinstance(scope_path, str):
+        return scope_path == "/api" or scope_path.startswith("/api/")
+    return path == "api" or path.startswith("api/")
+
+
+def _looks_like_asset_path(path: str) -> bool:
+    from pathlib import Path
+
+    return "." in Path(path).name or path.startswith("assets/")
 
 
 @asynccontextmanager
@@ -118,11 +150,9 @@ def create_app() -> FastAPI:
 
     from pathlib import Path
 
-    from fastapi.staticfiles import StaticFiles
-
     www_dir = Path(__file__).parent / "www"
     if www_dir.exists():
-        app.mount("/", StaticFiles(directory=www_dir, html=True), name="www")
+        app.mount("/", SpaStaticFiles(directory=www_dir, html=True), name="www")
 
     return app
 

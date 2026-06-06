@@ -1,0 +1,26 @@
+import { useQuery } from "@tanstack/react-query";
+import { launchSessionKey } from "../../lib/queryKeys";
+import { resolveLaunchSession } from "../api/launchResolution";
+import { listSessions } from "../api/sessionClient";
+import type { CanvasLaunchContext } from "../route";
+
+const LAUNCH_POLL_MS = 1_000;
+
+export function useLaunchSession(launch: CanvasLaunchContext) {
+  const enabled = launch.workspaceHash !== null && launch.cli !== null;
+  return useQuery({
+    enabled,
+    queryKey: launchSessionKey(launch),
+    queryFn: async () => {
+      const sessions = await listSessions({
+        owner: "local",
+        workspaceHash: launch.workspaceHash,
+        cli: launch.cli,
+        limit: 50,
+        offset: 0,
+      });
+      return resolveLaunchSession(sessions, launch);
+    },
+    refetchInterval: (query) => (query.state.data?.status === "resolved" ? false : LAUNCH_POLL_MS),
+  });
+}

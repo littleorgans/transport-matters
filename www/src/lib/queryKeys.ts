@@ -11,3 +11,59 @@ export function exchangeKey(id: string): readonly ["exchange", string] {
 export function turnContentKey(id: string): readonly ["turn-content", string] {
   return ["turn-content", id];
 }
+
+export interface SessionsKeyArgs {
+  owner: string;
+  workspaceHash?: string | null;
+  provider?: string | null;
+  cli?: string | null;
+  status?: string | null;
+  limit?: number;
+  offset?: number;
+  runId?: string | null;
+}
+
+export function sessionsKey(args: SessionsKeyArgs) {
+  return ["sessions", normalizeSessionArgs(args)] as const;
+}
+
+export function launchSessionKey(args: {
+  owner: string;
+  workspaceHash: string | null;
+  cli: string | null;
+  runId: string | null;
+}) {
+  return ["session-launch", normalizeSessionArgs(args)] as const;
+}
+
+export function sessionEventsKey(args: {
+  sessionId: string;
+  owner: string;
+  fromSeq?: number | null;
+  toSeq?: number | null;
+  limit?: number;
+}) {
+  return [
+    "session-events",
+    {
+      sessionId: args.sessionId,
+      owner: args.owner,
+      fromSeq: args.fromSeq ?? null,
+      toSeq: args.toSeq ?? null,
+      limit: args.limit ?? null,
+    },
+  ] as const;
+}
+
+function normalizeSessionArgs(args: SessionsKeyArgs) {
+  return {
+    owner: args.owner,
+    workspaceHash: args.workspaceHash ?? null,
+    provider: args.provider ?? null,
+    cli: args.cli ?? null,
+    status: args.status ?? null,
+    limit: args.limit ?? null,
+    offset: args.offset ?? null,
+    runId: args.runId ?? null,
+  } as const;
+}
