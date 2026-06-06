@@ -21,7 +21,7 @@ if TYPE_CHECKING:
     from psycopg.rows import DictRow
     from psycopg_pool import AsyncConnectionPool
 
-    from transport_matters.session.models import EventRow, SessionRow
+    from transport_matters.session.models import EventReadRow, EventRow, SessionRow
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -82,7 +82,7 @@ class SessionEventView(BaseModel):
     created_at: datetime | None
 
     @classmethod
-    def from_row(cls, row: EventRow) -> SessionEventView:
+    def from_row(cls, row: EventReadRow | EventRow) -> SessionEventView:
         data = row.model_dump(exclude={"raw"})
         return cls.model_validate(data)
 

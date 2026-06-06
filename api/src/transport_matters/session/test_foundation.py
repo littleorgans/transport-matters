@@ -82,6 +82,19 @@ def test_schema_round_trips_session_event_and_artifact(dao: SessionDao) -> None:
     assert link.artifact_hash == artifact.hash
 
 
+def test_get_events_for_owner_returns_lightweight_read_rows(dao: SessionDao) -> None:
+    dao.upsert_session(root_session())
+    dao.insert_event(
+        event(search_text="large image").model_copy(update={"raw": {"image_base64": "x" * 200_000}})
+    )
+
+    rows = dao.get_events_for_owner("s1", owner="local")
+
+    assert len(rows) == 1
+    assert not hasattr(rows[0], "raw")
+    assert rows[0].ir == {"parts": [{"type": "text", "text": "large image"}]}
+
+
 def test_session_native_uniqueness_scopes_owner_run_provider(dao: SessionDao) -> None:
     dao.upsert_session(root_session("s1", native_session_id="native"))
     dao.upsert_session(

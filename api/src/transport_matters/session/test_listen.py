@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 from typing import TYPE_CHECKING
 
 from transport_matters.index.conftest import make_binding
@@ -18,6 +19,8 @@ from transport_matters.session.writer import _notify_payload
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+
+    import pytest
 
     from transport_matters.session.testing import TestDb
 
@@ -40,6 +43,26 @@ def test_writer_notify_payload_is_small_session_range_handle() -> None:
     )
 
 
+def test_session_event_hub_queue_full_drop_recovers_on_next_signal(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    hub = SessionEventHub(queue_max_size=1)
+    subscription = hub.subscribe("s1")
+    caplog.set_level(logging.WARNING, logger="transport_matters.session.listen")
+    try:
+        hub.publish(SessionEventSignal(session_id="s1", first_seq=1, last_seq=1))
+        hub.publish(SessionEventSignal(session_id="s1", first_seq=2, last_seq=2))
+
+        assert subscription.queue.get_nowait().last_seq == 1
+
+        hub.publish(SessionEventSignal(session_id="s1", first_seq=2, last_seq=3))
+        recovered = subscription.queue.get_nowait()
+        assert recovered == SessionEventSignal(session_id="s1", first_seq=2, last_seq=3)
+        assert "subscriber queue is full" in caplog.text
+    finally:
+        subscription.close()
+
+
 async def test_session_event_listener_reconnects_after_dropped_connection(test_db: TestDb) -> None:
     hub = SessionEventHub()
     subscription = hub.subscribe("s1")
@@ -52,10 +75,15 @@ async def test_session_event_listener_reconnects_after_dropped_connection(test_d
     await listener.start()
     try:
         first_pid = await _wait_for_pid(lambda: listener.connection_pid)
+        catch_up = await asyncio.wait_for(subscription.queue.get(), timeout=2.0)
+        assert catch_up == SessionEventSignal(session_id="s1")
+
         await _terminate_backend(test_db.database_url, first_pid)
         second_pid = await _wait_for_pid(lambda: listener.connection_pid, previous=first_pid)
 
         assert second_pid != first_pid
+        reconnect_catch_up = await asyncio.wait_for(subscription.queue.get(), timeout=2.0)
+        assert reconnect_catch_up == SessionEventSignal(session_id="s1")
         await _notify(
             test_db.database_url,
             '{"type":"session_events","session_id":"s1","first_seq":3,"last_seq":3}',

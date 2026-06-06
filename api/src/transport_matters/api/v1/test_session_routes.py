@@ -113,6 +113,46 @@ async def test_session_event_stream_backlog_then_live_dedups_race(test_db: TestD
             await stream.aclose()
 
 
+async def test_session_event_stream_catches_up_after_listener_reconnect_gap(
+    test_db: TestDb,
+) -> None:
+    hub = SessionEventHub()
+    listener = SessionEventListener(
+        test_db.database_url,
+        hub,
+        reconnect_delay_s=0.2,
+        notify_timeout_s=0.05,
+    )
+    async with create_async_pool(test_db.database_url, min_size=1, max_size=3) as pool:
+        async with pool.connection() as conn:
+            dao = AsyncSessionDao(conn)
+            await dao.upsert_session(root_session("s1"))
+            await dao.insert_event(event(0, session_id="s1", search_text="first"))
+
+        await listener.start()
+        stream = _event_stream("s1", "local", -1, pool, hub)
+        try:
+            first = _frame_payload(await asyncio.wait_for(anext(stream), timeout=2.0))
+            assert first["seq"] == 0
+
+            first_pid = await _wait_for_pid(lambda: listener.connection_pid)
+            await _terminate_backend(test_db.database_url, first_pid)
+            assert await _wait_for(lambda: listener.connection_pid is None)
+
+            async with pool.connection() as conn:
+                await AsyncSessionDao(conn).insert_event(
+                    event(1, session_id="s1", search_text="during reconnect")
+                )
+
+            second_pid = await _wait_for_pid(lambda: listener.connection_pid, previous=first_pid)
+            assert second_pid != first_pid
+            second = _frame_payload(await asyncio.wait_for(anext(stream), timeout=2.0))
+            assert second["seq"] == 1
+        finally:
+            await stream.aclose()
+            await listener.aclose()
+
+
 async def test_app_lifespan_releases_session_listener_connection(
     test_db: TestDb, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -125,6 +165,34 @@ async def test_app_lifespan_releases_session_listener_connection(
         listener_pid = await _wait_for_pid(lambda: listener.connection_pid)
     try:
         assert await _wait_for_backend_gone(test_db.database_url, listener_pid)
+    finally:
+        get_settings.cache_clear()
+
+
+async def test_lifespan_listener_start_failure_keeps_routes_unavailable(
+    test_db: TestDb, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    class FailingListener:
+        def __init__(self, *_args: object, **_kwargs: object) -> None:
+            self.closed = False
+
+        async def start(self) -> None:
+            raise RuntimeError("listener failed")
+
+        async def aclose(self) -> None:
+            self.closed = True
+
+    monkeypatch.setenv("TRANSPORT_MATTERS_DATABASE_URL", test_db.database_url)
+    monkeypatch.setattr("transport_matters.main.SessionEventListener", FailingListener)
+    get_settings.cache_clear()
+    app = create_app()
+    try:
+        async with lifespan(app):
+            assert app.state.session_pool is None
+            transport = ASGITransport(app=app)
+            async with AsyncClient(transport=transport, base_url="http://test") as client:
+                response = await client.get("/api/sessions")
+            assert response.status_code == 503
     finally:
         get_settings.cache_clear()
 
@@ -157,13 +225,18 @@ async def _wait_for(predicate: Callable[[], bool]) -> bool:
     raise AssertionError("condition was not met")
 
 
-async def _wait_for_pid(get_pid: Callable[[], int | None]) -> int:
+async def _wait_for_pid(get_pid: Callable[[], int | None], *, previous: int | None = None) -> int:
     for _ in range(100):
         pid = get_pid()
-        if pid is not None:
+        if pid is not None and pid != previous:
             return pid
         await asyncio.sleep(0.05)
     raise AssertionError("listener did not expose a connection pid")
+
+
+async def _terminate_backend(database_url: str, pid: int) -> None:
+    async with await async_connect(database_url, autocommit=True) as conn:
+        await conn.execute("SELECT pg_terminate_backend(%s)", (pid,))
 
 
 async def _wait_for_backend_gone(database_url: str, pid: int) -> bool:

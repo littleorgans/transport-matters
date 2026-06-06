@@ -5,7 +5,13 @@ from typing import TYPE_CHECKING, Any
 from psycopg.types.json import Jsonb
 
 from transport_matters.session.artifacts import artifact_hash
-from transport_matters.session.models import ArtifactRow, EventArtifactRow, EventRow, SessionRow
+from transport_matters.session.models import (
+    ArtifactRow,
+    EventArtifactRow,
+    EventReadRow,
+    EventRow,
+    SessionRow,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -18,11 +24,30 @@ _SESSION_COLUMNS = """
     native_session_id, minted, source_descriptor, home_dir, owner, status, title,
     parent_session_id, forked_at_seq, started_at, created_at, updated_at
 """
-_EVENT_COLUMNS = """
-    session_id, seq, kind, native_turn_id, parent_native_id, parent_seq, run_id,
-    provider, cli, role, is_sidechain, ts, model, raw, ir, source_path,
-    source_line, search_text, created_at
-"""
+_EVENT_COLUMN_NAMES = (
+    "session_id",
+    "seq",
+    "kind",
+    "native_turn_id",
+    "parent_native_id",
+    "parent_seq",
+    "run_id",
+    "provider",
+    "cli",
+    "role",
+    "is_sidechain",
+    "ts",
+    "model",
+    "raw",
+    "ir",
+    "source_path",
+    "source_line",
+    "search_text",
+    "created_at",
+)
+_EVENT_READ_COLUMN_NAMES = tuple(name for name in _EVENT_COLUMN_NAMES if name != "raw")
+_EVENT_COLUMNS = ", ".join(_EVENT_COLUMN_NAMES)
+_EVENT_READ_COLUMNS = ", ".join(f"e.{name}" for name in _EVENT_READ_COLUMN_NAMES)
 _ARTIFACT_COLUMNS = "hash, media_type, size_bytes, bytes, created_at"
 
 _UPSERT_SESSION_SQL = f"""
@@ -115,8 +140,8 @@ WHERE session_id = %(session_id)s
   AND (%(to_seq)s::integer IS NULL OR seq <= %(to_seq)s::integer)
 ORDER BY seq
 """
-_GET_EVENTS_FOR_OWNER_SQL = """
-SELECT e.*
+_GET_EVENTS_FOR_OWNER_SQL = f"""
+SELECT {_EVENT_READ_COLUMNS}
 FROM "event" AS e
 JOIN "session" AS s ON s.session_id = e.session_id
 WHERE e.session_id = %(session_id)s
@@ -175,6 +200,11 @@ def _one(row: Mapping[str, Any] | None, model: type[SessionRow]) -> SessionRow |
 def _event(row: Mapping[str, Any]) -> EventRow:
     # Any: psycopg DictRow stores database values with driver supplied types.
     return EventRow.model_validate(dict(row))
+
+
+def _event_read(row: Mapping[str, Any]) -> EventReadRow:
+    # Any: psycopg DictRow stores database values with driver supplied types.
+    return EventReadRow.model_validate(dict(row))
 
 
 def _artifact(row: Mapping[str, Any]) -> ArtifactRow:
@@ -269,7 +299,7 @@ class SessionDao:
         from_seq: int | None = None,
         to_seq: int | None = None,
         limit: int = 500,
-    ) -> list[EventRow]:
+    ) -> list[EventReadRow]:
         rows = self._conn.execute(
             _GET_EVENTS_FOR_OWNER_SQL,
             {
@@ -280,7 +310,7 @@ class SessionDao:
                 "limit": limit,
             },
         ).fetchall()
-        return [_event(row) for row in rows]
+        return [_event_read(row) for row in rows]
 
     def events_matching_ir(self, filter_: dict[str, Any], *, limit: int = 50) -> list[EventRow]:
         # Any: filter JSON is a caller supplied JSONB containment expression.
@@ -400,7 +430,7 @@ class AsyncSessionDao:
         from_seq: int | None = None,
         to_seq: int | None = None,
         limit: int = 500,
-    ) -> list[EventRow]:
+    ) -> list[EventReadRow]:
         cursor = await self._conn.execute(
             _GET_EVENTS_FOR_OWNER_SQL,
             {
@@ -412,7 +442,7 @@ class AsyncSessionDao:
             },
         )
         rows = await cursor.fetchall()
-        return [_event(row) for row in rows]
+        return [_event_read(row) for row in rows]
 
     async def events_matching_ir(
         self, filter_: dict[str, Any], *, limit: int = 50

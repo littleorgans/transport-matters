@@ -82,6 +82,10 @@ class SessionEventHub:
         if signal is not None:
             self.publish(signal)
 
+    def publish_catch_up(self) -> None:
+        for session_id in list(self._subscribers):
+            self.publish(SessionEventSignal(session_id=session_id))
+
     def subscriber_count(self, session_id: str) -> int:
         return len(self._subscribers.get(session_id, set()))
 
@@ -147,6 +151,7 @@ class SessionEventListener:
         self._connection_pid = await _connection_pid(conn)
         try:
             await conn.execute(sql.SQL("LISTEN {}").format(sql.Identifier(self._channel)))
+            self._hub.publish_catch_up()
             while not self._closing:
                 async for notify in conn.notifies(timeout=self._notify_timeout_s):
                     self._hub.publish_payload(notify.payload)

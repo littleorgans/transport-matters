@@ -50,18 +50,22 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     session_pool = None
     session_listener = None
     app.state.session_event_hub = SessionEventHub()
+    app.state.session_pool = None
+    app.state.session_event_listener = None
     try:
         database_url = resolve_database_url(get_settings())
         session_pool = create_async_pool(database_url)
         await session_pool.open()
-        app.state.session_pool = session_pool
         session_listener = SessionEventListener(database_url, app.state.session_event_hub)
-        app.state.session_event_listener = session_listener
         await session_listener.start()
+        app.state.session_pool = session_pool
+        app.state.session_event_listener = session_listener
     except MissingDatabaseConfigError as exc:
         logger.info("Session store disabled: %s", exc)
     except Exception:
         logger.exception("Session store lifecycle failed to start")
+        app.state.session_pool = None
+        app.state.session_event_listener = None
         if session_listener is not None:
             await session_listener.aclose()
         if session_pool is not None:
