@@ -10,8 +10,8 @@ export interface HostedWindowOptions {
   rendererUrl?: string;
 }
 
-export function rendererUrlForPort(webPort: number): string {
-  return new URL("/", `http://127.0.0.1:${webPort}`).toString();
+export function rendererUrlForPort(webPort: number, route = "/canvas"): string {
+  return new URL(route, `http://127.0.0.1:${webPort}`).toString();
 }
 
 export function createWindowOptions(
@@ -106,11 +106,15 @@ function normalizeLoopbackHostedUrl(rendererUrl: string): string {
     url === null ||
     url.protocol !== "http:" ||
     url.hostname !== "127.0.0.1" ||
-    url.pathname !== "/"
+    !allowedHostedPath(url.pathname)
   ) {
     throw new Error(`Invalid Transport Matters hosted web URL: ${rendererUrl}`);
   }
   return url.toString();
+}
+
+function allowedHostedPath(pathname: string): boolean {
+  return pathname === "/" || pathname === "/canvas";
 }
 
 function parseUrl(value: string): URL | null {

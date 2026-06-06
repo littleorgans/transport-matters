@@ -1,23 +1,38 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { StrictMode } from "react";
+import { lazy, StrictMode, Suspense } from "react";
 import { createRoot } from "react-dom/client";
 import { fetchMeta } from "./api";
-import { App } from "./app";
 import "./index.css";
 import { queryClient } from "./lib/queryClient";
+import { selectRootRoute } from "./session-canvas/route";
+
+const selectedRoute = selectRootRoute(window.location.pathname);
+const RootApp = lazy(() =>
+  selectedRoute === "canvas"
+    ? import("./session-canvas/SessionCanvasRoute").then(({ SessionCanvasRoute }) => ({
+        default: SessionCanvasRoute,
+      }))
+    : import("./app").then(({ App }) => ({ default: App })),
+);
 
 // Warm the meta cache before the first render so OverlaysView can
 // stamp real cwds onto project-scoped drafts the moment a user saves.
 // Fire-and-forget: the hook uses Number.POSITIVE_INFINITY staleTime, so
 // even if this races the first paint, the in-flight promise is
 // deduplicated by the query client.
-queryClient.prefetchQuery({ queryKey: ["meta"], queryFn: fetchMeta });
+if (selectedRoute === "legacy") {
+  queryClient.prefetchQuery({ queryKey: ["meta"], queryFn: fetchMeta });
+}
 
 // biome-ignore lint/style/noNonNullAssertion: The entry point exists
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
-      <App />
+      <Suspense
+        fallback={<div className="min-h-screen bg-canvas text-txt">Loading Transport Matters</div>}
+      >
+        <RootApp />
+      </Suspense>
     </QueryClientProvider>
   </StrictMode>,
 );

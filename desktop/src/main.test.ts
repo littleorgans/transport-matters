@@ -128,7 +128,7 @@ describe("desktop main process", () => {
     expect(waitForHealth).toHaveBeenCalledWith(backend, 9901);
     expect(createWindow).toHaveBeenCalledWith({
       preloadPath: "/tmp/transport-matters/preload.js",
-      rendererUrl: "http://127.0.0.1:9901/",
+      rendererUrl: "http://127.0.0.1:9901/canvas",
     });
   });
 
@@ -275,7 +275,7 @@ describe("desktop main process", () => {
     await new Promise((resolve) => setImmediate(resolve));
 
     expect(createWindow).toHaveBeenCalledWith({
-      rendererUrl: "http://127.0.0.1:8788/",
+      rendererUrl: "http://127.0.0.1:8788/canvas",
     });
     expect(writeFile).toHaveBeenCalledWith(
       "/tmp/desktop-smoke.json",

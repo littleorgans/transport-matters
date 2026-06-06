@@ -5,6 +5,10 @@ from typing import TYPE_CHECKING, Any
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.responses import Response
+from starlette.types import Scope
 
 from transport_matters.api.v1.router import api_router
 from transport_matters.config import MissingDatabaseConfigError, get_settings, resolve_database_url
@@ -42,6 +46,22 @@ LOG_CONFIG: dict[str, Any] = {
 }
 
 logger = logging.getLogger(__name__)
+
+
+class SpaStaticFiles(StaticFiles):
+    async def get_response(self, path: str, scope: Scope) -> Response:
+        try:
+            return await super().get_response(path, scope)
+        except StarletteHTTPException as exc:
+            if exc.status_code != 404 or _looks_like_asset_path(path):
+                raise
+            return await super().get_response("index.html", scope)
+
+
+def _looks_like_asset_path(path: str) -> bool:
+    from pathlib import Path
+
+    return "." in Path(path).name or path.startswith("assets/")
 
 
 @asynccontextmanager
@@ -118,11 +138,9 @@ def create_app() -> FastAPI:
 
     from pathlib import Path
 
-    from fastapi.staticfiles import StaticFiles
-
     www_dir = Path(__file__).parent / "www"
     if www_dir.exists():
-        app.mount("/", StaticFiles(directory=www_dir, html=True), name="www")
+        app.mount("/", SpaStaticFiles(directory=www_dir, html=True), name="www")
 
     return app
 

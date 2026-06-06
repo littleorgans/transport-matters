@@ -59,10 +59,11 @@ describe("desktop hosted window", () => {
     createBrowserWindowFixture();
   });
 
-  it("constructs a loopback hosted web URL with a stable root path", async () => {
+  it("constructs a loopback hosted web URL with a canvas route", async () => {
     const { rendererUrlForPort } = await import("./window.js");
 
-    expect(rendererUrlForPort(9901)).toBe("http://127.0.0.1:9901/");
+    expect(rendererUrlForPort(9901)).toBe("http://127.0.0.1:9901/canvas");
+    expect(rendererUrlForPort(9901, "/")).toBe("http://127.0.0.1:9901/");
   });
 
   it("loads the hosted loopback URL in a secure BrowserWindow", async () => {
@@ -70,7 +71,7 @@ describe("desktop hosted window", () => {
 
     createHostedWindow({
       preloadPath: "/tmp/transport-matters/preload.js",
-      rendererUrl: "http://127.0.0.1:8788/",
+      rendererUrl: "http://127.0.0.1:8788/canvas",
     });
 
     expect(browserWindowConstructor).toHaveBeenCalledWith(
@@ -84,7 +85,7 @@ describe("desktop hosted window", () => {
         },
       }),
     );
-    expect(loadURL).toHaveBeenCalledWith("http://127.0.0.1:8788/");
+    expect(loadURL).toHaveBeenCalledWith("http://127.0.0.1:8788/canvas");
   });
 
   it("blocks top level navigation away from the health checked origin", async () => {
