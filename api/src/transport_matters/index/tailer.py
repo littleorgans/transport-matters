@@ -78,6 +78,7 @@ class TailCursor:
     parent_id: str | None = (
         None  # last emitted turn_id (linear-chain fallback for native-less formats)
     )
+    parent_seq: int | None = None  # seq for parent_id, used by event parent_seq
     model: str | None = None  # last model hint (e.g. codex turn_context.model), threaded onto turns
     stat_signature: tuple[int, float] | None = None  # (size, mtime) to skip unchanged files
 
@@ -95,10 +96,10 @@ def ingest_records[RecordWrite](
     """Normalize records through the cursor state, then submit the built rows atomically.
 
     The single record→turn loop (§9.3), shared by live-tail (``_poll_cursor`` over a growing file)
-    and §11 replay (over a closed snapshot): both thread ``seq`` / ``parent_id`` / ``model`` across
-    records identically, so a rebuild reproduces the live turn ids/order exactly (the byte-identical
-    DIFF linchpin). A non-conversational record (``normalize`` → None) still advances ``seq`` and
-    may set ``model`` (codex ``turn_context``), never ``parent_id``.
+    and §11 replay (over a closed snapshot): both thread ``seq`` / ``parent_id`` / ``parent_seq`` /
+    ``model`` across records identically, so a rebuild reproduces the live turn ids/order exactly
+    (the byte-identical DIFF linchpin). A non-conversational record (``normalize`` → None) still
+    advances ``seq`` and may set ``model`` (codex ``turn_context``), never ``parent_id``.
     """
     builder = build_record or cast(
         "Callable[[RawRecord, NormalizedTurn | None, TurnContext], RecordWrite | None]",
@@ -107,6 +108,7 @@ def ingest_records[RecordWrite](
     batch_submit = submit_batch or _per_record_submit(submit)
     seq = cursor.seq
     parent_id = cursor.parent_id
+    parent_seq = cursor.parent_seq
     model = cursor.model
     writes: list[RecordWrite] = []
     for record in records:
@@ -119,6 +121,7 @@ def ingest_records[RecordWrite](
             seq=seq,
             source_line=seq,
             parent_id=parent_id,
+            parent_seq=parent_seq,
             model=model,
         )
         turn = cursor.adapter.normalize(record, ctx)
@@ -128,10 +131,12 @@ def ingest_records[RecordWrite](
         seq += 1
         if turn is not None:
             parent_id = turn.turn_id
+            parent_seq = turn.seq
     if writes:
         batch_submit(cursor.binding, writes)
     cursor.seq = seq
     cursor.parent_id = parent_id
+    cursor.parent_seq = parent_seq
     cursor.model = model
 
 

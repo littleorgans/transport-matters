@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import json
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
@@ -12,7 +13,7 @@ from transport_matters.index.adapters.base import (
     encode_source_descriptor,
 )
 from transport_matters.index.adapters.claude import ClaudeAdapter
-from transport_matters.index.test_replay_support import _seed_codex_run
+from transport_matters.index.test_replay_support import _seed_claude_run, _seed_codex_run
 from transport_matters.session.artifacts import artifact_hash
 from transport_matters.session.backfill import replay_transcript_run
 from transport_matters.session.dao import AsyncSessionDao
@@ -170,4 +171,20 @@ def test_replay_transcript_run_yields_snapshot_records_without_wire_index(tmp_pa
     assert binding.session_id == session_id
     assert binding.provider == "codex"
     assert binding.cli == "codex"
+    assert binding.cwd == "/w"
     assert source.path.endswith("rollout.jsonl")
+
+
+def test_replay_transcript_run_recovers_claude_record_cwd(tmp_path: Path) -> None:
+    root, _cli_path = _seed_claude_run(tmp_path, "run-claude", _SESSION)
+    snapshot = root / "transcripts" / f"{_SESSION}.jsonl"
+    lines = snapshot.read_text(encoding="utf-8").splitlines()
+    first = json.loads(lines[0])
+    first["cwd"] = "/claude"
+    lines[0] = json.dumps(first)
+    snapshot.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    rows = list(replay_transcript_run(root))
+
+    binding, _record, _seq, _source = rows[0]
+    assert binding.cwd == "/claude"

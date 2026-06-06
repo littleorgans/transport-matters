@@ -40,7 +40,7 @@ ON CONFLICT (session_id) DO UPDATE SET
     provider = EXCLUDED.provider,
     cli = COALESCE("session".cli, EXCLUDED.cli),
     run_id = EXCLUDED.run_id,
-    cwd = EXCLUDED.cwd,
+    cwd = COALESCE(NULLIF("session".cwd, ''), EXCLUDED.cwd),
     workspace_slug = EXCLUDED.workspace_slug,
     workspace_hash = EXCLUDED.workspace_hash,
     native_session_id = COALESCE("session".native_session_id, EXCLUDED.native_session_id),

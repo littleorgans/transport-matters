@@ -95,6 +95,15 @@ def test_session_native_uniqueness_scopes_owner_run_provider(dao: SessionDao) ->
         dao.upsert_session(root_session("s4", native_session_id="native"))
 
 
+def test_session_upsert_preserves_non_empty_cwd(dao: SessionDao) -> None:
+    dao.upsert_session(root_session("s-cwd").model_copy(update={"cwd": "/real"}))
+    dao.upsert_session(root_session("s-cwd").model_copy(update={"cwd": ""}))
+
+    session = dao.get_session("s-cwd")
+    assert session is not None
+    assert session.cwd == "/real"
+
+
 def test_fork_lineage_requires_parent_and_seq_together(dao: SessionDao) -> None:
     dao.upsert_session(root_session("parent"))
     fork = root_session("child", native_session_id="child-native").model_copy(

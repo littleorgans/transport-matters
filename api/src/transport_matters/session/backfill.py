@@ -54,7 +54,14 @@ def _replay_owned(root: Path, owned: OwnedSessionFacts) -> Iterator[ReplayRecord
     if not snapshot.exists():
         return
     records, _consumed = iter_complete_records(snapshot.read_bytes())
-    binding = _binding(root, owned, adapter.provider, session_id, _started_at(records, snapshot))
+    binding = _binding(
+        root,
+        owned,
+        adapter.provider,
+        session_id,
+        _started_at(records, snapshot),
+        _cwd(records),
+    )
     for seq, record in enumerate(records):
         yield binding, record, seq, source
 
@@ -66,14 +73,19 @@ def _session_id(owned: OwnedSessionFacts, provider: str) -> str:
 
 
 def _binding(
-    root: Path, owned: OwnedSessionFacts, provider: str, session_id: str, started_at: str
+    root: Path,
+    owned: OwnedSessionFacts,
+    provider: str,
+    session_id: str,
+    started_at: str,
+    cwd: str,
 ) -> SessionBinding:
     slug, workspace_hash = _workspace_identity(root)
     return SessionBinding(
         session_id=session_id,
         provider=provider,
         run_id=owned.run_id,
-        cwd="",
+        cwd=cwd,
         workspace_slug=slug,
         workspace_hash=workspace_hash,
         started_at=started_at,
@@ -97,13 +109,25 @@ def _started_at(records: list[RawRecord], snapshot: Path) -> str:
     return datetime.fromtimestamp(snapshot.stat().st_mtime, tz=UTC).isoformat()
 
 
+def _cwd(records: list[RawRecord]) -> str:
+    for record in records:
+        value = _record_string(record, "cwd")
+        if value is not None:
+            return value
+    return ""
+
+
 def _timestamp(record: RawRecord) -> str | None:
-    value = record.get("timestamp")
+    return _record_string(record, "timestamp")
+
+
+def _record_string(record: RawRecord, key: str) -> str | None:
+    value = record.get(key)
     if isinstance(value, str):
         return value
     payload = record.get("payload")
     if isinstance(payload, dict):
-        value = payload.get("timestamp")
+        value = payload.get(key)
         if isinstance(value, str):
             return value
     return None

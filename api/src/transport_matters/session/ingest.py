@@ -142,9 +142,9 @@ def _turn_ir(turn: NormalizedTurn) -> tuple[dict[str, Any], tuple[InlineArtifact
 
 
 def _parent_seq(turn: NormalizedTurn, ctx: TurnContext) -> int | None:
-    if turn.parent_id is None or turn.parent_id != ctx.parent_id or ctx.seq == 0:
+    if turn.parent_id is None or turn.parent_id != ctx.parent_id:
         return None
-    return ctx.seq - 1
+    return ctx.parent_seq
 
 
 def _record_id(record: RawRecord) -> str | None:

@@ -96,12 +96,12 @@ def _binding(cwd: str = "/w") -> SessionBinding:
     return make_binding(_SESSION, cwd=cwd, workspace_slug="s", workspace_hash="h")
 
 
-def _user_line(uuid: str, text: str) -> str:
+def _user_line(uuid: str, text: str, parent_uuid: str | None = None) -> str:
     return json.dumps(
         {
             "type": "user",
             "uuid": uuid,
-            "parentUuid": None,
+            "parentUuid": parent_uuid,
             "sessionId": _SESSION,
             "isSidechain": False,
             "timestamp": "2026-06-05T12:00:00Z",
@@ -177,6 +177,41 @@ class TestTailerPoll:
             "u2",
         ]  # partial completed → consumed
 
+    def test_parent_seq_uses_prior_turn_seq_across_meta_record(self, tmp_path: Path) -> None:
+        path = tmp_path / "t.jsonl"
+        meta = json.dumps(
+            {
+                "type": "summary",
+                "uuid": "m1",
+                "timestamp": "2026-06-05T12:01:00Z",
+                "cwd": "/w",
+            }
+        )
+        path.write_text(
+            "\n".join(
+                [
+                    _user_line("a1", "parent"),
+                    meta,
+                    _user_line("b1", "child", parent_uuid="a1"),
+                ]
+            )
+            + "\n"
+        )
+        submitted: list[EventWrite] = []
+        tailer = _event_tailer(submitted)
+        tailer.register(_cursor(str(path)))
+        tailer.poll()
+
+        assert [
+            (write.event.seq, write.event.kind, write.event.native_turn_id) for write in submitted
+        ] == [
+            (0, "turn", "a1"),
+            (1, "meta", "m1"),
+            (2, "turn", "b1"),
+        ]
+        assert submitted[2].event.parent_native_id == "a1"
+        assert submitted[2].event.parent_seq == 0
+
     def test_register_is_idempotent(self, tmp_path: Path) -> None:
         submitted: list[EventWrite] = []
         tailer = _event_tailer(submitted)
@@ -215,6 +250,7 @@ class TestTailerPoll:
         assert cursor.byte_offset == 0
         assert cursor.seq == 0
         assert cursor.parent_id is None
+        assert cursor.parent_seq is None
         assert cursor.stat_signature is None
 
         tailer.poll()
@@ -223,6 +259,7 @@ class TestTailerPoll:
         assert cursor.byte_offset == len(path.read_bytes())
         assert cursor.seq == 1
         assert cursor.parent_id == "u1"
+        assert cursor.parent_seq == 0
         assert cursor.stat_signature is not None
 
 
