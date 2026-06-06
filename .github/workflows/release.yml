@@ -43,6 +43,20 @@ jobs:
   build:
     name: build · wheel + sdist
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: tm
+          POSTGRES_PASSWORD: tm
+          POSTGRES_DB: transport_matters
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U tm -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
     outputs:
       version: ${{ steps.version.outputs.version }}
     steps:
@@ -98,6 +112,8 @@ jobs:
 
       - name: Gate on backend checks
         working-directory: api
+        env:
+          TRANSPORT_MATTERS_TEST_DATABASE_URL: postgresql://tm:tm@localhost:5432/postgres
         run: |
           uv run ruff check src/
           uv run ruff format --check src/

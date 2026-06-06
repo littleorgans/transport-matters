@@ -101,7 +101,8 @@ ORDER BY seq
 _IR_SEARCH_SQL = f"""
 SELECT {_EVENT_COLUMNS}
 FROM "event"
-WHERE ir @> %(filter)s
+WHERE kind = 'turn'
+  AND ir @> %(filter)s
 ORDER BY session_id, seq
 LIMIT %(limit)s
 """
@@ -109,7 +110,8 @@ LIMIT %(limit)s
 _TEXT_SEARCH_SQL = f"""
 SELECT {_EVENT_COLUMNS}
 FROM "event"
-WHERE content_tsv @@ websearch_to_tsquery('english', %(query)s)
+WHERE kind = 'turn'
+  AND content_tsv @@ websearch_to_tsquery('english', %(query)s)
 ORDER BY ts_rank_cd(content_tsv, websearch_to_tsquery('english', %(query)s)) DESC, session_id, seq
 LIMIT %(limit)s
 """

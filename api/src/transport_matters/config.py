@@ -7,11 +7,7 @@ from pathlib import Path
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from transport_matters.env_keys import (
-    DATABASE_URL,
-    ENV_PREFIX,
-    TEST_DATABASE_URL,
-)
+from transport_matters.env_keys import ENV_PREFIX
 from transport_matters.storage_roots import default_storage_root
 
 DATABASE_URL_GUIDANCE = (
@@ -100,9 +96,18 @@ class Settings(BaseSettings):
     home_dir: Path | None = None
     breakpoint_timeout_s: float = 300.0
     breakpoint_skip_models: list[str] = []
-    database_url: str | None = None
-    test_database_url: str | None = None
-    database: DatabaseSettings = Field(default_factory=DatabaseSettings)
+    database_url: str | None = Field(
+        default=None,
+        description="Env override from TRANSPORT_MATTERS_DATABASE_URL.",
+    )
+    test_database_url: str | None = Field(
+        default=None,
+        description="Test env override from TRANSPORT_MATTERS_TEST_DATABASE_URL.",
+    )
+    database: DatabaseSettings = Field(
+        default_factory=DatabaseSettings,
+        description="Database values loaded from settings.toml. Call resolve_* for precedence.",
+    )
     session_pool_min_size: int = 1
     session_pool_max_size: int = 10
 
@@ -166,10 +171,8 @@ def get_settings() -> Settings:
 
 
 __all__ = [
-    "DATABASE_URL",
     "DATABASE_URL_GUIDANCE",
     "SETTINGS_FILENAME",
-    "TEST_DATABASE_URL",
     "TEST_DATABASE_URL_GUIDANCE",
     "DatabaseSettings",
     "MissingDatabaseConfigError",

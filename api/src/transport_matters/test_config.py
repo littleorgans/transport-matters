@@ -89,6 +89,14 @@ def test_malformed_settings_toml_errors(tmp_path: Path) -> None:
         Settings.load_from(path)
 
 
+def test_invalid_settings_toml_extra_keys_error(tmp_path: Path) -> None:
+    path = tmp_path / "settings.toml"
+    path.write_text('[database]\nbogus = "postgresql://typo/db"\n', encoding="utf-8")
+
+    with pytest.raises(SettingsFileError, match=r"invalid settings\.toml"):
+        Settings.load_from(path)
+
+
 def test_database_url_resolves_env_over_toml(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -20,4 +20,4 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    ${downgrades if downgrades else "pass"}
+    ${downgrades if downgrades else 'raise RuntimeError("session store migrations are forward only")'}

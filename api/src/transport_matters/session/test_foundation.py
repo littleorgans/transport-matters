@@ -10,6 +10,12 @@ from transport_matters.session import async_connect, connect
 from transport_matters.session.artifacts import artifact_hash
 from transport_matters.session.dao import AsyncSessionDao, SessionDao
 from transport_matters.session.models import EventRow, SessionRow
+from transport_matters.session.pool import (
+    async_transaction,
+    create_async_pool,
+    create_pool,
+    transaction,
+)
 from transport_matters.session.testing import TestDb
 
 if TYPE_CHECKING:
@@ -124,6 +130,14 @@ def test_ir_gin_containment_search(dao: SessionDao) -> None:
             update={"ir": {"parts": [{"type": "tool_use", "name": "Bash", "input": {}}]}}
         )
     )
+    dao.insert_event(
+        event(2, search_text="tool run").model_copy(
+            update={
+                "kind": "meta",
+                "ir": {"parts": [{"type": "tool_use", "name": "Bash", "input": {}}]},
+            }
+        )
+    )
 
     matches = dao.events_matching_ir({"parts": [{"type": "tool_use", "name": "Bash"}]})
 
@@ -134,10 +148,26 @@ def test_content_tsv_full_text_search(dao: SessionDao) -> None:
     dao.upsert_session(root_session())
     dao.insert_event(event(1, search_text="the quick brown fox"))
     dao.insert_event(event(2, search_text="slow red turtle"))
+    dao.insert_event(
+        event(3, search_text="quick fox hidden metadata").model_copy(update={"kind": "meta"})
+    )
 
     matches = dao.search_event_text("quick fox")
 
     assert [match.seq for match in matches] == [1]
+
+
+def test_sync_pool_and_transaction_lifecycle(test_db: TestDb) -> None:
+    pool = create_pool(test_db.database_url, min_size=1, max_size=1)
+    try:
+        pool.open()
+        with pool.connection() as conn, transaction(conn):
+            row = conn.execute("SELECT 1 AS value").fetchone()
+    finally:
+        pool.close()
+
+    assert row is not None
+    assert row["value"] == 1
 
 
 async def test_async_dao_round_trips_session_and_event(test_db: TestDb) -> None:
@@ -149,3 +179,17 @@ async def test_async_dao_round_trips_session_and_event(test_db: TestDb) -> None:
         rows = await dao.get_events("async-s1")
 
     assert [row.seq for row in rows] == [1]
+
+
+async def test_async_pool_and_transaction_lifecycle(test_db: TestDb) -> None:
+    pool = create_async_pool(test_db.database_url, min_size=1, max_size=1)
+    try:
+        await pool.open()
+        async with pool.connection() as conn, async_transaction(conn):
+            cursor = await conn.execute("SELECT 1 AS value")
+            row = await cursor.fetchone()
+    finally:
+        await pool.close()
+
+    assert row is not None
+    assert row["value"] == 1
