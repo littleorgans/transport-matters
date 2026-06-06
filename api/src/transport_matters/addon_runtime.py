@@ -11,16 +11,16 @@ import httpx
 import uvicorn
 
 from transport_matters import breakpoint as bp
-from transport_matters import broadcast
 from transport_matters.config import get_settings
 from transport_matters.counting import TokenCounter, set_counter, set_recent_auth
 from transport_matters.index.adapters import get_adapter
-from transport_matters.index.db import index_db_path
 from transport_matters.index.ingest import build_run_facts, make_index_sink
 from transport_matters.index.rebuild import rebuild_if_stale
 from transport_matters.index.tailer import TranscriptTailer, register_session_cursor
-from transport_matters.index.writer import IndexWriter
 from transport_matters.main import create_app
+from transport_matters.session.ingest import EventWrite, build_event, build_event_batch
+from transport_matters.session.pool import create_async_pool
+from transport_matters.session.writer import SessionWriter
 from transport_matters.storage import init_storage
 from transport_matters.storage.exchange_sink import clear_exchange_sink, set_exchange_sink
 from transport_matters.storage.transcript_snapshot import make_transcript_snapshot_writer
@@ -69,7 +69,7 @@ class AddonRuntime:
     token_counter: TokenCounter
     server: uvicorn.Server
     serve_task: asyncio.Task[None]
-    index_writer: IndexWriter | None = None
+    session_writer: SessionWriter | None = None
     index_tailer: TranscriptTailer | None = None
 
 
@@ -80,7 +80,7 @@ def load_runtime() -> AddonRuntime:
 
     # The tier-1 storage root is workspace-scoped (settings.storage_dir) while the tier-2 index.db
     # is global (index_db_path == default root). raw_dir is an absolute tier-1 pointer, so the sink
-    # must stamp it with the BACKEND's real root, not the default — else GET /raw 404s on a pointer
+    # must stamp it with the BACKEND's real root, not the default, else GET /raw 404s on a pointer
     # that dangles off the wrong root (roadtest2 #1).
     storage_root: Path | None = None
     if isinstance(storage, DiskStorageBackend):
@@ -96,29 +96,41 @@ def load_runtime() -> AddonRuntime:
     set_counter(token_counter)
 
     # Tier-2 capture (slices 2/4): the single-writer actor with post-COMMIT live push (§9.4), the
-    # injected post-persist sink (§6.4), and the transcript tailer (§9.2). Best-effort — a tier-2
+    # injected post-persist sink (§6.4), and the transcript tailer (§9.2). Best-effort, a tier-2
     # startup failure must never stop the proxy (§7.1).
     loop = _running_loop()
-    index_writer: IndexWriter | None = None
+    session_writer: SessionWriter | None = None
     index_tailer: TranscriptTailer | None = None
     try:
         # Boot auto-replay (§10.5, slice 8c-ii): if a gated derivation bump (or a missing db) left the
         # schema gate stale, rebuild tier-2 from tier-1 under a lock BEFORE opening the live writer, so
         # the bump auto-repopulates the index from tier-1 instead of the in-writer gate dropping it to
         # empty. No-op on a current db; the lock inside serializes concurrent boots. Must run before any
-        # live connection opens (rebuild() deletes the db files), hence ahead of IndexWriter here.
+        # live connection opens (rebuild() deletes the db files), hence ahead of writer wiring here.
         rebuild_if_stale()
-        index_writer = IndexWriter(str(index_db_path()), loop=loop, emit=broadcast.emit)
-        index_writer.start()
+        if loop is None:
+            raise RuntimeError("server loop is unavailable for session writer")
+        writer = SessionWriter(create_async_pool(), loop=loop)
+        session_writer = writer
         # Tier-1 transcript snapshot (§7.1/§11, slice 8b-i): tee consumed transcript bytes into the
         # run dir so tier-1 owns the transcript even if the CLI GCs its own file. Built here closing
         # over the workspace-scoped storage_root (same root the wire artifacts use), injected into
-        # the tailer as a plain callable — the index-layer tailer never imports a storage write API
+        # the tailer as a plain callable, the index-layer tailer never imports a storage write API
         # (DAG). None when there is no disk backend (the snapshot has nowhere durable to land).
         snapshot_writer = (
             make_transcript_snapshot_writer(storage_root) if storage_root is not None else None
         )
-        index_tailer = TranscriptTailer(index_writer.submit, snapshot=snapshot_writer)
+
+        def submit_events(binding: SessionBinding, events: list[EventWrite]) -> None:
+            result = writer.submit_blocking(build_event_batch(binding, events))
+            if not result.ok:
+                raise RuntimeError("session writer commit failed")
+
+        index_tailer = TranscriptTailer(
+            build_record=build_event,
+            submit_batch=submit_events,
+            snapshot=snapshot_writer,
+        )
         index_tailer.start()
         # Managed-mint (§5.2b/§5.2c): a mint-capable launcher hands us the harness cli + the native id
         # and source_descriptor of the transcript it owns; thread them so bind_exchange stamps the
@@ -134,14 +146,12 @@ def load_runtime() -> AddonRuntime:
             owned_source_descriptor=settings.owned_source_descriptor,
         )
         on_binding = _make_cursor_registrar(index_tailer, loop)
-        set_exchange_sink(
-            make_index_sink(index_writer, run_facts, on_binding, storage_root=storage_root)
-        )
+        set_exchange_sink(make_index_sink(None, run_facts, on_binding, storage_root=storage_root))
     except Exception:
         logger.exception(
             "tier-2 capture failed to start; wire/transcript capture disabled this run"
         )
-        index_writer = index_tailer = None
+        session_writer = index_tailer = None
 
     app = create_app()
     config = uvicorn.Config(
@@ -158,7 +168,7 @@ def load_runtime() -> AddonRuntime:
         token_counter=token_counter,
         server=server,
         serve_task=serve_task,
-        index_writer=index_writer,
+        session_writer=session_writer,
         index_tailer=index_tailer,
     )
 
@@ -175,9 +185,9 @@ async def close_runtime(runtime: AddonRuntime | None) -> None:
     tailer = runtime.index_tailer
     if tailer is not None:
         await loop.run_in_executor(None, lambda: tailer.stop(drain=True))
-    writer = runtime.index_writer
+    writer = runtime.session_writer
     if writer is not None:
-        await loop.run_in_executor(None, lambda: writer.stop(drain=True))
+        await writer.aclose()
     # Drain in-flight pause-count tasks before closing the shared HTTP client
     # they depend on (littleorgans/python storage Rule 4, no orphan tasks).
     from transport_matters.pause_session import drain_pause_count_tasks

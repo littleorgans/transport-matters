@@ -2,13 +2,13 @@
 
 Adapters are the transcript-side anti-corruption layer. They import **only** ``ir`` (and stdlib)
 so a transcript ``text``/``tool_use``/``tool_result``/``thinking``/``image`` is the *same*
-``ir.ContentBlock`` the wire side emits — which is what makes ``identity_canonical`` (§3.3) hash
+``ir.ContentBlock`` the wire side emits, which is what makes ``identity_canonical`` (§3.3) hash
 identical content identically across both streams (the cross-stream dedup linchpin, §4.1.3).
 
 ``SessionBinding`` is the **single canonical** session contract: slices 1/2 staged a copy in
 ``index/sessions.py``; this is now the one definition (DRY). It maps 1:1 to the §3 ``session``
 row. ``session_id`` is already RESOLVED by the binder (claude/anthropic use the native id
-directly — no proxy mint yet; codex synthesizes), so there is no separate resolve step.
+directly, no proxy mint yet; codex synthesizes), so there is no separate resolve step.
 """
 
 from abc import ABC, abstractmethod
@@ -80,7 +80,7 @@ TranscriptSource = Annotated[FileTailSource | PullSource, Field(discriminator="k
 
 # One codec for ``SessionBinding.source_descriptor``: the launcher encodes the owned source it
 # minted (§5.2b managed-mint) and the tailer decodes it back to the discriminated TranscriptSource
-# — one definition keeps the on-wire descriptor shape DRY across the launch and read-back sides.
+# One definition keeps the on-wire descriptor shape DRY across the launch and read-back sides.
 _SOURCE_ADAPTER: TypeAdapter[FileTailSource | PullSource] = TypeAdapter(TranscriptSource)
 
 
@@ -124,6 +124,7 @@ class TurnContext(BaseModel):
     parent_id: str | None = (
         None  # previous emitted turn_id, when the format has no native parent link
     )
+    parent_seq: int | None = None  # seq for parent_id, when parent_id is known
     model: str | None = None  # threaded model when not on the record
     pending_calls: dict[str, str] | None = (
         None  # iterator-maintained cross-record tool pairing (§5.3)
@@ -168,7 +169,7 @@ class TranscriptAdapter(ABC):
         Used by adapters whose path is derivable at registration (claude's deterministic
         ``~/.claude`` path, §5.1). Managed-mint adapters (codex §5.2b) instead OWN the path: the
         launcher stamps ``source_descriptor`` onto the binding, so they never discover and do not
-        override this. The default returns ``None`` — a binding with neither a ``source_descriptor``
+        override this. The default returns ``None``: a binding with neither a ``source_descriptor``
         nor a ``locate`` override registers no cursor and stays pending (§15 risk 2)."""
         return None
 
@@ -180,5 +181,5 @@ class TranscriptAdapter(ABC):
     def model_hint(self, record: RawRecord) -> str | None:
         """A model name carried by a NON-turn record (e.g. codex's ``turn_context``) that
         ``normalize`` skips. The tailer threads it forward onto subsequent turns via ``ctx.model``.
-        Default: ``None`` — formats that carry the model on each turn record (claude) need no hint."""
+        Default: ``None``. Formats that carry the model on each turn record (claude) need no hint."""
         return None

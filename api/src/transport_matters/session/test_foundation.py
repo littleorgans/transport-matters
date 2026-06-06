@@ -16,19 +16,11 @@ from transport_matters.session.pool import (
     create_pool,
     transaction,
 )
-from transport_matters.session.testing import TestDb
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
-
-@pytest.fixture
-def test_db() -> Iterator[TestDb]:
-    db = TestDb.create()
-    try:
-        yield db
-    finally:
-        db.drop()
+    from transport_matters.session.testing import TestDb
 
 
 @pytest.fixture
@@ -101,6 +93,15 @@ def test_session_native_uniqueness_scopes_owner_run_provider(dao: SessionDao) ->
 
     with pytest.raises(UniqueViolation):
         dao.upsert_session(root_session("s4", native_session_id="native"))
+
+
+def test_session_upsert_preserves_non_empty_cwd(dao: SessionDao) -> None:
+    dao.upsert_session(root_session("s-cwd").model_copy(update={"cwd": "/real"}))
+    dao.upsert_session(root_session("s-cwd").model_copy(update={"cwd": ""}))
+
+    session = dao.get_session("s-cwd")
+    assert session is not None
+    assert session.cwd == "/real"
 
 
 def test_fork_lineage_requires_parent_and_seq_together(dao: SessionDao) -> None:

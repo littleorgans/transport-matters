@@ -6,7 +6,7 @@ the storage layer via dependency inversion (``storage.exchange_sink``), so there
 ``storage → index`` import.
 
 Tier-1 first: ``bind_exchange`` + ``build_wire_job`` are cheap and synchronous (no DB, no FS
-scan — ``raw_dir`` is a pure path computation), and the sink only does a non-blocking
+scan, ``raw_dir`` is a pure path computation), and the sink only does a non-blocking
 ``writer.submit``; the actual writes happen later on the writer thread (§6.3/§7.1).
 """
 
@@ -98,9 +98,9 @@ def bind_exchange(
 ) -> SessionBinding | None:
     """Resolve this exchange's ``SessionBinding`` (the FK-parent session), or ``None``.
 
-    The correlation id is the wire-observed ``RequestMetadata.session_id`` — an INPUT only,
+    The correlation id is the wire-observed ``RequestMetadata.session_id``, an INPUT only,
     routed through the canonical ``SessionBinding`` (§4.2). anthropic/gemini use the native id
-    DIRECTLY as the session_id (== claude's transcript ``sessionId`` — the HARD-GATE correlation
+    DIRECTLY as the session_id (== claude's transcript ``sessionId``, the HARD-GATE correlation
     linchpin); read-back providers synth a stable PK (§3.4). ``native_session_id`` is always the
     raw id. Absent correlation id or run id → ``None`` (``wire_exchange.session_id`` stays NULL; a
     later correlation upsert backfills it).
@@ -155,7 +155,7 @@ def build_wire_job(
     """Map a persisted exchange to a frozen wire row + ordered edges and wrap it in an IndexJob.
 
     Char counts are reused from ``IndexEntry.req`` (``ReqStats`` already IS the production char
-    accounting — DRY, §7.2); token counts from ``ResStats``. ``raw_dir`` is a tier-1 pointer
+    accounting, DRY, §7.2); token counts from ``ResStats``. ``raw_dir`` is a tier-1 pointer
     only: it MUST be rooted at the backend's actual storage root (``storage_root``), which is
     workspace-scoped (``settings.storage_dir``) at runtime. The global default root is used only
     when no root is supplied (unit callers). Reconstructing the dir from ``entry.id`` + ``entry.ts``
@@ -190,32 +190,31 @@ def build_wire_job(
 
 
 def make_index_sink(
-    writer: IndexWriter,
+    writer: IndexWriter | None,
     run_facts: RunFacts,
     on_binding: Callable[[SessionBinding], None] | None = None,
     *,
     storage_root: Path | None = None,
 ) -> ExchangeSink:
-    """Build the post-persist sink ``load_runtime`` registers: bind → build → submit (§6.4).
+    """Build the post-persist sink ``load_runtime`` registers: bind and optionally submit (§6.4).
 
-    ``on_binding`` (injected by ``load_runtime``, so ingest never imports the tailer — no cycle) is
+    ``on_binding`` (injected by ``load_runtime``, so ingest never imports the tailer, no cycle) is
     invoked once per resolved wire binding so the transcript tailer can register that session's
-    cursor read-back style — the first wire frame is what reveals the session_id (§9.2/§15 risk 2).
+    cursor read-back style, the first wire frame is what reveals the session_id (§9.2/§15 risk 2).
 
     ``storage_root`` is the backend's actual (workspace-scoped) storage root; it is threaded into
     ``raw_dir`` so the tier-2 pointer resolves to the tier-1 bytes the backend wrote. ``load_runtime``
-    passes the ``DiskStorageBackend`` root — this is the injection point, so ``index`` never imports
+    passes the ``DiskStorageBackend`` root, this is the injection point, so ``index`` never imports
     ``storage`` (the §DAG back-edge stays absent).
     """
 
     def sink(entry: IndexEntry, artifacts: ExchangeArtifacts) -> None:
         binding = bind_exchange(entry, artifacts, run_facts)
-        # Accept the wire job (which upserts the session row with cli + source_descriptor for a
-        # managed-codex session, §5.2b) BEFORE scheduling cursor registration, so the canonical row
-        # write is enqueued ahead of the tailer. The empty-row symptom is independently impossible —
-        # the transcript binding also carries cli + descriptor — but submitting wire-first keeps the
-        # wire side the canonical row creator and matches the brief's persist-before-register order.
-        writer.submit(build_wire_job(entry, artifacts, binding, storage_root=storage_root))
+        if writer is not None:
+            # Legacy SQLite consumers still accept the wire job before cursor registration. Live
+            # runtime passes no writer in the Postgres session-store slice, so this becomes binding
+            # discovery only and leaves the parked wire path unfed.
+            writer.submit(build_wire_job(entry, artifacts, binding, storage_root=storage_root))
         if binding is not None and on_binding is not None:
             on_binding(binding)
 
@@ -349,7 +348,7 @@ def build_transcript_job(turn: NormalizedTurn, binding: SessionBinding) -> Index
 
     The binding supplies the FK-parent ``session`` row; the turn supplies everything else. ``parts``
     are ``ir.ContentBlock``s, so identical content dedups to the same ``block.hash`` as the wire
-    side — which is what makes the §8.4 pivot/diff exact. The job carries the lightweight live SSE
+    side, which is what makes the §8.4 pivot/diff exact. The job carries the lightweight live SSE
     event (§9.4); the writer pushes it AFTER COMMIT.
     """
     event: dict[str, object] = {

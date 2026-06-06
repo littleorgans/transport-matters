@@ -1,20 +1,16 @@
 """Tailer: crash-safe complete-record iterate, poll/submit, registration, live event (§13.2)."""
 
-import asyncio
 import json
 from typing import TYPE_CHECKING
 
-from transport_matters import broadcast
 from transport_matters.index.adapters.base import (
     FileTailSource,
-    NormalizedTurn,
     SessionBinding,
     encode_source_descriptor,
 )
 from transport_matters.index.adapters.claude import ClaudeAdapter
 from transport_matters.index.adapters.codex import CodexAdapter
 from transport_matters.index.conftest import make_binding
-from transport_matters.index.ingest import build_transcript_job
 from transport_matters.index.sessions import synth_session_id
 from transport_matters.index.tailer import (
     TailCursor,
@@ -22,13 +18,11 @@ from transport_matters.index.tailer import (
     iter_complete_records,
     register_session_cursor,
 )
-from transport_matters.index.writer import IndexWriter
+from transport_matters.session.ingest import EventWrite, build_event
 
 if TYPE_CHECKING:
-    import sqlite3
+    from collections.abc import Callable
     from pathlib import Path
-
-    from transport_matters.index.writer import IndexJob
 
 _SESSION = "00000000-0000-4000-8000-000000000001"
 _RUN = "run1"
@@ -102,12 +96,12 @@ def _binding(cwd: str = "/w") -> SessionBinding:
     return make_binding(_SESSION, cwd=cwd, workspace_slug="s", workspace_hash="h")
 
 
-def _user_line(uuid: str, text: str) -> str:
+def _user_line(uuid: str, text: str, parent_uuid: str | None = None) -> str:
     return json.dumps(
         {
             "type": "user",
             "uuid": uuid,
-            "parentUuid": None,
+            "parentUuid": parent_uuid,
             "sessionId": _SESSION,
             "isSidechain": False,
             "timestamp": "2026-06-05T12:00:00Z",
@@ -121,6 +115,20 @@ def _cursor(path: str) -> TailCursor:
         binding=_binding(),
         source=FileTailSource(path=path, format="claude_jsonl"),
         adapter=ClaudeAdapter(),
+    )
+
+
+def _event_tailer(
+    submitted: list[EventWrite],
+    snapshot: Callable[[str, int, bytes], None] | None = None,
+) -> TranscriptTailer:
+    def submit_batch(_binding: SessionBinding, events: list[EventWrite]) -> None:
+        submitted.extend(events)
+
+    return TranscriptTailer(
+        build_record=build_event,
+        submit_batch=submit_batch,
+        snapshot=snapshot,
     )
 
 
@@ -150,11 +158,13 @@ class TestTailerPoll:
     def test_poll_submits_complete_and_leaves_partial(self, tmp_path: Path) -> None:
         path = tmp_path / "t.jsonl"
         path.write_text(_user_line("u1", "hi") + "\n" + '{"type":"user","uuid":"u2"')
-        submitted: list[IndexJob] = []
-        tailer = TranscriptTailer(submitted.append)
+        submitted: list[EventWrite] = []
+        tailer = _event_tailer(submitted)
         tailer.register(_cursor(str(path)))
         tailer.poll()
-        assert [job.entity_id for job in submitted] == ["u1"]  # only the complete record
+        assert [write.event.native_turn_id for write in submitted] == [
+            "u1"
+        ]  # only the complete record
 
         with path.open("a", encoding="utf-8") as handle:
             handle.write(
@@ -162,21 +172,95 @@ class TestTailerPoll:
                 '"timestamp":"t","message":{"role":"user","content":"x"}}\n'
             )
         tailer.poll()
-        assert [job.entity_id for job in submitted] == ["u1", "u2"]  # partial completed → consumed
+        assert [write.event.native_turn_id for write in submitted] == [
+            "u1",
+            "u2",
+        ]  # partial completed → consumed
+
+    def test_parent_seq_uses_prior_turn_seq_across_meta_record(self, tmp_path: Path) -> None:
+        path = tmp_path / "t.jsonl"
+        meta = json.dumps(
+            {
+                "type": "summary",
+                "uuid": "m1",
+                "timestamp": "2026-06-05T12:01:00Z",
+                "cwd": "/w",
+            }
+        )
+        path.write_text(
+            "\n".join(
+                [
+                    _user_line("a1", "parent"),
+                    meta,
+                    _user_line("b1", "child", parent_uuid="a1"),
+                ]
+            )
+            + "\n"
+        )
+        submitted: list[EventWrite] = []
+        tailer = _event_tailer(submitted)
+        tailer.register(_cursor(str(path)))
+        tailer.poll()
+
+        assert [
+            (write.event.seq, write.event.kind, write.event.native_turn_id) for write in submitted
+        ] == [
+            (0, "turn", "a1"),
+            (1, "meta", "m1"),
+            (2, "turn", "b1"),
+        ]
+        assert submitted[2].event.parent_native_id == "a1"
+        assert submitted[2].event.parent_seq == 0
 
     def test_register_is_idempotent(self, tmp_path: Path) -> None:
-        submitted: list[IndexJob] = []
-        tailer = TranscriptTailer(submitted.append)
+        submitted: list[EventWrite] = []
+        tailer = _event_tailer(submitted)
         path = tmp_path / "t.jsonl"
         path.write_text(_user_line("u1", "hi") + "\n")
         cursor = _cursor(str(path))
         tailer.register(cursor)
         tailer.register(cursor)  # idempotent on session_id
         tailer.poll()
-        assert [job.entity_id for job in submitted] == ["u1"]  # one cursor, one submit
+        assert [write.event.native_turn_id for write in submitted] == [
+            "u1"
+        ]  # one cursor, one submit
         tailer.unregister(_SESSION)
         tailer.poll()
         assert len(submitted) == 1  # unregistered → no further submits
+
+    def test_cursor_state_advances_only_after_submit_success(self, tmp_path: Path) -> None:
+        path = tmp_path / "t.jsonl"
+        path.write_text(_user_line("u1", "hi") + "\n")
+        submitted: list[EventWrite] = []
+        calls: list[int] = []
+
+        def submit_batch(_binding: SessionBinding, events: list[EventWrite]) -> None:
+            calls.append(len(events))
+            if len(calls) == 1:
+                raise RuntimeError("database unavailable")
+            submitted.extend(events)
+
+        tailer = TranscriptTailer(build_record=build_event, submit_batch=submit_batch)
+        tailer.register(_cursor(str(path)))
+
+        tailer.poll()
+        (cursor,) = tailer._snapshot()
+        assert calls == [1]
+        assert submitted == []
+        assert cursor.byte_offset == 0
+        assert cursor.seq == 0
+        assert cursor.parent_id is None
+        assert cursor.parent_seq is None
+        assert cursor.stat_signature is None
+
+        tailer.poll()
+        assert calls == [1, 1]
+        assert [write.event.native_turn_id for write in submitted] == ["u1"]
+        assert cursor.byte_offset == len(path.read_bytes())
+        assert cursor.seq == 1
+        assert cursor.parent_id == "u1"
+        assert cursor.parent_seq == 0
+        assert cursor.stat_signature is not None
 
 
 class TestSnapshotTee:
@@ -184,14 +268,14 @@ class TestSnapshotTee:
 
     def test_poll_tees_consumed_bytes_at_cursor_offset(self, tmp_path: Path) -> None:
         # The tee mirrors the CLI cursor: one call per poll with (session_id, start_offset, consumed
-        # bytes) — the SAME bytes iter_complete_records consumed, the trailing partial excluded.
+        # bytes), the SAME bytes iter_complete_records consumed, the trailing partial excluded.
         path = tmp_path / "t.jsonl"
         first = _user_line("u1", "hi") + "\n"
         path.write_text(first + '{"type":"user","uuid":"u2"')  # complete record + a partial
         tees: list[tuple[str, int, bytes]] = []
-        submitted: list[IndexJob] = []
-        tailer = TranscriptTailer(
-            submitted.append,
+        submitted: list[EventWrite] = []
+        tailer = _event_tailer(
+            submitted,
             snapshot=lambda sid, off, data: tees.append((sid, off, data)),
         )
         tailer.register(_cursor(str(path)))
@@ -217,9 +301,9 @@ class TestSnapshotTee:
         meta_line = _codex_session_meta(native) + "\n"
         path.write_text(meta_line)
         tees: list[tuple[str, int, bytes]] = []
-        submitted: list[IndexJob] = []
-        tailer = TranscriptTailer(
-            submitted.append,
+        submitted: list[EventWrite] = []
+        tailer = _event_tailer(
+            submitted,
             snapshot=lambda sid, off, data: tees.append((sid, off, data)),
         )
         tailer.register(
@@ -231,8 +315,10 @@ class TestSnapshotTee:
         )
 
         tailer.poll()
-        assert submitted == []  # session_meta is not a turn
-        assert b"".join(data for _, _, data in tees) == meta_line.encode()  # but it IS snapshotted
+        assert [(write.event.kind, write.event.raw["type"]) for write in submitted] == [
+            ("meta", "session_meta")
+        ]
+        assert b"".join(data for _, _, data in tees) == meta_line.encode()
 
     def test_snapshot_failure_does_not_advance_and_retries_next_poll(self, tmp_path: Path) -> None:
         # The tee is coupled to the cursor advance: a snapshot raise must NOT advance byte_offset AND
@@ -246,15 +332,15 @@ class TestSnapshotTee:
             calls.append(1)
             raise OSError("disk full")
 
-        submitted: list[IndexJob] = []
-        tailer = TranscriptTailer(submitted.append, snapshot=failing_snapshot)
+        submitted: list[EventWrite] = []
+        tailer = _event_tailer(submitted, snapshot=failing_snapshot)
         tailer.register(_cursor(str(path)))
 
         tailer.poll()  # snapshot raises → poll() swallows + logs
         tailer.poll()  # CLI file UNCHANGED → must retry, not skip at the stat guard
 
         assert len(calls) == 2  # retried on the unchanged file
-        assert submitted == []  # ingest never ran (snapshot raised first)
+        assert submitted == []  # ingest never ran because snapshot raised first
         (cursor,) = tailer._snapshot()
         assert cursor.byte_offset == 0  # not advanced past un-snapshotted bytes
         assert cursor.stat_signature is None  # not advanced → this is what re-enables the retry
@@ -265,9 +351,7 @@ class TestSnapshotTee:
         path = tmp_path / "t.jsonl"
         path.write_text(_user_line("u1", "hi") + "\n")
         tees: list[tuple[str, int, bytes]] = []
-        tailer = TranscriptTailer(
-            lambda _job: None, snapshot=lambda s, o, d: tees.append((s, o, d))
-        )
+        tailer = _event_tailer([], snapshot=lambda s, o, d: tees.append((s, o, d)))
         tailer.register(_cursor(str(path)))
         tailer.poll()
         tailer.poll()  # unchanged → skipped at the stat guard, not re-teed
@@ -276,11 +360,11 @@ class TestSnapshotTee:
     def test_poll_without_snapshot_callback_is_safe(self, tmp_path: Path) -> None:
         path = tmp_path / "t.jsonl"
         path.write_text(_user_line("u1", "hi") + "\n")
-        submitted: list[IndexJob] = []
-        tailer = TranscriptTailer(submitted.append)  # no snapshot injected (default None)
+        submitted: list[EventWrite] = []
+        tailer = _event_tailer(submitted)  # no snapshot injected (default None)
         tailer.register(_cursor(str(path)))
         tailer.poll()
-        assert [job.entity_id for job in submitted] == ["u1"]  # tier-2 unaffected
+        assert [write.event.native_turn_id for write in submitted] == ["u1"]  # tier-2 unaffected
 
 
 class TestRegisterCursor:
@@ -299,7 +383,7 @@ class TestRegisterCursor:
     ) -> None:
         # External-adoption-under-managed-home (§11.1): a claude wire binding with NO owned descriptor
         # but a managed ``home_dir`` re-binds through RunContext (which carries home_dir like cwd), so
-        # ``locate`` resolves the transcript under <home>/projects — NOT ~/.claude — and the cursor
+        # ``locate`` resolves the transcript under <home>/projects, NOT ~/.claude, and the cursor
         # binding keeps the home. This is the real correctness gap the locate fix closes.
         wire = _binding(cwd="/w").model_copy(update={"home_dir": str(tmp_path)})
         tailer = TranscriptTailer(lambda _job: None)
@@ -317,7 +401,7 @@ class TestRegisterCursor:
         # cannot know the id was TM-injected), so register_session_cursor MUST preserve the wire
         # side's authoritative minted + descriptor onto the cursor binding. Otherwise the transcript
         # path's session-row upsert (minted = excluded.minted, last-writer-wins) clobbers minted back
-        # to 0 once a turn lands — breaking the §5.5 row and regression (f).
+        # to 0 once a turn lands, breaking the §5.5 row and regression (f).
         session = "019e0000-0000-7000-8000-00000000beef"
         transcript = tmp_path / "owned.jsonl"
         descriptor = encode_source_descriptor(
@@ -340,7 +424,7 @@ class TestRegisterCursor:
         # The transcript binding is RE-DERIVED through the adapter (bind() + RunContext go LIVE,
         # audit #2): for codex read-back the synth session_id must reproduce the wire side's (§7.2),
         # and the cursor binds the codex adapter's cli. Managed-mint (§5.2b): the source is the OWNED
-        # rollout from the wire binding's source_descriptor — NOT a ~/.codex glob (the glob is gone).
+        # rollout from the wire binding's source_descriptor, NOT a ~/.codex glob (the glob is gone).
         native = "019e0000-0000-7000-8000-00000000c0de"
         rollout = tmp_path / f"rollout-2026-06-05T10-00-00-{native}.jsonl"
         descriptor = encode_source_descriptor(
@@ -365,28 +449,30 @@ class TestRegisterCursor:
         descriptor = encode_source_descriptor(
             FileTailSource(path=str(rollout), format="codex_rollout")
         )
-        submitted: list[IndexJob] = []
-        tailer = TranscriptTailer(submitted.append)
+        submitted: list[EventWrite] = []
+        tailer = _event_tailer(submitted)
         await register_session_cursor(
             tailer, CodexAdapter(), _codex_wire_binding(native, descriptor)
         )
 
-        tailer.poll()  # only session_meta present → a normal no-op, NOT a locate miss
-        assert submitted == []
+        tailer.poll()
+        assert [(write.event.kind, write.event.raw["type"]) for write in submitted] == [
+            ("meta", "session_meta")
+        ]
         with rollout.open("a", encoding="utf-8") as handle:
             handle.write(_codex_response_item("hello") + "\n")
         tailer.poll()
-        assert [job.kind for job in submitted] == ["transcript"]  # exactly one turn
+        assert [write.event.kind for write in submitted] == ["meta", "turn"]
         (cursor,) = tailer._snapshot()
         assert isinstance(cursor.source, FileTailSource)
         assert cursor.source.path == str(rollout)  # tailed from the exact owned path
 
     async def test_non_owned_codex_binding_registers_no_cursor(self) -> None:
         # Regression (c): a codex wire id TM did not seed has no owned descriptor (bind_exchange left
-        # it None). register_session_cursor registers NO cursor — it stays pending: no glob, no
+        # it None). register_session_cursor registers NO cursor, it stays pending: no glob, no
         # error, no busy-poll (the old window-id phantom path is gone).
-        submitted: list[IndexJob] = []
-        tailer = TranscriptTailer(submitted.append)
+        submitted: list[EventWrite] = []
+        tailer = _event_tailer(submitted)
         await register_session_cursor(
             tailer,
             CodexAdapter(),
@@ -398,12 +484,12 @@ class TestRegisterCursor:
 
     async def test_five_managed_sessions_same_cwd_no_cross_binding(self, tmp_path: Path) -> None:
         # Regression (b): 5 managed codex sessions in the SAME cwd, each a unique uuid + owned
-        # rollout path, one response each. Assert zero cross-binding — every cursor tails ITS own
+        # rollout path, one response each. Assert zero cross-binding, every cursor tails ITS own
         # path and emits ITS own session's turn (no newest-glob: each path is owned, not discovered).
         natives = [f"019e0000-0000-7000-8000-0000000{i:05d}" for i in range(5)]
         paths: list[str] = []
-        submitted: list[IndexJob] = []
-        tailer = TranscriptTailer(submitted.append)
+        submitted: list[EventWrite] = []
+        tailer = _event_tailer(submitted)
         for i, native in enumerate(natives):
             rollout = tmp_path / f"rollout-2026-06-05T10-00-0{i}-{native}.jsonl"
             rollout.write_text(
@@ -420,7 +506,7 @@ class TestRegisterCursor:
 
         cursors = tailer._snapshot()
         assert len(cursors) == 5  # five distinct cursors (distinct synth session_ids)
-        # each cursor is bound to ITS OWN owned path — no two share, none point at "newest"
+        # each cursor is bound to ITS OWN owned path, no two share, none point at "newest"
         source_paths = set()
         for c in cursors:
             assert isinstance(c.source, FileTailSource)
@@ -431,17 +517,15 @@ class TestRegisterCursor:
 
         tailer.poll()
         # one turn per session, and each turn's session_id is the one whose rollout it came from
-        emitted = {job.event["session_id"] for job in submitted if job.event is not None}
-        assert len(submitted) == 5
+        emitted = {write.event.session_id for write in submitted if write.event.kind == "turn"}
+        assert len(submitted) == 10
         assert emitted == expected_ids  # zero cross-binding
 
 
 class TestCodexModelThreading:
-    def test_tail_threads_turn_context_model_onto_codex_turns(
-        self, conn: sqlite3.Connection
-    ) -> None:
+    def test_tail_threads_turn_context_model_onto_codex_turns(self) -> None:
         # codex carries its model in a separate `turn_context` record (which normalize skips), so the
-        # tailer must thread it forward — else every codex transcript_turn lands model=NULL (review F1).
+        # tailer must thread it forward to every response_item event.
         from pathlib import Path as _Path
 
         from transport_matters.index.adapters.codex import CodexAdapter
@@ -457,8 +541,8 @@ class TestCodexModelThreading:
             cli="codex",
             native_session_id=native,
         )
-        jobs: list[IndexJob] = []
-        tailer = TranscriptTailer(jobs.append)
+        submitted: list[EventWrite] = []
+        tailer = _event_tailer(submitted)
         tailer.register(
             TailCursor(
                 binding=binding,
@@ -467,35 +551,7 @@ class TestCodexModelThreading:
             )
         )
         tailer.poll()
-        for job in jobs:
-            job.apply(conn)
 
-        models = [m for (m,) in conn.execute("SELECT model FROM transcript_turn").fetchall()]
-        assert models  # the 7 response_items became turns
-        assert all(m == "gpt-5-codex" for m in models)  # threaded from turn_context.payload.model
-
-
-class TestLiveEvent:
-    async def test_writer_emits_transcript_turn_after_commit(self, tmp_path: Path) -> None:
-        loop = asyncio.get_running_loop()
-        writer = IndexWriter(str(tmp_path / "index.db"), flush_ms=5, loop=loop, emit=broadcast.emit)
-        writer.start()
-        queue = broadcast.subscribe()
-        try:
-            turn = NormalizedTurn(
-                turn_id="t1",
-                session_id=_SESSION,
-                run_id="run1",
-                provider="anthropic",
-                cli="claude",
-                role="assistant",
-                seq=7,
-                is_sidechain=False,
-            )
-            writer.submit(build_transcript_job(turn, _binding()))
-            await loop.run_in_executor(None, lambda: writer.stop(drain=True))
-            event = json.loads(await asyncio.wait_for(queue.get(), timeout=2.0))
-            assert event["type"] == "transcript_turn"
-            assert (event["turn_id"], event["session_id"], event["seq"]) == ("t1", _SESSION, 7)
-        finally:
-            broadcast.unsubscribe(queue)
+        models = [write.event.model for write in submitted if write.event.kind == "turn"]
+        assert models
+        assert all(model == "gpt-5-codex" for model in models)
