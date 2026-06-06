@@ -10,10 +10,8 @@ from alembic import command
 from alembic.config import Config
 from psycopg import sql
 
+from transport_matters.config import Settings, resolve_test_database_url
 from transport_matters.session.pool import connect, sqlalchemy_url
-from transport_matters.session_config import DEFAULT_TEST_ADMIN_DATABASE_URL
-
-TEST_ADMIN_DATABASE_URL_ENV = "TRANSPORT_MATTERS_TEST_ADMIN_DATABASE_URL"
 
 
 @dataclass(frozen=True)
@@ -26,9 +24,7 @@ class TestDb:
 
     @classmethod
     def create(cls, admin_url: str | None = None) -> TestDb:
-        resolved_admin_url = admin_url or os.environ.get(
-            TEST_ADMIN_DATABASE_URL_ENV, DEFAULT_TEST_ADMIN_DATABASE_URL
-        )
+        resolved_admin_url = admin_url or resolve_test_database_url(Settings.load())
         database_name = f"tm_test_{os.getpid()}_{uuid4().hex}"
         database_url = database_url_for(resolved_admin_url, database_name)
         with connect(resolved_admin_url, autocommit=True) as conn:

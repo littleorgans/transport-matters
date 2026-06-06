@@ -10,21 +10,16 @@ from transport_matters.session.models import (
     SessionStatus,
 )
 from transport_matters.session.pool import (
-    DEFAULT_DATABASE_URL,
-    DEFAULT_TEST_ADMIN_DATABASE_URL,
     async_connect,
     async_transaction,
     connect,
     create_async_pool,
     create_pool,
-    resolve_database_url,
     transaction,
 )
 
 __all__ = [
     "ARTIFACT_HASH_ALGO",
-    "DEFAULT_DATABASE_URL",
-    "DEFAULT_TEST_ADMIN_DATABASE_URL",
     "ArtifactRow",
     "AsyncSessionDao",
     "EventArtifactRow",
@@ -40,6 +35,5 @@ __all__ = [
     "connect",
     "create_async_pool",
     "create_pool",
-    "resolve_database_url",
     "transaction",
 ]

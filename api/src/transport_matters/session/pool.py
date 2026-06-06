@@ -7,23 +7,10 @@ from psycopg import AsyncConnection, Connection
 from psycopg.rows import DictRow, dict_row
 from psycopg_pool import AsyncConnectionPool, ConnectionPool
 
-from transport_matters.config import Settings, get_settings
-from transport_matters.session_config import (
-    DEFAULT_DATABASE_URL as DEFAULT_DATABASE_URL,
-)
-from transport_matters.session_config import (
-    DEFAULT_TEST_ADMIN_DATABASE_URL as DEFAULT_TEST_ADMIN_DATABASE_URL,
-)
+from transport_matters.config import Settings, get_settings, resolve_database_url
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Iterator
-
-
-def resolve_database_url(database_url: str | None = None, settings: Settings | None = None) -> str:
-    if database_url is not None:
-        return database_url
-    resolved = settings if settings is not None else get_settings()
-    return resolved.database_url
 
 
 def sqlalchemy_url(database_url: str) -> str:
@@ -38,7 +25,7 @@ def sqlalchemy_url(database_url: str) -> str:
 
 def connect(database_url: str | None = None, *, autocommit: bool = False) -> Connection[DictRow]:
     return Connection.connect(
-        resolve_database_url(database_url),
+        _resolved_url(database_url),
         autocommit=autocommit,
         row_factory=dict_row,
     )
@@ -48,7 +35,7 @@ async def async_connect(
     database_url: str | None = None, *, autocommit: bool = False
 ) -> AsyncConnection[DictRow]:
     return await AsyncConnection.connect(
-        resolve_database_url(database_url),
+        _resolved_url(database_url),
         autocommit=autocommit,
         row_factory=dict_row,
     )
@@ -62,7 +49,7 @@ def create_pool(
 ) -> ConnectionPool[Connection[DictRow]]:
     settings = get_settings()
     return ConnectionPool(
-        resolve_database_url(database_url, settings),
+        _resolved_url(database_url, settings),
         min_size=min_size if min_size is not None else settings.session_pool_min_size,
         max_size=max_size if max_size is not None else settings.session_pool_max_size,
         kwargs={"row_factory": dict_row},
@@ -78,7 +65,7 @@ def create_async_pool(
 ) -> AsyncConnectionPool[AsyncConnection[DictRow]]:
     settings = get_settings()
     return AsyncConnectionPool(
-        resolve_database_url(database_url, settings),
+        _resolved_url(database_url, settings),
         min_size=min_size if min_size is not None else settings.session_pool_min_size,
         max_size=max_size if max_size is not None else settings.session_pool_max_size,
         kwargs={"row_factory": dict_row},
@@ -98,3 +85,9 @@ async def async_transaction(
 ) -> AsyncIterator[AsyncConnection[DictRow]]:
     async with conn.transaction():
         yield conn
+
+
+def _resolved_url(database_url: str | None, settings: Settings | None = None) -> str:
+    if database_url is not None:
+        return database_url
+    return resolve_database_url(settings if settings is not None else get_settings())

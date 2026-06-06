@@ -5,7 +5,7 @@ from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
-from transport_matters.config import get_settings
+from transport_matters.config import get_settings, resolve_database_url
 from transport_matters.session.pool import sqlalchemy_url
 
 config = context.config
@@ -19,7 +19,7 @@ def _database_url() -> str:
     configured = config.get_main_option("sqlalchemy.url")
     if configured:
         return configured
-    return sqlalchemy_url(get_settings().database_url)
+    return sqlalchemy_url(resolve_database_url(get_settings()))
 
 
 def run_migrations_offline() -> None:

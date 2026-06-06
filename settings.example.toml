@@ -1,0 +1,7 @@
+# Copy to ~/.transport-matters/settings.toml and edit.
+# TRANSPORT_MATTERS_* env vars override these values.
+[database]
+# Operator Postgres connection used by Transport Matters.
+url = "postgresql://tm:tm@localhost:55432/transport_matters"
+# Admin connection for tests. Defaults to url if unset.
+test_url = "postgresql://tm:tm@localhost:55432/postgres"

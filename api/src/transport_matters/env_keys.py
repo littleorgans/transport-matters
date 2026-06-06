@@ -34,3 +34,5 @@ OWNED_SOURCE_DESCRIPTOR = f"{ENV_PREFIX}OWNED_SOURCE_DESCRIPTOR"
 # carries it but is unlinked on exit, so it cannot be the addon's durable channel). Unset = native home.
 HOME_DIR = f"{ENV_PREFIX}HOME_DIR"
 DATABASE_URL = f"{ENV_PREFIX}DATABASE_URL"
+TEST_DATABASE_URL = f"{ENV_PREFIX}TEST_DATABASE_URL"
+DOCKER_PG_PORT = f"{ENV_PREFIX}DOCKER_PG_PORT"
