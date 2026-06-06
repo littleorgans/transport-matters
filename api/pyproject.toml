@@ -41,6 +41,8 @@ dependencies = [
     "mitmproxy>=12.2,<13",
     "aiofiles>=24.0",
     "typer>=0.15",
+    "psycopg[binary,pool]>=3.2",
+    "alembic>=1.14",
 ]
 
 [project.scripts]
@@ -85,11 +87,14 @@ raw-options = { root = "..", version_scheme = "no-guess-dev" }
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/transport_matters"]
-exclude = ["**/test_*.py", "**/conftest.py"]
-artifacts = ["src/transport_matters/www/**"]
+exclude = ["**/test_*.py", "**/conftest.py", "src/transport_matters/session/testing.py"]
+artifacts = ["src/transport_matters/www/**", "migrations/**"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"migrations" = "migrations"
 
 [tool.hatch.build.targets.sdist]
-only-include = ["src/transport_matters", "tests", "README.md", "LICENSE"]
+only-include = ["src/transport_matters", "migrations", "alembic.ini", "tests", "README.md", "LICENSE"]
 
 # ---- Ruff ----
 [tool.ruff]
@@ -130,7 +135,7 @@ ignore = [
 # FastAPI evaluates route + dependency annotations at runtime (get_type_hints), so the
 # sqlite3 / Iterator / Literal types used in the handlers must stay runtime imports, not move
 # into a TYPE_CHECKING block. (Handlers are sync `def` so FastAPI offloads their blocking SQL
-# + filesystem reads to its threadpool, off the event loop — so no ASYNC240 exemption needed.)
+# + filesystem reads to its threadpool, off the event loop; no ASYNC240 exemption needed.)
 "src/transport_matters/api/v1/index_routes.py" = [
     "TC003",
 ]

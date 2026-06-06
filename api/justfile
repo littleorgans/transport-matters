@@ -7,7 +7,6 @@ default: check test
 
 install:
     uv sync --all-extras --dev
-    cp -n .env.example .env 2>/dev/null || true
 
 # ------------- Dev -------------
 dev:
@@ -30,7 +29,7 @@ coverage:
     uv run python -m pytest --cov=transport_matters --cov-report=term-missing --cov-report=html
 
 # Build wheel + sdist into api/dist/. Run `cd ../www && pnpm build` first
-# if you want the frontend bundle inside the wheel — vite writes it to
+# if you want the frontend bundle inside the wheel; vite writes it to
 # src/transport_matters/www/ which hatch includes via the artifacts glob.
 build:
     rm -rf dist/
@@ -42,7 +41,7 @@ build:
     @if unzip -l dist/transport_matters-*.whl | grep -q 'transport_matters/www/index.html'; then \
         echo "  ✓ www/ bundle embedded in wheel"; \
     else \
-        echo "  ! www/ bundle NOT in wheel — run 'cd ../www && pnpm build' first"; \
+        echo "  ! www/ bundle NOT in wheel; run 'cd ../www && pnpm build' first"; \
     fi
 
 # ------------- Quality Gates -------------

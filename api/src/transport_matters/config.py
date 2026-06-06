@@ -1,24 +1,59 @@
+from __future__ import annotations
+
+import tomllib
 from functools import lru_cache
 from pathlib import Path
 
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from transport_matters.env_keys import ENV_PREFIX
 from transport_matters.storage_roots import default_storage_root
 
+DATABASE_URL_GUIDANCE = (
+    "set TRANSPORT_MATTERS_DATABASE_URL, or add [database] url to "
+    "~/.transport-matters/settings.toml (copy settings.example.toml)"
+)
+TEST_DATABASE_URL_GUIDANCE = (
+    "set TRANSPORT_MATTERS_TEST_DATABASE_URL or TRANSPORT_MATTERS_DATABASE_URL, or add "
+    "[database] test_url or [database] url to ~/.transport-matters/settings.toml "
+    "(copy settings.example.toml)"
+)
+SETTINGS_FILENAME = "settings.toml"
+
+
+class SettingsFileError(ValueError):
+    pass
+
+
+class MissingDatabaseConfigError(RuntimeError):
+    pass
+
+
+class DatabaseSettings(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    url: str | None = None
+    test_url: str | None = None
+
+
+class TomlSettings(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    database: DatabaseSettings = Field(default_factory=DatabaseSettings)
+
 
 class Settings(BaseSettings):
     """Runtime configuration.
 
-    All fields can be overridden via `TRANSPORT_MATTERS_*` environment variables
-    or a local `.env` file. The CLI (`transport-matters claude`) writes the
-    relevant env vars before it execs `mitmdump`, so flag overrides reach the
+    Transport Matters runtime fields are overridden via `TRANSPORT_MATTERS_*`
+    environment variables. Database defaults come from `settings.toml`, with env
+    variables as the override layer. The CLI (`transport-matters claude`) writes
+    the relevant env vars before it execs `mitmdump`, so flag overrides reach the
     addon through the same mechanism as user-set env vars.
     """
 
     model_config = SettingsConfigDict(
-        env_file=".env",
-        env_file_encoding="utf-8",
         env_prefix=ENV_PREFIX,
         extra="ignore",
     )
@@ -61,6 +96,20 @@ class Settings(BaseSettings):
     home_dir: Path | None = None
     breakpoint_timeout_s: float = 300.0
     breakpoint_skip_models: list[str] = []
+    database_url: str | None = Field(
+        default=None,
+        description="Env override from TRANSPORT_MATTERS_DATABASE_URL.",
+    )
+    test_database_url: str | None = Field(
+        default=None,
+        description="Test env override from TRANSPORT_MATTERS_TEST_DATABASE_URL.",
+    )
+    database: DatabaseSettings = Field(
+        default_factory=DatabaseSettings,
+        description="Database values loaded from settings.toml. Call resolve_* for precedence.",
+    )
+    session_pool_min_size: int = 1
+    session_pool_max_size: int = 10
 
     cors_origins: list[str] = [
         "http://localhost:3000",
@@ -69,7 +118,70 @@ class Settings(BaseSettings):
     cors_methods: list[str] = ["GET", "POST", "PATCH", "DELETE", "OPTIONS"]
     cors_headers: list[str] = ["Content-Type", "Authorization"]
 
+    @classmethod
+    def load(cls) -> Settings:
+        env_settings = cls()
+        return cls.load_from(settings_path(env_settings.storage_dir), env_settings=env_settings)
+
+    @classmethod
+    def load_from(cls, path: Path, *, env_settings: Settings | None = None) -> Settings:
+        base_settings = env_settings if env_settings is not None else cls()
+        toml_settings = load_toml_settings(path)
+        return base_settings.model_copy(update={"database": toml_settings.database})
+
+
+def settings_path(storage_dir: Path | None = None) -> Path:
+    return (storage_dir if storage_dir is not None else default_storage_root()) / SETTINGS_FILENAME
+
+
+def load_toml_settings(path: Path) -> TomlSettings:
+    if not path.exists():
+        return TomlSettings()
+    try:
+        with path.open("rb") as handle:
+            return TomlSettings.model_validate(tomllib.load(handle))
+    except tomllib.TOMLDecodeError as exc:
+        raise SettingsFileError(f"malformed settings.toml at {path}: {exc}") from exc
+    except ValidationError as exc:
+        raise SettingsFileError(f"invalid settings.toml at {path}: {exc}") from exc
+
+
+def resolve_database_url(settings: Settings) -> str:
+    resolved = settings.database_url or settings.database.url
+    if resolved:
+        return resolved
+    raise MissingDatabaseConfigError(DATABASE_URL_GUIDANCE)
+
+
+def resolve_test_database_url(settings: Settings) -> str:
+    resolved = (
+        settings.test_database_url
+        or settings.database_url
+        or settings.database.test_url
+        or settings.database.url
+    )
+    if resolved:
+        return resolved
+    raise MissingDatabaseConfigError(TEST_DATABASE_URL_GUIDANCE)
+
 
 @lru_cache
 def get_settings() -> Settings:
-    return Settings()
+    return Settings.load()
+
+
+__all__ = [
+    "DATABASE_URL_GUIDANCE",
+    "SETTINGS_FILENAME",
+    "TEST_DATABASE_URL_GUIDANCE",
+    "DatabaseSettings",
+    "MissingDatabaseConfigError",
+    "Settings",
+    "SettingsFileError",
+    "TomlSettings",
+    "get_settings",
+    "load_toml_settings",
+    "resolve_database_url",
+    "resolve_test_database_url",
+    "settings_path",
+]
