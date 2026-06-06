@@ -15,6 +15,7 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
+from urllib.parse import urlencode
 
 import typer
 from click.core import ParameterSource
@@ -33,7 +34,6 @@ if TYPE_CHECKING:
 DESKTOP_APP_BIN_ENV = env_keys.DESKTOP_APP_BIN
 DESKTOP_APP_DIR_ENV = env_keys.DESKTOP_APP_DIR
 DESKTOP_ELECTRON_BIN_ENV = env_keys.DESKTOP_ELECTRON_BIN
-DESKTOP_LAUNCH_CONTEXT_ENV = env_keys.DESKTOP_LAUNCH_CONTEXT
 DESKTOP_ROUTE_URL_ENV = env_keys.DESKTOP_ROUTE_URL
 DESKTOP_CLIENT_ENV = env_keys.DESKTOP_CLIENT
 
@@ -130,6 +130,14 @@ def build_backend_started_event(
     cwd = launch_env[env_keys.CWD]
     wid = workspace_id(Path(cwd))
     base_url = loopback_http_url(web_port)
+    route_query = urlencode(
+        {
+            "owner": "local",
+            "workspace_hash": wid.hash,
+            "cli": agent,
+            "run_id": launch_env[env_keys.RUN_ID],
+        }
+    )
     return {
         "type": "transport_matters.backend_started",
         "agent": agent,
@@ -142,7 +150,7 @@ def build_backend_started_event(
         "proxyPort": proxy_port,
         "webPort": web_port,
         "baseUrl": base_url,
-        "routeUrl": f"{base_url}/canvas",
+        "routeUrl": f"{base_url}/canvas?{route_query}",
         "storageDir": str(resolved_storage),
         "homeDir": launch_env.get(env_keys.HOME_DIR),
     }
@@ -150,11 +158,9 @@ def build_backend_started_event(
 
 def spawn_detached_electron(launch: ElectronLaunch, event: dict[str, Any]) -> None:
     """Start the desktop shell as a detached viewer for an existing backend."""
-    context_json = json.dumps(event, separators=(",", ":"), sort_keys=True)
     env = {
         **os.environ,
         DESKTOP_CLIENT_ENV: str(event["agent"]),
-        DESKTOP_LAUNCH_CONTEXT_ENV: context_json,
         DESKTOP_ROUTE_URL_ENV: str(event["routeUrl"]),
         env_keys.CWD: str(event["cwd"]),
         env_keys.PROXY_PORT: str(event["proxyPort"]),
@@ -231,7 +237,7 @@ def _reject_irrelevant_options(ctx: typer.Context, agent: AgentName) -> None:
 
 def _option_supplied(ctx: typer.Context, name: str) -> bool:
     source = ctx.get_parameter_source(name)
-    return source in {ParameterSource.COMMANDLINE, ParameterSource.ENVIRONMENT}
+    return source == ParameterSource.COMMANDLINE
 
 
 def _resolve_or_exit(resolve_electron_launch: Callable[[], ElectronLaunch]) -> ElectronLaunch:

@@ -22,17 +22,19 @@ package scope so existing imports and most test monkeypatch paths
 remain valid.
 """
 
+from __future__ import annotations
+
 import shutil
 import sysconfig
 from functools import partial
 from importlib.resources import files
 from pathlib import Path  # noqa: TC003
-from typing import TYPE_CHECKING, Annotated
+from typing import TYPE_CHECKING, Annotated, TypedDict
 
 import typer
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
+    from collections.abc import Callable, Iterable
     from importlib.resources.abc import Traversable
 
 from transport_matters import __version__
@@ -74,6 +76,23 @@ from .prompt import inject_system_prompt, user_supplied_system_prompt
 from .runner import BindFailure, run_children, run_client_with_retry
 from .start_cmd import run_start
 from .trust import resolve_codex_ca_certificate
+
+
+class _SharedDesktopLaunchKwargs(TypedDict):
+    directory: Path | None
+    proxy_port: int | None
+    web_port: int | None
+    storage_dir: Path | None
+    home_dir: Path | None
+    debug: bool
+    print_command: bool
+    require_addon: Callable[[], Traversable]
+    resolve_mitmdump: Callable[[], str | None]
+    which: Callable[[str], str | None]
+    port_in_use: Callable[[int], bool]
+    allocate_port_pair: Callable[[], tuple[int, int]]
+    run_client_with_retry: Callable[..., None]
+
 
 __all__ = [
     "SIGNAL_EXIT",
@@ -364,61 +383,48 @@ def desktop(
         home_dir,
         create=not print_command,
     )
-    if plan.agent == "claude":
-        run_start(
-            directory=work_dir,
-            claude_passthrough=passthrough,
-            proxy_port=proxy_port,
-            web_port=web_port,
-            upstream=upstream,
-            storage_dir=storage_dir,
-            home_dir=resolved_home_dir,
-            claude_bin=claude_bin,
-            no_claude=no_claude,
-            no_system_prompt=no_system_prompt,
-            debug=debug,
-            print_command=print_command,
-            require_addon=_require_addon,
-            resolve_mitmdump=partial(
-                resolve_mitmdump_executable,
-                which=shutil.which,
-                get_scripts_dir=sysconfig.get_path,
-            ),
-            which=shutil.which,
-            port_in_use=port_in_use,
-            allocate_port_pair=allocate_port_pair,
-            inject_system_prompt=inject_system_prompt,
-            user_supplied_system_prompt=user_supplied_system_prompt,
-            print_banner=print_banner,
-            run_client_with_retry=plan.run_client_with_retry,
-        )
-        return
-
-    run_codex(
-        directory=work_dir,
-        codex_passthrough=passthrough,
-        proxy_port=proxy_port,
-        web_port=web_port,
-        storage_dir=storage_dir,
-        home_dir=resolved_home_dir,
-        codex_bin=codex_bin,
-        no_codex=no_codex,
-        debug=debug,
-        force_http_fallback=force_http_fallback,
-        print_command=print_command,
-        require_addon=_require_addon,
-        require_force_http_fallback_addon=_require_force_http_fallback_addon,
-        resolve_mitmdump=partial(
+    shared_launch_kwargs: _SharedDesktopLaunchKwargs = {
+        "directory": work_dir,
+        "proxy_port": proxy_port,
+        "web_port": web_port,
+        "storage_dir": storage_dir,
+        "home_dir": resolved_home_dir,
+        "debug": debug,
+        "print_command": print_command,
+        "require_addon": _require_addon,
+        "resolve_mitmdump": partial(
             resolve_mitmdump_executable,
             which=shutil.which,
             get_scripts_dir=sysconfig.get_path,
         ),
-        which=shutil.which,
-        port_in_use=port_in_use,
-        allocate_port_pair=allocate_port_pair,
+        "which": shutil.which,
+        "port_in_use": port_in_use,
+        "allocate_port_pair": allocate_port_pair,
+        "run_client_with_retry": plan.run_client_with_retry,
+    }
+    if plan.agent == "claude":
+        run_start(
+            **shared_launch_kwargs,
+            claude_passthrough=passthrough,
+            upstream=upstream,
+            claude_bin=claude_bin,
+            no_claude=no_claude,
+            no_system_prompt=no_system_prompt,
+            inject_system_prompt=inject_system_prompt,
+            user_supplied_system_prompt=user_supplied_system_prompt,
+            print_banner=print_banner,
+        )
+        return
+
+    run_codex(
+        **shared_launch_kwargs,
+        codex_passthrough=passthrough,
+        codex_bin=codex_bin,
+        no_codex=no_codex,
+        force_http_fallback=force_http_fallback,
+        require_force_http_fallback_addon=_require_force_http_fallback_addon,
         resolve_codex_ca_certificate=resolve_codex_ca_certificate,
         print_client_banner=print_client_banner,
-        run_client_with_retry=plan.run_client_with_retry,
     )
 
 

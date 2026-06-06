@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from typing import TYPE_CHECKING, Any
+from urllib.parse import parse_qs, urlparse
 
 from click.core import ParameterSource
 from typer.testing import CliRunner
@@ -60,6 +61,26 @@ def test_desktop_rejects_claude_options_for_codex() -> None:
 
     assert result.exit_code == 2
     assert "--no-system-prompt only valid with --agent claude" in result.output
+
+
+def test_desktop_ignores_ambient_cross_agent_env(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: dict[str, Any] = {}
+
+    def fake_run_codex(**kwargs: Any) -> None:
+        calls.update(kwargs)
+
+    monkeypatch.setattr(cli, "run_codex", fake_run_codex)
+
+    result = runner.invoke(
+        main,
+        ["desktop", "--agent", "codex", "--print-command"],
+        env={env_keys.UPSTREAM_URL: "http://ambient.example"},
+    )
+
+    assert result.exit_code == 0
+    assert calls["print_command"] is True
 
 
 def test_desktop_command_forwards_to_codex_without_preallocating_ports(
@@ -130,7 +151,16 @@ def test_desktop_startup_hook_emits_json_and_spawns_electron(
     assert payload["proxyPort"] == 9900
     assert payload["webPort"] == 9901
     assert payload["baseUrl"] == "http://127.0.0.1:9901"
-    assert payload["routeUrl"] == "http://127.0.0.1:9901/canvas"
+    route_url = urlparse(payload["routeUrl"])
+    assert route_url.scheme == "http"
+    assert route_url.netloc == "127.0.0.1:9901"
+    assert route_url.path == "/canvas"
+    assert parse_qs(route_url.query) == {
+        "owner": ["local"],
+        "workspace_hash": [payload["workspace"]["hash"]],
+        "cli": ["claude"],
+        "run_id": ["run-001"],
+    }
     assert payload["storageDir"] == str(tmp_path / "storage")
     assert payload["homeDir"] == str(tmp_path / "agent-home")
     assert spawned == [(electron, payload)]
