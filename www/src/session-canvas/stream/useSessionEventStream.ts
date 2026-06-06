@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { SessionEventView } from "../api/sessionEvents";
-import { sessionEventsStreamUrl } from "../api/sessionEvents";
+import { listSessionEvents, sessionEventsStreamUrl } from "../api/sessionEvents";
 
 export interface UseSessionEventStreamArgs {
   enabled: boolean;
@@ -39,7 +39,40 @@ export function useSessionEventStream({
     let reconnectTimer: number | null = null;
     let closed = false;
 
-    const connect = () => {
+    async function dispatchParsedEvent(parsed: SessionEventView) {
+      const previousHighestSeq = lastSeqRef.current;
+      if (closed || parsed.session_id !== sessionId || parsed.seq <= previousHighestSeq) return;
+      if (parsed.seq > previousHighestSeq + 1) {
+        await dispatchGapBackfill(parsed, previousHighestSeq);
+        return;
+      }
+      lastSeqRef.current = Math.max(lastSeqRef.current, parsed.seq);
+      onEventsRef.current([parsed]);
+    }
+
+    async function dispatchGapBackfill(parsed: SessionEventView, previousHighestSeq: number) {
+      try {
+        const backfill = await listSessionEvents({
+          fromSeq: previousHighestSeq + 1,
+          owner,
+          sessionId,
+          toSeq: parsed.seq - 1,
+        });
+        if (closed) return;
+        const events = [...backfill.events, parsed].filter(
+          (event) => event.session_id === sessionId,
+        );
+        lastSeqRef.current = highestEventSeq(events, previousHighestSeq);
+        onEventsRef.current(events);
+        setConnected(true);
+      } catch {
+        if (closed) return;
+        lastSeqRef.current = Math.max(lastSeqRef.current, parsed.seq);
+        onEventsRef.current([parsed]);
+      }
+    }
+
+    function connect() {
       source?.close();
       source = new EventSource(
         sessionEventsStreamUrl(sessionId, owner, lastSeqRef.current, baseUrl),
@@ -53,10 +86,9 @@ export function useSessionEventStream({
       source.onmessage = (event: MessageEvent<string>) => {
         const parsed = parseEventMessage(event.data);
         if (!parsed) return;
-        lastSeqRef.current = Math.max(lastSeqRef.current, parsed.seq);
-        onEventsRef.current([parsed]);
+        void dispatchParsedEvent(parsed);
       };
-    };
+    }
 
     connect();
     return () => {
@@ -77,4 +109,8 @@ function parseEventMessage(data: string): SessionEventView | null {
   } catch {
     return null;
   }
+}
+
+function highestEventSeq(events: readonly SessionEventView[], fallback: number): number {
+  return events.reduce((highest, event) => Math.max(highest, event.seq), fallback);
 }

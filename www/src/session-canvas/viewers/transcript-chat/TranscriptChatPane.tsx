@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useReducer } from "react";
 import type { SessionEventView } from "../../api/sessionEvents";
 import { useSessionEvents } from "../../hooks/useSessionEvents";
 import type { ViewerProps } from "../../model/paneRecords";
-import { mapEventToTranscriptMessage } from "../../stream/mapIrToChat";
+import { mapSessionEventToChatItems } from "../../stream/mapIrToChat";
 import { createSessionEventState, sessionEventReducer } from "../../stream/sessionEventReducer";
 import { useSessionEventStream } from "../../stream/useSessionEventStream";
 import { TranscriptMessage } from "./TranscriptMessage";
@@ -35,10 +35,7 @@ export function TranscriptChatPane({
     }
   }, [backlog.data, sessionId]);
 
-  const messages = useMemo(
-    () => state.events.map(mapEventToTranscriptMessage).filter((message) => message !== null),
-    [state.events],
-  );
+  const messages = useMemo(() => state.events.flatMap(mapSessionEventToChatItems), [state.events]);
 
   if (backlog.isLoading) return <TranscriptLoading />;
   if (backlog.error)

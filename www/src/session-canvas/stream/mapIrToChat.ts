@@ -12,7 +12,14 @@ export interface TranscriptMessageModel {
   sourceLine: number | null;
 }
 
-export function mapEventToTranscriptMessage(
+export type ChatItem = TranscriptMessageModel;
+
+export function mapSessionEventToChatItems(event: SessionEventView): ChatItem[] {
+  const message = mapSessionEventToTranscriptMessage(event);
+  return message ? [message] : [];
+}
+
+function mapSessionEventToTranscriptMessage(
   event: SessionEventView,
 ): TranscriptMessageModel | null {
   if (event.kind === "meta") return mapMetaEvent(event);
@@ -20,18 +27,16 @@ export function mapEventToTranscriptMessage(
   if (!event.ir) return mapUnknownEvent(event);
   const parts = event.ir.parts;
   if (!Array.isArray(parts)) return mapUnknownEvent(event);
-  return buildMessage(event, "turn", parts.map(normalizeContentBlock));
+  const blocks = parts.map(normalizeContentBlock);
+  return buildMessage(event, "turn", blocks.length > 0 ? blocks : fallbackBlocks(event));
 }
 
-function mapMetaEvent(event: SessionEventView): TranscriptMessageModel | null {
-  if (event.ir === null) return null;
-  return buildMessage(event, "meta", [unknownBlock("meta", event.ir)]);
+function mapMetaEvent(event: SessionEventView): TranscriptMessageModel {
+  return buildMessage(event, "meta", [metadataBlock(event)]);
 }
 
 function mapUnknownEvent(event: SessionEventView): TranscriptMessageModel {
-  return buildMessage(event, "unknown", [
-    unknownBlock("unknown", event.ir ?? { kind: event.kind }),
-  ]);
+  return buildMessage(event, "unknown", [metadataBlock(event)]);
 }
 
 function buildMessage(
@@ -42,13 +47,36 @@ function buildMessage(
   return {
     id: `${event.session_id}:${event.seq}`,
     seq: event.seq,
-    role: event.role ?? "unknown",
+    role: kind === "meta" ? "metadata" : (event.role ?? "unknown"),
     kind,
     blocks,
     timestamp: event.ts ?? event.created_at,
     sourcePath: event.source_path,
     sourceLine: event.source_line,
   };
+}
+
+function fallbackBlocks(event: SessionEventView): ContentBlock[] {
+  if (event.search_text) return [textBlock(event.search_text)];
+  return [metadataBlock(event)];
+}
+
+function metadataBlock(event: SessionEventView): ContentBlock {
+  return textBlock(
+    [
+      `kind: ${event.kind}`,
+      `seq: ${event.seq}`,
+      `native_turn_id: ${event.native_turn_id ?? "none"}`,
+      `ts: ${event.ts ?? event.created_at ?? "none"}`,
+      `model: ${event.model ?? "none"}`,
+      `source_path: ${event.source_path ?? "none"}`,
+      `source_line: ${event.source_line ?? "none"}`,
+    ].join("\n"),
+  );
+}
+
+function textBlock(text: string): ContentBlock {
+  return { type: "text", text, provider_data: null };
 }
 
 function normalizeContentBlock(value: unknown): ContentBlock {

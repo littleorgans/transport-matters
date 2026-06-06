@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   type CanvasViewport,
   createInitialEngineLayoutState,
@@ -12,19 +12,32 @@ import {
   upsertNode,
   type WorldRect,
 } from "../../engine";
+import { FrameMeter, type FrameMeterSummary } from "../../engine/perf/frameMeter";
 import { planEfficientLayout } from "../../engine/planners/efficientLayout";
 
 const STRESS_COUNTS = [1, 2, 4, 8, 16, 30] as const;
 const STRESS_VIEWPORT = { width: 1600, height: 1000 };
+const STRESS_CAPTURE_MS = 1_200;
+
+type StressAction = "spawn" | "close" | "focus" | "drag" | "resize" | "pan" | "zoom";
+
+interface StressMeasurement {
+  action: StressAction;
+  summary: FrameMeterSummary;
+}
 
 export function SessionCanvasStressRoute() {
   const [count, setCount] = useState<(typeof STRESS_COUNTS)[number]>(4);
   const [layout, setLayout] = useState(() => createStressLayout(count));
+  const { measure, measurement } = useStressFrameMeter();
   const paneIds = useMemo(() => Object.keys(layout.nodes), [layout.nodes]);
 
   function applyCount(nextCount: (typeof STRESS_COUNTS)[number]): void {
-    setCount(nextCount);
-    setLayout(createStressLayout(nextCount));
+    const action = nextCount >= count ? "spawn" : "close";
+    measure(action, () => {
+      setCount(nextCount);
+      setLayout(createStressLayout(nextCount));
+    });
   }
 
   return (
@@ -50,20 +63,67 @@ export function SessionCanvasStressRoute() {
       <LayoutCanvas
         label="Session canvas stress harness"
         layout={layout}
-        onFocusPane={(paneId) => setLayout((current) => ({ ...current, focusedPaneId: paneId }))}
-        onMovePane={(paneId, rect) => setLayout((current) => updateNodeRect(current, paneId, rect))}
+        onFocusPane={(paneId) =>
+          measure("focus", () => setLayout((current) => ({ ...current, focusedPaneId: paneId })))
+        }
+        onMovePane={(paneId, rect) =>
+          measure("drag", () => setLayout((current) => updateNodeRect(current, paneId, rect)))
+        }
         onResizePane={(paneId, rect) =>
-          setLayout((current) => updateNodeRect(current, paneId, rect))
+          measure("resize", () => setLayout((current) => updateNodeRect(current, paneId, rect)))
         }
         renderPane={(paneId) => <SyntheticPane paneId={paneId} />}
         setViewport={(viewport: CanvasViewport) =>
-          setLayout((current) => setEngineViewport(current, viewport))
+          measure(viewport.scale === layout.viewport.scale ? "pan" : "zoom", () =>
+            setLayout((current) => setEngineViewport(current, viewport)),
+          )
         }
         titleIdForPane={(paneId) => `stress-title-${paneId}`}
       />
-      <p className="canvas-stress-readout">Stable synthetic panes: {paneIds.length}</p>
+      <p
+        className="canvas-stress-readout"
+        data-stress-action={measurement?.action ?? "idle"}
+        data-stress-frames={measurement?.summary.frames ?? 0}
+        data-stress-max-frame={measurement?.summary.maxDeltaMs.toFixed(2) ?? "0.00"}
+        data-stress-p95-frame={measurement?.summary.p95DeltaMs.toFixed(2) ?? "0.00"}
+      >
+        Stable synthetic panes: {paneIds.length}
+        {measurement
+          ? ` · ${measurement.action} p95 ${measurement.summary.p95DeltaMs.toFixed(2)}ms across ${measurement.summary.frames} frames`
+          : " · awaiting motion sample"}
+      </p>
     </main>
   );
+}
+
+function useStressFrameMeter(): {
+  measure(action: StressAction, update: () => void): void;
+  measurement: StressMeasurement | null;
+} {
+  const [measurement, setMeasurement] = useState<StressMeasurement | null>(null);
+  const meterRef = useRef(new FrameMeter());
+  const timerRef = useRef<number | null>(null);
+
+  const measure = useCallback((action: StressAction, update: () => void) => {
+    if (timerRef.current !== null) window.clearTimeout(timerRef.current);
+    const meter = meterRef.current;
+    meter.reset();
+    meter.start();
+    update();
+    timerRef.current = window.setTimeout(() => {
+      timerRef.current = null;
+      setMeasurement({ action, summary: meter.stop() });
+    }, STRESS_CAPTURE_MS);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current !== null) window.clearTimeout(timerRef.current);
+      meterRef.current.stop();
+    };
+  }, []);
+
+  return { measure, measurement };
 }
 
 function createStressLayout(count: number): EngineLayoutState {
@@ -87,7 +147,7 @@ function fallbackRect(index: number): WorldRect {
   return { x: 48 + index * 24, y: 48 + index * 24, width: 360, height: 280 };
 }
 
-function SyntheticPane({ paneId }: { paneId: PaneId }) {
+const SyntheticPane = memo(function SyntheticPane({ paneId }: { paneId: PaneId }) {
   return (
     <article className="canvas-pane-window" data-focused="false" data-state="default">
       <header className="canvas-pane-window__header" data-pane-drag-handle="true">
@@ -108,4 +168,4 @@ function SyntheticPane({ paneId }: { paneId: PaneId }) {
       />
     </article>
   );
-}
+});

@@ -862,6 +862,11 @@ input:user-invalid + .field-error {
   will-change: transform;
 }
 
+[data-pane-frame="true"] {
+  contain: layout paint style;
+  will-change: transform, opacity;
+}
+
 .canvas-command-bar {
   position: absolute;
   top: var(--canvas-command-inset);

@@ -33,15 +33,11 @@ function appendEvents(
   incoming: readonly SessionEventView[],
 ): SessionEventState {
   const bySeq = new Map(state.events.map((event) => [event.seq, event]));
-  let missingFromSeq = state.missingFromSeq;
   for (const event of incoming) {
-    if (event.seq > state.highestSeq + 1 && missingFromSeq === null) {
-      missingFromSeq = state.highestSeq + 1;
-    }
     bySeq.set(event.seq, event);
   }
   const events = [...bySeq.values()].sort((left, right) => left.seq - right.seq);
-  return { ...buildState(state.sessionId, events), missingFromSeq };
+  return buildState(state.sessionId, events);
 }
 
 function buildState(sessionId: string, events: SessionEventView[]): SessionEventState {
@@ -49,8 +45,17 @@ function buildState(sessionId: string, events: SessionEventView[]): SessionEvent
     sessionId,
     events,
     highestSeq: events.at(-1)?.seq ?? -1,
-    missingFromSeq: null,
+    missingFromSeq: findMissingFromSeq(events),
   };
+}
+
+function findMissingFromSeq(events: readonly SessionEventView[]): number | null {
+  let expectedSeq = 0;
+  for (const event of events) {
+    if (event.seq > expectedSeq) return expectedSeq;
+    if (event.seq === expectedSeq) expectedSeq += 1;
+  }
+  return null;
 }
 
 function filteredSortedEvents(

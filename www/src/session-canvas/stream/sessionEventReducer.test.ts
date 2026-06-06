@@ -33,4 +33,21 @@ describe("sessionEventReducer", () => {
 
     expect(state.missingFromSeq).toBe(0);
   });
+
+  it("clears a recorded gap when backfill events arrive", () => {
+    let state = sessionEventReducer(createSessionEventState("session-1"), {
+      type: "append",
+      sessionId: "session-1",
+      events: [makeSessionEvent({ seq: 2 })],
+    });
+
+    state = sessionEventReducer(state, {
+      type: "append",
+      sessionId: "session-1",
+      events: [makeSessionEvent({ seq: 0 }), makeSessionEvent({ seq: 1 })],
+    });
+
+    expect(state.events.map((event) => event.seq)).toEqual([0, 1, 2]);
+    expect(state.missingFromSeq).toBeNull();
+  });
 });

@@ -1,6 +1,11 @@
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { makeSessionEvent } from "../testUtils";
+import {
+  installMockTransport,
+  jsonResponse,
+  makeSessionEvent,
+  restoreTransport,
+} from "../testUtils";
 import { useSessionEventStream } from "./useSessionEventStream";
 
 const sources: MockEventSource[] = [];
@@ -23,6 +28,7 @@ describe("useSessionEventStream", () => {
   });
 
   afterEach(() => {
+    restoreTransport();
     vi.useRealTimers();
     vi.unstubAllGlobals();
   });
@@ -42,11 +48,11 @@ describe("useSessionEventStream", () => {
     expect(sources[0]?.url).toBe("/api/sessions/session-1/events/stream?owner=local&last_seq=-1");
     act(() => {
       sources[0]?.onmessage?.(
-        new MessageEvent("message", { data: JSON.stringify(makeSessionEvent({ seq: 1 })) }),
+        new MessageEvent("message", { data: JSON.stringify(makeSessionEvent({ seq: 0 })) }),
       );
     });
 
-    expect(onEvents).toHaveBeenCalledWith([expect.objectContaining({ seq: 1 })]);
+    expect(onEvents).toHaveBeenCalledWith([expect.objectContaining({ seq: 0 })]);
   });
 
   it("closes before reconnecting with the highest observed seq", () => {
@@ -54,7 +60,7 @@ describe("useSessionEventStream", () => {
     renderHook(() =>
       useSessionEventStream({
         enabled: true,
-        highestSeq: -1,
+        highestSeq: 1,
         onEvents,
         owner: "local",
         sessionId: "session-1",
@@ -71,5 +77,39 @@ describe("useSessionEventStream", () => {
 
     expect(sources[0]?.close).toHaveBeenCalled();
     expect(sources[1]?.url).toBe("/api/sessions/session-1/events/stream?owner=local&last_seq=2");
+  });
+
+  it("backfills missing seq before dispatching a skipped live event", async () => {
+    const onEvents = vi.fn();
+    installMockTransport((path) => {
+      expect(path).toBe("/api/sessions/session-1/events?owner=local&limit=500&from_seq=0&to_seq=1");
+      return jsonResponse({
+        events: [makeSessionEvent({ seq: 0 }), makeSessionEvent({ seq: 1 })],
+        next_from_seq: null,
+      });
+    });
+    renderHook(() =>
+      useSessionEventStream({
+        enabled: true,
+        highestSeq: -1,
+        onEvents,
+        owner: "local",
+        sessionId: "session-1",
+      }),
+    );
+
+    act(() => {
+      sources[0]?.onmessage?.(
+        new MessageEvent("message", { data: JSON.stringify(makeSessionEvent({ seq: 2 })) }),
+      );
+    });
+
+    await act(async () => {});
+
+    expect(onEvents).toHaveBeenCalledWith([
+      expect.objectContaining({ seq: 0 }),
+      expect.objectContaining({ seq: 1 }),
+      expect.objectContaining({ seq: 2 }),
+    ]);
   });
 });
