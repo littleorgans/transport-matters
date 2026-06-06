@@ -12,7 +12,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from transport_matters.api.v1.router import api_router
 from transport_matters.config import MissingDatabaseConfigError, get_settings, resolve_database_url
 from transport_matters.session.listen import SessionEventHub, SessionEventListener
-from transport_matters.session.migrate import apply_migrations
+from transport_matters.session.migrate import MigrationError, apply_migrations
 from transport_matters.session.pool import create_async_pool
 
 if TYPE_CHECKING:
@@ -88,9 +88,10 @@ async def _start_session_store(
 
     Returns the live pool on success (with ``app.state`` wired), or ``None`` when the
     store is configured but unusable for a *recoverable* reason (connection or listener
-    failure) so routes degrade to 503. A **migration** failure is NOT recoverable: a
-    configured-but-broken schema must not silently serve an empty canvas, so it
-    propagates and fails backend startup.
+    failure) so routes degrade to 503. Only a CONFIRMED schema-migration failure on a
+    reachable database is non-recoverable and fails backend startup: a configured store
+    that is merely unreachable must degrade (not crash), matching the launch-path
+    preflight which already hard-blocks unreachable stores before the backend starts.
     """
     pool = create_async_pool(database_url)
     try:
@@ -103,10 +104,18 @@ async def _start_session_store(
     try:
         # Bring the configured store to head (advisory-locked, no-op when current).
         await asyncio.to_thread(apply_migrations, database_url)
-    except Exception:
+    except MigrationError:
+        # Confirmed schema-migration failure on a reachable DB: do not degrade a
+        # configured store with a broken schema — fail backend startup loudly.
         logger.exception("Session store migration failed")
         await pool.close()
-        raise  # fail-fast: do not degrade a configured store with a broken schema
+        raise
+    except Exception:
+        # Reachability/operational error (e.g. the DB became unreachable during the
+        # revision check): degrade to 503 rather than crash.
+        logger.exception("Session store unreachable during migration check")
+        await pool.close()
+        return None
 
     listener = SessionEventListener(database_url, app.state.session_event_hub)
     try:
@@ -192,4 +201,12 @@ def create_app() -> FastAPI:
     return app
 
 
-app = create_app()
+def __getattr__(name: str) -> object:
+    # Build the ASGI ``app`` lazily so importing this module (e.g. at test collection, or
+    # by any module that imports create_app/lifespan) does NOT call create_app() ->
+    # Settings.load() and read the operator's settings.toml. The server resolves
+    # ``transport_matters.main:app`` via getattr at startup, after the environment
+    # (TRANSPORT_MATTERS_HOME, DATABASE_URL, ...) is in place.
+    if name == "app":
+        return create_app()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

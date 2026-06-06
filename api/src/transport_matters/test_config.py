@@ -94,6 +94,26 @@ def test_settings_toml_read_from_home_not_per_run_storage(
     assert get_settings().database.url == "postgresql://home/db"
 
 
+def test_home_isolation_ignores_malformed_default_settings(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Regression (conftest collection isolation): a malformed settings.toml at the OS-home
+    # default must NOT break loading when $TRANSPORT_MATTERS_HOME points at a clean root.
+    poisoned_os_home = tmp_path / "oshome"
+    (poisoned_os_home / ".transport-matters").mkdir(parents=True)
+    (poisoned_os_home / ".transport-matters" / "settings.toml").write_text(
+        "[database\n", encoding="utf-8"
+    )
+    monkeypatch.setenv("HOME", str(poisoned_os_home))
+    clean_home = tmp_path / "clean"
+    clean_home.mkdir()
+    monkeypatch.setenv("TRANSPORT_MATTERS_HOME", str(clean_home))
+    get_settings.cache_clear()
+
+    # Reads the clean HOME, not the poisoned OS-home default -> no SettingsFileError.
+    assert get_settings().database.url is None
+
+
 def test_ensure_settings_scaffold_creates_from_packaged_example(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

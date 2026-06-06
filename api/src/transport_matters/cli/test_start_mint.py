@@ -70,7 +70,7 @@ def test_claude_managed_mint_writes_durable_session_facts_under_home_dir(
     # §11.1 durable owned-launch facts: under --agent-home-dir the descriptor records the managed home AND
     # <run_dir>/sessions.json carries the owned facts (native id, descriptor incl. home_dir, cli,
     # minted) so a §10.5 rebuild reads owned state WITHOUT the live env. The home reaches the addon via
-    # the OWNED_* env channel (HOME_DIR), not only the manifest (which unlinks on exit).
+    # the OWNED_* env channel (AGENT_HOME_DIR), not only the manifest (which unlinks on exit).
     monkeypatch.setattr(
         "transport_matters.cli.shutil.which",
         _which_by_name({"mitmdump": "/bin/mitmdump", "claude": "/bin/claude"}),

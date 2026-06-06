@@ -197,6 +197,61 @@ async def test_lifespan_listener_start_failure_keeps_routes_unavailable(
         get_settings.cache_clear()
 
 
+async def test_lifespan_degrades_when_database_unreachable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A configured-but-unreachable store must DEGRADE (503), not crash backend startup.
+    # The launch-path preflight hard-blocks unreachable stores; this is the hosted/server
+    # layer where the contract is degrade-not-crash.
+    monkeypatch.setenv("TRANSPORT_MATTERS_DATABASE_URL", "postgresql://u:p@127.0.0.1:1/none")
+    get_settings.cache_clear()
+    app = create_app()
+    try:
+        async with lifespan(app):
+            assert app.state.session_pool is None
+            transport = ASGITransport(app=app)
+            async with AsyncClient(transport=transport, base_url="http://test") as client:
+                response = await client.get("/api/sessions")
+            assert response.status_code == 503
+    finally:
+        get_settings.cache_clear()
+
+
+def test_main_app_is_built_lazily_not_at_import() -> None:
+    # Regression (collection isolation): importing main must NOT create the app at import
+    # (which would call Settings.load() and read the operator's real settings.toml). The
+    # lazy module __getattr__ builds a fresh app per access, proving none is bound eagerly.
+    from fastapi import FastAPI
+
+    import transport_matters.main as main_module
+
+    first = main_module.app
+    second = main_module.app
+    assert isinstance(first, FastAPI)
+    assert first is not second
+
+
+async def test_lifespan_fails_fast_on_migration_failure(
+    test_db: TestDb, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A CONFIRMED migration failure on a reachable DB must fail-fast (not degrade).
+    from transport_matters.session.migrate import MigrationError
+
+    def _broken_migration(_database_url: str) -> None:
+        raise MigrationError("schema upgrade failed")
+
+    monkeypatch.setenv("TRANSPORT_MATTERS_DATABASE_URL", test_db.database_url)
+    monkeypatch.setattr("transport_matters.main.apply_migrations", _broken_migration)
+    get_settings.cache_clear()
+    app = create_app()
+    try:
+        with pytest.raises(MigrationError):
+            async with lifespan(app):
+                pass
+    finally:
+        get_settings.cache_clear()
+
+
 async def _seed_sessions(conn: AsyncConnection[DictRow]) -> None:
     dao = AsyncSessionDao(conn)
     await dao.upsert_session(root_session("s1", native_session_id="native1"))
