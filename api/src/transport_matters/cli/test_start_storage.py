@@ -32,7 +32,7 @@ def test_start_defaults_storage_to_per_run_root(
 
     workdir = tmp_path / "project"
     workdir.mkdir()
-    result = runner.invoke(main, ["claude", str(workdir), "--no-system-prompt"])
+    result = runner.invoke(main, ["claude", "--work-dir", str(workdir), "--no-system-prompt"])
     assert result.exit_code == 0, result.output
     spy_run_client_children.assert_called_once()
     env = spy_run_client_children.call_args.kwargs["client"].env
@@ -54,11 +54,11 @@ def test_start_same_cwd_runs_get_disjoint_storage(
     workdir = tmp_path / "project"
     workdir.mkdir()
 
-    result_a = runner.invoke(main, ["claude", str(workdir), "--no-system-prompt"])
+    result_a = runner.invoke(main, ["claude", "--work-dir", str(workdir), "--no-system-prompt"])
     assert result_a.exit_code == 0, result_a.output
     env_a = spy_run_client_children.call_args_list[0].kwargs["client"].env
 
-    result_b = runner.invoke(main, ["claude", str(workdir), "--no-system-prompt"])
+    result_b = runner.invoke(main, ["claude", "--work-dir", str(workdir), "--no-system-prompt"])
     assert result_b.exit_code == 0, result_b.output
     env_b = spy_run_client_children.call_args_list[1].kwargs["client"].env
 
@@ -89,7 +89,7 @@ def test_start_nested_session_does_not_inherit_storage_dir(
 
     workdir = tmp_path / "project"
     workdir.mkdir()
-    result = runner.invoke(main, ["claude", str(workdir), "--no-system-prompt"])
+    result = runner.invoke(main, ["claude", "--work-dir", str(workdir), "--no-system-prompt"])
     assert result.exit_code == 0, result.output
     env = spy_run_client_children.call_args.kwargs["client"].env
     run_id = env["TRANSPORT_MATTERS_RUN_ID"]
@@ -140,7 +140,7 @@ def test_start_flows_working_dir_into_transport_matters_cwd_env(
 
     workdir = tmp_path / "project"
     workdir.mkdir()
-    result = runner.invoke(main, ["claude", str(workdir), "--no-system-prompt"])
+    result = runner.invoke(main, ["claude", "--work-dir", str(workdir), "--no-system-prompt"])
     assert result.exit_code == 0, result.output
     kwargs = spy_run_client_children.call_args.kwargs
     assert kwargs["client"].env["TRANSPORT_MATTERS_CWD"] == str(workdir)
@@ -159,7 +159,7 @@ def test_start_flows_run_id_into_child_envs(
 
     workdir = tmp_path / "project"
     workdir.mkdir()
-    result = runner.invoke(main, ["claude", str(workdir), "--no-system-prompt"])
+    result = runner.invoke(main, ["claude", "--work-dir", str(workdir), "--no-system-prompt"])
     assert result.exit_code == 0, result.output
     kwargs = spy_run_client_children.call_args.kwargs
     claude_run_id = kwargs["client"].env["TRANSPORT_MATTERS_RUN_ID"]
@@ -223,7 +223,7 @@ def test_start_unset_home_dir_omits_claude_config_dir(
 
     workdir = tmp_path / "project"
     workdir.mkdir()
-    result = runner.invoke(main, ["claude", str(workdir), "--no-system-prompt"])
+    result = runner.invoke(main, ["claude", "--work-dir", str(workdir), "--no-system-prompt"])
     assert result.exit_code == 0, result.output
     client_env = spy_run_client_children.call_args.kwargs["client"].env
     assert "CLAUDE_CONFIG_DIR" not in client_env
@@ -299,7 +299,7 @@ def test_start_writes_run_root_storage_into_manifest(
 
     workdir = tmp_path / "project"
     workdir.mkdir()
-    result = runner.invoke(main, ["claude", str(workdir), "--no-system-prompt"])
+    result = runner.invoke(main, ["claude", "--work-dir", str(workdir), "--no-system-prompt"])
     assert result.exit_code == 0, result.output
     run_id = captured["raw"]["run_id"]
     assert isinstance(run_id, str)
@@ -323,11 +323,11 @@ def test_start_different_cwds_get_disjoint_storage(
     dir_b = tmp_path / "b"
     dir_b.mkdir()
 
-    result_a = runner.invoke(main, ["claude", str(dir_a), "--no-system-prompt"])
+    result_a = runner.invoke(main, ["claude", "--work-dir", str(dir_a), "--no-system-prompt"])
     assert result_a.exit_code == 0, result_a.output
     env_a = spy_run_client_children.call_args_list[0].kwargs["client"].env
 
-    result_b = runner.invoke(main, ["claude", str(dir_b), "--no-system-prompt"])
+    result_b = runner.invoke(main, ["claude", "--work-dir", str(dir_b), "--no-system-prompt"])
     assert result_b.exit_code == 0, result_b.output
     env_b = spy_run_client_children.call_args_list[1].kwargs["client"].env
 

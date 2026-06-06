@@ -81,7 +81,8 @@ def test_claude_managed_mint_writes_durable_session_facts_under_home_dir(
     workdir.mkdir()
 
     result = runner.invoke(
-        main, ["claude", str(workdir), "--home-dir", "homes/claude", "--no-system-prompt"]
+        main,
+        ["claude", "--work-dir", str(workdir), "--home-dir", "homes/claude", "--no-system-prompt"],
     )
     assert result.exit_code == 0, result.output
     expected_home = (tmp_path / "homes" / "claude").resolve()

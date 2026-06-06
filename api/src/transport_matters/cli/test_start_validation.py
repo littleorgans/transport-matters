@@ -131,12 +131,12 @@ def test_start_rejects_missing_directory(
     monkeypatch: pytest.MonkeyPatch,
     spy_run_client_children: MagicMock,
 ) -> None:
-    """Non-existent positional directory is rejected by click before we run."""
+    """Non-existent --work-dir is rejected by click before we run."""
     monkeypatch.setattr("transport_matters.cli.shutil.which", _which_all())
     monkeypatch.setattr("transport_matters.cli.port_in_use", lambda _: False)
 
     missing = tmp_path / "does-not-exist"
-    result = runner.invoke(main, ["claude", str(missing), "--print-command"])
+    result = runner.invoke(main, ["claude", "--work-dir", str(missing), "--print-command"])
     assert result.exit_code == 2
     assert "does not exist" in result.output.lower() or "does-not-exist" in result.output
     spy_run_client_children.assert_not_called()

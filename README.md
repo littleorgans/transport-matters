@@ -32,13 +32,13 @@ transport-matters doctor
 transport-matters claude
 
 # Proxy + Claude Code in a specific working directory
-transport-matters claude ~/my-project
+transport-matters claude --work-dir ~/my-project
 
 # Proxy + Codex in the current directory
 transport-matters codex
 
 # Proxy + Codex in a specific working directory
-transport-matters codex ~/my-project
+transport-matters codex --work-dir ~/my-project
 
 # Proxy only, bring your own client
 transport-matters claude --no-claude
@@ -70,22 +70,20 @@ Use those exact printed endpoints. Default ports are kernel allocated free ports
 Claude examples:
 
 ```bash
-transport-matters claude . -- --help
-transport-matters claude . -- --model sonnet --resume
-transport-matters claude ~/my-project -- -p "fix the failing test"
+transport-matters claude -- --help
+transport-matters claude -- --model sonnet --resume
+transport-matters claude --work-dir ~/my-project -- -p "fix the failing test"
 ```
 
 Codex examples:
 
 ```bash
-transport-matters codex . -- exec "fix the failing test"
-transport-matters codex . -- review
-transport-matters codex . -- login
-transport-matters codex . -- mcp
-transport-matters codex . -- app-server
+transport-matters codex -- exec "fix the failing test"
+transport-matters codex -- review
+transport-matters codex -- login
+transport-matters codex -- mcp
+transport-matters codex -- app-server
 ```
-
-For Codex, pass an explicit working directory such as `.` before `--` when the first pass-through token is a bare command like `exec`, `review`, or `login`. That keeps it from being parsed as the optional `[DIRECTORY]` argument on the outer `transport-matters codex` command.
 
 ## What you get
 

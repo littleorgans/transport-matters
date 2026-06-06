@@ -69,7 +69,7 @@ def test_codex_print_command_does_not_create_workspace_run_dir(
 
     result = runner.invoke(
         main,
-        ["codex", str(workdir), "--home-dir", str(home_dir), "--print-command"],
+        ["codex", "--work-dir", str(workdir), "--home-dir", str(home_dir), "--print-command"],
     )
 
     assert result.exit_code == 0, result.output
@@ -153,7 +153,7 @@ def test_codex_managed_mint_seeds_rollout_and_resumes(
         lambda *, env, bundle_dir: tmp_path / "ca.pem",
     )
 
-    result = runner.invoke(main, ["codex", ".", "--", "exec", "ping"])
+    result = runner.invoke(main, ["codex", "--work-dir", ".", "--", "exec", "ping"])
     assert result.exit_code == 0, result.output
 
     kwargs = spy_run_client_children.call_args.kwargs
@@ -256,7 +256,7 @@ def test_codex_unset_home_dir_omits_codex_home(
         lambda *, env, bundle_dir: bundle_path,
     )
 
-    result = runner.invoke(main, ["codex", "."])
+    result = runner.invoke(main, ["codex", "--work-dir", "."])
     assert result.exit_code == 0, result.output
     client_env = spy_run_client_children.call_args.kwargs["client"].env
     assert "CODEX_HOME" not in client_env
@@ -296,7 +296,7 @@ def test_codex_writes_workspace_manifest_visible_to_managed_child(
     workdir.mkdir()
     result = runner.invoke(
         main,
-        ["codex", str(workdir), "--proxy-port", "9000", "--web-port", "9001"],
+        ["codex", "--work-dir", str(workdir), "--proxy-port", "9000", "--web-port", "9001"],
     )
     assert result.exit_code == 0, result.output
 

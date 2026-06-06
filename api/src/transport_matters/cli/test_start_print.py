@@ -44,7 +44,7 @@ def test_start_print_command_does_not_create_workspace_run_dir(
     workdir = tmp_path / "project"
     workdir.mkdir()
 
-    result = runner.invoke(main, ["claude", str(workdir), "--print-command"])
+    result = runner.invoke(main, ["claude", "--work-dir", str(workdir), "--print-command"])
 
     assert result.exit_code == 0, result.output
     assert "mitmdump" in result.stdout

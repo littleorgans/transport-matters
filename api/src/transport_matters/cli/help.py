@@ -37,7 +37,7 @@ _ROOT_HELP = dedent(f"""\
 
     Quick start
       $ {CLI_COMMAND} claude              # proxy + claude in cwd
-      $ {CLI_COMMAND} claude ~/project    # proxy + claude in ~/project
+      $ {CLI_COMMAND} claude --work-dir ~/project
       $ {CLI_COMMAND} codex               # proxy + codex in cwd
       $ {CLI_COMMAND} claude --no-claude  # proxy only
 
@@ -61,14 +61,13 @@ _CLAUDE_HELP = dedent(f"""\
     waits for it to come up, then launches `claude` in the working
     directory you point at (defaults to cwd). Ctrl+C tears both down.
 
-    Arguments
-      [DIRECTORY]               Working dir for Claude Code (default: cwd)
-
     Options
+          --work-dir PATH       Working dir for Claude Code (default: cwd)
       -p, --proxy-port INT      Proxy listener port (default: kernel-allocated free port)
       -w, --web-port INT        Web UI port (default: kernel-allocated free port)
       -u, --upstream URL        Upstream provider URL (default https://api.anthropic.com)
       -d, --storage-dir PATH    Data directory (default ~/.transport-matters/)
+          --home-dir PATH       Claude Code home for config and transcripts
           --claude-bin PATH     Path to Claude Code (default: `claude` on PATH)
           --no-claude           Run proxy only; skip spawning Claude Code
           --no-system-prompt    Skip the auto-injected Transport Matters system prompt
@@ -97,19 +96,16 @@ _CLAUDE_HELP = dedent(f"""\
       accepts today it accepts here.
         $ {CLI_COMMAND} claude -- --help                 # claude's help
         $ {CLI_COMMAND} claude -- --model sonnet --resume
-        $ {CLI_COMMAND} claude ~/proj -- -p "fix the bug"
-
-      If the first pass-through token does not start with `-`, pass an
-      explicit working directory first (e.g. `.`) so it isn't captured
-      by `[DIRECTORY]`:
-        $ {CLI_COMMAND} claude . -- "what is 2+2"
+        $ {CLI_COMMAND} claude --work-dir ~/proj -- -p "fix the bug"
+        $ {CLI_COMMAND} claude -- "what is 2+2"
 
     Examples
       $ {CLI_COMMAND} claude
-      $ {CLI_COMMAND} claude ~/my-project
+      $ {CLI_COMMAND} claude --work-dir ~/my-project
       $ {CLI_COMMAND} claude --proxy-port 9000 --web-port 9001
       $ {CLI_COMMAND} claude --no-claude
       $ {CLI_COMMAND} claude --no-system-prompt
+      $ {CLI_COMMAND} claude --home-dir ~/.claude-test
       $ {CLI_COMMAND} claude --claude-bin /opt/homebrew/bin/claude
       $ {CLI_COMMAND} claude --print-command
 """)
@@ -121,13 +117,12 @@ _CODEX_HELP = dedent(f"""\
     waits for it to come up, then launches `codex` in the working
     directory you point at (defaults to cwd). Ctrl+C tears both down.
 
-    Arguments
-      [DIRECTORY]               Working dir for Codex (default: cwd)
-
     Options
+          --work-dir PATH       Working dir for Codex (default: cwd)
       -p, --proxy-port INT      Proxy listener port (default: kernel-allocated free port)
       -w, --web-port INT        Web UI port (default: kernel-allocated free port)
       -d, --storage-dir PATH    Data directory (default ~/.transport-matters/)
+          --home-dir PATH       Codex home for config and transcripts
           --codex-bin PATH      Path to Codex (default: `codex` on PATH)
           --no-codex            Run proxy only; skip spawning Codex
           --debug               Verbose mitmproxy output
@@ -149,18 +144,15 @@ _CODEX_HELP = dedent(f"""\
       Transport Matters does not validate or rewrite these args.
         $ {CLI_COMMAND} codex -- --help
         $ {CLI_COMMAND} codex -- exec "fix the failing test"
-        $ {CLI_COMMAND} codex ~/proj -- exec --model gpt-5 "trace startup"
-
-      If the first pass-through token does not start with `-`, pass an
-      explicit working directory first (e.g. `.`) so it isn't captured
-      by `[DIRECTORY]`:
-        $ {CLI_COMMAND} codex . -- exec "what failed?"
+        $ {CLI_COMMAND} codex --work-dir ~/proj -- exec --model gpt-5 "trace startup"
+        $ {CLI_COMMAND} codex -- exec "what failed?"
 
     Examples
       $ {CLI_COMMAND} codex
-      $ {CLI_COMMAND} codex ~/my-project
+      $ {CLI_COMMAND} codex --work-dir ~/my-project
       $ {CLI_COMMAND} codex --proxy-port 9000 --web-port 9001
       $ {CLI_COMMAND} codex --no-codex
+      $ {CLI_COMMAND} codex --home-dir ~/.codex-test
       $ {CLI_COMMAND} codex --codex-bin /opt/homebrew/bin/codex
       $ {CLI_COMMAND} codex --print-command
 """)

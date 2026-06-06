@@ -32,7 +32,7 @@ def test_start_calls_run_client_children_with_claude_client(
     workdir.mkdir()
     result = runner.invoke(
         main,
-        ["claude", str(workdir), "--no-system-prompt", "--proxy-port", "9900"],
+        ["claude", "--work-dir", str(workdir), "--no-system-prompt", "--proxy-port", "9900"],
     )
     assert result.exit_code == 0, result.output
     spy_run_client_children.assert_called_once()
@@ -74,7 +74,7 @@ def test_start_sanitizes_managed_claude_env(
     workdir.mkdir()
     result = runner.invoke(
         main,
-        ["claude", str(workdir), "--no-system-prompt", "--proxy-port", "9900"],
+        ["claude", "--work-dir", str(workdir), "--no-system-prompt", "--proxy-port", "9900"],
     )
     assert result.exit_code == 0, result.output
 

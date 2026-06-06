@@ -34,7 +34,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterable
     from importlib.resources.abc import Traversable
 
-from transport_matters import __version__, env_keys
+from transport_matters import __version__
 from transport_matters.lock import WorkspaceLock, WorkspaceLocked
 from transport_matters.manifest import Manifest
 from transport_matters.manifest import write as manifest_write
@@ -47,8 +47,24 @@ from .diagnose import run_doctor
 from .help import PlainCommand, PlainGroup
 from .identity import CLI_COMMAND
 from .instances import list_instances as list_instances_impl
+from .launch_options import (  # noqa: TC001
+    ClaudeBinOption,
+    ClaudeUpstreamOption,
+    CodexBinOption,
+    DebugOption,
+    ForceHttpFallbackOption,
+    HomeDirOption,
+    NoClaudeOption,
+    NoCodexOption,
+    NoSystemPromptOption,
+    PrintCommandOption,
+    ProxyPortOption,
+    StorageDirOption,
+    WebPortOption,
+    WorkDirOption,
+)
 from .launch_runtime import resolve_mitmdump_executable
-from .net import port_in_use, validate_port_option, wait_for_port_ready
+from .net import port_in_use, wait_for_port_ready
 from .paths import resolve_paths
 from .ports import PortAllocationError, allocate_port_pair
 from .prompt import inject_system_prompt, user_supplied_system_prompt
@@ -91,18 +107,12 @@ main = typer.Typer(
 )
 
 
-def _split_passthrough(
-    ctx: typer.Context,
-    directory: Path | None,
-) -> tuple[Path | None, list[str]]:
-    """Split the raw argv into `(directory, pass-through)` for the client."""
+def _split_passthrough(ctx: typer.Context) -> list[str]:
+    """Return raw pass-through args for the client."""
     passthrough: list[str] = list(ctx.args)
-    if directory is not None and directory.name.startswith("-"):
-        passthrough = [directory.name, *passthrough]
-        directory = None
     if passthrough and passthrough[0] == "--":
         passthrough = passthrough[1:]
-    return directory, passthrough
+    return passthrough
 
 
 def _require_addon() -> Traversable:
@@ -208,126 +218,26 @@ def _root(
 )
 def claude(
     ctx: typer.Context,
-    directory: Annotated[
-        Path | None,
-        typer.Argument(
-            help="Working directory for Claude Code (defaults to cwd).",
-            show_default=False,
-            file_okay=False,
-            dir_okay=True,
-            resolve_path=True,
-        ),
-    ] = None,
-    proxy_port: Annotated[
-        int | None,
-        typer.Option(
-            "--proxy-port",
-            "-p",
-            envvar=env_keys.PROXY_PORT,
-            help=("Port for the reverse-proxy listener (default: kernel-allocated free port)."),
-            show_default=False,
-            callback=validate_port_option,
-        ),
-    ] = None,
-    web_port: Annotated[
-        int | None,
-        typer.Option(
-            "--web-port",
-            "-w",
-            envvar=env_keys.WEB_PORT,
-            help=("Port for the embedded web UI (default: kernel-allocated free port)."),
-            show_default=False,
-            callback=validate_port_option,
-        ),
-    ] = None,
-    upstream: Annotated[
-        str,
-        typer.Option(
-            "--upstream",
-            "-u",
-            envvar=env_keys.UPSTREAM_URL,
-            help="Upstream provider base URL (reverse proxy target).",
-        ),
-    ] = "https://api.anthropic.com",
-    storage_dir: Annotated[
-        Path | None,
-        typer.Option(
-            "--storage-dir",
-            "-d",
-            # No envvar: a launch must not inherit a parent session's
-            # TRANSPORT_MATTERS_STORAGE_DIR as its --storage-dir, or nested
-            # runs would co-reside in the parent's store. The addon (pydantic
-            # settings) and `paths` env-first still read the env var directly.
-            help=(
-                "Directory for captured exchanges, rules, and the index. "
-                "Defaults to `~/.transport-matters`."
-            ),
-            file_okay=False,
-            dir_okay=True,
-            resolve_path=True,
-        ),
-    ] = None,
-    home_dir: Annotated[
-        Path | None,
-        typer.Option(
-            "--home-dir",
-            help=(
-                "Directory for Claude Code config and transcripts. "
-                "Defaults to Claude Code's native home."
-            ),
-            file_okay=False,
-            dir_okay=True,
-            resolve_path=False,
-        ),
-    ] = None,
-    claude_bin: Annotated[
-        Path | None,
-        typer.Option(
-            "--claude-bin",
-            help="Path to the Claude Code binary (default: `claude` on PATH).",
-            exists=True,
-            file_okay=True,
-            dir_okay=False,
-            resolve_path=True,
-        ),
-    ] = None,
-    no_claude: Annotated[
-        bool,
-        typer.Option(
-            "--no-claude",
-            help="Run the proxy only; don't spawn Claude Code.",
-        ),
-    ] = False,
-    no_system_prompt: Annotated[
-        bool,
-        typer.Option(
-            "--no-system-prompt",
-            help="Skip the auto-injected Transport Matters system prompt.",
-        ),
-    ] = False,
-    debug: Annotated[
-        bool,
-        typer.Option(
-            "--debug",
-            help="Enable verbose mitmproxy output (for troubleshooting).",
-        ),
-    ] = False,
-    print_command: Annotated[
-        bool,
-        typer.Option(
-            "--print-command",
-            help="Print the resolved child invocations and exit without running them.",
-        ),
-    ] = False,
+    work_dir: WorkDirOption = None,
+    proxy_port: ProxyPortOption = None,
+    web_port: WebPortOption = None,
+    upstream: ClaudeUpstreamOption = "https://api.anthropic.com",
+    storage_dir: StorageDirOption = None,
+    home_dir: HomeDirOption = None,
+    claude_bin: ClaudeBinOption = None,
+    no_claude: NoClaudeOption = False,
+    no_system_prompt: NoSystemPromptOption = False,
+    debug: DebugOption = False,
+    print_command: PrintCommandOption = False,
 ) -> None:
     """Start the Transport Matters workbench: proxy + Claude Code."""
-    directory, claude_passthrough = _split_passthrough(ctx, directory)
+    claude_passthrough = _split_passthrough(ctx)
     resolved_home_dir = _resolve_home_dir_option(
         home_dir,
         create=not print_command,
     )
     run_start(
-        directory=directory,
+        directory=work_dir,
         claude_passthrough=claude_passthrough,
         proxy_port=proxy_port,
         web_port=web_port,
@@ -366,118 +276,25 @@ def claude(
 )
 def codex(
     ctx: typer.Context,
-    directory: Annotated[
-        Path | None,
-        typer.Argument(
-            help="Working dir for Codex (defaults to cwd).",
-            show_default=False,
-            file_okay=False,
-            dir_okay=True,
-            resolve_path=True,
-        ),
-    ] = None,
-    proxy_port: Annotated[
-        int | None,
-        typer.Option(
-            "--proxy-port",
-            "-p",
-            envvar=env_keys.PROXY_PORT,
-            help=("Port for the explicit-proxy listener (default: kernel-allocated free port)."),
-            show_default=False,
-            callback=validate_port_option,
-        ),
-    ] = None,
-    web_port: Annotated[
-        int | None,
-        typer.Option(
-            "--web-port",
-            "-w",
-            envvar=env_keys.WEB_PORT,
-            help=("Port for the embedded web UI (default: kernel-allocated free port)."),
-            show_default=False,
-            callback=validate_port_option,
-        ),
-    ] = None,
-    storage_dir: Annotated[
-        Path | None,
-        typer.Option(
-            "--storage-dir",
-            "-d",
-            # No envvar: a launch must not inherit a parent session's
-            # TRANSPORT_MATTERS_STORAGE_DIR as its --storage-dir, or nested
-            # runs would co-reside in the parent's store. The addon (pydantic
-            # settings) and `paths` env-first still read the env var directly.
-            help=(
-                "Directory for captured exchanges, rules, and the index. "
-                "Defaults to `~/.transport-matters`."
-            ),
-            file_okay=False,
-            dir_okay=True,
-            resolve_path=True,
-        ),
-    ] = None,
-    home_dir: Annotated[
-        Path | None,
-        typer.Option(
-            "--home-dir",
-            help=("Directory for Codex config and transcripts. Defaults to Codex's native home."),
-            file_okay=False,
-            dir_okay=True,
-            resolve_path=False,
-        ),
-    ] = None,
-    codex_bin: Annotated[
-        Path | None,
-        typer.Option(
-            "--codex-bin",
-            help="Path to Codex (default: `codex` on PATH).",
-            exists=True,
-            file_okay=True,
-            dir_okay=False,
-            resolve_path=True,
-        ),
-    ] = None,
-    no_codex: Annotated[
-        bool,
-        typer.Option(
-            "--no-codex",
-            help="Run the proxy only; don't spawn Codex.",
-        ),
-    ] = False,
-    debug: Annotated[
-        bool,
-        typer.Option(
-            "--debug",
-            help="Enable verbose mitmproxy output (for troubleshooting).",
-        ),
-    ] = False,
-    force_http_fallback: Annotated[
-        bool,
-        typer.Option(
-            "--force-http-fallback",
-            help=(
-                "Test mode: short-circuit Codex's WebSocket upgrade with HTTP 426 "
-                "to force the HTTPS Responses fallback path. Used to capture "
-                "the HTTP wire format without changing Codex CLI config."
-            ),
-        ),
-    ] = False,
-    print_command: Annotated[
-        bool,
-        typer.Option(
-            "--print-command",
-            help="Print the resolved child invocations and exit without running them.",
-        ),
-    ] = False,
+    work_dir: WorkDirOption = None,
+    proxy_port: ProxyPortOption = None,
+    web_port: WebPortOption = None,
+    storage_dir: StorageDirOption = None,
+    home_dir: HomeDirOption = None,
+    codex_bin: CodexBinOption = None,
+    no_codex: NoCodexOption = False,
+    debug: DebugOption = False,
+    force_http_fallback: ForceHttpFallbackOption = False,
+    print_command: PrintCommandOption = False,
 ) -> None:
     """Start the Transport Matters workbench: proxy + Codex."""
-    directory, codex_passthrough = _split_passthrough(ctx, directory)
+    codex_passthrough = _split_passthrough(ctx)
     resolved_home_dir = _resolve_home_dir_option(
         home_dir,
         create=not print_command,
     )
     run_codex(
-        directory=directory,
+        directory=work_dir,
         codex_passthrough=codex_passthrough,
         proxy_port=proxy_port,
         web_port=web_port,
