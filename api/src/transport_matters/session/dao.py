@@ -57,6 +57,24 @@ RETURNING {_SESSION_COLUMNS}
 """
 
 _GET_SESSION_SQL = f'SELECT {_SESSION_COLUMNS} FROM "session" WHERE session_id = %(session_id)s'
+_GET_SESSION_FOR_OWNER_SQL = f"""
+SELECT {_SESSION_COLUMNS}
+FROM "session"
+WHERE session_id = %(session_id)s
+  AND owner = %(owner)s
+"""
+_LIST_SESSIONS_SQL = f"""
+SELECT {_SESSION_COLUMNS}
+FROM "session"
+WHERE owner = %(owner)s
+  AND (%(workspace_hash)s::text IS NULL OR workspace_hash = %(workspace_hash)s)
+  AND (%(provider)s::text IS NULL OR provider = %(provider)s)
+  AND (%(cli)s::text IS NULL OR cli = %(cli)s)
+  AND (%(status)s::text IS NULL OR status = %(status)s)
+ORDER BY started_at DESC, session_id
+LIMIT %(limit)s
+OFFSET %(offset)s
+"""
 
 _INSERT_EVENT_SQL = f"""
 INSERT INTO "event" (
@@ -96,6 +114,17 @@ WHERE session_id = %(session_id)s
   AND (%(from_seq)s::integer IS NULL OR seq >= %(from_seq)s::integer)
   AND (%(to_seq)s::integer IS NULL OR seq <= %(to_seq)s::integer)
 ORDER BY seq
+"""
+_GET_EVENTS_FOR_OWNER_SQL = """
+SELECT e.*
+FROM "event" AS e
+JOIN "session" AS s ON s.session_id = e.session_id
+WHERE e.session_id = %(session_id)s
+  AND s.owner = %(owner)s
+  AND (%(from_seq)s::integer IS NULL OR e.seq >= %(from_seq)s::integer)
+  AND (%(to_seq)s::integer IS NULL OR e.seq <= %(to_seq)s::integer)
+ORDER BY e.seq
+LIMIT %(limit)s
 """
 
 _IR_SEARCH_SQL = f"""
@@ -186,6 +215,38 @@ class SessionDao:
         row = self._conn.execute(_GET_SESSION_SQL, {"session_id": session_id}).fetchone()
         return _one(row, SessionRow)
 
+    def get_session_for_owner(self, session_id: str, *, owner: str) -> SessionRow | None:
+        row = self._conn.execute(
+            _GET_SESSION_FOR_OWNER_SQL,
+            {"session_id": session_id, "owner": owner},
+        ).fetchone()
+        return _one(row, SessionRow)
+
+    def list_sessions(
+        self,
+        *,
+        owner: str,
+        workspace_hash: str | None = None,
+        provider: str | None = None,
+        cli: str | None = None,
+        status: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[SessionRow]:
+        rows = self._conn.execute(
+            _LIST_SESSIONS_SQL,
+            {
+                "owner": owner,
+                "workspace_hash": workspace_hash,
+                "provider": provider,
+                "cli": cli,
+                "status": status,
+                "limit": limit,
+                "offset": offset,
+            },
+        ).fetchall()
+        return [SessionRow.model_validate(dict(row)) for row in rows]
+
     def insert_event(self, event: EventRow) -> EventRow:
         row = self._conn.execute(_INSERT_EVENT_SQL, _event_params(event)).fetchone()
         assert row is not None
@@ -197,6 +258,27 @@ class SessionDao:
         rows = self._conn.execute(
             _GET_EVENTS_SQL,
             {"session_id": session_id, "from_seq": from_seq, "to_seq": to_seq},
+        ).fetchall()
+        return [_event(row) for row in rows]
+
+    def get_events_for_owner(
+        self,
+        session_id: str,
+        *,
+        owner: str,
+        from_seq: int | None = None,
+        to_seq: int | None = None,
+        limit: int = 500,
+    ) -> list[EventRow]:
+        rows = self._conn.execute(
+            _GET_EVENTS_FOR_OWNER_SQL,
+            {
+                "session_id": session_id,
+                "owner": owner,
+                "from_seq": from_seq,
+                "to_seq": to_seq,
+                "limit": limit,
+            },
         ).fetchall()
         return [_event(row) for row in rows]
 
@@ -260,6 +342,40 @@ class AsyncSessionDao:
         row = await cursor.fetchone()
         return _one(row, SessionRow)
 
+    async def get_session_for_owner(self, session_id: str, *, owner: str) -> SessionRow | None:
+        cursor = await self._conn.execute(
+            _GET_SESSION_FOR_OWNER_SQL,
+            {"session_id": session_id, "owner": owner},
+        )
+        row = await cursor.fetchone()
+        return _one(row, SessionRow)
+
+    async def list_sessions(
+        self,
+        *,
+        owner: str,
+        workspace_hash: str | None = None,
+        provider: str | None = None,
+        cli: str | None = None,
+        status: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[SessionRow]:
+        cursor = await self._conn.execute(
+            _LIST_SESSIONS_SQL,
+            {
+                "owner": owner,
+                "workspace_hash": workspace_hash,
+                "provider": provider,
+                "cli": cli,
+                "status": status,
+                "limit": limit,
+                "offset": offset,
+            },
+        )
+        rows = await cursor.fetchall()
+        return [SessionRow.model_validate(dict(row)) for row in rows]
+
     async def insert_event(self, event: EventRow) -> EventRow:
         cursor = await self._conn.execute(_INSERT_EVENT_SQL, _event_params(event))
         row = await cursor.fetchone()
@@ -272,6 +388,28 @@ class AsyncSessionDao:
         cursor = await self._conn.execute(
             _GET_EVENTS_SQL,
             {"session_id": session_id, "from_seq": from_seq, "to_seq": to_seq},
+        )
+        rows = await cursor.fetchall()
+        return [_event(row) for row in rows]
+
+    async def get_events_for_owner(
+        self,
+        session_id: str,
+        *,
+        owner: str,
+        from_seq: int | None = None,
+        to_seq: int | None = None,
+        limit: int = 500,
+    ) -> list[EventRow]:
+        cursor = await self._conn.execute(
+            _GET_EVENTS_FOR_OWNER_SQL,
+            {
+                "session_id": session_id,
+                "owner": owner,
+                "from_seq": from_seq,
+                "to_seq": to_seq,
+                "limit": limit,
+            },
         )
         rows = await cursor.fetchall()
         return [_event(row) for row in rows]

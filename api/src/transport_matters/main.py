@@ -7,7 +7,9 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from transport_matters.api.v1.router import api_router
-from transport_matters.config import get_settings
+from transport_matters.config import MissingDatabaseConfigError, get_settings, resolve_database_url
+from transport_matters.session.listen import SessionEventHub, SessionEventListener
+from transport_matters.session.pool import create_async_pool
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -45,8 +47,33 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     logger.info("Starting %s", app.title)
-    yield
-    logger.info("Shutting down %s", app.title)
+    session_pool = None
+    session_listener = None
+    app.state.session_event_hub = SessionEventHub()
+    try:
+        database_url = resolve_database_url(get_settings())
+        session_pool = create_async_pool(database_url)
+        await session_pool.open()
+        app.state.session_pool = session_pool
+        session_listener = SessionEventListener(database_url, app.state.session_event_hub)
+        app.state.session_event_listener = session_listener
+        await session_listener.start()
+    except MissingDatabaseConfigError as exc:
+        logger.info("Session store disabled: %s", exc)
+    except Exception:
+        logger.exception("Session store lifecycle failed to start")
+        if session_listener is not None:
+            await session_listener.aclose()
+        if session_pool is not None:
+            await session_pool.close()
+    try:
+        yield
+    finally:
+        if session_listener is not None:
+            await session_listener.aclose()
+        if session_pool is not None:
+            await session_pool.close()
+        logger.info("Shutting down %s", app.title)
 
 
 def create_app() -> FastAPI:
