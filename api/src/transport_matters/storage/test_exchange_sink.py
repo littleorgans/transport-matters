@@ -39,11 +39,11 @@ class TestExchangeSink:
 
     def test_sink_failure_is_swallowed(self) -> None:
         def boom(entry: IndexEntry, artifacts: ExchangeArtifacts) -> None:
-            raise RuntimeError("tier-2 down")
+            raise RuntimeError("observer down")
 
         set_exchange_sink(boom)
         try:
             entry, artifacts = _exchange()
-            emit_to_index(entry, artifacts)  # must NOT propagate (tier-1 first)
+            emit_to_index(entry, artifacts)  # must not propagate because tier-1 is first
         finally:
             clear_exchange_sink()

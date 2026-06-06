@@ -32,11 +32,11 @@ ir → adapters → rules → pipeline → storage → breakpoint → server
 `ir.py` imports nothing from `transport_matters`.
 
 `canonicalization.py` is layer 1 (standard library only); it is shared by `override_audit`
-(char accounting) and `index` (block identity).
+(char accounting).
 
-The `index/` package (tier-2 capture substrate) sits **after** `storage`: it imports `ir`
-and `canonicalization` only, and `storage` must never import `index` (that back-edge is a
-cycle — the index sink is injected at `load_runtime()`).
+The `session/` package is the Postgres session store. It may import `ir`,
+`canonicalization`, surviving `index/{adapters,tailer,sessions}`, and storage read helpers.
+`storage` must never import `session`; the snapshot sink is injected at `load_runtime()`.
 
 ## Tests
 - Unit tests are colocated: `src/transport_matters/foo/test_bar.py` lives next to `bar.py`

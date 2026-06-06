@@ -48,7 +48,7 @@ def claude_transcript_source(
     ``cwd-slug`` is claude's on-disk projects slug: EVERY non-alphanumeric char of the cwd becomes
     ``-`` (case preserved), verified on real claude 2.1.165 (``/private/tmp/tm_slug.probe_AB9`` →
     ``-private-tmp-tm-slug-probe-AB9``). A naive ``/``→``-`` leaves dots/underscores and the tailer
-    byte-tails a path claude never wrote (transcript_turn=0), so the slug MUST match claude exactly.
+    byte-tails a path claude never wrote, so the slug must match claude exactly.
     The default root is claude's native ``~/.claude/projects`` (the external-adoption ``locate``
     path); the managed launcher (§5.2c) passes the home-aware root so the owned ``source_descriptor``
     it mints lands where ``claude --session-id <sid>`` writes. One definition keeps launch + read DRY.

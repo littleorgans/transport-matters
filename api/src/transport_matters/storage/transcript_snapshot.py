@@ -2,14 +2,14 @@
 
 Tier-1 holds only the wire; the transcript lives only in the CLI's own file
 (``~/.claude/projects/...``, ``~/.codex/sessions/...``), which the CLI or the user can GC. When
-that file is gone, a tier-2 rebuild loses the entire transcript half. This module is the
+that file is gone, transcript replay loses the entire transcript half. This module is the
 storage-layer half of the fix: a synchronous, append-only writer that tees a **byte-faithful**
 copy of every consumed transcript record into ``<run_dir>/transcripts/<session_id>.jsonl`` as the
 §9.2 tailer reads them, so a future rebuild replays TM's OWNED bytes regardless of CLI retention.
 
-DAG: the tailer (``index`` layer) must not import a storage write API, so the writer is built here
-and **injected** as a plain callable at ``load_runtime()`` (mirroring ``make_index_sink``). The
-tailer holds an opaque ``Callable[[str, int, bytes], None]`` and never imports this module.
+DAG: the tailer must not import a storage write API, so the writer is built here and injected
+as a plain callable at ``load_runtime()``. The tailer holds an opaque
+``Callable[[str, int, bytes], None]`` and never imports this module.
 
 Idempotence (the load-bearing property): the snapshot is a byte-faithful copy of the CLI file's
 consumed prefix, so its on-disk size **is** the length of the prefix already owned. A re-tail (a
@@ -20,7 +20,7 @@ A gap (``start_offset`` ahead of the snapshot size — the snapshot file was tru
 removed mid-run) is a HARD failure, NOT a silent skip: we lack the missing bytes here, so writing
 would punch a non-prefix hole AND silently let the tailer advance past un-snapshotted data. Raising
 keeps the snapshot a valid prefix and stops the tailer's ``byte_offset`` from advancing past it
-(the tailer's ``poll()`` catches it and retries), so tier-2 never gets ahead of tier-1.
+(the tailer's ``poll()`` catches it and retries), so session events never get ahead of tier-1.
 """
 
 from __future__ import annotations

@@ -262,9 +262,9 @@ async def persist_http_exchange(
     if not await persist_exchange(storage, entry, artifacts):
         return False
 
-    # Tier-1 persisted (durable) — hand the exchange to the injected tier-2 sink (§6.4/§7.1).
-    # Best-effort and non-blocking; emit_to_index swallows any failure so the wire path is
-    # never blocked by, nor fails because of, tier-2.
+    # Tier-1 persisted. Hand the exchange to the optional post-persist sink.
+    # Best-effort and non-blocking. emit_to_index swallows any failure so the wire path
+    # never fails because of an observer.
     emit_to_index(entry, artifacts)
     emit_exchange(
         ir,
@@ -419,10 +419,9 @@ async def _finalize_http_provisional_exchange(
         logger.exception("Failed to finalize provisional HTTP exchange %s", exchange_id)
         return False
 
-    # Streaming (Claude's PRIMARY path) finalizes here, NOT in persist_http_exchange's
-    # non-provisional branch — so tier-2 must be fed from this seam too, or real streaming
-    # exchanges never reach the index (§6.4/§7.1). The response (entry.res) is only available
-    # now, so finalize is the correct point. Best-effort: emit_to_index swallows any failure.
+    # Streaming, Claude's primary path, finalizes here, not in persist_http_exchange's
+    # non-provisional branch. The response is only available now, so the observer must run
+    # at finalize. Best-effort: emit_to_index swallows any failure.
     emit_to_index(entry, artifacts)
     emit_exchange(
         ir,

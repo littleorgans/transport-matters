@@ -1,6 +1,9 @@
 """Tests for close_runtime teardown logic and the read-back cursor registrar."""
 
+from __future__ import annotations
+
 import asyncio
+from typing import TYPE_CHECKING
 
 import httpx
 import pytest
@@ -9,10 +12,19 @@ import uvicorn
 from transport_matters import addon_runtime, pause_session
 from transport_matters import breakpoint as bp
 from transport_matters.addon_runtime import AddonRuntime, close_runtime
+from transport_matters.config import Settings
 from transport_matters.counting import TokenCounter, set_counter, set_recent_auth
-from transport_matters.index.adapters.base import SessionBinding
+from transport_matters.index.adapters.base import (
+    FileTailSource,
+    SessionBinding,
+    encode_source_descriptor,
+)
+from transport_matters.index.sessions import synth_session_id
 from transport_matters.index.tailer import TranscriptTailer
 from transport_matters.main import create_app
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -219,9 +231,7 @@ async def test_cursor_registrar_registers_codex_session(monkeypatch: pytest.Monk
         calls.append((getattr(adapter, "cli", "?"), binding.session_id))
 
     monkeypatch.setattr(addon_runtime, "register_session_cursor", fake_register)
-    registrar = addon_runtime._make_cursor_registrar(
-        TranscriptTailer(lambda job: None), asyncio.get_running_loop()
-    )
+    registrar = addon_runtime._make_cursor_registrar(TranscriptTailer(), asyncio.get_running_loop())
 
     registrar(_codex_binding())
     await asyncio.sleep(0.05)  # let the scheduled coroutine run
@@ -254,41 +264,37 @@ async def test_close_runtime_clears_counter_and_auth() -> None:
     assert _recent_auth is None
 
 
-def test_load_runtime_rebuilds_index_before_opening_session_writer(
-    monkeypatch: pytest.MonkeyPatch,
+async def test_register_owned_cursor_uses_launch_settings(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """load_runtime must run the boot rebuild before constructing the live session writer.
+    native = "019e0000-0000-7000-8000-00000000c0de"
+    descriptor = encode_source_descriptor(
+        FileTailSource(path=str(tmp_path / "rollout.jsonl"), format="codex_rollout")
+    )
+    settings = Settings(
+        run_id="run1",
+        cwd=tmp_path / "workspace",
+        cli="codex",
+        owned_native_session_id=native,
+        owned_source_descriptor=descriptor,
+        home_dir=tmp_path / "home",
+    )
+    calls: list[tuple[str, SessionBinding]] = []
 
-    rebuild() deletes the index.db files, so a live writer opened first would be stranded on the old
-    inode. This pins that ordering. The SessionWriter stub raises a BaseException so load_runtime
-    aborts before the uvicorn serve task binds a port.
-    """
-    order: list[str] = []
+    async def fake_register(
+        tailer: TranscriptTailer, adapter: object, binding: SessionBinding
+    ) -> None:
+        calls.append((getattr(adapter, "cli", "?"), binding))
 
-    class _StopBoot(BaseException):
-        pass
+    monkeypatch.setattr(addon_runtime, "register_session_cursor", fake_register)
 
-    def fake_rebuild_if_stale(*args: object, **kwargs: object) -> bool:
-        order.append("rebuild_if_stale")
-        return False
+    await addon_runtime._register_owned_cursor(
+        TranscriptTailer(), settings, "2026-06-06T00:00:00+00:00"
+    )
 
-    def fake_session_writer(*args: object, **kwargs: object) -> object:
-        order.append("SessionWriter")
-        raise _StopBoot
-
-    loop = asyncio.new_event_loop()
-    monkeypatch.setattr(addon_runtime, "init_storage", lambda *a, **k: object())
-    monkeypatch.setattr(addon_runtime, "TokenCounter", lambda *a, **k: object())
-    monkeypatch.setattr(httpx, "AsyncClient", lambda *a, **k: object())
-    monkeypatch.setattr(addon_runtime, "_running_loop", lambda: loop)
-    monkeypatch.setattr(addon_runtime, "rebuild_if_stale", fake_rebuild_if_stale)
-    monkeypatch.setattr(addon_runtime, "create_async_pool", lambda: object())
-    monkeypatch.setattr(addon_runtime, "SessionWriter", fake_session_writer)
-
-    try:
-        with pytest.raises(_StopBoot):
-            addon_runtime.load_runtime()
-    finally:
-        loop.close()
-
-    assert order == ["rebuild_if_stale", "SessionWriter"]
+    assert len(calls) == 1
+    cli, binding = calls[0]
+    assert cli == "codex"
+    assert binding.session_id == synth_session_id("run1", "codex", native)
+    assert binding.source_descriptor == descriptor
+    assert binding.home_dir == str(tmp_path / "home")

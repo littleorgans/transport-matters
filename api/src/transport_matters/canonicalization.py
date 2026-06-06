@@ -1,17 +1,13 @@
 """Shared low-level canonical-JSON helpers.
 
-Extracted from ``override_audit.py`` so two *separate* higher-level encoders can share
-one copy of the JSON-canonicalization discipline without duplicating it:
-
-- ``override_audit.canonical_block_json`` — char accounting; **keeps** ``provider_data``.
-- ``index.blocks.identity_canonical`` — semantic block identity; **strips**
-  ``provider_data``/``cache_hint`` uniformly (§3.3).
+Extracted from ``override_audit.py`` so character accounting can share one copy
+of the JSON-canonicalization discipline without duplicating it.
 
 This module depends only on the standard library (DAG layer 1, beside ``ir``); it
 imports nothing from ``transport_matters``.
 
 ``canonical_json`` / ``canonical_fields`` / ``json_string`` are public because they are
-consumed across module boundaries (both encoders compose them); the module-privacy
+consumed across module boundaries; the module-privacy
 boundary requires cross-module symbols to be public names. The number/mapping helpers
 are intra-module and stay underscore-private.
 """

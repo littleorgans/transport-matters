@@ -2,8 +2,8 @@
 
 codex mints no proxy ``--session-id``; the native thread uuid (``session_meta.payload.id``, also
 the rollout filename uuid, carried in the proxied codex frames) is learned from the wire and the
-``session_id`` is SYNTHESIZED via the shared ``synth_session_id`` so the wire correlation
-(``bind_exchange``) and this transcript adapter independently converge on the SAME ``session_id``
+``session_id`` is SYNTHESIZED via the shared ``synth_session_id`` so wire session binding
+and this transcript adapter independently converge on the SAME ``session_id``
 (§7.2). Parts reuse ``ir.ContentBlock`` verbatim so identical content dedups to one block across
 both streams (§3.3).
 """
@@ -65,8 +65,8 @@ class CodexAdapter(TranscriptAdapter):
     # ``metadata.session_id`` matches that uuid, so the tailer byte-tails the owned path. The old
     # read-back glob (any wire frame ⇒ TM launched it ⇒ TM owns the uuid + path) is deleted; discovery
     # is unreachable for anything TM sees. Uncorrelated codex non-conversational requests, such as
-    # memory-style calls, carry no session id, bind to ``None``, and land as NULL ``wire_exchange``
-    # rows; handshake-failure frames are tier-1 only and create no tier-2 wire row. These recur several
+    # memory-style calls, carry no session id, bind to ``None``, and land as null exchange metadata
+    # rows; handshake-failure frames are tier-1 only and create no indexed wire row. These recur several
     # times per session, not a single frame-1 phantom (§15 risk 2). The base default ``locate`` returns
     # None, so codex ids with no owned descriptor register no cursor.
 

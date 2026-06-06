@@ -1,12 +1,12 @@
 # TLDR
 
-`transport-matters` is the wire-level observability and retrieval layer for
-littleorgans coding agents. It proxies live agent traffic, parses the bytes
+`transport-matters` is the wire-level observability and session history layer
+for littleorgans coding agents. It proxies live agent traffic, parses the bytes
 into an internal request representation, persists turn artifacts, can pause
 the next outbound request so an operator can inspect or edit it before it
-reaches the upstream provider, and indexes every session for search and a
-wire-versus-transcript diff. No system proxy toggle, no global certificate
-install, no sudo.
+reaches the upstream provider, and records correlated transcript history in a
+Postgres session store. No system proxy toggle, no global certificate install,
+no sudo.
 
 Two launch paths: Claude Code through a reverse proxy in front of
 `api.anthropic.com`, and Codex through an explicit HTTPS proxy for the
@@ -29,14 +29,20 @@ the proxy) and the **transcript** (what the CLI recorded on disk). Their
 difference is the product. The injected system reminders, tool schemas, and
 replayed context the harness hides surface as wire-only content.
 
-Storage is two tiers. **Tier-1** is the per-run source of truth under
+Storage has a durable run directory and an active session store. **Tier-1** is
+the per-run source of truth under
 `~/.transport-matters/workspaces/{slug}/{hash}/{run}/`: the raw request and
 response bytes, plus an owned copy of the transcript and the session's launch
-facts. **Tier-2** is a single shared SQLite index (`~/.transport-matters/index.db`)
-of content-addressed blocks, full-text search, and the correlated session
-timeline. Tier-2 is a rebuildable projection: drop it and it reconstructs
-from tier-1 alone, so a session survives even after its CLI transcript file
-is gone.
+facts.
+
+The active correlated store is Postgres. `SessionWriter` owns writes from the
+transcript tailer and backfill paths. The API exposes owner scoped session read
+surfaces and live event streaming, omitting raw bytes.
+
+The retired legacy index, block store, diff projection, and raw fetch surface
+are no longer part of the active runtime. Wire versus transcript diff remains a
+product direction, but it needs the next wire store rather than the deleted diff
+era substrate.
 
 A breakpoint is the explicit pause point. Arming it in the UI holds the next
 outbound turn for review or edit before release. Codex turns carry

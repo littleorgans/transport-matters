@@ -274,8 +274,8 @@ def test_dry_a_new_mint_capable_cli_plugs_into_the_shared_path(tmp_path: Path) -
 
 
 class TestPersistOwnedSessionFacts:
-    def test_mints_session_id_matches_bind_exchange_per_cli(self) -> None:
-        # The launch-side declaration must agree with bind_exchange's read-side derivation: claude
+    def test_mints_session_id_matches_adapter_binding_per_cli(self) -> None:
+        # The launch-side declaration must agree with adapter binding's read-side derivation: claude
         # adopts the injected --session-id as its PK (minted), codex synthesizes the PK (not minted).
         assert ClaudeLaunchProfile().mints_session_id is True
         assert CodexLaunchProfile().mints_session_id is False

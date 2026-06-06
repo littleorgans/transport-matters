@@ -462,7 +462,7 @@ def build_launch_env(
     Both set by claude and codex managed launches; unset for un-owned (external-adoption) launches.
 
     ``home_dir`` is the managed ``--home-dir`` (when set): threaded so the addon stamps it onto every
-    binding (``bind_exchange``) and ``locate`` resolves the transcript root under the managed home;
+    session binding and ``locate`` resolves the transcript root under the managed home;
     distinct from the child's CLAUDE_CONFIG_DIR/CODEX_HOME (``build_managed_child_env``). Unset = native."""
     env = os.environ.copy()
     env[env_keys.STORAGE_DIR] = str(storage_dir)

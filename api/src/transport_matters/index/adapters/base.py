@@ -52,7 +52,7 @@ class FileTailSource(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     kind: Literal["file_tail"] = "file_tail"
-    path: str  # absolute jsonl path → transcript_turn.source_path
+    path: str  # absolute jsonl path recorded as the event source path
     format: str  # claude_jsonl | codex_rollout | gemini_session | gemini_checkpoint
     encoding: str = "utf-8"
     home_dir: str | None = (
@@ -69,7 +69,7 @@ class PullSource(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     kind: Literal["pull"] = "pull"
-    ref: str  # session ref (opencode ses_ id) → transcript_turn.source_path stem
+    ref: str  # session ref, such as an opencode ses_ id, recorded as the event source
     mechanism: str  # opencode_export | opencode_db
     command: list[str] | None = (
         None  # e.g. ["opencode", "export", "<ses_id>"]; None for direct db read
@@ -132,7 +132,7 @@ class TurnContext(BaseModel):
 
 
 class NormalizedTurn(BaseModel):
-    """One harness turn → a §3 ``transcript_turn`` row; ``parts`` → ``turn_block`` edges + blocks."""
+    """One harness turn normalized into a session event; ``parts`` carry content blocks."""
 
     model_config = ConfigDict(frozen=True)
 

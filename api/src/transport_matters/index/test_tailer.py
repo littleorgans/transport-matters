@@ -57,7 +57,7 @@ def _codex_response_item(text: str) -> str:
 
 
 def _codex_wire_binding(native: str, descriptor: str | None) -> SessionBinding:
-    """A codex wire binding as ``bind_exchange`` resolves it: synth session_id, cli unset on the
+    """A codex wire binding as adapter binding resolves it: synth session_id, cli unset on the
     wire side, ``source_descriptor`` present only for the session the launcher owns (§5.2b)."""
     return SessionBinding(
         session_id=synth_session_id(_RUN, "codex", native),
@@ -75,7 +75,7 @@ def _codex_wire_binding(native: str, descriptor: str | None) -> SessionBinding:
 
 
 def _claude_wire_binding(session_id: str, descriptor: str | None) -> SessionBinding:
-    """A claude managed wire binding as ``bind_exchange`` resolves it (§5.2c): ``minted=True``,
+    """A claude managed wire binding as adapter binding resolves it (§5.2c): ``minted=True``,
     session_id == the native id used directly, ``source_descriptor`` = the owned transcript path."""
     return SessionBinding(
         session_id=session_id,
@@ -228,6 +228,20 @@ class TestTailerPoll:
         tailer.poll()
         assert len(submitted) == 1  # unregistered → no further submits
 
+    def test_missing_exact_source_waits_without_advancing(self, tmp_path: Path) -> None:
+        path = tmp_path / "later.jsonl"
+        submitted: list[EventWrite] = []
+        tailer = _event_tailer(submitted)
+        cursor = _cursor(str(path))
+        tailer.register(cursor)
+
+        tailer.poll()
+
+        assert submitted == []
+        assert cursor.byte_offset == 0
+        assert cursor.seq == 0
+        assert cursor.stat_signature is None
+
     def test_cursor_state_advances_only_after_submit_success(self, tmp_path: Path) -> None:
         path = tmp_path / "t.jsonl"
         path.write_text(_user_line("u1", "hi") + "\n")
@@ -323,7 +337,7 @@ class TestSnapshotTee:
     def test_snapshot_failure_does_not_advance_and_retries_next_poll(self, tmp_path: Path) -> None:
         # The tee is coupled to the cursor advance: a snapshot raise must NOT advance byte_offset AND
         # must NOT set stat_signature, so the very next poll RETRIES even though the CLI file is
-        # unchanged (no waiting for the file to grow). Keeps tier-1 snapshot + tier-2 turns consistent.
+        # unchanged (no waiting for the file to grow). Keeps tier-1 snapshot + events consistent.
         path = tmp_path / "t.jsonl"
         path.write_text(_user_line("u1", "hi") + "\n")
         calls: list[int] = []
@@ -364,12 +378,12 @@ class TestSnapshotTee:
         tailer = _event_tailer(submitted)  # no snapshot injected (default None)
         tailer.register(_cursor(str(path)))
         tailer.poll()
-        assert [write.event.native_turn_id for write in submitted] == ["u1"]  # tier-2 unaffected
+        assert [write.event.native_turn_id for write in submitted] == ["u1"]
 
 
 class TestRegisterCursor:
     async def test_register_session_cursor_locates_and_registers(self) -> None:
-        tailer = TranscriptTailer(lambda _job: None)
+        tailer = TranscriptTailer()
         await register_session_cursor(tailer, ClaudeAdapter(), _binding(cwd="/w"))
         cursors = tailer._snapshot()
         assert len(cursors) == 1
@@ -386,7 +400,7 @@ class TestRegisterCursor:
         # ``locate`` resolves the transcript under <home>/projects, NOT ~/.claude, and the cursor
         # binding keeps the home. This is the real correctness gap the locate fix closes.
         wire = _binding(cwd="/w").model_copy(update={"home_dir": str(tmp_path)})
-        tailer = TranscriptTailer(lambda _job: None)
+        tailer = TranscriptTailer()
         await register_session_cursor(tailer, ClaudeAdapter(), wire)
         (cursor,) = tailer._snapshot()
         assert cursor.binding.home_dir == str(tmp_path)  # survived the re-bind
@@ -407,7 +421,7 @@ class TestRegisterCursor:
         descriptor = encode_source_descriptor(
             FileTailSource(path=str(transcript), format="claude_jsonl")
         )
-        tailer = TranscriptTailer(lambda _job: None)
+        tailer = TranscriptTailer()
         await register_session_cursor(
             tailer, ClaudeAdapter(), _claude_wire_binding(session, descriptor)
         )
@@ -431,7 +445,7 @@ class TestRegisterCursor:
             FileTailSource(path=str(rollout), format="codex_rollout")
         )
         wire_binding = _codex_wire_binding(native, descriptor)
-        tailer = TranscriptTailer(lambda _job: None)
+        tailer = TranscriptTailer()
         await register_session_cursor(tailer, CodexAdapter(), wire_binding)
         (cursor,) = tailer._snapshot()
         assert cursor.binding.session_id == wire_binding.session_id  # convergence: same synth id
@@ -468,7 +482,7 @@ class TestRegisterCursor:
         assert cursor.source.path == str(rollout)  # tailed from the exact owned path
 
     async def test_non_owned_codex_binding_registers_no_cursor(self) -> None:
-        # Regression (c): a codex wire id TM did not seed has no owned descriptor (bind_exchange left
+        # Regression (c): a codex wire id TM did not seed has no owned descriptor (adapter binding left
         # it None). register_session_cursor registers NO cursor, it stays pending: no glob, no
         # error, no busy-poll (the old window-id phantom path is gone).
         submitted: list[EventWrite] = []
