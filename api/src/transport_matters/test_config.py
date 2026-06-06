@@ -41,7 +41,7 @@ def test_settings_use_transport_matters_env_prefix(
 
 
 def test_settings_read_managed_home_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    # The managed --home-dir reaches the addon via the OWNED_* env channel (§11.1) so bind_exchange
+    # The managed --home-dir reaches the addon via the OWNED_* env channel (§11.1) so adapter binding
     # stamps it onto the binding and locate resolves the transcript root under the managed home.
     home = tmp_path / "managed-home"
     monkeypatch.setenv("TRANSPORT_MATTERS_HOME_DIR", str(home))

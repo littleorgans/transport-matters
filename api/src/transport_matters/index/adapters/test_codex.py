@@ -187,7 +187,7 @@ class TestBindLocate:
         assert (binding.native_session_id, binding.minted) == (_NATIVE, False)
 
     async def test_bind_matches_wire_side_synth(self) -> None:
-        # §7.2 convergence: the same helper the wire side (bind_exchange) uses → identical session_id
+        # §7.2 convergence: the same helper the wire session binding uses → identical session_id
         run = RunContext(
             run_id=_RUN,
             cwd="/w",

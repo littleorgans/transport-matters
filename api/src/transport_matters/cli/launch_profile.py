@@ -16,10 +16,10 @@ Both ``transport-matters claude`` and ``transport-matters codex`` flow through t
 :func:`prepare_managed_session`; a future mint-capable CLI is one new profile + a registry entry, with
 ZERO launch-flow duplication. The mint itself (a uuid4 native id) is shared here, not per-profile.
 
-The read-side ``minted``/``session_id`` derivation is its symmetric twin in ``index.ingest.
-bind_exchange`` (keyed by provider): the index DAG forbids ``index → cli``, so that half can't live on
-this cli-side port. The launch profile owns *ownership at launch*; ``bind_exchange`` owns *what the
-owned id means for the session row* (claude: id used directly, ``minted=True``; codex: synth, ``False``).
+The read-side ``minted``/``session_id`` derivation is its symmetric twin in adapter binding plus
+``session.ingest.build_session``. The launch profile owns *ownership at launch*; adapter binding owns
+*what the owned id means for the session row* (claude: id used directly, ``minted=True``; codex:
+synth, ``False``).
 """
 
 import json
@@ -70,9 +70,9 @@ class LaunchProfile(ABC):
     # Whether this profile's managed launch MINTS the session_id PK (claude: the injected
     # ``--session-id`` is adopted as the PK → ``minted=True``) or merely owns the transcript while the
     # PK is synthesized (codex read-back → ``minted=False``). The launch-side declaration of the same
-    # truth ``index.ingest.bind_exchange`` derives from the provider's read-back family; recorded here
-    # only for the durable per-run ``sessions.json`` (§11.1), so a §10.5 rebuild reads it without re-
-    # deriving. The two MUST agree per CLI (claude anthropic → True; codex read-back → False).
+    # truth adapter binding derives from the provider's read-back family; recorded here only for the
+    # durable per-run ``sessions.json`` (§11.1), so a §10.5 rebuild reads it without re-deriving. The
+    # two MUST agree per CLI (claude anthropic → True; codex read-back → False).
     mints_session_id: ClassVar[bool]
 
     @abstractmethod
@@ -109,9 +109,7 @@ class LaunchProfile(ABC):
 
 class ClaudeLaunchProfile(LaunchProfile):
     cli = CLIENT_NAME_CLAUDE
-    mints_session_id = (
-        True  # claude adopts the injected --session-id as its PK (bind_exchange twin)
-    )
+    mints_session_id = True  # claude adopts the injected --session-id as its PK
 
     def prepare(
         self,
@@ -155,9 +153,7 @@ class ClaudeLaunchProfile(LaunchProfile):
 
 class CodexLaunchProfile(LaunchProfile):
     cli = CLIENT_NAME_CODEX
-    mints_session_id = (
-        False  # codex synthesizes the PK from the read-back native id (bind_exchange twin)
-    )
+    mints_session_id = False  # codex synthesizes the PK from the read-back native id
 
     def prepare(
         self,
@@ -231,7 +227,7 @@ def prepare_managed_session(
 
     This is the single managed-launch entry point claude and codex (and any future mint-capable CLI)
     share. ``None`` when there is no managed client (proxy-only) or the user already pinned a session.
-    A ``None`` result means the launcher emits no owned id/descriptor, so ``bind_exchange`` leaves the
+    A ``None`` result means the launcher emits no owned id/descriptor, so adapter binding leaves the
     session ``minted=False`` and the read side falls back to ``locate`` (claude) or stays pending."""
     if client_path is None:
         return None

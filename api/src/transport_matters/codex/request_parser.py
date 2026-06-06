@@ -381,7 +381,7 @@ def _parse_metadata(raw: object) -> RequestMetadata:
     return RequestMetadata(
         # Codex carries no top-level session_id in client_metadata; the id (== the rollout thread
         # uuid, §7.2) is nested in client_metadata["x-codex-turn-metadata"]. Resolve via the shared
-        # resolver so bind_exchange's direct read of metadata.session_id sees it — else every codex
+        # resolver so adapter binding's direct read of metadata.session_id sees it, else every codex
         # exchange metadata lands session_id NULL and never joins its transcript.
         session_id=codex_session_id_from_provider_metadata(provider_metadata),
         device_id=string_value("device_id", "deviceId"),

@@ -57,7 +57,7 @@ def _codex_response_item(text: str) -> str:
 
 
 def _codex_wire_binding(native: str, descriptor: str | None) -> SessionBinding:
-    """A codex wire binding as ``bind_exchange`` resolves it: synth session_id, cli unset on the
+    """A codex wire binding as adapter binding resolves it: synth session_id, cli unset on the
     wire side, ``source_descriptor`` present only for the session the launcher owns (§5.2b)."""
     return SessionBinding(
         session_id=synth_session_id(_RUN, "codex", native),
@@ -75,7 +75,7 @@ def _codex_wire_binding(native: str, descriptor: str | None) -> SessionBinding:
 
 
 def _claude_wire_binding(session_id: str, descriptor: str | None) -> SessionBinding:
-    """A claude managed wire binding as ``bind_exchange`` resolves it (§5.2c): ``minted=True``,
+    """A claude managed wire binding as adapter binding resolves it (§5.2c): ``minted=True``,
     session_id == the native id used directly, ``source_descriptor`` = the owned transcript path."""
     return SessionBinding(
         session_id=session_id,
@@ -482,7 +482,7 @@ class TestRegisterCursor:
         assert cursor.source.path == str(rollout)  # tailed from the exact owned path
 
     async def test_non_owned_codex_binding_registers_no_cursor(self) -> None:
-        # Regression (c): a codex wire id TM did not seed has no owned descriptor (bind_exchange left
+        # Regression (c): a codex wire id TM did not seed has no owned descriptor (adapter binding left
         # it None). register_session_cursor registers NO cursor, it stays pending: no glob, no
         # error, no busy-poll (the old window-id phantom path is gone).
         submitted: list[EventWrite] = []

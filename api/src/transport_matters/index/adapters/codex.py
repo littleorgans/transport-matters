@@ -2,8 +2,8 @@
 
 codex mints no proxy ``--session-id``; the native thread uuid (``session_meta.payload.id``, also
 the rollout filename uuid, carried in the proxied codex frames) is learned from the wire and the
-``session_id`` is SYNTHESIZED via the shared ``synth_session_id`` so the wire correlation
-(``bind_exchange``) and this transcript adapter independently converge on the SAME ``session_id``
+``session_id`` is SYNTHESIZED via the shared ``synth_session_id`` so wire session binding
+and this transcript adapter independently converge on the SAME ``session_id``
 (§7.2). Parts reuse ``ir.ContentBlock`` verbatim so identical content dedups to one block across
 both streams (§3.3).
 """
