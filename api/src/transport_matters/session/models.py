@@ -69,6 +69,29 @@ class EventRow(BaseModel):
     created_at: datetime | None = None
 
 
+class EventReadRow(BaseModel):
+    model_config = ConfigDict(frozen=True, use_enum_values=True)
+
+    session_id: str
+    seq: int
+    kind: EventKind = EventKind.TURN
+    native_turn_id: str | None = None
+    parent_native_id: str | None = None
+    parent_seq: int | None = None
+    run_id: str
+    provider: str
+    cli: str
+    role: str | None = None
+    is_sidechain: bool = False
+    ts: datetime | None = None
+    model: str | None = None
+    ir: JsonObject | None = None
+    source_path: str | None = None
+    source_line: int | None = None
+    search_text: str | None = None
+    created_at: datetime | None = None
+
+
 class ArtifactRow(BaseModel):
     model_config = ConfigDict(frozen=True, populate_by_name=True)
 

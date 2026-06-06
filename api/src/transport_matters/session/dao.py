@@ -5,7 +5,13 @@ from typing import TYPE_CHECKING, Any
 from psycopg.types.json import Jsonb
 
 from transport_matters.session.artifacts import artifact_hash
-from transport_matters.session.models import ArtifactRow, EventArtifactRow, EventRow, SessionRow
+from transport_matters.session.models import (
+    ArtifactRow,
+    EventArtifactRow,
+    EventReadRow,
+    EventRow,
+    SessionRow,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -18,11 +24,30 @@ _SESSION_COLUMNS = """
     native_session_id, minted, source_descriptor, home_dir, owner, status, title,
     parent_session_id, forked_at_seq, started_at, created_at, updated_at
 """
-_EVENT_COLUMNS = """
-    session_id, seq, kind, native_turn_id, parent_native_id, parent_seq, run_id,
-    provider, cli, role, is_sidechain, ts, model, raw, ir, source_path,
-    source_line, search_text, created_at
-"""
+_EVENT_COLUMN_NAMES = (
+    "session_id",
+    "seq",
+    "kind",
+    "native_turn_id",
+    "parent_native_id",
+    "parent_seq",
+    "run_id",
+    "provider",
+    "cli",
+    "role",
+    "is_sidechain",
+    "ts",
+    "model",
+    "raw",
+    "ir",
+    "source_path",
+    "source_line",
+    "search_text",
+    "created_at",
+)
+_EVENT_READ_COLUMN_NAMES = tuple(name for name in _EVENT_COLUMN_NAMES if name != "raw")
+_EVENT_COLUMNS = ", ".join(_EVENT_COLUMN_NAMES)
+_EVENT_READ_COLUMNS = ", ".join(f"e.{name}" for name in _EVENT_READ_COLUMN_NAMES)
 _ARTIFACT_COLUMNS = "hash, media_type, size_bytes, bytes, created_at"
 
 _UPSERT_SESSION_SQL = f"""
@@ -57,6 +82,24 @@ RETURNING {_SESSION_COLUMNS}
 """
 
 _GET_SESSION_SQL = f'SELECT {_SESSION_COLUMNS} FROM "session" WHERE session_id = %(session_id)s'
+_GET_SESSION_FOR_OWNER_SQL = f"""
+SELECT {_SESSION_COLUMNS}
+FROM "session"
+WHERE session_id = %(session_id)s
+  AND owner = %(owner)s
+"""
+_LIST_SESSIONS_SQL = f"""
+SELECT {_SESSION_COLUMNS}
+FROM "session"
+WHERE owner = %(owner)s
+  AND (%(workspace_hash)s::text IS NULL OR workspace_hash = %(workspace_hash)s)
+  AND (%(provider)s::text IS NULL OR provider = %(provider)s)
+  AND (%(cli)s::text IS NULL OR cli = %(cli)s)
+  AND (%(status)s::text IS NULL OR status = %(status)s)
+ORDER BY started_at DESC, session_id
+LIMIT %(limit)s
+OFFSET %(offset)s
+"""
 
 _INSERT_EVENT_SQL = f"""
 INSERT INTO "event" (
@@ -96,6 +139,17 @@ WHERE session_id = %(session_id)s
   AND (%(from_seq)s::integer IS NULL OR seq >= %(from_seq)s::integer)
   AND (%(to_seq)s::integer IS NULL OR seq <= %(to_seq)s::integer)
 ORDER BY seq
+"""
+_GET_EVENTS_FOR_OWNER_SQL = f"""
+SELECT {_EVENT_READ_COLUMNS}
+FROM "event" AS e
+JOIN "session" AS s ON s.session_id = e.session_id
+WHERE e.session_id = %(session_id)s
+  AND s.owner = %(owner)s
+  AND (%(from_seq)s::integer IS NULL OR e.seq >= %(from_seq)s::integer)
+  AND (%(to_seq)s::integer IS NULL OR e.seq <= %(to_seq)s::integer)
+ORDER BY e.seq
+LIMIT %(limit)s
 """
 
 _IR_SEARCH_SQL = f"""
@@ -148,6 +202,11 @@ def _event(row: Mapping[str, Any]) -> EventRow:
     return EventRow.model_validate(dict(row))
 
 
+def _event_read(row: Mapping[str, Any]) -> EventReadRow:
+    # Any: psycopg DictRow stores database values with driver supplied types.
+    return EventReadRow.model_validate(dict(row))
+
+
 def _artifact(row: Mapping[str, Any]) -> ArtifactRow:
     # Any: psycopg DictRow stores database values with driver supplied types.
     return ArtifactRow.model_validate(dict(row))
@@ -186,6 +245,38 @@ class SessionDao:
         row = self._conn.execute(_GET_SESSION_SQL, {"session_id": session_id}).fetchone()
         return _one(row, SessionRow)
 
+    def get_session_for_owner(self, session_id: str, *, owner: str) -> SessionRow | None:
+        row = self._conn.execute(
+            _GET_SESSION_FOR_OWNER_SQL,
+            {"session_id": session_id, "owner": owner},
+        ).fetchone()
+        return _one(row, SessionRow)
+
+    def list_sessions(
+        self,
+        *,
+        owner: str,
+        workspace_hash: str | None = None,
+        provider: str | None = None,
+        cli: str | None = None,
+        status: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[SessionRow]:
+        rows = self._conn.execute(
+            _LIST_SESSIONS_SQL,
+            {
+                "owner": owner,
+                "workspace_hash": workspace_hash,
+                "provider": provider,
+                "cli": cli,
+                "status": status,
+                "limit": limit,
+                "offset": offset,
+            },
+        ).fetchall()
+        return [SessionRow.model_validate(dict(row)) for row in rows]
+
     def insert_event(self, event: EventRow) -> EventRow:
         row = self._conn.execute(_INSERT_EVENT_SQL, _event_params(event)).fetchone()
         assert row is not None
@@ -199,6 +290,27 @@ class SessionDao:
             {"session_id": session_id, "from_seq": from_seq, "to_seq": to_seq},
         ).fetchall()
         return [_event(row) for row in rows]
+
+    def get_events_for_owner(
+        self,
+        session_id: str,
+        *,
+        owner: str,
+        from_seq: int | None = None,
+        to_seq: int | None = None,
+        limit: int = 500,
+    ) -> list[EventReadRow]:
+        rows = self._conn.execute(
+            _GET_EVENTS_FOR_OWNER_SQL,
+            {
+                "session_id": session_id,
+                "owner": owner,
+                "from_seq": from_seq,
+                "to_seq": to_seq,
+                "limit": limit,
+            },
+        ).fetchall()
+        return [_event_read(row) for row in rows]
 
     def events_matching_ir(self, filter_: dict[str, Any], *, limit: int = 50) -> list[EventRow]:
         # Any: filter JSON is a caller supplied JSONB containment expression.
@@ -260,6 +372,40 @@ class AsyncSessionDao:
         row = await cursor.fetchone()
         return _one(row, SessionRow)
 
+    async def get_session_for_owner(self, session_id: str, *, owner: str) -> SessionRow | None:
+        cursor = await self._conn.execute(
+            _GET_SESSION_FOR_OWNER_SQL,
+            {"session_id": session_id, "owner": owner},
+        )
+        row = await cursor.fetchone()
+        return _one(row, SessionRow)
+
+    async def list_sessions(
+        self,
+        *,
+        owner: str,
+        workspace_hash: str | None = None,
+        provider: str | None = None,
+        cli: str | None = None,
+        status: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[SessionRow]:
+        cursor = await self._conn.execute(
+            _LIST_SESSIONS_SQL,
+            {
+                "owner": owner,
+                "workspace_hash": workspace_hash,
+                "provider": provider,
+                "cli": cli,
+                "status": status,
+                "limit": limit,
+                "offset": offset,
+            },
+        )
+        rows = await cursor.fetchall()
+        return [SessionRow.model_validate(dict(row)) for row in rows]
+
     async def insert_event(self, event: EventRow) -> EventRow:
         cursor = await self._conn.execute(_INSERT_EVENT_SQL, _event_params(event))
         row = await cursor.fetchone()
@@ -275,6 +421,28 @@ class AsyncSessionDao:
         )
         rows = await cursor.fetchall()
         return [_event(row) for row in rows]
+
+    async def get_events_for_owner(
+        self,
+        session_id: str,
+        *,
+        owner: str,
+        from_seq: int | None = None,
+        to_seq: int | None = None,
+        limit: int = 500,
+    ) -> list[EventReadRow]:
+        cursor = await self._conn.execute(
+            _GET_EVENTS_FOR_OWNER_SQL,
+            {
+                "session_id": session_id,
+                "owner": owner,
+                "from_seq": from_seq,
+                "to_seq": to_seq,
+                "limit": limit,
+            },
+        )
+        rows = await cursor.fetchall()
+        return [_event_read(row) for row in rows]
 
     async def events_matching_ir(
         self, filter_: dict[str, Any], *, limit: int = 50
