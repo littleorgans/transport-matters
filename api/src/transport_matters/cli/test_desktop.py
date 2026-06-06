@@ -39,7 +39,7 @@ def test_desktop_help_lists_canvas_and_agent_options() -> None:
     output = _plain(result.output)
     assert "--agent" in output
     assert "--work-dir" in output
-    assert "--home-dir" in output
+    assert "--agent-home-dir" in output
     assert "--claude-bin" in output
     assert "--codex-bin" in output
     assert "--force-http-fallback" in output
@@ -125,7 +125,7 @@ def test_desktop_startup_hook_emits_json_and_spawns_electron(
         kwargs["on_backend_ready"](
             {
                 env_keys.CWD: str(tmp_path),
-                env_keys.HOME_DIR: str(tmp_path / "agent-home"),
+                env_keys.AGENT_HOME_DIR: str(tmp_path / "agent-home"),
                 env_keys.RUN_ID: "run-001",
             },
             tmp_path / "storage",

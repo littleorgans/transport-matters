@@ -40,7 +40,7 @@ class SessionBinding(BaseModel):
         None  # JSON locating the transcript source (set in §7.3, slice 4b)
     )
     home_dir: str | None = (
-        None  # managed --home-dir for this run; threaded from RunFacts so ``locate`` resolves the
+        None  # managed --agent-home-dir for this run; threaded from RunFacts so ``locate`` resolves the
         # transcript root under the managed home (§5.2c external-adoption). Survives the re-bind via
         # ``RunContext`` like ``cwd`` (set on the binding by ``bind``); ``None`` = the CLI native home.
     )
@@ -56,7 +56,7 @@ class FileTailSource(BaseModel):
     format: str  # claude_jsonl | codex_rollout | gemini_session | gemini_checkpoint
     encoding: str = "utf-8"
     home_dir: str | None = (
-        None  # managed --home-dir the path resolves under; None = the CLI's native home (§11.1).
+        None  # managed --agent-home-dir the path resolves under; None = the CLI's native home (§11.1).
         # Carried EXPLICITLY (not just baked into ``path``) so a §10.5 rebuild re-resolves the
         # transcript root without the live launch env. Optional + JSON-encoded → an old descriptor
         # without the field decodes to None (no ADAPTERS_VERSION bump; ``source_descriptor`` is TEXT).
@@ -107,7 +107,7 @@ class RunContext(BaseModel):
     started_at: str
     native_session_id: str | None = None  # read-back input: native id learned from the wire / db
     home_dir: str | None = (
-        None  # managed --home-dir; ``bind`` carries it onto the binding (like ``cwd``) so ``locate``
+        None  # managed --agent-home-dir; ``bind`` carries it onto the binding (like ``cwd``) so ``locate``
         # resolves the transcript root under the managed home. ``None`` = the CLI's native home.
     )
 

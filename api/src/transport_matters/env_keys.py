@@ -14,6 +14,12 @@ literals for readability; grep the prefix when renaming. See
 
 ENV_PREFIX = "TRANSPORT_MATTERS_"
 
+# Operator config/data root. Relocates the whole ``~/.transport-matters`` tree:
+# ``settings.toml`` (operator config) is ALWAYS read from ``$TRANSPORT_MATTERS_HOME``,
+# independent of the per-run STORAGE_DIR a launch sets into the child env. Default
+# ``~/.transport-matters``. Distinct from ``AGENT_HOME_DIR`` (the managed agent home).
+HOME = f"{ENV_PREFIX}HOME"
+
 PROXY_PORT = f"{ENV_PREFIX}PROXY_PORT"
 WEB_PORT = f"{ENV_PREFIX}WEB_PORT"
 UPSTREAM_URL = f"{ENV_PREFIX}UPSTREAM_URL"
@@ -28,11 +34,11 @@ CLI = f"{ENV_PREFIX}CLI"
 # Set by every mint-capable launch (codex: rollout; claude: deterministic transcript path).
 OWNED_NATIVE_SESSION_ID = f"{ENV_PREFIX}OWNED_NATIVE_SESSION_ID"
 OWNED_SOURCE_DESCRIPTOR = f"{ENV_PREFIX}OWNED_SOURCE_DESCRIPTOR"
-# Managed ``--home-dir`` for this launch (§11.1). The child gets the home via CLAUDE_CONFIG_DIR /
+# Managed ``--agent-home-dir`` for this launch (§11.1). The child gets the home via CLAUDE_CONFIG_DIR /
 # CODEX_HOME (``build_managed_child_env``); the addon gets it HERE so adapter binding stamps it onto
 # the binding and ``locate`` resolves the transcript root under the managed home (the manifest also
 # carries it but is unlinked on exit, so it cannot be the addon's durable channel). Unset = native home.
-HOME_DIR = f"{ENV_PREFIX}HOME_DIR"
+AGENT_HOME_DIR = f"{ENV_PREFIX}AGENT_HOME_DIR"
 DESKTOP_APP_BIN = f"{ENV_PREFIX}DESKTOP_APP_BIN"
 DESKTOP_APP_DIR = f"{ENV_PREFIX}DESKTOP_APP_DIR"
 DESKTOP_CLIENT = f"{ENV_PREFIX}DESKTOP_CLIENT"

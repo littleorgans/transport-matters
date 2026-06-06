@@ -22,6 +22,7 @@ from .launch_runtime import (
     build_launch_env,
     build_managed_child_env,
     build_mitmdump_argv,
+    preflight_session_store_or_exit,
     prepare_launch,
     print_invocation,
     reject_passthrough_without_client,
@@ -171,6 +172,11 @@ def run_start(
         passthrough=claude_passthrough,
         flag="--no-claude",
     )
+
+    # Hard-block the launch if the session store is unconfigured/unreachable, so the
+    # canvas never opens against a dead store (a dry --print-command run is exempt).
+    if not print_command:
+        preflight_session_store_or_exit()
 
     prepared = prepare_launch(
         passthrough=claude_passthrough,

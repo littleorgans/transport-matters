@@ -43,9 +43,12 @@ _ROOT_HELP = dedent(f"""\
       $ {CLI_COMMAND} claude --no-claude  # proxy only
 
   Environment
+      TRANSPORT_MATTERS_DATABASE_URL     Postgres session store (postgresql://USER:PASS@HOST:PORT/DB)
+      TRANSPORT_MATTERS_HOME             config/data root for settings.toml (default ~/.transport-matters)
       TRANSPORT_MATTERS_PROXY_PORT       pin proxy port (default: kernel-allocated)
       TRANSPORT_MATTERS_WEB_PORT         pin web UI port (default: kernel-allocated)
       TRANSPORT_MATTERS_STORAGE_DIR      addon/paths/doctor data dir; launches use per-run storage
+      TRANSPORT_MATTERS_AGENT_HOME_DIR   managed agent home for config/transcripts (default: native)
       TRANSPORT_MATTERS_UPSTREAM_URL     upstream API (default https://api.anthropic.com)
 
     Options
@@ -68,7 +71,7 @@ _CLAUDE_HELP = dedent(f"""\
       -w, --web-port INT        Web UI port (default: kernel-allocated free port)
       -u, --upstream URL        Upstream provider URL (default https://api.anthropic.com)
       -d, --storage-dir PATH    Data directory (default ~/.transport-matters/)
-          --home-dir PATH       Claude Code home for config and transcripts
+          --agent-home-dir PATH       Claude Code home for config and transcripts
           --claude-bin PATH     Path to Claude Code (default: `claude` on PATH)
           --no-claude           Run proxy only; skip spawning Claude Code
           --no-system-prompt    Skip the auto-injected Transport Matters system prompt
@@ -106,7 +109,7 @@ _CLAUDE_HELP = dedent(f"""\
       $ {CLI_COMMAND} claude --proxy-port 9000 --web-port 9001
       $ {CLI_COMMAND} claude --no-claude
       $ {CLI_COMMAND} claude --no-system-prompt
-      $ {CLI_COMMAND} claude --home-dir ~/.claude-test
+      $ {CLI_COMMAND} claude --agent-home-dir ~/.claude-test
       $ {CLI_COMMAND} claude --claude-bin /opt/homebrew/bin/claude
       $ {CLI_COMMAND} claude --print-command
 """)
@@ -123,7 +126,7 @@ _CODEX_HELP = dedent(f"""\
       -p, --proxy-port INT      Proxy listener port (default: kernel-allocated free port)
       -w, --web-port INT        Web UI port (default: kernel-allocated free port)
       -d, --storage-dir PATH    Data directory (default ~/.transport-matters/)
-          --home-dir PATH       Codex home for config and transcripts
+          --agent-home-dir PATH       Codex home for config and transcripts
           --codex-bin PATH      Path to Codex (default: `codex` on PATH)
           --no-codex            Run proxy only; skip spawning Codex
           --debug               Verbose mitmproxy output
@@ -153,7 +156,7 @@ _CODEX_HELP = dedent(f"""\
       $ {CLI_COMMAND} codex --work-dir ~/my-project
       $ {CLI_COMMAND} codex --proxy-port 9000 --web-port 9001
       $ {CLI_COMMAND} codex --no-codex
-      $ {CLI_COMMAND} codex --home-dir ~/.codex-test
+      $ {CLI_COMMAND} codex --agent-home-dir ~/.codex-test
       $ {CLI_COMMAND} codex --codex-bin /opt/homebrew/bin/codex
     $ {CLI_COMMAND} codex --print-command
 """)
@@ -171,7 +174,7 @@ _DESKTOP_HELP = dedent(f"""\
       -p, --proxy-port INT       Proxy listener port (default: kernel-allocated free port)
       -w, --web-port INT         Web UI port (default: kernel-allocated free port)
       -d, --storage-dir PATH     Data directory (default ~/.transport-matters/)
-          --home-dir PATH        Agent home for config and transcripts
+          --agent-home-dir PATH        Agent home for config and transcripts
           --debug                Verbose mitmproxy output
           --print-command        Print the child invocations and exit
 

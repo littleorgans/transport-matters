@@ -2,16 +2,14 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from pathlib import Path
 from urllib.parse import quote, urlsplit, urlunsplit
 from uuid import uuid4
 
-from alembic import command
-from alembic.config import Config
 from psycopg import sql
 
 from transport_matters.config import Settings, resolve_test_database_url
-from transport_matters.session.pool import connect, sqlalchemy_url
+from transport_matters.session.migrate import upgrade_to_head
+from transport_matters.session.pool import connect
 
 
 @dataclass(frozen=True)
@@ -38,7 +36,7 @@ class TestDb:
         return test_db
 
     def migrate(self) -> None:
-        command.upgrade(alembic_config(self.database_url), "head")
+        upgrade_to_head(self.database_url)
 
     def drop(self) -> None:
         with connect(self.admin_url, autocommit=True) as conn:
@@ -53,21 +51,6 @@ class TestDb:
             conn.execute(
                 sql.SQL("DROP DATABASE IF EXISTS {}").format(sql.Identifier(self.database_name))
             )
-
-
-def migrations_dir() -> Path:
-    current = Path(__file__).resolve()
-    for candidate in (current.parents[3] / "migrations", current.parents[2] / "migrations"):
-        if candidate.exists():
-            return candidate
-    return current.parents[3] / "migrations"
-
-
-def alembic_config(database_url: str) -> Config:
-    cfg = Config()
-    cfg.set_main_option("script_location", str(migrations_dir()))
-    cfg.set_main_option("sqlalchemy.url", sqlalchemy_url(database_url))
-    return cfg
 
 
 def database_url_for(admin_url: str, database_name: str) -> str:

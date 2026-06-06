@@ -10,9 +10,16 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
 
+import psycopg
 import typer
 
 from transport_matters import __version__, env_keys
+from transport_matters.config import (
+    MissingDatabaseConfigError,
+    ensure_settings_scaffold,
+    get_settings,
+    resolve_database_url,
+)
 from transport_matters.lock import WorkspaceLock
 from transport_matters.manifest import Manifest
 from transport_matters.manifest import write as manifest_write
@@ -332,6 +339,61 @@ def new_run_id() -> str:
     return str(uuid.uuid4())
 
 
+_PREFLIGHT_CONNECT_TIMEOUT_S = 5
+
+
+def _session_store_setup_help() -> str:
+    return (
+        "Transport Matters records sessions in a Postgres store. Set one up, then relaunch:\n"
+        "  - Local or cloud Postgres: point Transport Matters at it\n"
+        f"      export {env_keys.DATABASE_URL}=postgresql://USER:PASS@HOST:PORT/DBNAME\n"
+        "      (or edit [database] url in settings.toml under "
+        f"${env_keys.HOME}, default ~/.transport-matters)\n"
+        "  - Docker (local dev): from the repo root run\n"
+        "      docker compose up -d\n"
+        "      (the scaffolded settings.example.toml URL targets this database)\n"
+        "See QUICKSTART.md for the full setup."
+    )
+
+
+def check_session_store() -> str | None:
+    """Return an error message if the session store is unconfigured or unreachable.
+
+    Resolves the database URL from settings/env, then opens a short connection. Returns
+    ``None`` when the store is reachable so the caller may proceed.
+    """
+    try:
+        database_url = resolve_database_url(get_settings())
+    except MissingDatabaseConfigError as exc:
+        return f"session store is not configured: {exc}"
+    try:
+        with psycopg.connect(database_url, connect_timeout=_PREFLIGHT_CONNECT_TIMEOUT_S) as conn:
+            conn.execute("SELECT 1")
+    except psycopg.OperationalError as exc:
+        return f"cannot reach the session store at the configured URL: {exc}"
+    return None
+
+
+def preflight_session_store_or_exit() -> None:
+    """Scaffold settings.toml and hard-block the launch if the session store is unusable.
+
+    Runs in the shared launch path before the proxy, agent, or Electron viewer spawn:
+    creates the starter ``settings.toml`` from the packaged example if absent, then
+    resolves and connects to the database. On failure it prints actionable setup
+    instructions and exits non-zero, so no launch proceeds against a dead store (the
+    canvas would otherwise surface a bare 503).
+    """
+    ensure_settings_scaffold()
+    # The scaffold may have just written settings.toml; drop any settings cached before it.
+    get_settings.cache_clear()
+    error = check_session_store()
+    if error is None:
+        return
+    typer.secho(f"error: {error}", fg=typer.colors.RED, err=True)
+    typer.echo(_session_store_setup_help(), err=True)
+    raise typer.Exit(2)
+
+
 def prepare_launch(
     *,
     passthrough: list[str],
@@ -461,7 +523,7 @@ def build_launch_env(
     the transcript it owns, so the addon stamps them onto the session row before cursor registration.
     Both set by claude and codex managed launches; unset for un-owned (external-adoption) launches.
 
-    ``home_dir`` is the managed ``--home-dir`` (when set): threaded so the addon stamps it onto every
+    ``home_dir`` is the managed ``--agent-home-dir`` (when set): threaded so the addon stamps it onto every
     session binding and ``locate`` resolves the transcript root under the managed home;
     distinct from the child's CLAUDE_CONFIG_DIR/CODEX_HOME (``build_managed_child_env``). Unset = native."""
     env = os.environ.copy()
@@ -473,7 +535,7 @@ def build_launch_env(
     if cli is not None:
         env[env_keys.CLI] = cli
     if home_dir is not None:
-        env[env_keys.HOME_DIR] = str(home_dir)
+        env[env_keys.AGENT_HOME_DIR] = str(home_dir)
     if owned_native_session_id is not None:
         env[env_keys.OWNED_NATIVE_SESSION_ID] = owned_native_session_id
     if owned_source_descriptor is not None:

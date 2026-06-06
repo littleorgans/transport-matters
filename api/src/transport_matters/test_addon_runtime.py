@@ -277,7 +277,7 @@ async def test_register_owned_cursor_uses_launch_settings(
         cli="codex",
         owned_native_session_id=native,
         owned_source_descriptor=descriptor,
-        home_dir=tmp_path / "home",
+        agent_home_dir=tmp_path / "home",
     )
     calls: list[tuple[str, SessionBinding]] = []
 

@@ -41,26 +41,83 @@ def test_settings_use_transport_matters_env_prefix(
 
 
 def test_settings_read_managed_home_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    # The managed --home-dir reaches the addon via the OWNED_* env channel (§11.1) so adapter binding
+    # The managed --agent-home-dir reaches the addon via the OWNED_* env channel (§11.1) so adapter binding
     # stamps it onto the binding and locate resolves the transcript root under the managed home.
     home = tmp_path / "managed-home"
-    monkeypatch.setenv("TRANSPORT_MATTERS_HOME_DIR", str(home))
-    assert get_settings().home_dir == home
+    monkeypatch.setenv("TRANSPORT_MATTERS_AGENT_HOME_DIR", str(home))
+    assert get_settings().agent_home_dir == home
 
 
 def test_settings_home_dir_defaults_none(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("TRANSPORT_MATTERS_HOME_DIR", raising=False)
-    assert get_settings().home_dir is None
+    monkeypatch.delenv("TRANSPORT_MATTERS_AGENT_HOME_DIR", raising=False)
+    assert get_settings().agent_home_dir is None
 
 
 def test_settings_default_storage_root_uses_transport_matters(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.delenv("TRANSPORT_MATTERS_STORAGE_DIR", raising=False)
+    monkeypatch.delenv("TRANSPORT_MATTERS_HOME", raising=False)
 
     settings = get_settings()
 
     assert settings.storage_dir == Path.home() / ".transport-matters"
+
+
+def test_transport_matters_home_relocates_storage_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from transport_matters.storage_roots import default_storage_root
+
+    monkeypatch.setenv("TRANSPORT_MATTERS_HOME", str(tmp_path / "custom-home"))
+
+    assert default_storage_root() == tmp_path / "custom-home"
+
+
+def test_settings_toml_read_from_home_not_per_run_storage(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Operator config lives at $TRANSPORT_MATTERS_HOME/settings.toml and must be read
+    # regardless of the per-run STORAGE_DIR a launch sets into the child env (bug #3).
+    home = tmp_path / "home"
+    home.mkdir()
+    (home / "settings.toml").write_text(
+        '[database]\nurl = "postgresql://home/db"\n', encoding="utf-8"
+    )
+    per_run = tmp_path / "run-storage"
+    per_run.mkdir()
+    monkeypatch.setenv("TRANSPORT_MATTERS_HOME", str(home))
+    monkeypatch.setenv("TRANSPORT_MATTERS_STORAGE_DIR", str(per_run))
+    monkeypatch.delenv("TRANSPORT_MATTERS_DATABASE_URL", raising=False)
+    get_settings.cache_clear()
+
+    assert get_settings().database.url == "postgresql://home/db"
+
+
+def test_ensure_settings_scaffold_creates_from_packaged_example(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from transport_matters.config import ensure_settings_scaffold, settings_example_text
+
+    monkeypatch.setenv("TRANSPORT_MATTERS_HOME", str(tmp_path))
+
+    created = ensure_settings_scaffold()
+
+    assert created == tmp_path / "settings.toml"
+    assert (tmp_path / "settings.toml").read_text(encoding="utf-8") == settings_example_text()
+    assert "[database]" in settings_example_text()
+
+
+def test_ensure_settings_scaffold_noop_when_present(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from transport_matters.config import ensure_settings_scaffold
+
+    monkeypatch.setenv("TRANSPORT_MATTERS_HOME", str(tmp_path))
+    (tmp_path / "settings.toml").write_text('[database]\nurl = "x"\n', encoding="utf-8")
+
+    assert ensure_settings_scaffold() is None
+    assert (tmp_path / "settings.toml").read_text(encoding="utf-8") == '[database]\nurl = "x"\n'
 
 
 def test_settings_default_app_name_uses_transport_matters() -> None:

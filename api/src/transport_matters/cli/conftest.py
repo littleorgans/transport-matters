@@ -90,7 +90,18 @@ def spy_run_client_children(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
 
     The shared retry harness looks up ``_run_client_children`` via
     runner's own module namespace, so that is where the patch must land.
+
+    Also neutralises the shared session-store preflight (which would otherwise
+    hard-block these launch tests without a reachable Postgres). Each launch
+    lifecycle imports the name into its own module, so the patch lands there.
+    The preflight has its own dedicated tests in ``test_launch_preflight``.
     """
     spy = MagicMock()
     monkeypatch.setattr("transport_matters.cli.runner._run_client_children", spy)
+    monkeypatch.setattr(
+        "transport_matters.cli.start_cmd.preflight_session_store_or_exit", lambda: None
+    )
+    monkeypatch.setattr(
+        "transport_matters.cli.codex_cmd.preflight_session_store_or_exit", lambda: None
+    )
     return spy

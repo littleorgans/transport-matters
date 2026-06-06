@@ -152,7 +152,7 @@ def build_backend_started_event(
         "baseUrl": base_url,
         "routeUrl": f"{base_url}/canvas?{route_query}",
         "storageDir": str(resolved_storage),
-        "homeDir": launch_env.get(env_keys.HOME_DIR),
+        "homeDir": launch_env.get(env_keys.AGENT_HOME_DIR),
     }
 
 
@@ -169,7 +169,7 @@ def spawn_detached_electron(launch: ElectronLaunch, event: dict[str, Any]) -> No
         env_keys.WEB_PORT: str(event["webPort"]),
     }
     if event["homeDir"] is not None:
-        env[env_keys.HOME_DIR] = str(event["homeDir"])
+        env[env_keys.AGENT_HOME_DIR] = str(event["homeDir"])
 
     try:
         subprocess.Popen(

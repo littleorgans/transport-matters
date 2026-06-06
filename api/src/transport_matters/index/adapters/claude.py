@@ -53,7 +53,7 @@ def claude_transcript_source(
     path); the managed launcher (§5.2c) passes the home-aware root so the owned ``source_descriptor``
     it mints lands where ``claude --session-id <sid>`` writes. One definition keeps launch + read DRY.
 
-    ``home_dir`` is the managed ``--home-dir`` (when set) recorded EXPLICITLY on the descriptor so a
+    ``home_dir`` is the managed ``--agent-home-dir`` (when set) recorded EXPLICITLY on the descriptor so a
     §10.5 rebuild knows the root the path resolved under without the live env; ``None`` = native home.
     It is carried alongside ``projects_root`` (which is ``<home_dir>/projects``) rather than derived
     from it, since the read-side ``locate`` only has the binding's ``home_dir``, not the projects root.
@@ -98,7 +98,7 @@ class ClaudeAdapter(TranscriptAdapter):
 
     async def locate(self, binding: SessionBinding) -> TranscriptSource:
         # External-adoption fallback (§5.2c): a claude session TM did not launch (no owned descriptor)
-        # resolves to claude's deterministic path. Under a managed ``--home-dir`` the binding carries
+        # resolves to claude's deterministic path. Under a managed ``--agent-home-dir`` the binding carries
         # ``home_dir`` (threaded from RunFacts), so the path resolves under the managed projects root
         # rather than ``~/.claude`` — the real correctness gap this fixes. Managed launches never reach
         # here: their owned descriptor is decoded directly by the tailer.

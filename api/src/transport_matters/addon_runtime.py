@@ -79,7 +79,7 @@ def _launch_run_context(settings: Settings, started_at: str) -> RunContext | Non
         cli=settings.cli,
         started_at=started_at,
         native_session_id=settings.owned_native_session_id,
-        home_dir=str(settings.home_dir) if settings.home_dir is not None else None,
+        home_dir=str(settings.agent_home_dir) if settings.agent_home_dir is not None else None,
     )
 
 

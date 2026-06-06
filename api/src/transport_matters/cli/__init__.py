@@ -46,19 +46,20 @@ from transport_matters.workspace import run_root, workspace_id, workspace_root
 
 from .banner import print_banner, print_client_banner
 from .codex_cmd import run_codex
+from .db_cmd import db_app
 from .desktop_cmd import prepare_desktop_launch
 from .diagnose import run_doctor
 from .help import PlainCommand, PlainGroup
 from .identity import CLI_COMMAND
 from .instances import list_instances as list_instances_impl
 from .launch_options import (  # noqa: TC001
+    AgentHomeDirOption,
     AgentOption,
     ClaudeBinOption,
     ClaudeUpstreamOption,
     CodexBinOption,
     DebugOption,
     ForceHttpFallbackOption,
-    HomeDirOption,
     NoClaudeOption,
     NoCodexOption,
     NoSystemPromptOption,
@@ -127,6 +128,7 @@ main = typer.Typer(
     rich_markup_mode=None,
     context_settings={"help_option_names": ["-h", "--help"]},
 )
+main.add_typer(db_app, name="db")
 
 
 def _split_passthrough(ctx: typer.Context) -> list[str]:
@@ -193,7 +195,7 @@ def _version_callback(value: bool) -> None:
 
 
 def _resolve_home_dir_option(home_dir: Path | None, *, create: bool) -> Path | None:
-    """Resolve ``--home-dir`` once before child cwd changes can affect it."""
+    """Resolve ``--agent-home-dir`` once before child cwd changes can affect it."""
     if home_dir is None:
         return None
     resolved = home_dir.expanduser().resolve()
@@ -245,7 +247,7 @@ def claude(
     web_port: WebPortOption = None,
     upstream: ClaudeUpstreamOption = "https://api.anthropic.com",
     storage_dir: StorageDirOption = None,
-    home_dir: HomeDirOption = None,
+    home_dir: AgentHomeDirOption = None,
     claude_bin: ClaudeBinOption = None,
     no_claude: NoClaudeOption = False,
     no_system_prompt: NoSystemPromptOption = False,
@@ -302,7 +304,7 @@ def codex(
     proxy_port: ProxyPortOption = None,
     web_port: WebPortOption = None,
     storage_dir: StorageDirOption = None,
-    home_dir: HomeDirOption = None,
+    home_dir: AgentHomeDirOption = None,
     codex_bin: CodexBinOption = None,
     no_codex: NoCodexOption = False,
     debug: DebugOption = False,
@@ -360,7 +362,7 @@ def desktop(
     proxy_port: ProxyPortOption = None,
     web_port: WebPortOption = None,
     storage_dir: StorageDirOption = None,
-    home_dir: HomeDirOption = None,
+    home_dir: AgentHomeDirOption = None,
     debug: DebugOption = False,
     print_command: PrintCommandOption = False,
     upstream: ClaudeUpstreamOption = "https://api.anthropic.com",

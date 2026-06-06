@@ -25,6 +25,8 @@ Verify the local environment:
 transport-matters doctor
 ```
 
+**New here?** See **[QUICKSTART.md](./QUICKSTART.md)** for the full setup — Postgres, configuration, and first run.
+
 ## Quick start
 
 ```bash

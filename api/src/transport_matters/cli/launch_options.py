@@ -72,10 +72,10 @@ StorageDirOption: TypeAlias = Annotated[
         resolve_path=True,
     ),
 ]
-HomeDirOption: TypeAlias = Annotated[
+AgentHomeDirOption: TypeAlias = Annotated[
     Path | None,
     typer.Option(
-        "--home-dir",
+        "--agent-home-dir",
         help="Directory for agent config and transcripts. Defaults to the agent native home.",
         file_okay=False,
         dir_okay=True,

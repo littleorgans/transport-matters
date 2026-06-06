@@ -26,7 +26,7 @@ if TYPE_CHECKING:
 
 class TestCodexSessionsRoot:
     def test_managed_home_dir_wins(self) -> None:
-        # --home-dir is the child's CODEX_HOME, so the launcher seeds under it.
+        # --agent-home-dir is the child's CODEX_HOME, so the launcher seeds under it.
         assert codex_sessions_root(Path("/managed/home"), {}) == Path("/managed/home/sessions")
 
     def test_falls_back_to_codex_home_env(self) -> None:
@@ -40,7 +40,7 @@ class TestCodexSessionsRoot:
 
 class TestClaudeProjectsRoot:
     def test_managed_home_dir_wins(self) -> None:
-        # --home-dir is the child's CLAUDE_CONFIG_DIR, so the launcher computes the owned path under it.
+        # --agent-home-dir is the child's CLAUDE_CONFIG_DIR, so the launcher computes the owned path under it.
         assert claude_projects_root(Path("/managed/home"), {}) == Path("/managed/home/projects")
 
     def test_falls_back_to_claude_config_dir_env(self) -> None:
@@ -299,7 +299,7 @@ def test_claude_launch_seeds_home_dir(
             "claude",
             "--work-dir",
             str(workdir),
-            "--home-dir",
+            "--agent-home-dir",
             "homes/claude",
             "--no-system-prompt",
         ],
@@ -343,7 +343,7 @@ def test_codex_launch_seeds_home_dir(
             "codex",
             "--work-dir",
             str(workdir),
-            "--home-dir",
+            "--agent-home-dir",
             "homes/codex",
             "--proxy-port",
             "9000",

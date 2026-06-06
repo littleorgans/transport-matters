@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import tomllib
 from functools import lru_cache
+from importlib.resources import files
 from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
@@ -11,15 +12,17 @@ from transport_matters.env_keys import ENV_PREFIX
 from transport_matters.storage_roots import default_storage_root
 
 DATABASE_URL_GUIDANCE = (
-    "set TRANSPORT_MATTERS_DATABASE_URL, or add [database] url to "
-    "~/.transport-matters/settings.toml (copy settings.example.toml)"
+    "set TRANSPORT_MATTERS_DATABASE_URL, or add [database] url to settings.toml under "
+    "$TRANSPORT_MATTERS_HOME (default ~/.transport-matters); a starter is created from "
+    "settings.example.toml on first launch"
 )
 TEST_DATABASE_URL_GUIDANCE = (
     "set TRANSPORT_MATTERS_TEST_DATABASE_URL or TRANSPORT_MATTERS_DATABASE_URL, or add "
-    "[database] test_url or [database] url to ~/.transport-matters/settings.toml "
-    "(copy settings.example.toml)"
+    "[database] test_url or [database] url to settings.toml under $TRANSPORT_MATTERS_HOME "
+    "(default ~/.transport-matters; copy settings.example.toml)"
 )
 SETTINGS_FILENAME = "settings.toml"
+SETTINGS_EXAMPLE_FILENAME = "settings.example.toml"
 
 
 class SettingsFileError(ValueError):
@@ -65,7 +68,7 @@ class Settings(BaseSettings):
 
     proxy_port: int = 8787
     web_port: int = 8788
-    storage_dir: Path = default_storage_root()
+    storage_dir: Path = Field(default_factory=default_storage_root)
     # Per-launch session boundary created by ``transport-matters claude``.
     # This is Transport Matters run identity, distinct from any provider
     # metadata session id inside captured requests. ``None`` for direct-uvicorn
@@ -89,11 +92,11 @@ class Settings(BaseSettings):
     # (a non-owned id matches nothing and stays pending). ``None`` for unmanaged runs (dev, tests).
     owned_native_session_id: str | None = None
     owned_source_descriptor: str | None = None
-    # Managed ``--home-dir`` for this launch (§11.1), set by the CLI alongside ``cli``/``run_id``. The
-    # addon threads it onto the binding so ``locate`` resolves the transcript root under the managed
+    # Managed ``--agent-home-dir`` for this launch (§11.1), set by the CLI alongside ``cli``/``run_id``.
+    # The addon threads it onto the binding so ``locate`` resolves the transcript root under the managed
     # home (external-adoption-under-managed-home) and the durable ``sessions.json`` records it. ``None``
-    # outside a managed launch or when no ``--home-dir`` was passed (the CLI's native home).
-    home_dir: Path | None = None
+    # outside a managed launch or when no ``--agent-home-dir`` was passed (the CLI's native home).
+    agent_home_dir: Path | None = None
     breakpoint_timeout_s: float = 300.0
     breakpoint_skip_models: list[str] = []
     database_url: str | None = Field(
@@ -121,7 +124,10 @@ class Settings(BaseSettings):
     @classmethod
     def load(cls) -> Settings:
         env_settings = cls()
-        return cls.load_from(settings_path(env_settings.storage_dir), env_settings=env_settings)
+        # Operator config (settings.toml) is read from the canonical
+        # $TRANSPORT_MATTERS_HOME root, NOT the per-run STORAGE_DIR a launch injects
+        # into the child env. settings_path() resolves default_storage_root() (HOME-aware).
+        return cls.load_from(settings_path(), env_settings=env_settings)
 
     @classmethod
     def load_from(cls, path: Path, *, env_settings: Settings | None = None) -> Settings:
@@ -132,6 +138,26 @@ class Settings(BaseSettings):
 
 def settings_path(storage_dir: Path | None = None) -> Path:
     return (storage_dir if storage_dir is not None else default_storage_root()) / SETTINGS_FILENAME
+
+
+def settings_example_text() -> str:
+    """Return the packaged ``settings.example.toml`` template text."""
+    return (files("transport_matters") / SETTINGS_EXAMPLE_FILENAME).read_text(encoding="utf-8")
+
+
+def ensure_settings_scaffold(storage_dir: Path | None = None) -> Path | None:
+    """Create ``settings.toml`` under the config home from the packaged example if absent.
+
+    The config home is ``$TRANSPORT_MATTERS_HOME`` (default ``~/.transport-matters``);
+    pass ``storage_dir`` to override (tests). Returns the created path, or ``None`` when a
+    settings file already exists.
+    """
+    target = settings_path(storage_dir)
+    if target.exists():
+        return None
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(settings_example_text(), encoding="utf-8")
+    return target
 
 
 def load_toml_settings(path: Path) -> TomlSettings:
@@ -172,6 +198,7 @@ def get_settings() -> Settings:
 
 __all__ = [
     "DATABASE_URL_GUIDANCE",
+    "SETTINGS_EXAMPLE_FILENAME",
     "SETTINGS_FILENAME",
     "TEST_DATABASE_URL_GUIDANCE",
     "DatabaseSettings",
@@ -179,9 +206,11 @@ __all__ = [
     "Settings",
     "SettingsFileError",
     "TomlSettings",
+    "ensure_settings_scaffold",
     "get_settings",
     "load_toml_settings",
     "resolve_database_url",
     "resolve_test_database_url",
+    "settings_example_text",
     "settings_path",
 ]

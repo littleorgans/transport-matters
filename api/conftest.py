@@ -8,8 +8,21 @@ from collections.abc import AsyncGenerator  # noqa: E402
 import pytest  # noqa: E402
 from httpx import ASGITransport, AsyncClient  # noqa: E402
 
+from transport_matters import env_keys  # noqa: E402
 from transport_matters.config import get_settings  # noqa: E402
 from transport_matters.main import create_app  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def _isolate_transport_matters_home(
+    monkeypatch: pytest.MonkeyPatch, tmp_path_factory: pytest.TempPathFactory
+) -> None:
+    """Point TRANSPORT_MATTERS_HOME at an isolated dir so tests never read the
+    developer's real ~/.transport-matters/settings.toml. Operator config is read
+    from HOME (decoupled from per-run STORAGE_DIR), so without this a populated dev
+    home would leak DB config into tests that assume an unconfigured store. Tests
+    that need specific config override this with their own monkeypatch."""
+    monkeypatch.setenv(env_keys.HOME, str(tmp_path_factory.mktemp("tm-home")))
 
 
 @pytest.fixture(autouse=True)
