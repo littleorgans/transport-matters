@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog } from "electron";
+import { app, BrowserWindow, dialog, type WebContents } from "electron";
 import { writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -15,8 +15,10 @@ import {
 import { waitForBackendHealth } from "./backendHealth.js";
 import { ENV } from "./env.js";
 import {
+  APP_NAME,
   DEFAULT_WEB_PORT,
   createHostedWindow,
+  createWindowOptions,
   rendererUrlForPort,
 } from "./window.js";
 
@@ -60,7 +62,7 @@ export interface AppWindowLifecycleSource extends AppReadySource {
 
 export interface DesktopPackageSmokeOptions {
   appSource?: AppReadySource;
-  createWindow?: (options: MainWindowOptions) => BrowserWindow;
+  createProbeWindow?: () => PreloadProbeWindow;
   env?: NodeJS.ProcessEnv;
   writeFile?: (path: string, data: string) => void;
 }
@@ -72,7 +74,11 @@ export interface HostedDesktopLifecycleOptions {
 }
 
 export function resolvePreloadPath(): string {
-  return join(moduleDir, "preload.js");
+  // CommonJS: sandboxed Electron preloads are evaluated as CommonJS, so the
+  // build emits `preload.cjs` (from `src/preload.cts`) even though this package
+  // is `"type": "module"`. Pointing at `preload.js` would load an ESM file and
+  // throw "Cannot use import statement outside a module" at preload time.
+  return join(moduleDir, "preload.cjs");
 }
 
 export function createMainWindow(
@@ -215,17 +221,102 @@ export function registerHostedDesktopLifecycle(
   bindHostedWindowLifecycle(appSource, options.routeUrl, createWindow);
 }
 
+/**
+ * Key the preload exposes on the renderer's main world via
+ * `contextBridge.exposeInMainWorld`. The package smoke reads it back to prove
+ * the preload actually executed inside a real (sandboxed) renderer.
+ */
+export const DESKTOP_PRELOAD_BRIDGE_KEY = "transportMattersDesktop";
+
+/** Fail-closed ceiling for the preload probe so the smoke can never hang CI. */
+export const DESKTOP_PRELOAD_PROBE_TIMEOUT_MS = 10_000;
+
+export type DesktopSmokeStatus =
+  | "main-window-created"
+  | "preload-error"
+  | "preload-bridge-missing"
+  | "preload-timeout";
+
+export interface PreloadProbeWindow {
+  loadURL(url: string): Promise<void>;
+  webContents: WebContents;
+}
+
+/**
+ * Resolve the outcome of loading the sandboxed preload in a real renderer.
+ *
+ * A preload load failure is non-fatal in Electron (the window still opens), so
+ * "a window was created" proves nothing. This watches the renderer directly:
+ * `preload-error` means the preload threw (e.g. an ESM `import` in a CommonJS
+ * sandboxed preload); on a successful load the exposed bridge is read back to
+ * prove `contextBridge.exposeInMainWorld` ran. Anything else fails closed.
+ */
+export function awaitPreloadSmokeStatus(
+  webContents: WebContents,
+  timeoutMs: number = DESKTOP_PRELOAD_PROBE_TIMEOUT_MS,
+): Promise<DesktopSmokeStatus> {
+  return new Promise((resolve) => {
+    let settled = false;
+    const timer = setTimeout(() => {
+      settle("preload-timeout");
+    }, timeoutMs);
+
+    function settle(status: DesktopSmokeStatus): void {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimeout(timer);
+      resolve(status);
+    }
+
+    webContents.on("preload-error", () => {
+      settle("preload-error");
+    });
+
+    webContents.on("did-finish-load", () => {
+      void webContents
+        .executeJavaScript(
+          `globalThis.${DESKTOP_PRELOAD_BRIDGE_KEY}?.appName ?? null`,
+        )
+        .then((appName: unknown) => {
+          settle(
+            appName === APP_NAME
+              ? "main-window-created"
+              : "preload-bridge-missing",
+          );
+        })
+        .catch(() => {
+          settle("preload-bridge-missing");
+        });
+    });
+  });
+}
+
+/**
+ * Hidden window that loads the real sandboxed preload against `about:blank`.
+ * `about:blank` always commits, so the preload runs deterministically without a
+ * running backend and without tripping the hosted-window `did-fail-load` error
+ * dialog, which would block a headless CI run.
+ */
+export function createPreloadProbeWindow(): BrowserWindow {
+  return new BrowserWindow(createWindowOptions(resolvePreloadPath()));
+}
+
 export function registerDesktopPackageSmoke(
   options: DesktopPackageSmokeOptions = {},
 ): void {
   const appSource = options.appSource ?? app;
-  const createWindow = options.createWindow ?? createMainWindow;
+  const createProbeWindow =
+    options.createProbeWindow ?? createPreloadProbeWindow;
   const env = options.env ?? process.env;
   const writeFile = options.writeFile ?? writeFileSync;
 
-  void appSource.whenReady().then(() => {
-    const rendererUrl = rendererUrlForPort(DEFAULT_WEB_PORT);
-    createWindow({ rendererUrl });
+  void appSource.whenReady().then(async () => {
+    const probe = createProbeWindow();
+    const statusPromise = awaitPreloadSmokeStatus(probe.webContents);
+    void probe.loadURL("about:blank");
+    const status = await statusPromise;
 
     const smokeFile = env[ENV.DESKTOP_SMOKE_FILE];
     if (smokeFile !== undefined) {
@@ -233,8 +324,8 @@ export function registerDesktopPackageSmoke(
         smokeFile,
         JSON.stringify(
           {
-            rendererUrl,
-            status: "main-window-created",
+            status,
+            url: "about:blank",
           },
           null,
           2,

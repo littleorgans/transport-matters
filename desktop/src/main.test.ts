@@ -1,8 +1,9 @@
 import { EventEmitter } from "node:events";
 
 import type { BrowserWindow } from "electron";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 import type { LaunchedBackendProcess } from "./backendProcess.js";
+import type { PreloadProbeWindow } from "./main.js";
 
 const browserWindowConstructor = vi.fn();
 const dialogShowErrorBox = vi.fn();
@@ -53,6 +54,34 @@ vi.mock("electron", () => ({
   },
 }));
 
+async function flushMicrotasks(turns = 3): Promise<void> {
+  for (let index = 0; index < turns; index += 1) {
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+}
+
+interface ProbeFixture {
+  window: PreloadProbeWindow;
+  handlers: Map<string, (...args: unknown[]) => void>;
+  loadURL: Mock;
+  executeJavaScript: Mock;
+}
+
+function createProbeFixture(
+  executeJavaScript: Mock = vi.fn(async () => "Transport Matters"),
+): ProbeFixture {
+  const handlers = new Map<string, (...args: unknown[]) => void>();
+  const on = vi.fn((event: string, listener: (...args: unknown[]) => void) => {
+    handlers.set(event, listener);
+  });
+  const loadURL = vi.fn(async () => undefined);
+  const window = {
+    loadURL,
+    webContents: { on, executeJavaScript },
+  } as unknown as PreloadProbeWindow;
+  return { window, handlers, loadURL, executeJavaScript };
+}
+
 describe("desktop main process", () => {
   beforeEach(() => {
     browserWindowConstructor.mockClear();
@@ -68,7 +97,7 @@ describe("desktop main process", () => {
     const { createMainWindow } = await import("./main.js");
 
     createMainWindow({
-      preloadPath: "/tmp/transport-matters/preload.js",
+      preloadPath: "/tmp/transport-matters/preload.cjs",
       rendererUrl: "http://127.0.0.1:8788",
     });
 
@@ -78,7 +107,7 @@ describe("desktop main process", () => {
         webPreferences: {
           contextIsolation: true,
           nodeIntegration: false,
-          preload: "/tmp/transport-matters/preload.js",
+          preload: "/tmp/transport-matters/preload.cjs",
           sandbox: true,
         },
       }),
@@ -106,7 +135,7 @@ describe("desktop main process", () => {
     await startBackendAndCreateWindow(
       {
         client: "codex",
-        preloadPath: "/tmp/transport-matters/preload.js",
+        preloadPath: "/tmp/transport-matters/preload.cjs",
         proxyPort: 9900,
         webPort: 9901,
         workspaceDir: "/tmp/workspace",
@@ -127,7 +156,7 @@ describe("desktop main process", () => {
     });
     expect(waitForHealth).toHaveBeenCalledWith(backend, 9901);
     expect(createWindow).toHaveBeenCalledWith({
-      preloadPath: "/tmp/transport-matters/preload.js",
+      preloadPath: "/tmp/transport-matters/preload.cjs",
       rendererUrl: "http://127.0.0.1:9901/canvas",
     });
   });
@@ -278,10 +307,9 @@ describe("desktop main process", () => {
     expect(on).toHaveBeenCalledWith("window-all-closed", expect.any(Function));
   });
 
-  it("records package smoke readiness after creating the main window", async () => {
-    const createWindow = vi.fn(
-      () => ({ loadURL, once, show }) as unknown as BrowserWindow,
-    );
+  it("records package smoke readiness after the preload executes", async () => {
+    const fixture = createProbeFixture();
+    const createProbeWindow = vi.fn(() => fixture.window);
     const quit = vi.fn();
     const whenReady = vi.fn(async () => undefined);
     const writeFile = vi.fn();
@@ -290,21 +318,65 @@ describe("desktop main process", () => {
 
     registerDesktopPackageSmoke({
       appSource: { quit, whenReady },
-      createWindow,
+      createProbeWindow,
       env: {
         TRANSPORT_MATTERS_DESKTOP_SMOKE_FILE: "/tmp/desktop-smoke.json",
       },
       writeFile,
     });
-    await new Promise((resolve) => setImmediate(resolve));
 
-    expect(createWindow).toHaveBeenCalledWith({
-      rendererUrl: "http://127.0.0.1:8788/canvas",
-    });
+    await flushMicrotasks();
+    fixture.handlers.get("did-finish-load")?.();
+    await flushMicrotasks();
+
+    expect(createProbeWindow).toHaveBeenCalledOnce();
+    expect(fixture.loadURL).toHaveBeenCalledWith("about:blank");
     expect(writeFile).toHaveBeenCalledWith(
       "/tmp/desktop-smoke.json",
       expect.stringContaining('"status": "main-window-created"'),
     );
     expect(quit).toHaveBeenCalled();
+  });
+});
+
+describe("desktop preload smoke probe", () => {
+  it("reports success when the preload exposes the bridge", async () => {
+    const { awaitPreloadSmokeStatus } = await import("./main.js");
+    const fixture = createProbeFixture();
+
+    const statusPromise = awaitPreloadSmokeStatus(
+      fixture.window.webContents,
+      1000,
+    );
+    fixture.handlers.get("did-finish-load")?.();
+
+    expect(await statusPromise).toBe("main-window-created");
+    expect(fixture.executeJavaScript).toHaveBeenCalled();
+  });
+
+  it("reports preload-error when the sandboxed preload throws", async () => {
+    const { awaitPreloadSmokeStatus } = await import("./main.js");
+    const fixture = createProbeFixture();
+
+    const statusPromise = awaitPreloadSmokeStatus(
+      fixture.window.webContents,
+      1000,
+    );
+    fixture.handlers.get("preload-error")?.();
+
+    expect(await statusPromise).toBe("preload-error");
+  });
+
+  it("reports preload-bridge-missing when the bridge is absent after load", async () => {
+    const { awaitPreloadSmokeStatus } = await import("./main.js");
+    const fixture = createProbeFixture(vi.fn(async () => null));
+
+    const statusPromise = awaitPreloadSmokeStatus(
+      fixture.window.webContents,
+      1000,
+    );
+    fixture.handlers.get("did-finish-load")?.();
+
+    expect(await statusPromise).toBe("preload-bridge-missing");
   });
 });

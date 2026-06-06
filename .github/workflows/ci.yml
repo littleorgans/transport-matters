@@ -124,6 +124,66 @@ jobs:
           retention-days: 1
 
   # ------------------------------------------------------------------- #
+  # Desktop never ran in CI, so a broken Electron preload shipped green: #
+  # typecheck + mocked unit tests pass while the real app fails to load. #
+  # This job builds the desktop package and runs the packaged smoke under #
+  # xvfb, which loads the real sandboxed preload and fails closed if it   #
+  # does not execute. Pinned to ubuntu-22.04 for stable Electron lib     #
+  # package names (libasound2, libgtk-3-0).                              #
+  # ------------------------------------------------------------------- #
+  desktop:
+    name: desktop
+    runs-on: ubuntu-22.04
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v5
+        with:
+          package_json_file: desktop/package.json
+
+      - name: Install Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: desktop/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Type check
+        run: pnpm typecheck
+
+      - name: Unit tests
+        run: pnpm test
+
+      - name: Build (emits + asserts the CommonJS preload)
+        run: pnpm build
+
+      # Electron needs a virtual display and GUI libraries to launch
+      # headlessly. The packaged smoke loads the real sandboxed preload, so
+      # this is the coverage that would have caught the ESM-preload failure.
+      - name: Install Electron runtime libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            xvfb \
+            libnss3 \
+            libatk1.0-0 \
+            libatk-bridge2.0-0 \
+            libcups2 \
+            libgtk-3-0 \
+            libgbm1 \
+            libasound2
+
+      - name: Package smoke under xvfb (proves the preload executes)
+        run: xvfb-run --auto-servernum --server-args="-screen 0 1280x900x24" pnpm package:smoke
+
+  # ------------------------------------------------------------------- #
   # Prove the release chain on every push: build the wheel, install it #
   # in a clean venv, run the CLI, assert the www/ bundle is embedded.  #
   # Without this job there is a gap between "CI green" and "tag push   #
