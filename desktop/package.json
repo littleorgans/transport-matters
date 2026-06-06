@@ -9,7 +9,7 @@
     "node": ">=20.19.0"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && node scripts/assert-preload-cjs.mjs",
     "clean": "rimraf dist node_modules pnpm-lock.yaml",
     "dev": "pnpm build && pnpm electron:install && electron .",
     "electron:install": "node node_modules/electron/install.js",

@@ -20,7 +20,7 @@
     "src/env.ts",
     "src/main.ts",
     "src/packageSmoke.ts",
-    "src/preload.ts",
+    "src/preload.cts",
     "src/window.ts"
   ]
 }

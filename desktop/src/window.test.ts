@@ -70,7 +70,7 @@ describe("desktop hosted window", () => {
     const { createHostedWindow } = await import("./window.js");
 
     createHostedWindow({
-      preloadPath: "/tmp/transport-matters/preload.js",
+      preloadPath: "/tmp/transport-matters/preload.cjs",
       rendererUrl: "http://127.0.0.1:8788/canvas",
     });
 
@@ -80,7 +80,7 @@ describe("desktop hosted window", () => {
         webPreferences: {
           contextIsolation: true,
           nodeIntegration: false,
-          preload: "/tmp/transport-matters/preload.js",
+          preload: "/tmp/transport-matters/preload.cjs",
           sandbox: true,
         },
       }),
@@ -92,7 +92,7 @@ describe("desktop hosted window", () => {
     const { createHostedWindow } = await import("./window.js");
 
     createHostedWindow({
-      preloadPath: "/tmp/transport-matters/preload.js",
+      preloadPath: "/tmp/transport-matters/preload.cjs",
       rendererUrl: "http://127.0.0.1:8788/",
     });
 
@@ -109,7 +109,7 @@ describe("desktop hosted window", () => {
     const { createHostedWindow } = await import("./window.js");
 
     createHostedWindow({
-      preloadPath: "/tmp/transport-matters/preload.js",
+      preloadPath: "/tmp/transport-matters/preload.cjs",
       rendererUrl: "http://127.0.0.1:8788/",
     });
 
@@ -128,7 +128,7 @@ describe("desktop hosted window", () => {
     const { createHostedWindow } = await import("./window.js");
 
     createHostedWindow({
-      preloadPath: "/tmp/transport-matters/preload.js",
+      preloadPath: "/tmp/transport-matters/preload.cjs",
       rendererUrl: "http://127.0.0.1:8788/",
     });
 
