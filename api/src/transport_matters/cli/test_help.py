@@ -61,6 +61,8 @@ def test_claude_help_includes_examples() -> None:
     assert result.exit_code == 0
     output = _plain(result.output)
     assert "Examples" in output
+    assert "--work-dir" in output
+    assert "--home-dir" in output
     assert "--proxy-port" in output
 
 
@@ -77,4 +79,6 @@ def test_codex_help_includes_proxy_env() -> None:
     assert "HTTP_PROXY" in output
     assert "HTTPS_PROXY" in output
     assert "CODEX_CA_CERTIFICATE" in output
+    assert "--work-dir" in output
+    assert "--home-dir" in output
     assert "--codex-bin" in output

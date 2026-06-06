@@ -23,8 +23,8 @@ curl -fsSL https://github.com/littleorgans/transport-matters/releases/latest/dow
 
 ```bash
 # One command: starts the proxy + Claude Code together
-transport-matters claude               # in the current directory
-transport-matters claude ~/my-project  # in a specific working directory
+transport-matters claude                         # in the current directory
+transport-matters claude --work-dir ~/my-project # in a specific working directory
 
 # Proxy-only (bring your own client)
 transport-matters claude --no-claude

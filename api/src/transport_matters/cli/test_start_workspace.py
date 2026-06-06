@@ -42,7 +42,7 @@ def test_start_coexists_with_live_sibling_run(
     sibling = run_root(workdir, "00000000-0000-0000-0000-000000000000")
 
     with WorkspaceLock(sibling):
-        result = runner.invoke(main, ["claude", str(workdir), "--no-system-prompt"])
+        result = runner.invoke(main, ["claude", "--work-dir", str(workdir), "--no-system-prompt"])
 
     assert result.exit_code == 0, result.output
     spy_run_client_children.assert_called_once()
@@ -74,7 +74,7 @@ def test_start_writes_manifest_visible_to_client_runner(
     workdir = tmp_path / "project"
     workdir.mkdir()
     result = runner.invoke(
-        main, ["claude", str(workdir), "--proxy-port", "9123", "--web-port", "9124"]
+        main, ["claude", "--work-dir", str(workdir), "--proxy-port", "9123", "--web-port", "9124"]
     )
     assert result.exit_code == 0, result.output
     assert captured["exists_mid_run"] is True
@@ -105,10 +105,10 @@ def test_start_reaps_its_run_manifest_on_normal_exit(
 
     workdir = tmp_path / "project"
     workdir.mkdir()
-    result_a = runner.invoke(main, ["claude", str(workdir)])
+    result_a = runner.invoke(main, ["claude", "--work-dir", str(workdir)])
     assert result_a.exit_code == 0, result_a.output
     assert list(workspace_root(workdir).glob("*/manifest.json")) == []
-    result_b = runner.invoke(main, ["claude", str(workdir)])
+    result_b = runner.invoke(main, ["claude", "--work-dir", str(workdir)])
     assert result_b.exit_code == 0, result_b.output
     assert spy_run_client_children.call_count == 2
 
@@ -128,6 +128,6 @@ def test_start_different_cwds_coexist(
     dir_b = tmp_path / "b"
     dir_b.mkdir()
 
-    assert runner.invoke(main, ["claude", str(dir_a)]).exit_code == 0
-    assert runner.invoke(main, ["claude", str(dir_b)]).exit_code == 0
+    assert runner.invoke(main, ["claude", "--work-dir", str(dir_a)]).exit_code == 0
+    assert runner.invoke(main, ["claude", "--work-dir", str(dir_b)]).exit_code == 0
     assert spy_run_client_children.call_count == 2

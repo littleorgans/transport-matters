@@ -95,7 +95,7 @@ def test_start_dir_plus_passthrough(
     workdir.mkdir()
     result = runner.invoke(
         main,
-        ["claude", str(workdir), "--print-command", "--", "--model", "sonnet"],
+        ["claude", "--work-dir", str(workdir), "--print-command", "--", "--model", "sonnet"],
     )
     assert result.exit_code == 0, result.output
     claude_line = next(

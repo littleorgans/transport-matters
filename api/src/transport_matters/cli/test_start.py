@@ -22,13 +22,13 @@ if TYPE_CHECKING:
 runner = CliRunner()
 
 
-def test_start_accepts_directory_argument(
+def test_start_accepts_work_dir_option(
     tmp_storage: Path,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     spy_run_client_children: MagicMock,
 ) -> None:
-    """A valid directory passes validation and reaches print-command."""
+    """A valid --work-dir path reaches print-command."""
     monkeypatch.setattr(
         "transport_matters.cli.shutil.which", lambda name, path=None: f"/bin/{name}"
     )
@@ -36,7 +36,7 @@ def test_start_accepts_directory_argument(
 
     workdir = tmp_path / "project"
     workdir.mkdir()
-    result = runner.invoke(main, ["claude", str(workdir), "--print-command"])
+    result = runner.invoke(main, ["claude", "--work-dir", str(workdir), "--print-command"])
     assert result.exit_code == 0
 
 

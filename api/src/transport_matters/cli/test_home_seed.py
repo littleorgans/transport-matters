@@ -297,6 +297,7 @@ def test_claude_launch_seeds_home_dir(
         main,
         [
             "claude",
+            "--work-dir",
             str(workdir),
             "--home-dir",
             "homes/claude",
@@ -340,6 +341,7 @@ def test_codex_launch_seeds_home_dir(
         main,
         [
             "codex",
+            "--work-dir",
             str(workdir),
             "--home-dir",
             "homes/codex",
