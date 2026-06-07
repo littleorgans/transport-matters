@@ -1,5 +1,5 @@
 import { useDrag } from "@use-gesture/react";
-import { motion, useReducedMotion } from "framer-motion";
+import { motion, type Transition, useReducedMotion } from "framer-motion";
 import { useLayoutEffect, useRef, useState } from "react";
 import { CLOSE_DELAY_MS } from "../reducers/layoutState";
 import { moveRect, resizeRect } from "../reducers/paneLifecycle";
@@ -48,6 +48,14 @@ export function PaneFrame({
   // pointer 1:1, so all transitions go instant for the duration of the drag (otherwise the size FLIP
   // and position spring rubber-band behind the cursor).
   const [dragging, setDragging] = useState(false);
+  // Local resize override. During a resize drag the box follows the handle off this live rect, but
+  // the store is left untouched until release, so the content (which reads the store rect) holds its
+  // pre-drag layout and reflows exactly once on commit. Leaving the store untouched also means no
+  // other pane re-renders mid-resize. Null except while resizing. resizeBase is the rect captured at
+  // drag start; the live rect is computed off the cumulative pointer movement from it, not per-tick
+  // deltas, so a fixed store rect can never drift the accumulation.
+  const [liveRect, setLiveRect] = useState<WorldRect | null>(null);
+  const resizeBase = useRef<WorldRect | null>(null);
 
   // How far this pane is about to move on this render. Small moves animate (the lovely shuffle as
   // neighbours reallocate space, rows sliding as cells resize); a large move means the pane was
@@ -70,29 +78,43 @@ export function PaneFrame({
   const positionTransition = teleport ? SNAP_TRANSITION : baseTransition;
   // opacity + scale spring on the way in (the reveal) and tween out on close (timed to removal). Both
   // collapse to instant under reduced motion.
-  let revealTransition = baseTransition;
+  let revealTransition: Transition = baseTransition;
   if (closing && !prefersReducedMotion) revealTransition = EXIT_TRANSITION;
 
+  // The box renders off the live resize rect while one is in flight, off the committed store rect
+  // otherwise. children always read the store rect, so they hold pre-drag layout until commit.
+  const renderRect = liveRect ?? node.rect;
+
   const bindDrag = useDrag(
-    ({ delta: [deltaX, deltaY], event, first, last, shiftKey }) => {
+    ({ movement: [moveX, moveY], delta: [deltaX, deltaY], event, first, last, shiftKey }) => {
       // Shift+drag belongs to the canvas (pan), not the pane: leave the pane where it is.
       if (shiftKey) return;
       const target = event.target;
       if (first) dragMode.current = dragModeForTarget(target);
       if (!dragMode.current) return;
       event.stopPropagation();
-      if (first) setDragging(true);
-      onFocus(node.paneId);
       const scale = currentWorldScale(event.currentTarget);
-      const worldDeltaX = deltaX / scale;
-      const worldDeltaY = deltaY / scale;
+      if (first) {
+        setDragging(true);
+        onFocus(node.paneId);
+        if (dragMode.current === "resize") resizeBase.current = node.rect;
+      }
       if (dragMode.current === "move") {
-        onMove(node.paneId, moveRect(node.rect, worldDeltaX, worldDeltaY));
+        // Move commits live: position is cheap and the pane must track the cursor as it travels.
+        onMove(node.paneId, moveRect(node.rect, deltaX / scale, deltaY / scale));
       } else {
-        onResize(node.paneId, resizeRect(node.rect, worldDeltaX, worldDeltaY, MINIMUM_PANE_RECT));
+        // Resize tracks locally (liveRect drives the box 1:1) and commits to the store only on
+        // release, so content holds its pre-drag layout and reflows once. Off cumulative movement
+        // from the drag-start base, not per-tick deltas, since the store rect is now frozen.
+        const base = resizeBase.current ?? node.rect;
+        const next = resizeRect(base, moveX / scale, moveY / scale, MINIMUM_PANE_RECT);
+        if (last) onResize(node.paneId, next);
+        else setLiveRect(next);
       }
       if (last) {
         dragMode.current = null;
+        resizeBase.current = null;
+        setLiveRect(null);
         setDragging(false);
       }
     },
@@ -113,7 +135,7 @@ export function PaneFrame({
       onFocus={() => onFocus(node.paneId)}
       onPointerDown={() => onFocus(node.paneId)}
       role="region"
-      style={{ height: node.rect.height, width: node.rect.width, zIndex: node.z }}
+      style={{ height: renderRect.height, width: renderRect.width, zIndex: node.z }}
       tabIndex={0}
       // Per-axis transitions: size + reveal use the base spring; position springs for ordinary moves
       // and snaps (instant) for cross-screen teleports so a pane never flies between distant rows.
@@ -130,8 +152,8 @@ export function PaneFrame({
       animate={{
         opacity: closing ? 0 : 1,
         scale: closing ? 0.96 : 1,
-        x: node.rect.x,
-        y: node.rect.y,
+        x: renderRect.x,
+        y: renderRect.y,
       }}
     >
       <div {...bindDrag()} className="h-full">
