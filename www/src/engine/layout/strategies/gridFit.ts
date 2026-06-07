@@ -1,14 +1,17 @@
-import type { WorldRect } from "../../types";
+import type { ViewportBounds, WorldRect } from "../../types";
+import { fitScale } from "../fit";
 import { registerLayout } from "../registry";
 import type { Control, LayoutParams, PlanInput, PlanResult } from "../types";
 
-// Width-first grid that caps columns by target aspect so high pane counts don't become slivers.
+// Width-filling grid. The column count is chosen by SIMULATING the final on-screen result
+// including the lab's zoom-to-fit, so a layout never leaves horizontal slack after zooming out.
 interface GridFitParams extends LayoutParams {
   minW: number;
   minH: number;
   gap: number;
   margin: number;
   targetAspect: number;
+  packing: "fill" | "aspect";
   lastRow: "left" | "center";
 }
 
@@ -18,6 +21,7 @@ const DEFAULTS: GridFitParams = {
   gap: 24,
   margin: 48,
   targetAspect: 4 / 3,
+  packing: "fill",
   lastRow: "left",
 };
 
@@ -29,6 +33,15 @@ const CONTROLS: readonly Control[] = [
   { kind: "number", key: "targetAspect", label: "Target aspect", min: 0.5, max: 2.5, step: 0.05 },
   {
     kind: "enum",
+    key: "packing",
+    label: "Packing",
+    options: [
+      { value: "fill", label: "Fill" },
+      { value: "aspect", label: "Aspect" },
+    ],
+  },
+  {
+    kind: "enum",
     key: "lastRow",
     label: "Last row",
     options: [
@@ -38,8 +51,88 @@ const CONTROLS: readonly Control[] = [
   },
 ];
 
-function clamp(value: number, low: number, high: number): number {
-  return Math.min(high, Math.max(low, value));
+const TIE = 1e-6;
+
+interface CellPlan {
+  rows: number;
+  cellW: number;
+  cellH: number;
+}
+
+function cellsFor(
+  count: number,
+  cols: number,
+  viewport: ViewportBounds,
+  params: GridFitParams,
+): CellPlan {
+  const rows = Math.ceil(count / cols);
+  const cellW = Math.max(
+    params.minW,
+    (viewport.width - (cols - 1) * params.gap - 2 * params.margin) / cols,
+  );
+  const cellH = Math.max(
+    params.minH,
+    (viewport.height - (rows - 1) * params.gap - 2 * params.margin) / rows,
+  );
+  return { rows, cellW, cellH };
+}
+
+// Column selection has two modes (the `packing` control) so the lab can flip between them live.
+// Both are deterministic; tie-break is fewer rows, then fewer columns.
+//
+// "fill": biggest displayed pane wins, lightly steered toward targetAspect so a lone tall/wide
+// strip never beats a balanced grid. Fills the viewport; with many small panes a row can read wide.
+function selectFill(count: number, viewport: ViewportBounds, params: GridFitParams): number {
+  let bestCols = 0;
+  let bestScore = Number.NEGATIVE_INFINITY;
+  let bestRows = Number.POSITIVE_INFINITY;
+  for (let cols = 1; cols <= count; cols += 1) {
+    const { rows, cellW, cellH } = cellsFor(count, cols, viewport, params);
+    const gridW = cols * cellW + (cols - 1) * params.gap;
+    const gridH = rows * cellH + (rows - 1) * params.gap;
+    const scale = fitScale(gridW, gridH, viewport);
+    const displayedArea = cellW * scale * (cellH * scale);
+    const aspectFactor = Math.exp(-Math.abs(Math.log(cellW / cellH / params.targetAspect)));
+    const score = displayedArea * aspectFactor;
+    const better =
+      score > bestScore * (1 + TIE) ||
+      (score >= bestScore * (1 - TIE) &&
+        (rows < bestRows || (rows === bestRows && cols < bestCols)));
+    if (bestCols === 0 || better) {
+      bestScore = score;
+      bestCols = cols;
+      bestRows = rows;
+    }
+  }
+  return bestCols;
+}
+
+// "aspect": panes closest to targetAspect win, so the grid adds a column rather than letting cells
+// go wide/stubby (e.g. 11 panes -> 5x3 instead of 4x3). Cost: a sparser last row on odd counts.
+function selectAspect(count: number, viewport: ViewportBounds, params: GridFitParams): number {
+  let bestCols = 0;
+  let bestScore = Number.POSITIVE_INFINITY;
+  let bestRows = Number.POSITIVE_INFINITY;
+  for (let cols = 1; cols <= count; cols += 1) {
+    const { rows, cellW, cellH } = cellsFor(count, cols, viewport, params);
+    const score = Math.abs(Math.log(cellW / cellH / params.targetAspect));
+    const better =
+      score < bestScore - TIE ||
+      (Math.abs(score - bestScore) <= TIE &&
+        (rows < bestRows || (rows === bestRows && cols < bestCols)));
+    if (bestCols === 0 || better) {
+      bestScore = score;
+      bestCols = cols;
+      bestRows = rows;
+    }
+  }
+  return bestCols;
+}
+
+function selectColumns(count: number, viewport: ViewportBounds, params: GridFitParams): number {
+  return params.packing === "aspect"
+    ? selectAspect(count, viewport, params)
+    : selectFill(count, viewport, params);
 }
 
 export function planGridFit(input: PlanInput, params: GridFitParams): PlanResult {
@@ -47,27 +140,36 @@ export function planGridFit(input: PlanInput, params: GridFitParams): PlanResult
   const count = paneIds.length;
   if (count === 0) return { rects: {} };
 
-  const { minW, minH, gap, margin, targetAspect, lastRow } = params;
+  const { gap, margin, lastRow } = params;
+  const cols = selectColumns(count, viewport, params);
+  const cells = cellsFor(count, cols, viewport, params);
+  const { rows } = cells;
   const usableW = viewport.width - 2 * margin;
-  const usableH = viewport.height - 2 * margin;
-
-  // Width capacity is the upper bound on columns (keeps cellW >= minW); the aspect cap picks the
-  // actual column count within it so N=4 -> 2x2 and N=12 -> 4x3 instead of one tall-sliver row.
-  const capacity = clamp(Math.floor((viewport.width - 2 * margin + gap) / (minW + gap)), 1, count);
-  const aspectCols = clamp(
-    Math.round(Math.sqrt((viewport.width * count) / (viewport.height * targetAspect))),
-    1,
-    count,
-  );
-  const cols = Math.min(capacity, aspectCols);
-  const rows = Math.ceil(count / cols);
-
-  let cellW = (usableW - (cols - 1) * gap) / cols;
-  let cellH = (usableH - (rows - 1) * gap) / rows;
-  if (cellH < minH) cellH = minH; // keep panes readable; the lab fits the camera (Fit to content)
-  cellW = Math.max(cellW, minW);
-
   const lastRowIndex = rows - 1;
+
+  // Cells fill both axes at scale 1. But when a min floor on one axis makes the grid overflow the
+  // viewport, Fit-to-content zooms to satisfy that (binding) axis, and the uniform zoom would leave
+  // the other axis under-filled — negative space at its margins. So expand the NON-binding axis to
+  // fill at the displayed scale (panes get wider or taller). The min floors still hold: a filled
+  // dimension only ever grows past its base value, never below.
+  let cellW = cells.cellW;
+  let cellH = cells.cellH;
+  const fitW = viewport.width / (cols * cellW + (cols - 1) * gap + 2 * margin);
+  const fitH = viewport.height / (rows * cellH + (rows - 1) * gap + 2 * margin);
+  if (fitH < fitW) {
+    // height-bound: fill the width.
+    cellW = (viewport.width / fitH - 2 * margin - (cols - 1) * gap) / cols;
+  } else if (fitW < fitH) {
+    // width-bound: fill the height.
+    cellH = (viewport.height / fitW - 2 * margin - (rows - 1) * gap) / rows;
+  }
+
+  // The frame is the grid padded by `margin` on every side, so Fit-to-content keeps that margin as
+  // on-screen breathing room instead of zooming the grid flush to the viewport edges.
+  const gridW = cols * cellW + (cols - 1) * gap;
+  const gridH = rows * cellH + (rows - 1) * gap;
+  const frame: WorldRect = { x: 0, y: 0, width: gridW + 2 * margin, height: gridH + 2 * margin };
+
   const rects: Record<string, WorldRect> = {};
   paneIds.forEach((paneId, index) => {
     const row = Math.floor(index / cols);
@@ -84,7 +186,7 @@ export function planGridFit(input: PlanInput, params: GridFitParams): PlanResult
     };
   });
 
-  return { rects, reason: `grid-fit ${cols}x${rows}` };
+  return { rects, reason: `grid-fit ${cols}x${rows}`, frame };
 }
 
 registerLayout({

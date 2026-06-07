@@ -325,6 +325,12 @@
   padding: var(--canvas-pane-padding);
   color: var(--color-txt-2);
 }
+.canvas-stress-card__dims {
+  margin-top: 0.25rem;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.75rem;
+  color: var(--color-txt-3, var(--color-txt-2));
+}
 .canvas-stress-readout {
   position: absolute;
   right: var(--canvas-command-inset);

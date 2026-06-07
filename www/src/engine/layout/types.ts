@@ -36,11 +36,14 @@ export interface PlanInput {
   currentRects?: Readonly<Record<PaneId, WorldRect>>;
 }
 
-// Strategies return RECTS ONLY. No camera data crosses the seam: the lab computes any fit from
-// the committed rect bounding box, so a strategy author never thinks about the camera.
+// Strategies return RECTS, plus an optional `frame`: the world rectangle the lab should fit the
+// camera to. No camera TRANSFORM crosses the seam (a strategy author never computes scale/pan); a
+// `frame` is still just geometry. It lets a strategy declare breathing room (e.g. grid-fit pads its
+// grid by `margin`) so the fit honors it. When omitted, the lab falls back to the rect bounding box.
 export interface PlanResult {
   rects: Record<PaneId, WorldRect>;
   reason?: string;
+  frame?: WorldRect;
 }
 
 // P is the strategy's own param shape; the registry stores strategies type-erased to LayoutParams
