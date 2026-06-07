@@ -70,12 +70,12 @@ describe("canvasLabStore setParam validation", () => {
 });
 
 describe("canvasLabStore fit to content", () => {
-  it("zooms the camera to ~0.579 for the narrow 2x6 grid (usable-frame fit)", () => {
+  it("zooms the camera to fit the overflowing grid bounding box", () => {
     resetCanvasLabStoreForTests();
     for (let index = 0; index < 12; index += 1) store().addPane();
     store().setBounds({ width: 900, height: 1000 });
-    // grid-fit -> 2x6, cellH clamped to minH; lab fits the 1560-tall bbox into the 904 usable
-    // height: 904 / 1560 ≈ 0.579 (matches the signed spec table).
-    expect(store().layout.viewport.scale).toBeCloseTo(0.579, 2);
+    // The zoom-aware selector picks 3x4 (gridW 1008 x gridH 1032); the lab fits that bbox into the
+    // 900x1000 viewport via the SAME shared fitScale: min(1, 900/1008, 1000/1032) = 900/1008 ≈ 0.893.
+    expect(store().layout.viewport.scale).toBeCloseTo(0.893, 2);
   });
 });

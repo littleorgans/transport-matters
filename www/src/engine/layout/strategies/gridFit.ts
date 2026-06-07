@@ -1,8 +1,10 @@
-import type { WorldRect } from "../../types";
+import type { ViewportBounds, WorldRect } from "../../types";
+import { fitScale } from "../fit";
 import { registerLayout } from "../registry";
 import type { Control, LayoutParams, PlanInput, PlanResult } from "../types";
 
-// Width-first grid that caps columns by target aspect so high pane counts don't become slivers.
+// Width-filling grid. The column count is chosen by SIMULATING the final on-screen result
+// including the lab's zoom-to-fit, so a layout never leaves horizontal slack after zooming out.
 interface GridFitParams extends LayoutParams {
   minW: number;
   minH: number;
@@ -38,8 +40,59 @@ const CONTROLS: readonly Control[] = [
   },
 ];
 
-function clamp(value: number, low: number, high: number): number {
-  return Math.min(high, Math.max(low, value));
+const TIE = 1e-6;
+
+interface CellPlan {
+  rows: number;
+  cellW: number;
+  cellH: number;
+}
+
+function cellsFor(
+  count: number,
+  cols: number,
+  viewport: ViewportBounds,
+  params: GridFitParams,
+): CellPlan {
+  const rows = Math.ceil(count / cols);
+  const cellW = Math.max(
+    params.minW,
+    (viewport.width - (cols - 1) * params.gap - 2 * params.margin) / cols,
+  );
+  const cellH = Math.max(
+    params.minH,
+    (viewport.height - (rows - 1) * params.gap - 2 * params.margin) / rows,
+  );
+  return { rows, cellW, cellH };
+}
+
+// Pick the column count that maximizes displayed (post-zoom) pane area, penalized toward
+// targetAspect. Replaces the old scale-1 capacity cap, which ignored the later zoom-to-fit and so
+// left a horizontal band empty once the grid zoomed out to fit extra rows. Deterministic:
+// tie-break is fewer rows, then fewer columns.
+function selectColumns(count: number, viewport: ViewportBounds, params: GridFitParams): number {
+  let bestCols = 0;
+  let bestScore = Number.NEGATIVE_INFINITY;
+  let bestRows = Number.POSITIVE_INFINITY;
+  for (let cols = 1; cols <= count; cols += 1) {
+    const { rows, cellW, cellH } = cellsFor(count, cols, viewport, params);
+    const gridW = cols * cellW + (cols - 1) * params.gap;
+    const gridH = rows * cellH + (rows - 1) * params.gap;
+    const scale = fitScale(gridW, gridH, viewport);
+    const displayedArea = cellW * scale * (cellH * scale);
+    const aspectFactor = Math.exp(-Math.abs(Math.log(cellW / cellH / params.targetAspect)));
+    const score = displayedArea * aspectFactor;
+    const better =
+      score > bestScore * (1 + TIE) ||
+      (score >= bestScore * (1 - TIE) &&
+        (rows < bestRows || (rows === bestRows && cols < bestCols)));
+    if (bestCols === 0 || better) {
+      bestScore = score;
+      bestCols = cols;
+      bestRows = rows;
+    }
+  }
+  return bestCols;
 }
 
 export function planGridFit(input: PlanInput, params: GridFitParams): PlanResult {
@@ -47,27 +100,12 @@ export function planGridFit(input: PlanInput, params: GridFitParams): PlanResult
   const count = paneIds.length;
   if (count === 0) return { rects: {} };
 
-  const { minW, minH, gap, margin, targetAspect, lastRow } = params;
+  const { gap, margin, lastRow } = params;
+  const cols = selectColumns(count, viewport, params);
+  const { rows, cellW, cellH } = cellsFor(count, cols, viewport, params);
   const usableW = viewport.width - 2 * margin;
-  const usableH = viewport.height - 2 * margin;
-
-  // Width capacity is the upper bound on columns (keeps cellW >= minW); the aspect cap picks the
-  // actual column count within it so N=4 -> 2x2 and N=12 -> 4x3 instead of one tall-sliver row.
-  const capacity = clamp(Math.floor((viewport.width - 2 * margin + gap) / (minW + gap)), 1, count);
-  const aspectCols = clamp(
-    Math.round(Math.sqrt((viewport.width * count) / (viewport.height * targetAspect))),
-    1,
-    count,
-  );
-  const cols = Math.min(capacity, aspectCols);
-  const rows = Math.ceil(count / cols);
-
-  let cellW = (usableW - (cols - 1) * gap) / cols;
-  let cellH = (usableH - (rows - 1) * gap) / rows;
-  if (cellH < minH) cellH = minH; // keep panes readable; the lab fits the camera (Fit to content)
-  cellW = Math.max(cellW, minW);
-
   const lastRowIndex = rows - 1;
+
   const rects: Record<string, WorldRect> = {};
   paneIds.forEach((paneId, index) => {
     const row = Math.floor(index / cols);

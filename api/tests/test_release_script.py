@@ -29,7 +29,7 @@ def test_install_release_recipe_defaults_to_latest_and_supports_listing() -> Non
     justfile = ROOT_JUSTFILE.read_text()
 
     assert 'install-release version="latest":' in justfile
-    assert "git fetch --quiet --tags origin" in justfile
+    assert 'git -C "{{repo_root}}" fetch --quiet --tags origin' in justfile
     assert "--sort=-v:refname" in justfile
     assert (
         "uv tool install --force --refresh-package transport-matters "
@@ -38,14 +38,18 @@ def test_install_release_recipe_defaults_to_latest_and_supports_listing() -> Non
     assert "transport-matters --version" in justfile
 
 
-def test_install_local_recipe_reinstalls_editable_checkout_without_version_file() -> None:
+def test_install_local_recipe_reinstalls_editable_worktree_without_version_file() -> None:
     justfile = ROOT_JUSTFILE.read_text()
 
+    assert "repo_root := justfile_directory()" in justfile
+    assert 'api_dir := repo_root / "api"' in justfile
+    assert 'www_dir := repo_root / "www"' in justfile
     assert "install-local:" in justfile
-    assert "rm -f api/src/transport_matters/_version.py" in justfile
+    assert 'rm -f "{{version_file}}"' in justfile
+    assert 'cd "{{www_dir}}" && pnpm install && pnpm build' in justfile
     assert (
-        'uv tool install --force --python "$(cat api/.python-version)" '
-        "--refresh-package transport-matters --editable ./api" in justfile
+        'uv tool install --force --python "$(cat "{{python_version_file}}")" '
+        '--refresh-package transport-matters --editable "{{api_dir}}"' in justfile
     )
     assert "tool-install-editable: install-local" in justfile
 
