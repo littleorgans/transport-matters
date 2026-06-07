@@ -142,9 +142,27 @@ export function planGridFit(input: PlanInput, params: GridFitParams): PlanResult
 
   const { gap, margin, lastRow } = params;
   const cols = selectColumns(count, viewport, params);
-  const { rows, cellW, cellH } = cellsFor(count, cols, viewport, params);
+  const cells = cellsFor(count, cols, viewport, params);
+  const { rows } = cells;
   const usableW = viewport.width - 2 * margin;
   const lastRowIndex = rows - 1;
+
+  // Cells fill both axes at scale 1. But when a min floor on one axis makes the grid overflow the
+  // viewport, Fit-to-content zooms to satisfy that (binding) axis, and the uniform zoom would leave
+  // the other axis under-filled — negative space at its margins. So expand the NON-binding axis to
+  // fill at the displayed scale (panes get wider or taller). The min floors still hold: a filled
+  // dimension only ever grows past its base value, never below.
+  let cellW = cells.cellW;
+  let cellH = cells.cellH;
+  const fitW = viewport.width / (cols * cellW + (cols - 1) * gap + 2 * margin);
+  const fitH = viewport.height / (rows * cellH + (rows - 1) * gap + 2 * margin);
+  if (fitH < fitW) {
+    // height-bound: fill the width.
+    cellW = (viewport.width / fitH - 2 * margin - (cols - 1) * gap) / cols;
+  } else if (fitW < fitH) {
+    // width-bound: fill the height.
+    cellH = (viewport.height / fitW - 2 * margin - (rows - 1) * gap) / rows;
+  }
 
   // The frame is the grid padded by `margin` on every side, so Fit-to-content keeps that margin as
   // on-screen breathing room instead of zooming the grid flush to the viewport edges.

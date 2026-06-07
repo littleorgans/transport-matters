@@ -79,9 +79,10 @@ describe("planGridFit", () => {
     expect(twelve.rects.p0?.height).toBeCloseTo(285.33, 1); // (1000-48-96)/3
   });
 
-  // Regression for the horizontal-slack bug: 13 panes that used to land 4x4 @ zoom ~0.78 (empty
-  // band on the right) now fill the full width as 5x3 @ ~0.97 (380x336 world cells).
-  it("fills the width for the 13-pane case (5x3, not 4x4)", () => {
+  // Regression for the horizontal-slack bug: 13 panes that used to land 4x4 @ zoom ~0.78 (empty band
+  // on the right) now land 5x3 and fill the full width (width floored at 380). The fit is width-bound
+  // (~0.97), so the height also fills the leftover vertical space — cells grow from base 336 to ~347.
+  it("fills both axes for the 13-pane case (5x3 fills width, height fills the rest)", () => {
     const params = {
       minW: 380,
       minH: 320,
@@ -96,10 +97,33 @@ describe("planGridFit", () => {
       params,
     );
     expect(reason).toBe("grid-fit 5x3");
-    expect(rects.p0).toEqual({ x: 0, y: 0, width: 380, height: 336 });
-    expect(rects.p4).toEqual({ x: 1600, y: 0, width: 380, height: 336 }); // last column reaches 1980 right edge
-    expect(rects.p5).toEqual({ x: 0, y: 356, width: 380, height: 336 });
-    expect(rects.p12).toEqual({ x: 800, y: 712, width: 380, height: 336 }); // partial row 3, left
+    expect(rects.p0?.x).toBe(0);
+    expect(rects.p0?.width).toBe(380); // width floored; 5 columns fill the 1920 width
+    expect(rects.p4?.x).toBe(1600); // last column reaches the right edge (4 * (380 + 20))
+    expect(rects.p0?.height).toBeCloseTo(346.92, 1); // height fills the vertical slack (> 336 base)
+    expect(rects.p5?.y).toBeCloseTo(366.92, 1); // row 2 starts after the filled cellH + gap
+  });
+
+  // Height-bound fill: 10 panes land 5x2, the min-height floor (240) makes the grid taller than the
+  // 400-tall viewport, so Fit-to-content is height-bound (scale 400/480 ≈ 0.833). Cells widen from
+  // the base 200 to 240 so the grid fills the width at that scale — no left/right negative space.
+  it("widens cells to fill the width when the fit is height-bound", () => {
+    const params = {
+      minW: 200,
+      minH: 240,
+      gap: 0,
+      margin: 0,
+      targetAspect: 4 / 3,
+      packing: "fill" as const,
+      lastRow: "left" as const,
+    };
+    const { rects, reason } = planGridFit(
+      { paneIds: ids(10), viewport: { width: 1000, height: 400 } },
+      params,
+    );
+    expect(reason).toBe("grid-fit 5x2");
+    expect(rects.p0).toEqual({ x: 0, y: 0, width: 240, height: 240 }); // widened 200 -> 240
+    expect(rects.p1?.x).toBe(240); // cells tile flush; grid spans the full 1000 width at fit scale
   });
 
   it("center-aligns a partial last row when configured", () => {
@@ -112,15 +136,17 @@ describe("planGridFit", () => {
     expect(rects.p4?.x).toBe(813);
   });
 
-  it("clamps cell size to the min floors on overflow (camera fit is lab-side)", () => {
+  it("floors the binding axis at min and fills the cross axis on overflow (camera fit is lab-side)", () => {
     const { rects, reason } = planGridFit(
       { paneIds: ids(12), viewport: { width: 900, height: 1000 } },
       DEFAULTS,
     );
     expect(reason).toBe("grid-fit 3x4");
-    expect(Object.values(rects).every((rect) => rect.width === 320 && rect.height === 240)).toBe(
-      true,
-    );
+    // Width-bound: width sits on the 320 min floor; height fills the vertical slack (> 240 base) so
+    // there is no top/bottom negative space once the camera zooms to fit.
+    expect(Object.values(rects).every((rect) => rect.width === 320)).toBe(true);
+    expect(rects.p0?.height).toBeCloseTo(264.67, 1);
+    expect(rects.p0?.height ?? 0).toBeGreaterThan(240);
     const distinctRows = new Set(Object.values(rects).map((rect) => rect.y)).size;
     expect(distinctRows).toBe(4);
   });
@@ -142,6 +168,8 @@ describe("planGridFit packing=aspect", () => {
       { ...ASPECT, minW: 380 },
     );
     expect(reason).toBe("grid-fit 5x3");
-    expect(rects.p0).toEqual({ x: 48, y: 48, width: 380, height: 272 });
+    expect(rects.p0?.x).toBe(48);
+    expect(rects.p0?.y).toBe(48);
+    expect(rects.p0?.width).toBe(380); // 5 columns (width floored), not a wide 4x3
   });
 });
