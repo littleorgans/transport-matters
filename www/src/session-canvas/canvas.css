@@ -47,8 +47,12 @@
 }
 
 [data-pane-frame="true"] {
+  /* contain isolates each pane's internal layout/paint without pinning a compositor layer. Do NOT add
+     a static will-change here: with many panes it forces one always-on GPU layer per pane, which the
+     browser evicts on tab-blur / when framed off-screen and must re-rasterize all at once on return
+     or DEFRAME (lag + half-painted panes). framer-motion adds will-change transiently while a pane is
+     actually animating, which is the only time it helps. */
   contain: layout paint style;
-  will-change: transform, opacity;
 }
 
 .canvas-command-bar {

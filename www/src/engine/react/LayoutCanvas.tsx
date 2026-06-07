@@ -29,6 +29,11 @@ export function LayoutCanvas({
   const { bindViewport, handleWheel, handleKeyDown, panReady, panning, zooming } =
     useCanvasViewport(layout.viewport, { setViewport });
   const nodes = Object.values(layout.nodes).filter((node) => node.lifecycle !== "closed");
+  // A layout="size" FLIP measures each pane in screen space and inverts the ancestor scale per node,
+  // which is cheap at 100% but expensive across many panes once the world is scaled. While zoomed,
+  // hold size changes instant: a bulk ORGANIZE (or any reflow) snaps instead of running N FLIPs under
+  // scale. Size springs are only worth their cost at 1:1, where the projection is identity.
+  const zoomed = Math.abs(layout.viewport.scale - 1) > 0.001;
   const viewportClassName = [
     "canvas-viewport",
     panReady && "canvas-viewport--pan-ready",
@@ -59,7 +64,11 @@ export function LayoutCanvas({
         {nodes.map((node) => (
           <PaneFrame
             focused={layout.focusedPaneId === node.paneId}
-            instant={zooming}
+            // Panes go instant while the camera flies (framing) or wheel-zooms (zooming) so a
+            // per-pane layout="size" FLIP cannot fight the scaling parent and flicker, and whenever
+            // the world is already zoomed so a bulk reflow snaps instead of running N FLIPs under
+            // scale. Full size springs only at 1:1.
+            instant={zooming || framing || zoomed}
             key={node.paneId}
             node={node}
             onFocus={onFocusPane}
