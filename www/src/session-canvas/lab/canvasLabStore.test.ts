@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   framedPaneId,
   resetCanvasLabStoreForTests,
@@ -86,6 +86,30 @@ describe("canvasLabStore framing", () => {
     expect(rects).toHaveLength(2);
     expect(rects[0]?.y).toBe(rects[1]?.y);
     expect(rects[0]?.x).not.toBe(rects[1]?.x);
+  });
+});
+
+describe("canvasLabStore close", () => {
+  it("reflows the survivors into the gap but never refits the camera on close", () => {
+    vi.useFakeTimers();
+    try {
+      resetCanvasLabStoreForTests();
+      // Enough panes that fit-to-content has zoomed the camera out: this is exactly the state where
+      // a refit-on-close would move the camera and snap (the reported "zoom in then out").
+      for (let index = 0; index < 24; index += 1) store().addPane();
+      expect(store().layout.viewport.scale).toBeLessThan(1);
+      const viewportBefore = store().layout.viewport;
+      const target = Object.keys(store().layout.nodes)[0];
+      if (!target) throw new Error("expected a seeded pane to close");
+
+      store().closePane(target);
+      vi.advanceTimersByTime(1000); // past CLOSE_DELAY_MS: the removal + reflow commit fires
+
+      expect(store().layout.nodes[target]).toBeUndefined(); // removed, and the grid reflowed the rest
+      expect(store().layout.viewport).toEqual(viewportBefore); // camera untouched: no refit on close
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

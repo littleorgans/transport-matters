@@ -203,12 +203,17 @@ export const useCanvasLabStore = create<CanvasLabState>()((set, get) => ({
     set((state) => ({ layout: markNodeClosing(state.layout, paneId) }));
     window.setTimeout(() => {
       set((state) => ({
+        // Reflow the survivors into the gap, but never refit the camera on close (fitToContent is
+        // forced off here regardless of the toggle). Removing a pane only shrinks the content box,
+        // so the current view already fits; a refit would just zoom in to chase the smaller content
+        // and snap abruptly, which reads as the canvas "zooming in then out". Organize/addPane still
+        // refit when content genuinely changes the fit.
         layout: planLayout(
           removeNode(state.layout, paneId),
           state.bounds,
           state.activeStrategyId,
           state.params,
-          state.fitToContent,
+          false,
         ),
       }));
     }, CLOSE_DELAY_MS);

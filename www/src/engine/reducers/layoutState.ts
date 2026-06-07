@@ -101,8 +101,9 @@ export function markNodeClosing(state: EngineLayoutState, paneId: PaneId): Engin
   if (!node) return state;
   return {
     ...state,
-    focusedPaneId:
-      state.focusedPaneId === paneId ? nearestPaneId(state, paneId) : state.focusedPaneId,
+    // Closing the focused pane clears the selection; it does not hop to a neighbour. An operator
+    // close should never silently re-target focus onto a pane they did not pick.
+    focusedPaneId: state.focusedPaneId === paneId ? null : state.focusedPaneId,
     nodes: { ...state.nodes, [paneId]: { ...node, lifecycle: "closing" } },
   };
 }
@@ -112,7 +113,7 @@ export function removeNode(state: EngineLayoutState, paneId: PaneId): EngineLayo
   return {
     ...state,
     nodes,
-    focusedPaneId: state.focusedPaneId === paneId ? firstOpenPaneId(nodes) : state.focusedPaneId,
+    focusedPaneId: state.focusedPaneId === paneId ? null : state.focusedPaneId,
   };
 }
 
@@ -168,26 +169,4 @@ export function frameRectViewport(
     panX: bounds.width / 2 - centerX * scale,
     panY: bounds.height / 2 - centerY * scale,
   };
-}
-
-function firstOpenPaneId(nodes: Record<PaneId, PaneNode>): PaneId | null {
-  return Object.values(nodes).find((node) => node.lifecycle === "open")?.paneId ?? null;
-}
-
-function nearestPaneId(state: EngineLayoutState, removedPaneId: PaneId): PaneId | null {
-  const removed = state.nodes[removedPaneId];
-  if (!removed) return firstOpenPaneId(state.nodes);
-  const removedCenter = centerOf(removed.rect);
-  let nearest: { paneId: PaneId; distance: number } | null = null;
-  for (const node of Object.values(state.nodes)) {
-    if (node.paneId === removedPaneId || node.lifecycle !== "open") continue;
-    const center = centerOf(node.rect);
-    const distance = Math.hypot(center.x - removedCenter.x, center.y - removedCenter.y);
-    if (!nearest || distance < nearest.distance) nearest = { paneId: node.paneId, distance };
-  }
-  return nearest?.paneId ?? null;
-}
-
-function centerOf(rect: WorldRect): { x: number; y: number } {
-  return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
 }

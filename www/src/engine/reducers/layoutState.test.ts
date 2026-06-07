@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { createInitialEngineLayoutState, updateNodeRects, upsertNode } from "./layoutState";
+import {
+  createInitialEngineLayoutState,
+  focusNode,
+  markNodeClosing,
+  removeNode,
+  updateNodeRects,
+  upsertNode,
+} from "./layoutState";
 import { createPaneNode } from "./paneLifecycle";
 
 const RECT = { x: 0, y: 0, width: 100, height: 100 };
@@ -38,5 +45,21 @@ describe("updateNodeRects", () => {
     });
 
     expect(next).toBe(state); // pure no-op, same reference
+  });
+});
+
+describe("closing the focused pane clears the selection", () => {
+  it("markNodeClosing nulls focus when the focused pane closes, otherwise leaves it", () => {
+    const state = focusNode(twoPaneState(), "a");
+
+    expect(markNodeClosing(state, "a").focusedPaneId).toBeNull(); // focused pane closing -> no selection
+    expect(markNodeClosing(state, "b").focusedPaneId).toBe("a"); // closing another keeps focus
+  });
+
+  it("removeNode nulls focus when the focused pane is removed, otherwise leaves it", () => {
+    const state = focusNode(twoPaneState(), "a");
+
+    expect(removeNode(state, "a").focusedPaneId).toBeNull(); // focused pane gone -> no auto-hop to a neighbour
+    expect(removeNode(state, "b").focusedPaneId).toBe("a"); // removing another keeps focus
   });
 });
