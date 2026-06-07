@@ -1,6 +1,6 @@
 import { useDrag } from "@use-gesture/react";
 import { motion, type Transition, useReducedMotion } from "framer-motion";
-import { useLayoutEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { CLOSE_DELAY_MS } from "../reducers/layoutState";
 import { moveRect, resizeRect } from "../reducers/paneLifecycle";
 import type { PaneNode, WorldRect } from "../types";
@@ -25,10 +25,6 @@ const SNAP_TRANSITION = { duration: 0 } as const;
 // Exit fade/scale-out is a tween timed to the removal window, so the pane reaches opacity 0 exactly
 // as removeNode unmounts it (a spring would still be mid-fade at removal and visibly pop).
 const EXIT_TRANSITION = { duration: CLOSE_DELAY_MS / 1000, ease: "easeIn" } as const;
-// A reflow move larger than this many of the pane's own dimensions reads as "flying across the
-// screen" (e.g. a pane reassigned to another row / wrapping columns). Those snap; smaller moves
-// (neighbours shuffling to reallocate space, a row sliding as cells resize) keep their spring.
-const TELEPORT_DISTANCE_FACTOR = 0;
 
 type DragMode = "move" | "resize";
 
@@ -57,25 +53,9 @@ export function PaneFrame({
   const [liveRect, setLiveRect] = useState<WorldRect | null>(null);
   const resizeBase = useRef<WorldRect | null>(null);
 
-  // How far this pane is about to move on this render. Small moves animate (the lovely shuffle as
-  // neighbours reallocate space, rows sliding as cells resize); a large move means the pane was
-  // reassigned far away (wrapping to another row) and would "fly across the screen", so we snap it.
-  const previousRect = useRef<WorldRect>(node.rect);
-  const moved = Math.hypot(
-    node.rect.x - previousRect.current.x,
-    node.rect.y - previousRect.current.y,
-  );
-  const teleport = moved > Math.max(node.rect.width, node.rect.height) * TELEPORT_DISTANCE_FACTOR;
-  useLayoutEffect(() => {
-    previousRect.current = node.rect;
-  }, [node.rect]);
-
   const closing = node.lifecycle === "closing";
   const baseTransition =
     prefersReducedMotion || instant || dragging ? REDUCED_TRANSITION : NORMAL_TRANSITION;
-  // Position springs for normal moves, snaps for cross-screen teleports. Size (layout) keeps the base
-  // transition, so a teleporting pane still resizes smoothly; only its translate is instant.
-  const positionTransition = teleport ? SNAP_TRANSITION : baseTransition;
   // opacity + scale spring on the way in (the reveal) and tween out on close (timed to removal). Both
   // collapse to instant under reduced motion.
   let revealTransition: Transition = baseTransition;
@@ -129,7 +109,7 @@ export function PaneFrame({
       data-pane-frame="true"
       data-pane-id={node.paneId}
       // layout="size" FLIPs width/height only and leaves position to animate x/y below, so the
-      // per-axis x/y transition (the teleport snap) is honoured. Full layout/layoutId would route
+      // per-axis x/y transition (the position snap) is honoured. Full layout/layoutId would route
       // position through the layout projection and ignore it.
       layout="size"
       onFocus={() => onFocus(node.paneId)}
@@ -137,13 +117,13 @@ export function PaneFrame({
       role="region"
       style={{ height: renderRect.height, width: renderRect.width, zIndex: node.z }}
       tabIndex={0}
-      // Per-axis transitions: size + reveal use the base spring; position springs for ordinary moves
-      // and snaps (instant) for cross-screen teleports so a pane never flies between distant rows.
+      // Per-axis transitions: size (layout) + reveal (default) spring; position always snaps so a
+      // pane never animates between slots (a reflow that moved it would "fly across the screen").
       transition={{
         default: revealTransition,
         layout: baseTransition,
-        x: positionTransition,
-        y: positionTransition,
+        x: SNAP_TRANSITION,
+        y: SNAP_TRANSITION,
       }}
       // x/y MUST be in initial and equal the mount rect (framer zeroes any transform prop absent from
       // initial, which would fly the pane in from the origin). Born-at-slot keeps node.rect final on
