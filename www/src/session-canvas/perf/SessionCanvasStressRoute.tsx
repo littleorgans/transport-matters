@@ -4,16 +4,17 @@ import {
   createInitialEngineLayoutState,
   createPaneNode,
   type EngineLayoutState,
+  FrameMeter,
+  type FrameMeterSummary,
   LayoutCanvas,
   nextPaneZ,
   type PaneId,
+  planEfficientLayout,
   setViewport as setEngineViewport,
   updateNodeRect,
   upsertNode,
   type WorldRect,
 } from "../../engine";
-import { FrameMeter, type FrameMeterSummary } from "../../engine/perf/frameMeter";
-import { planEfficientLayout } from "../../engine/planners/efficientLayout";
 
 const STRESS_COUNTS = [1, 2, 4, 8, 16, 30] as const;
 const STRESS_VIEWPORT = { width: 1600, height: 1000 };

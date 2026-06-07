@@ -10,6 +10,9 @@ export interface LayoutCanvasProps extends CanvasViewportActions {
   onResizePane(paneId: PaneId, rect: WorldRect): void;
   titleIdForPane(paneId: PaneId): string;
   renderPane(paneId: PaneId): React.ReactNode;
+  // Optional: when true, the world layer gets a transform transition (the lab's camera "fly").
+  // Omitted by /canvas, so production behaviour is unchanged.
+  framing?: boolean;
 }
 
 export function LayoutCanvas({
@@ -21,6 +24,7 @@ export function LayoutCanvas({
   onMovePane,
   onResizePane,
   titleIdForPane,
+  framing = false,
 }: LayoutCanvasProps) {
   const { bindViewport, handleWheel, handleKeyDown } = useCanvasViewport(layout.viewport, {
     setViewport,
@@ -39,7 +43,7 @@ export function LayoutCanvas({
       tabIndex={0}
     >
       <div
-        className="canvas-world"
+        className={framing ? "canvas-world canvas-world--framing" : "canvas-world"}
         data-canvas-scale={layout.viewport.scale}
         data-canvas-world="true"
         style={{

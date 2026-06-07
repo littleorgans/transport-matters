@@ -1,4 +1,11 @@
-import type { CanvasViewport, EngineLayoutState, PaneId, PaneNode, WorldRect } from "../types";
+import type {
+  CanvasViewport,
+  EngineLayoutState,
+  PaneId,
+  PaneNode,
+  ViewportBounds,
+  WorldRect,
+} from "../types";
 
 export const DEFAULT_CANVAS_VIEWPORT: CanvasViewport = Object.freeze({
   panX: 0,
@@ -110,6 +117,28 @@ export function zoomViewportAt(
     panX: screenX - worldX * nextScale,
     panY: screenY - worldY * nextScale,
     scale: nextScale,
+  };
+}
+
+export const FRAME_FRACTION = 0.8;
+
+// Pure camera op (no React, no hook): the target viewport so `rect` is centered and fills
+// `fraction` of the screen `bounds`. Used by the lab store for framing and Fit to content.
+// Reuses the transform contract screen = world * scale + pan and the engine clampScale bounds.
+export function frameRectViewport(
+  rect: WorldRect,
+  bounds: ViewportBounds,
+  fraction = FRAME_FRACTION,
+): CanvasViewport {
+  const scale = clampScale(
+    fraction * Math.min(bounds.width / rect.width, bounds.height / rect.height),
+  );
+  const centerX = rect.x + rect.width / 2;
+  const centerY = rect.y + rect.height / 2;
+  return {
+    scale,
+    panX: bounds.width / 2 - centerX * scale,
+    panY: bounds.height / 2 - centerY * scale,
   };
 }
 
