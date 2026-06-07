@@ -64,5 +64,55 @@
       "!**/.changeset",
       "!**/public"
     ]
-  }
+  },
+  "overrides": [
+    {
+      "includes": [
+        "src/session-canvas/**"
+      ],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": [
+                      "**/engine/*/*"
+                    ],
+                    "message": "Import the engine through its barrel (../../engine) or a public sub-barrel (../../engine/layout), not deep internal paths."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": [
+        "src/engine/**"
+      ],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": [
+                      "**/session-canvas/**"
+                    ],
+                    "message": "The engine is content-agnostic and must not import session-canvas (viewer/content) code."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
 }

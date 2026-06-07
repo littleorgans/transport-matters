@@ -7,13 +7,19 @@ import { queryClient } from "./lib/queryClient";
 import { selectRootRoute } from "./session-canvas/route";
 
 const selectedRoute = selectRootRoute(window.location.pathname);
-const RootApp = lazy(() =>
-  selectedRoute === "canvas"
-    ? import("./session-canvas/SessionCanvasRoute").then(({ SessionCanvasRoute }) => ({
-        default: SessionCanvasRoute,
-      }))
-    : import("./app").then(({ App }) => ({ default: App })),
-);
+const RootApp = lazy(() => {
+  if (selectedRoute === "canvas") {
+    return import("./session-canvas/SessionCanvasRoute").then(({ SessionCanvasRoute }) => ({
+      default: SessionCanvasRoute,
+    }));
+  }
+  if (selectedRoute === "canvas-lab") {
+    return import("./session-canvas/lab/CanvasLabRoute").then(({ CanvasLabRoute }) => ({
+      default: CanvasLabRoute,
+    }));
+  }
+  return import("./app").then(({ App }) => ({ default: App }));
+});
 
 // Warm the meta cache before the first render so OverlaysView can
 // stamp real cwds onto project-scoped drafts the moment a user saves.
