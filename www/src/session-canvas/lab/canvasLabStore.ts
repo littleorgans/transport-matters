@@ -30,20 +30,21 @@ const DEFAULT_BOUNDS: ViewportBounds = { width: 1600, height: 1000 };
 const SEED_RECT: WorldRect = { x: 48, y: 48, width: 360, height: 280 };
 const FRAME_MS = 320;
 const INITIAL_STRATEGY_ID = BUILT_IN_CONFIGS[0]?.strategyId ?? listLayouts()[0]?.id ?? "grid-fit";
+// Above this many open panes, unframe stops animating the camera and snaps straight to the overview:
+// flying the scaled world back out re-rasterizes every pane each frame, which janks at scale.
+export const UNFRAME_FLY_PANE_LIMIT = 16;
 
 interface FramingState {
-  // LIFO stack of framed paneIds. Framing a pane pushes it; unframe pops one level. Each framed view
-  // is RE-DERIVED from the pane's current rect on the way back, never restored from a snapshot, so a
-  // pane the user panned away from (or resized) while framed still steps back into view. Only the
-  // pre-framing camera is snapshotted: `overview`, captured when the first frame is pushed and
-  // restored when the last is popped. Null when nothing is framed.
-  stack: PaneId[];
+  // Single-level framing. `paneId` is the framed pane (null at the overview). `overview` is the camera
+  // snapshotted when framing began, restored on unframe. Framing a different pane while framed just
+  // moves the camera and keeps the original overview, so unframe always pans back out to where the
+  // user started. No nested frame history: stepping out of a frame returns to the overview, full stop.
+  paneId: PaneId | null;
   overview: CanvasViewport | null;
 }
 
-// The currently framed pane is the top of the stack (null when nothing is framed).
 export function framedPaneId(framing: FramingState): PaneId | null {
-  return framing.stack[framing.stack.length - 1] ?? null;
+  return framing.paneId;
 }
 
 export interface CanvasLabState {
@@ -169,7 +170,7 @@ export const useCanvasLabStore = create<CanvasLabState>()((set, get) => ({
   activeStrategyId: INITIAL_STRATEGY_ID,
   params: seedParams(INITIAL_STRATEGY_ID),
   fitToContent: true,
-  framing: { stack: [], overview: null },
+  framing: { paneId: null, overview: null },
   flying: false,
   nextPaneIndex: 0,
 
@@ -259,8 +260,8 @@ export const useCanvasLabStore = create<CanvasLabState>()((set, get) => ({
 
   framePane(paneId) {
     const { layout, bounds, framing } = get();
-    // Re-framing the current (top) pane toggles it off.
-    if (framedPaneId(framing) === paneId) {
+    // Re-framing the current pane toggles it off.
+    if (framing.paneId === paneId) {
       get().unframe();
       return;
     }
@@ -270,9 +271,9 @@ export const useCanvasLabStore = create<CanvasLabState>()((set, get) => ({
     startFly();
     set((state) => ({
       framing: {
-        stack: [...state.framing.stack, paneId],
-        // Snapshot the pre-framing camera the first time we frame; deeper frames keep it untouched
-        // so the final unframe returns to where the user started, not to an intermediate frame.
+        paneId,
+        // Snapshot the pre-framing camera only when entering from the overview; switching frames keeps
+        // it so unframe still pans back out to where the user started, not to the previous frame.
         overview: state.framing.overview ?? state.layout.viewport,
       },
       // Frame the pane and select it (white border).
@@ -284,38 +285,21 @@ export const useCanvasLabStore = create<CanvasLabState>()((set, get) => ({
   },
 
   unframe() {
-    if (get().framing.stack.length === 0) return;
-    startFly();
-    set((state) => {
-      const nextStack = state.framing.stack.slice(0, -1);
-      const returnTo = nextStack[nextStack.length - 1];
-      // Stepping back to an underlying frame: RE-FRAME that pane from its current rect so it is
-      // actually on-screen, even if the camera was panned (or the pane moved/resized) since. A
-      // captured snapshot would restore wherever the camera last sat and leave the re-selected pane
-      // off-screen. Only the last pop restores the snapshotted pre-framing overview.
-      let restored = state.layout;
-      if (returnTo) {
-        const returnNode = state.layout.nodes[returnTo];
-        if (returnNode) {
-          restored = focusNode(
-            setEngineViewport(state.layout, frameRectViewport(returnNode.rect, state.bounds)),
-            returnTo,
-          );
-        }
-      } else {
-        restored = setEngineViewport(state.layout, state.framing.overview ?? state.layout.viewport);
-      }
-      return {
-        framing: { stack: nextStack, overview: returnTo ? state.framing.overview : null },
-        layout: restored,
-      };
-    });
+    const { framing, layout } = get();
+    if (framing.paneId === null) return;
+    // Pan back out to the overview captured when framing began. Above the pane limit the camera snaps
+    // instead of flying, since animating the scaled world back out re-rasterizes every pane per frame.
+    if (openPaneIds(layout).length <= UNFRAME_FLY_PANE_LIMIT) startFly();
+    set((state) => ({
+      framing: { paneId: null, overview: null },
+      layout: setEngineViewport(state.layout, state.framing.overview ?? state.layout.viewport),
+    }));
   },
 
   resetView() {
     startFly();
     set((state) => ({
-      framing: { stack: [], overview: null },
+      framing: { paneId: null, overview: null },
       layout: setEngineViewport(state.layout, { panX: 0, panY: 0, scale: 1 }),
     }));
   },
@@ -346,7 +330,7 @@ export function resetCanvasLabStoreForTests(): void {
     activeStrategyId: INITIAL_STRATEGY_ID,
     params: seedParams(INITIAL_STRATEGY_ID),
     fitToContent: true,
-    framing: { stack: [], overview: null },
+    framing: { paneId: null, overview: null },
     flying: false,
     nextPaneIndex: 0,
   });

@@ -1,73 +1,73 @@
 import { describe, expect, it } from "vitest";
-import { framedPaneId, resetCanvasLabStoreForTests, useCanvasLabStore } from "./canvasLabStore";
+import {
+  framedPaneId,
+  resetCanvasLabStoreForTests,
+  UNFRAME_FLY_PANE_LIMIT,
+  useCanvasLabStore,
+} from "./canvasLabStore";
 
 const store = useCanvasLabStore.getState;
 
 describe("canvasLabStore framing", () => {
-  it("frames a pane (stashing the prior viewport) and toggles back on a second call", () => {
+  it("frames a pane (capturing the overview) and toggles back on a second call", () => {
     resetCanvasLabStoreForTests();
     store().addPane(); // lab-1
     store().addPane(); // lab-2
-    const priorViewport = store().layout.viewport;
+    const overview = store().layout.viewport;
 
     store().framePane("lab-1");
     expect(framedPaneId(store().framing)).toBe("lab-1");
-    expect(store().framing.overview).toEqual(priorViewport); // pre-framing camera snapshotted
-    expect(store().layout.viewport).not.toEqual(priorViewport); // camera moved
+    expect(store().framing.overview).toEqual(overview); // pre-framing camera snapshotted
+    expect(store().layout.viewport).not.toEqual(overview); // camera moved
 
     store().framePane("lab-1"); // toggle -> unframe
     expect(framedPaneId(store().framing)).toBeNull();
-    expect(store().layout.viewport).toEqual(priorViewport); // restored
+    expect(store().layout.viewport).toEqual(overview); // panned back out
   });
 
-  it("steps back through nested frames one level per unframe", () => {
+  it("switching frames keeps the original overview; unframe pans back out to it", () => {
     resetCanvasLabStoreForTests();
     store().addPane(); // lab-1
     store().addPane(); // lab-2
     store().addPane(); // lab-3
-    store().addPane(); // lab-4
     const overview = store().layout.viewport;
 
-    store().framePane("lab-3");
-    const framed3 = store().layout.viewport;
-    expect(framed3).not.toEqual(overview);
-    expect(store().layout.focusedPaneId).toBe("lab-3"); // framed pane is selected
+    store().framePane("lab-2");
+    const framed2 = store().layout.viewport;
+    expect(framed2).not.toEqual(overview);
+    expect(store().layout.focusedPaneId).toBe("lab-2");
 
-    store().framePane("lab-4"); // frame a second pane without unframing the first
-    expect(framedPaneId(store().framing)).toBe("lab-4");
-    expect(store().framing.stack).toHaveLength(2);
-    expect(store().layout.focusedPaneId).toBe("lab-4");
-
-    store().unframe(); // pops lab-4 -> back to the framed lab-3 view, and re-selects lab-3
+    store().framePane("lab-3"); // switch frame without unframing first
     expect(framedPaneId(store().framing)).toBe("lab-3");
-    expect(store().layout.viewport).toEqual(framed3);
+    expect(store().layout.viewport).not.toEqual(framed2); // camera moved to lab-3
     expect(store().layout.focusedPaneId).toBe("lab-3");
 
-    store().unframe(); // pops lab-3 -> back to the overview; lab-3 keeps the selection
+    store().unframe(); // single level: straight back to the original overview, no frame history
     expect(framedPaneId(store().framing)).toBeNull();
     expect(store().layout.viewport).toEqual(overview);
-    expect(store().layout.focusedPaneId).toBe("lab-3");
   });
 
-  it("re-frames the underlying pane on unframe even after the camera was panned away", () => {
-    // Regression: frame A, manually pan the camera elsewhere, frame B, unframe. Stepping back to A
-    // must re-frame A from its rect so it is on-screen. Restoring the viewport captured when B was
-    // framed (the panned-away camera) would leave the re-selected A off-screen.
+  it("flies the camera on unframe when at or below the pane limit", () => {
     resetCanvasLabStoreForTests();
-    for (let index = 0; index < 4; index += 1) store().addPane(); // lab-1 .. lab-4
+    store().addPane(); // lab-1
+    store().addPane(); // lab-2
+    store().framePane("lab-1");
+    useCanvasLabStore.setState({ flying: false }); // simulate the frame fly having settled
 
-    store().framePane("lab-4");
-    const framed4 = store().layout.viewport;
+    store().unframe();
+    expect(store().flying).toBe(true); // unframe animated the camera
+  });
 
-    store().setViewport({ panX: -5000, panY: -5000, scale: 0.5 }); // user pans far from lab-4
-    expect(store().layout.viewport).not.toEqual(framed4);
+  it("snaps the camera (no fly) on unframe above the pane limit", () => {
+    resetCanvasLabStoreForTests();
+    for (let index = 0; index <= UNFRAME_FLY_PANE_LIMIT; index += 1) store().addPane(); // limit + 1
+    const overview = store().layout.viewport;
+    store().framePane("lab-1");
+    useCanvasLabStore.setState({ flying: false }); // simulate the frame fly having settled
 
-    store().framePane("lab-1"); // frame a second pane from the panned-away camera
-    store().unframe(); // pop lab-1 -> must re-frame lab-4, not restore the panned-away camera
-
-    expect(framedPaneId(store().framing)).toBe("lab-4");
-    expect(store().layout.focusedPaneId).toBe("lab-4");
-    expect(store().layout.viewport).toEqual(framed4); // lab-4 is framed and visible again
+    store().unframe();
+    expect(store().flying).toBe(false); // unframe did not animate
+    expect(store().layout.viewport).toEqual(overview); // still lands on the overview
   });
 
   it("does not frame when only one pane is open", () => {
