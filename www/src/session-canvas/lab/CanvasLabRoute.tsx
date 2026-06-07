@@ -4,7 +4,7 @@ import { listLayouts } from "../../engine/layout";
 import { PaneChrome } from "../components/PaneChrome";
 import { RouteSwitcher } from "../components/RouteSwitcher";
 import { ControlsPanel } from "./ControlsPanel";
-import { useCanvasLabStore } from "./canvasLabStore";
+import { framedPaneId, useCanvasLabStore } from "./canvasLabStore";
 import { LabCardPane } from "./viewers/LabCardPane";
 import { LabRulerPane } from "./viewers/LabRulerPane";
 
@@ -13,7 +13,7 @@ const SEED_PANES = 3;
 export function CanvasLabRoute() {
   const layout = useCanvasLabStore((state) => state.layout);
   const flying = useCanvasLabStore((state) => state.flying);
-  const framedPaneId = useCanvasLabStore((state) => state.framing.framedPaneId);
+  const framedPane = useCanvasLabStore((state) => framedPaneId(state.framing));
   const activeStrategyId = useCanvasLabStore((state) => state.activeStrategyId);
   const fitToContent = useCanvasLabStore((state) => state.fitToContent);
   const addPane = useCanvasLabStore((state) => state.addPane);
@@ -122,7 +122,7 @@ export function CanvasLabRoute() {
                 onClose={() => closePane(paneId)}
                 onFrame={() => framePane(paneId)}
                 onHeaderDoubleClick={() => framePane(paneId)}
-                state={framedPaneId === paneId ? "framed" : "default"}
+                state={framedPane === paneId ? "framed" : "default"}
                 title={paneId}
                 titleId={titleIdForPane(paneId)}
               >

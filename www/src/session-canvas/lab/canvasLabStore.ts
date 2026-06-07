@@ -31,9 +31,21 @@ const SEED_RECT: WorldRect = { x: 48, y: 48, width: 360, height: 280 };
 const FRAME_MS = 320;
 const INITIAL_STRATEGY_ID = BUILT_IN_CONFIGS[0]?.strategyId ?? listLayouts()[0]?.id ?? "grid-fit";
 
+interface FramingFrame {
+  paneId: PaneId;
+  priorViewport: CanvasViewport;
+}
+
 interface FramingState {
-  framedPaneId: PaneId | null;
-  priorViewport: CanvasViewport | null;
+  // Stack of active frames. Framing a pane pushes the current viewport; unframe pops one level, so
+  // nested frames step back in order: frame 3, frame 4, unframe -> the framed-3 view, unframe -> the
+  // overview. A single slot loses the original viewport the moment a second pane is framed.
+  stack: FramingFrame[];
+}
+
+// The currently framed pane is the top of the stack (null when nothing is framed).
+export function framedPaneId(framing: FramingState): PaneId | null {
+  return framing.stack[framing.stack.length - 1]?.paneId ?? null;
 }
 
 export interface CanvasLabState {
@@ -159,7 +171,7 @@ export const useCanvasLabStore = create<CanvasLabState>()((set, get) => ({
   activeStrategyId: INITIAL_STRATEGY_ID,
   params: seedParams(INITIAL_STRATEGY_ID),
   fitToContent: true,
-  framing: { framedPaneId: null, priorViewport: null },
+  framing: { stack: [] },
   flying: false,
   nextPaneIndex: 0,
 
@@ -249,7 +261,8 @@ export const useCanvasLabStore = create<CanvasLabState>()((set, get) => ({
 
   framePane(paneId) {
     const { layout, bounds, framing } = get();
-    if (framing.framedPaneId === paneId) {
+    // Re-framing the current (top) pane toggles it off.
+    if (framedPaneId(framing) === paneId) {
       get().unframe();
       return;
     }
@@ -258,28 +271,40 @@ export const useCanvasLabStore = create<CanvasLabState>()((set, get) => ({
     if (!node) return;
     startFly();
     set((state) => ({
-      framing: { framedPaneId: paneId, priorViewport: state.layout.viewport },
-      layout: setEngineViewport(state.layout, frameRectViewport(node.rect, bounds)),
+      framing: {
+        stack: [...state.framing.stack, { paneId, priorViewport: state.layout.viewport }],
+      },
+      // Select the framed pane (white border).
+      layout: focusNode(setEngineViewport(state.layout, frameRectViewport(node.rect, bounds)), paneId),
     }));
   },
 
   unframe() {
-    const prior = get().framing.priorViewport;
-    if (!prior) {
-      set({ framing: { framedPaneId: null, priorViewport: null } });
-      return;
-    }
+    const { stack } = get().framing;
+    const top = stack[stack.length - 1];
+    if (!top) return;
+    // Pop one level: restore the viewport captured when this pane was framed. With nested frames
+    // that steps back to the previously framed pane; the last pop returns to the overview.
     startFly();
-    set((state) => ({
-      framing: { framedPaneId: null, priorViewport: null },
-      layout: setEngineViewport(state.layout, prior),
-    }));
+    set((state) => {
+      const nextStack = state.framing.stack.slice(0, -1);
+      const restored = setEngineViewport(state.layout, top.priorViewport);
+      // Re-select the pane we return to (the new top frame) so stepping back highlights it (white
+      // border). Derived from the stack, not a captured prior focus: a frame button's pointerdown
+      // focuses the pane before framePane runs, which would corrupt a captured value. At the overview
+      // (empty stack) the last-framed pane keeps the selection.
+      const returnTo = nextStack[nextStack.length - 1]?.paneId;
+      return {
+        framing: { stack: nextStack },
+        layout: returnTo ? focusNode(restored, returnTo) : restored,
+      };
+    });
   },
 
   resetView() {
     startFly();
     set((state) => ({
-      framing: { framedPaneId: null, priorViewport: null },
+      framing: { stack: [] },
       layout: setEngineViewport(state.layout, { panX: 0, panY: 0, scale: 1 }),
     }));
   },
@@ -310,7 +335,7 @@ export function resetCanvasLabStoreForTests(): void {
     activeStrategyId: INITIAL_STRATEGY_ID,
     params: seedParams(INITIAL_STRATEGY_ID),
     fitToContent: true,
-    framing: { framedPaneId: null, priorViewport: null },
+    framing: { stack: [] },
     flying: false,
     nextPaneIndex: 0,
   });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resetCanvasLabStoreForTests, useCanvasLabStore } from "./canvasLabStore";
+import { framedPaneId, resetCanvasLabStoreForTests, useCanvasLabStore } from "./canvasLabStore";
 
 const store = useCanvasLabStore.getState;
 
@@ -11,20 +11,49 @@ describe("canvasLabStore framing", () => {
     const priorViewport = store().layout.viewport;
 
     store().framePane("lab-1");
-    expect(store().framing.framedPaneId).toBe("lab-1");
-    expect(store().framing.priorViewport).toEqual(priorViewport);
+    expect(framedPaneId(store().framing)).toBe("lab-1");
+    expect(store().framing.stack[0]?.priorViewport).toEqual(priorViewport);
     expect(store().layout.viewport).not.toEqual(priorViewport); // camera moved
 
     store().framePane("lab-1"); // toggle -> unframe
-    expect(store().framing.framedPaneId).toBeNull();
+    expect(framedPaneId(store().framing)).toBeNull();
     expect(store().layout.viewport).toEqual(priorViewport); // restored
+  });
+
+  it("steps back through nested frames one level per unframe", () => {
+    resetCanvasLabStoreForTests();
+    store().addPane(); // lab-1
+    store().addPane(); // lab-2
+    store().addPane(); // lab-3
+    store().addPane(); // lab-4
+    const overview = store().layout.viewport;
+
+    store().framePane("lab-3");
+    const framed3 = store().layout.viewport;
+    expect(framed3).not.toEqual(overview);
+    expect(store().layout.focusedPaneId).toBe("lab-3"); // framed pane is selected
+
+    store().framePane("lab-4"); // frame a second pane without unframing the first
+    expect(framedPaneId(store().framing)).toBe("lab-4");
+    expect(store().framing.stack).toHaveLength(2);
+    expect(store().layout.focusedPaneId).toBe("lab-4");
+
+    store().unframe(); // pops lab-4 -> back to the framed lab-3 view, and re-selects lab-3
+    expect(framedPaneId(store().framing)).toBe("lab-3");
+    expect(store().layout.viewport).toEqual(framed3);
+    expect(store().layout.focusedPaneId).toBe("lab-3");
+
+    store().unframe(); // pops lab-3 -> back to the overview; lab-3 keeps the selection
+    expect(framedPaneId(store().framing)).toBeNull();
+    expect(store().layout.viewport).toEqual(overview);
+    expect(store().layout.focusedPaneId).toBe("lab-3");
   });
 
   it("does not frame when only one pane is open", () => {
     resetCanvasLabStoreForTests();
     store().addPane(); // lab-1 only
     store().framePane("lab-1");
-    expect(store().framing.framedPaneId).toBeNull();
+    expect(framedPaneId(store().framing)).toBeNull();
   });
 
   it("organizes panes through the active strategy on add", () => {
