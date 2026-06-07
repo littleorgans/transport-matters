@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { LayoutCanvas } from "../../engine";
 import { listLayouts } from "../../engine/layout";
 import { PaneChrome } from "../components/PaneChrome";
@@ -29,6 +29,19 @@ export function CanvasLabRoute() {
 
   const stageRef = useRef<HTMLDivElement>(null);
   const strategies = useMemo(() => listLayouts(), []);
+  const [chromeHidden, setChromeHidden] = useState(false);
+
+  // Tab toggles the command bar so the whole viewport reads as canvas (the bar floats over the top
+  // pane row). preventDefault stops focus traversal; this is an experimental cockpit shortcut.
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Tab" || event.metaKey || event.ctrlKey || event.altKey) return;
+      event.preventDefault();
+      setChromeHidden((hidden) => !hidden);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
 
   // Seed a few panes on first mount so the lab is not empty (count guard survives StrictMode).
   useEffect(() => {
@@ -51,45 +64,47 @@ export function CanvasLabRoute() {
 
   return (
     <main className="canvas-route-shell">
-      <div
-        aria-label="Canvas lab controls"
-        className="canvas-command-bar canvas-command-bar--lab"
-        role="toolbar"
-      >
-        <div className="canvas-command-bar__identity">
-          <span>Canvas lab</span>
-          <span>{paneCount} panes</span>
+      {chromeHidden ? null : (
+        <div
+          aria-label="Canvas lab controls"
+          className="canvas-command-bar canvas-command-bar--lab"
+          role="toolbar"
+        >
+          <div className="canvas-command-bar__identity">
+            <span>Canvas lab</span>
+            <span>{paneCount} panes</span>
+          </div>
+          <div className="canvas-command-bar__buttons">
+            <RouteSwitcher />
+            <button className="canvas-button" onClick={addPane} type="button">
+              Add pane
+            </button>
+            <button className="canvas-button" onClick={organize} type="button">
+              Organize
+            </button>
+            <label className="canvas-lab-toggle">
+              <input
+                checked={fitToContent}
+                onChange={(event) => setFitToContent(event.target.checked)}
+                type="checkbox"
+              />
+              Fit to content
+            </label>
+            <select
+              aria-label="Layout strategy"
+              onChange={(event) => setStrategy(event.target.value)}
+              value={activeStrategyId}
+            >
+              {strategies.map((strategy) => (
+                <option key={strategy.id} value={strategy.id}>
+                  {strategy.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <ControlsPanel />
         </div>
-        <div className="canvas-command-bar__buttons">
-          <RouteSwitcher />
-          <button className="canvas-button" onClick={addPane} type="button">
-            Add pane
-          </button>
-          <button className="canvas-button" onClick={organize} type="button">
-            Organize
-          </button>
-          <label className="canvas-lab-toggle">
-            <input
-              checked={fitToContent}
-              onChange={(event) => setFitToContent(event.target.checked)}
-              type="checkbox"
-            />
-            Fit to content
-          </label>
-          <select
-            aria-label="Layout strategy"
-            onChange={(event) => setStrategy(event.target.value)}
-            value={activeStrategyId}
-          >
-            {strategies.map((strategy) => (
-              <option key={strategy.id} value={strategy.id}>
-                {strategy.label}
-              </option>
-            ))}
-          </select>
-        </div>
-        <ControlsPanel />
-      </div>
+      )}
       <div className="canvas-lab-stage" ref={stageRef}>
         <LayoutCanvas
           framing={flying}
