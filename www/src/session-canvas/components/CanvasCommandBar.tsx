@@ -1,4 +1,5 @@
 import type { CanvasLaunchContext } from "../route";
+import { RouteSwitcher } from "./RouteSwitcher";
 
 export interface CanvasCommandBarProps {
   launch: CanvasLaunchContext;
@@ -21,6 +22,7 @@ export function CanvasCommandBar({
         <span>{workspaceLabel}</span>
       </div>
       <div className="canvas-command-bar__buttons">
+        <RouteSwitcher />
         <button className="canvas-button" onClick={onFocusPicker} type="button">
           Focus picker
         </button>

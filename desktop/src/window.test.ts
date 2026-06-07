@@ -64,6 +64,25 @@ describe("desktop hosted window", () => {
 
     expect(rendererUrlForPort(9901)).toBe("http://127.0.0.1:9901/canvas");
     expect(rendererUrlForPort(9901, "/")).toBe("http://127.0.0.1:9901/");
+    expect(rendererUrlForPort(9901, "/canvas-lab")).toBe("http://127.0.0.1:9901/canvas-lab");
+  });
+
+  it("allows the canvas-lab hosted route and rejects unknown hosted paths", async () => {
+    const { createHostedWindow } = await import("./window.js");
+
+    expect(() =>
+      createHostedWindow({
+        preloadPath: "/tmp/transport-matters/preload.cjs",
+        rendererUrl: "http://127.0.0.1:8788/canvas-lab",
+      }),
+    ).not.toThrow();
+
+    expect(() =>
+      createHostedWindow({
+        preloadPath: "/tmp/transport-matters/preload.cjs",
+        rendererUrl: "http://127.0.0.1:8788/settings",
+      }),
+    ).toThrow(/Invalid Transport Matters hosted web URL/);
   });
 
   it("loads the hosted loopback URL in a secure BrowserWindow", async () => {

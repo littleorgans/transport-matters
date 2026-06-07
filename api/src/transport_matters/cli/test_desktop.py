@@ -166,6 +166,36 @@ def test_desktop_startup_hook_emits_json_and_spawns_electron(
     assert spawned == [(electron, payload)]
 
 
+def test_desktop_route_flag_targets_canvas_lab(
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    def fake_run_client_with_retry(**kwargs: Any) -> None:
+        kwargs["on_backend_ready"](
+            {
+                env_keys.CWD: str(tmp_path),
+                env_keys.RUN_ID: "run-002",
+            },
+            tmp_path / "storage",
+            None,
+            9900,
+            9901,
+        )
+
+    plan = prepare_desktop_launch(
+        ctx=_DefaultOptionContext(),  # type: ignore[arg-type]
+        agent="claude",
+        route="canvas-lab",
+        base_run_client_with_retry=fake_run_client_with_retry,
+        launch_viewer=False,
+    )
+
+    plan.run_client_with_retry()
+
+    payload = json.loads(capsys.readouterr().out)
+    assert urlparse(payload["routeUrl"]).path == "/canvas-lab"
+
+
 def test_desktop_print_command_does_not_resolve_electron() -> None:
     def fail_resolve() -> ElectronLaunch:
         raise AssertionError("print-command should not resolve Electron")
