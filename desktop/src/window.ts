@@ -114,7 +114,7 @@ function normalizeLoopbackHostedUrl(rendererUrl: string): string {
 }
 
 function allowedHostedPath(pathname: string): boolean {
-  return pathname === "/" || pathname === "/canvas";
+  return pathname === "/" || pathname === "/canvas" || pathname === "/canvas-lab";
 }
 
 function parseUrl(value: string): URL | null {

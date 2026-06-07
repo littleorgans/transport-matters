@@ -65,6 +65,7 @@ from .launch_options import (  # noqa: TC001
     NoSystemPromptOption,
     PrintCommandOption,
     ProxyPortOption,
+    RouteOption,
     StorageDirOption,
     WebPortOption,
     WorkDirOption,
@@ -358,6 +359,7 @@ def codex(
 def desktop(
     ctx: typer.Context,
     agent: AgentOption = "claude",
+    route: RouteOption = "canvas",
     work_dir: WorkDirOption = None,
     proxy_port: ProxyPortOption = None,
     web_port: WebPortOption = None,
@@ -378,6 +380,7 @@ def desktop(
     plan = prepare_desktop_launch(
         ctx=ctx,
         agent=agent,
+        route=route,
         base_run_client_with_retry=run_client_with_retry,
         launch_viewer=not print_command,
     )

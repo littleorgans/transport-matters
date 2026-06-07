@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef } from "react";
 import { LayoutCanvas } from "../../engine";
 import { listLayouts } from "../../engine/layout";
 import { PaneChrome } from "../components/PaneChrome";
+import { RouteSwitcher } from "../components/RouteSwitcher";
 import { ControlsPanel } from "./ControlsPanel";
 import { useCanvasLabStore } from "./canvasLabStore";
 import { LabCardPane } from "./viewers/LabCardPane";
@@ -60,6 +61,7 @@ export function CanvasLabRoute() {
           <span>{paneCount} panes</span>
         </div>
         <div className="canvas-command-bar__buttons">
+          <RouteSwitcher />
           <button className="canvas-button" onClick={addPane} type="button">
             Add pane
           </button>

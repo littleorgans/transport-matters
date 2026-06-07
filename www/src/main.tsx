@@ -3,6 +3,7 @@ import { lazy, StrictMode, Suspense } from "react";
 import { createRoot } from "react-dom/client";
 import { fetchMeta } from "./api";
 import "./index.css";
+import "./session-canvas/canvas.css";
 import { queryClient } from "./lib/queryClient";
 import { selectRootRoute } from "./session-canvas/route";
 

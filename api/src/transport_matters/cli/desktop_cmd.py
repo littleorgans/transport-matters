@@ -75,12 +75,14 @@ def prepare_desktop_launch(
     ctx: typer.Context,
     agent: AgentName,
     base_run_client_with_retry: Callable[..., None],
+    route: str = "canvas",
     launch_viewer: bool = True,
     resolve_electron_launch_func: Callable[[], ElectronLaunch] | None = None,
     spawn_electron_func: Callable[[ElectronLaunch, dict[str, Any]], None] | None = None,
 ) -> DesktopLaunchPlan:
     """Validate desktop options and wrap the launch retry hook."""
     normalized_agent = _normalize_agent(agent)
+    normalized_route = _normalize_route(route)
     _reject_irrelevant_options(ctx, normalized_agent)
     resolve_electron = resolve_electron_launch_func or resolve_electron_launch
     spawn_electron = spawn_electron_func or spawn_detached_electron
@@ -100,6 +102,7 @@ def prepare_desktop_launch(
                 previous_hook(launch_env, resolved_storage, client, proxy_port, web_port)
             event = build_backend_started_event(
                 agent=normalized_agent,
+                route=normalized_route,
                 launch_env=launch_env,
                 resolved_storage=resolved_storage,
                 proxy_port=proxy_port,
@@ -121,6 +124,7 @@ def prepare_desktop_launch(
 def build_backend_started_event(
     *,
     agent: AgentName,
+    route: str,
     launch_env: Mapping[str, str],
     resolved_storage: Path,
     proxy_port: int,
@@ -150,7 +154,7 @@ def build_backend_started_event(
         "proxyPort": proxy_port,
         "webPort": web_port,
         "baseUrl": base_url,
-        "routeUrl": f"{base_url}/canvas?{route_query}",
+        "routeUrl": f"{base_url}/{route}?{route_query}",
         "storageDir": str(resolved_storage),
         "homeDir": launch_env.get(env_keys.AGENT_HOME_DIR),
     }
@@ -218,6 +222,14 @@ def _normalize_agent(agent: AgentName) -> AgentName:
         msg = f"unsupported desktop agent: {agent}"
         raise typer.BadParameter(msg)
     return cast("AgentName", normalized)
+
+
+def _normalize_route(route: str) -> str:
+    normalized = route.lower()
+    if normalized not in {"canvas", "canvas-lab"}:
+        msg = f"unsupported desktop route: {route}"
+        raise typer.BadParameter(msg)
+    return normalized
 
 
 def _reject_irrelevant_options(ctx: typer.Context, agent: AgentName) -> None:
