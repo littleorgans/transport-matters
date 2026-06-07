@@ -8,6 +8,7 @@ const DEFAULTS = {
   gap: 24,
   margin: 48,
   targetAspect: 4 / 3,
+  packing: "fill" as const,
   lastRow: "left" as const,
 };
 const VIEWPORT = { width: 1600, height: 1000 };
@@ -87,6 +88,7 @@ describe("planGridFit", () => {
       gap: 20,
       margin: 0,
       targetAspect: 4 / 3,
+      packing: "fill" as const,
       lastRow: "left" as const,
     };
     const { rects, reason } = planGridFit(
@@ -121,5 +123,25 @@ describe("planGridFit", () => {
     );
     const distinctRows = new Set(Object.values(rects).map((rect) => rect.y)).size;
     expect(distinctRows).toBe(4);
+  });
+});
+
+// The `packing` toggle: "aspect" picks columns by closeness to targetAspect instead of by size,
+// so crowded grids add a column rather than going wide/stubby. (Default "fill" is covered above.)
+describe("planGridFit packing=aspect", () => {
+  const ASPECT = { ...DEFAULTS, packing: "aspect" as const };
+  const WIDE = { width: 1920, height: 960 };
+
+  it("keeps 8 panes at 4x2 (no regression vs fill)", () => {
+    expect(planGridFit({ paneIds: ids(8), viewport: WIDE }, ASPECT).reason).toBe("grid-fit 4x2");
+  });
+
+  it("fixes the stubby 11-pane case: 5x3 instead of a wide 4x3", () => {
+    const { reason, rects } = planGridFit(
+      { paneIds: ids(11), viewport: WIDE },
+      { ...ASPECT, minW: 380 },
+    );
+    expect(reason).toBe("grid-fit 5x3");
+    expect(rects.p0).toEqual({ x: 48, y: 48, width: 380, height: 272 });
   });
 });

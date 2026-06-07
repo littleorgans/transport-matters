@@ -11,6 +11,7 @@ interface GridFitParams extends LayoutParams {
   gap: number;
   margin: number;
   targetAspect: number;
+  packing: "fill" | "aspect";
   lastRow: "left" | "center";
 }
 
@@ -20,6 +21,7 @@ const DEFAULTS: GridFitParams = {
   gap: 24,
   margin: 48,
   targetAspect: 4 / 3,
+  packing: "fill",
   lastRow: "left",
 };
 
@@ -29,6 +31,15 @@ const CONTROLS: readonly Control[] = [
   { kind: "number", key: "gap", label: "Gap", min: 0, max: 64, step: 4 },
   { kind: "number", key: "margin", label: "Margin", min: 0, max: 120, step: 4 },
   { kind: "number", key: "targetAspect", label: "Target aspect", min: 0.5, max: 2.5, step: 0.05 },
+  {
+    kind: "enum",
+    key: "packing",
+    label: "Packing",
+    options: [
+      { value: "fill", label: "Fill" },
+      { value: "aspect", label: "Aspect" },
+    ],
+  },
   {
     kind: "enum",
     key: "lastRow",
@@ -66,11 +77,12 @@ function cellsFor(
   return { rows, cellW, cellH };
 }
 
-// Pick the column count that maximizes displayed (post-zoom) pane area, penalized toward
-// targetAspect. Replaces the old scale-1 capacity cap, which ignored the later zoom-to-fit and so
-// left a horizontal band empty once the grid zoomed out to fit extra rows. Deterministic:
-// tie-break is fewer rows, then fewer columns.
-function selectColumns(count: number, viewport: ViewportBounds, params: GridFitParams): number {
+// Column selection has two modes (the `packing` control) so the lab can flip between them live.
+// Both are deterministic; tie-break is fewer rows, then fewer columns.
+//
+// "fill": biggest displayed pane wins, lightly steered toward targetAspect so a lone tall/wide
+// strip never beats a balanced grid. Fills the viewport; with many small panes a row can read wide.
+function selectFill(count: number, viewport: ViewportBounds, params: GridFitParams): number {
   let bestCols = 0;
   let bestScore = Number.NEGATIVE_INFINITY;
   let bestRows = Number.POSITIVE_INFINITY;
@@ -93,6 +105,34 @@ function selectColumns(count: number, viewport: ViewportBounds, params: GridFitP
     }
   }
   return bestCols;
+}
+
+// "aspect": panes closest to targetAspect win, so the grid adds a column rather than letting cells
+// go wide/stubby (e.g. 11 panes -> 5x3 instead of 4x3). Cost: a sparser last row on odd counts.
+function selectAspect(count: number, viewport: ViewportBounds, params: GridFitParams): number {
+  let bestCols = 0;
+  let bestScore = Number.POSITIVE_INFINITY;
+  let bestRows = Number.POSITIVE_INFINITY;
+  for (let cols = 1; cols <= count; cols += 1) {
+    const { rows, cellW, cellH } = cellsFor(count, cols, viewport, params);
+    const score = Math.abs(Math.log(cellW / cellH / params.targetAspect));
+    const better =
+      score < bestScore - TIE ||
+      (Math.abs(score - bestScore) <= TIE &&
+        (rows < bestRows || (rows === bestRows && cols < bestCols)));
+    if (bestCols === 0 || better) {
+      bestScore = score;
+      bestCols = cols;
+      bestRows = rows;
+    }
+  }
+  return bestCols;
+}
+
+function selectColumns(count: number, viewport: ViewportBounds, params: GridFitParams): number {
+  return params.packing === "aspect"
+    ? selectAspect(count, viewport, params)
+    : selectFill(count, viewport, params);
 }
 
 export function planGridFit(input: PlanInput, params: GridFitParams): PlanResult {
