@@ -72,6 +72,30 @@ export function updateNodeRect(
   };
 }
 
+function rectsEqual(a: WorldRect, b: WorldRect): boolean {
+  return a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height;
+}
+
+// Apply many planned rects in a single nodes copy. updateNodeRect spreads the whole nodes map on every
+// call, so planning N panes one-by-one was O(N^2) allocation churn. This copies nodes at most once,
+// writes a new node object only for rects that actually changed (unchanged nodes keep their reference
+// so memoized consumers can bail), ignores ids with no node, and returns the SAME state ref when
+// nothing changed.
+export function updateNodeRects(
+  state: EngineLayoutState,
+  rects: Record<PaneId, WorldRect>,
+): EngineLayoutState {
+  let nextNodes: Record<PaneId, PaneNode> | null = null;
+  for (const [paneId, rect] of Object.entries(rects)) {
+    const node = state.nodes[paneId];
+    if (!node || rectsEqual(node.rect, rect)) continue;
+    if (!nextNodes) nextNodes = { ...state.nodes };
+    nextNodes[paneId] = { ...node, rect };
+  }
+  if (!nextNodes) return state;
+  return { ...state, nodes: nextNodes };
+}
+
 export function markNodeClosing(state: EngineLayoutState, paneId: PaneId): EngineLayoutState {
   const node = state.nodes[paneId];
   if (!node) return state;

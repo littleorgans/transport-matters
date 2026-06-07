@@ -13,6 +13,7 @@ import {
   removeNode,
   setViewport as setEngineViewport,
   updateNodeRect,
+  updateNodeRects,
   upsertNode,
   type ViewportBounds,
   type WorldRect,
@@ -32,7 +33,7 @@ const FRAME_MS = 320;
 const INITIAL_STRATEGY_ID = BUILT_IN_CONFIGS[0]?.strategyId ?? listLayouts()[0]?.id ?? "grid-fit";
 // Above this many open panes, unframe stops animating the camera and snaps straight to the overview:
 // flying the scaled world back out re-rasterizes every pane each frame, which janks at scale.
-export const UNFRAME_FLY_PANE_LIMIT = 16;
+export const UNFRAME_FLY_PANE_LIMIT = 60;
 
 interface FramingState {
   // Single-level framing. `paneId` is the framed pane (null at the overview). `overview` is the camera
@@ -153,10 +154,7 @@ function planLayout(
     { paneIds: openPaneIds(layout), viewport: bounds },
     params,
   );
-  let next = layout;
-  for (const [paneId, rect] of Object.entries(rects)) {
-    next = updateNodeRect(next, paneId, rect);
-  }
+  let next = updateNodeRects(layout, rects);
   if (fitToContent) {
     const fitted = fitViewport(rects, bounds, frame);
     if (fitted) next = setEngineViewport(next, fitted);

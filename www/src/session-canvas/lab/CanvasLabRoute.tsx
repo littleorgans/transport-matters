@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { LayoutCanvas } from "../../engine";
 import { listLayouts } from "../../engine/layout";
 import { PaneChrome } from "../components/PaneChrome";
@@ -8,7 +8,7 @@ import { framedPaneId, useCanvasLabStore } from "./canvasLabStore";
 import { LabCardPane } from "./viewers/LabCardPane";
 import { LabRulerPane } from "./viewers/LabRulerPane";
 
-const SEED_PANES = 3;
+const SEED_PANES = 50;
 
 export function CanvasLabRoute() {
   const layout = useCanvasLabStore((state) => state.layout);
@@ -62,6 +62,30 @@ export function CanvasLabRoute() {
 
   const paneCount = Object.keys(layout.nodes).length;
 
+  // Stable across viewport-only renders so the memoized PaneLayer skips the pane subtree on pan/zoom.
+  // Re-created only when focus, framing, or the close/frame actions change (the things it reads).
+  const focusedPaneId = layout.focusedPaneId;
+  const renderPane = useCallback(
+    (paneId: string) => {
+      const isRuler = paneIndexOf(paneId) % 2 === 1;
+      return (
+        <PaneChrome
+          badge={isRuler ? "ruler" : "card"}
+          focused={focusedPaneId === paneId}
+          onClose={() => closePane(paneId)}
+          onFrame={() => framePane(paneId)}
+          onHeaderDoubleClick={() => framePane(paneId)}
+          state={framedPane === paneId ? "framed" : "default"}
+          title={paneId}
+          titleId={titleIdForPane(paneId)}
+        >
+          {isRuler ? <LabRulerPane paneId={paneId} /> : <LabCardPane paneId={paneId} />}
+        </PaneChrome>
+      );
+    },
+    [closePane, framePane, framedPane, focusedPaneId],
+  );
+
   return (
     <main className="canvas-route-shell">
       {chromeHidden ? null : (
@@ -113,23 +137,7 @@ export function CanvasLabRoute() {
           onFocusPane={focusPane}
           onMovePane={updatePaneRect}
           onResizePane={updatePaneRect}
-          renderPane={(paneId) => {
-            const isRuler = paneIndexOf(paneId) % 2 === 1;
-            return (
-              <PaneChrome
-                badge={isRuler ? "ruler" : "card"}
-                focused={layout.focusedPaneId === paneId}
-                onClose={() => closePane(paneId)}
-                onFrame={() => framePane(paneId)}
-                onHeaderDoubleClick={() => framePane(paneId)}
-                state={framedPane === paneId ? "framed" : "default"}
-                title={paneId}
-                titleId={titleIdForPane(paneId)}
-              >
-                {isRuler ? <LabRulerPane paneId={paneId} /> : <LabCardPane paneId={paneId} />}
-              </PaneChrome>
-            );
-          }}
+          renderPane={renderPane}
           setViewport={setViewport}
           titleIdForPane={titleIdForPane}
         />
