@@ -1,11 +1,13 @@
 import { create } from "zustand";
 import {
   type CanvasViewport,
+  CLOSE_DELAY_MS,
   createInitialEngineLayoutState,
   createPaneNode,
   type EngineLayoutState,
   focusNode,
   frameRectViewport,
+  markNodeClosing,
   nextPaneZ,
   type PaneId,
   removeNode,
@@ -126,6 +128,31 @@ function fitViewport(
   };
 }
 
+// Pure planner: run the active strategy over the open panes, write every planned rect back, and
+// (when fitToContent) recompute the fit camera. Shared by organize() and addPane() so the new pane
+// can be planned into its final slot within a single store commit. No get/set: callers own the set.
+function planLayout(
+  layout: EngineLayoutState,
+  bounds: ViewportBounds,
+  activeStrategyId: string,
+  params: LayoutParams,
+  fitToContent: boolean,
+): EngineLayoutState {
+  const { rects, frame } = resolveLayout(activeStrategyId).plan(
+    { paneIds: openPaneIds(layout), viewport: bounds },
+    params,
+  );
+  let next = layout;
+  for (const [paneId, rect] of Object.entries(rects)) {
+    next = updateNodeRect(next, paneId, rect);
+  }
+  if (fitToContent) {
+    const fitted = fitViewport(rects, bounds, frame);
+    if (fitted) next = setEngineViewport(next, fitted);
+  }
+  return next;
+}
+
 export const useCanvasLabStore = create<CanvasLabState>()((set, get) => ({
   layout: createInitialEngineLayoutState(),
   bounds: DEFAULT_BOUNDS,
@@ -139,19 +166,43 @@ export const useCanvasLabStore = create<CanvasLabState>()((set, get) => ({
   addPane() {
     const index = get().nextPaneIndex + 1;
     const paneId = `lab-${index}`;
-    set((state) => ({
-      nextPaneIndex: index,
-      layout: focusNode(
+    // Born at its planned slot in a single commit: seed the node, then plan over the seeded layout
+    // in the SAME set. Two separate sets (seed then organize) would render the pane at SEED_RECT's
+    // top-left corner for one frame before springing to its slot (the "fly in from top-left").
+    set((state) => {
+      const seeded = focusNode(
         upsertNode(state.layout, createPaneNode(paneId, SEED_RECT, nextPaneZ(state.layout.nodes))),
         paneId,
-      ),
-    }));
-    get().organize();
+      );
+      return {
+        nextPaneIndex: index,
+        layout: planLayout(
+          seeded,
+          state.bounds,
+          state.activeStrategyId,
+          state.params,
+          state.fitToContent,
+        ),
+      };
+    });
   },
 
   closePane(paneId) {
-    set((state) => ({ layout: removeNode(state.layout, paneId) }));
-    get().organize();
+    // Two-phase close so the exit reads cleanly: mark the pane closing (PaneFrame fades + scales it
+    // out in place, neighbours hold their slots), then after the exit window remove it and re-plan so
+    // the survivors flow in to fill the gap. Mirrors the production canvasStore close protocol.
+    set((state) => ({ layout: markNodeClosing(state.layout, paneId) }));
+    window.setTimeout(() => {
+      set((state) => ({
+        layout: planLayout(
+          removeNode(state.layout, paneId),
+          state.bounds,
+          state.activeStrategyId,
+          state.params,
+          state.fitToContent,
+        ),
+      }));
+    }, CLOSE_DELAY_MS);
   },
 
   focusPane(paneId) {
@@ -180,20 +231,15 @@ export const useCanvasLabStore = create<CanvasLabState>()((set, get) => ({
   },
 
   organize() {
-    const { layout, bounds, activeStrategyId, params, fitToContent } = get();
-    const { rects, frame } = resolveLayout(activeStrategyId).plan(
-      { paneIds: openPaneIds(layout), viewport: bounds },
-      params,
-    );
-    let next = layout;
-    for (const [paneId, rect] of Object.entries(rects)) {
-      next = updateNodeRect(next, paneId, rect);
-    }
-    if (fitToContent) {
-      const fitted = fitViewport(rects, bounds, frame);
-      if (fitted) next = setEngineViewport(next, fitted);
-    }
-    set({ layout: next });
+    set((state) => ({
+      layout: planLayout(
+        state.layout,
+        state.bounds,
+        state.activeStrategyId,
+        state.params,
+        state.fitToContent,
+      ),
+    }));
   },
 
   setBounds(bounds) {

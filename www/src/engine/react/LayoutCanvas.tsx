@@ -26,16 +26,22 @@ export function LayoutCanvas({
   titleIdForPane,
   framing = false,
 }: LayoutCanvasProps) {
-  const { bindViewport, handleWheel, handleKeyDown } = useCanvasViewport(layout.viewport, {
-    setViewport,
-  });
+  const { bindViewport, handleWheel, handleKeyDown, panReady, panning, zooming } =
+    useCanvasViewport(layout.viewport, { setViewport });
   const nodes = Object.values(layout.nodes).filter((node) => node.lifecycle !== "closed");
+  const viewportClassName = [
+    "canvas-viewport",
+    panReady && "canvas-viewport--pan-ready",
+    panning && "canvas-viewport--panning",
+  ]
+    .filter(Boolean)
+    .join(" ");
 
   return (
     <section
       {...bindViewport()}
       aria-label={label}
-      className="canvas-viewport"
+      className={viewportClassName}
       onKeyDown={handleKeyDown}
       onWheel={handleWheel}
       role="application"
@@ -53,6 +59,7 @@ export function LayoutCanvas({
         {nodes.map((node) => (
           <PaneFrame
             focused={layout.focusedPaneId === node.paneId}
+            instant={zooming}
             key={node.paneId}
             node={node}
             onFocus={onFocusPane}

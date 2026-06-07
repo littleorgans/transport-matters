@@ -17,6 +17,10 @@ const MIN_SCALE = 0.45;
 const MAX_SCALE = 1.8;
 const Z_STEP = 1;
 
+// How long a pane stays mounted in the "closing" state before removeNode unmounts it. The exit
+// animation (PaneFrame) is timed to this exact window so the pane finishes fading as it is removed.
+export const CLOSE_DELAY_MS = 200;
+
 export function createInitialEngineLayoutState(): EngineLayoutState {
   return {
     mode: "floating",
