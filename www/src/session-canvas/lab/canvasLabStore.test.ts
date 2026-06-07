@@ -1,30 +1,80 @@
-import { describe, expect, it } from "vitest";
-import { resetCanvasLabStoreForTests, useCanvasLabStore } from "./canvasLabStore";
+import { describe, expect, it, vi } from "vitest";
+import {
+  framedPaneId,
+  resetCanvasLabStoreForTests,
+  UNFRAME_FLY_PANE_LIMIT,
+  useCanvasLabStore,
+} from "./canvasLabStore";
 
 const store = useCanvasLabStore.getState;
 
 describe("canvasLabStore framing", () => {
-  it("frames a pane (stashing the prior viewport) and toggles back on a second call", () => {
+  it("frames a pane (capturing the overview) and toggles back on a second call", () => {
     resetCanvasLabStoreForTests();
     store().addPane(); // lab-1
     store().addPane(); // lab-2
-    const priorViewport = store().layout.viewport;
+    const overview = store().layout.viewport;
 
     store().framePane("lab-1");
-    expect(store().framing.framedPaneId).toBe("lab-1");
-    expect(store().framing.priorViewport).toEqual(priorViewport);
-    expect(store().layout.viewport).not.toEqual(priorViewport); // camera moved
+    expect(framedPaneId(store().framing)).toBe("lab-1");
+    expect(store().framing.overview).toEqual(overview); // pre-framing camera snapshotted
+    expect(store().layout.viewport).not.toEqual(overview); // camera moved
 
     store().framePane("lab-1"); // toggle -> unframe
-    expect(store().framing.framedPaneId).toBeNull();
-    expect(store().layout.viewport).toEqual(priorViewport); // restored
+    expect(framedPaneId(store().framing)).toBeNull();
+    expect(store().layout.viewport).toEqual(overview); // panned back out
+  });
+
+  it("switching frames keeps the original overview; unframe pans back out to it", () => {
+    resetCanvasLabStoreForTests();
+    store().addPane(); // lab-1
+    store().addPane(); // lab-2
+    store().addPane(); // lab-3
+    const overview = store().layout.viewport;
+
+    store().framePane("lab-2");
+    const framed2 = store().layout.viewport;
+    expect(framed2).not.toEqual(overview);
+    expect(store().layout.focusedPaneId).toBe("lab-2");
+
+    store().framePane("lab-3"); // switch frame without unframing first
+    expect(framedPaneId(store().framing)).toBe("lab-3");
+    expect(store().layout.viewport).not.toEqual(framed2); // camera moved to lab-3
+    expect(store().layout.focusedPaneId).toBe("lab-3");
+
+    store().unframe(); // single level: straight back to the original overview, no frame history
+    expect(framedPaneId(store().framing)).toBeNull();
+    expect(store().layout.viewport).toEqual(overview);
+  });
+
+  it("flies the camera on unframe when at or below the pane limit", () => {
+    resetCanvasLabStoreForTests();
+    store().addPane(); // lab-1
+    store().addPane(); // lab-2
+    store().framePane("lab-1");
+    useCanvasLabStore.setState({ flying: false }); // simulate the frame fly having settled
+
+    store().unframe();
+    expect(store().flying).toBe(true); // unframe animated the camera
+  });
+
+  it("snaps the camera (no fly) on unframe above the pane limit", () => {
+    resetCanvasLabStoreForTests();
+    for (let index = 0; index <= UNFRAME_FLY_PANE_LIMIT; index += 1) store().addPane(); // limit + 1
+    const overview = store().layout.viewport;
+    store().framePane("lab-1");
+    useCanvasLabStore.setState({ flying: false }); // simulate the frame fly having settled
+
+    store().unframe();
+    expect(store().flying).toBe(false); // unframe did not animate
+    expect(store().layout.viewport).toEqual(overview); // still lands on the overview
   });
 
   it("does not frame when only one pane is open", () => {
     resetCanvasLabStoreForTests();
     store().addPane(); // lab-1 only
     store().framePane("lab-1");
-    expect(store().framing.framedPaneId).toBeNull();
+    expect(framedPaneId(store().framing)).toBeNull();
   });
 
   it("organizes panes through the active strategy on add", () => {
@@ -36,6 +86,30 @@ describe("canvasLabStore framing", () => {
     expect(rects).toHaveLength(2);
     expect(rects[0]?.y).toBe(rects[1]?.y);
     expect(rects[0]?.x).not.toBe(rects[1]?.x);
+  });
+});
+
+describe("canvasLabStore close", () => {
+  it("reflows the survivors into the gap but never refits the camera on close", () => {
+    vi.useFakeTimers();
+    try {
+      resetCanvasLabStoreForTests();
+      // Enough panes that fit-to-content has zoomed the camera out: this is exactly the state where
+      // a refit-on-close would move the camera and snap (the reported "zoom in then out").
+      for (let index = 0; index < 24; index += 1) store().addPane();
+      expect(store().layout.viewport.scale).toBeLessThan(1);
+      const viewportBefore = store().layout.viewport;
+      const target = Object.keys(store().layout.nodes)[0];
+      if (!target) throw new Error("expected a seeded pane to close");
+
+      store().closePane(target);
+      vi.advanceTimersByTime(1000); // past CLOSE_DELAY_MS: the removal + reflow commit fires
+
+      expect(store().layout.nodes[target]).toBeUndefined(); // removed, and the grid reflowed the rest
+      expect(store().layout.viewport).toEqual(viewportBefore); // camera untouched: no refit on close
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

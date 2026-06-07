@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import {
   type CanvasViewport,
+  CLOSE_DELAY_MS,
   createInitialEngineLayoutState,
   createPaneNode,
   focusNode,
@@ -45,7 +46,6 @@ interface SpawnPaneOptions {
   title?: string;
 }
 
-const CLOSE_DELAY_MS = 140;
 const INITIAL_LAUNCH_CONTEXT: CanvasLaunchContext = Object.freeze({
   owner: "local",
   workspaceHash: null,

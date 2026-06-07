@@ -1,3 +1,4 @@
+import { useCallback } from "react";
 import { LayoutCanvas } from "../../engine";
 import type { LaunchResolutionStatus } from "../api/launchResolution";
 import { useCanvasStore } from "../model/canvasStore";
@@ -25,7 +26,54 @@ export function CanvasSurface({ launch, launchStatus, launchSessionId }: CanvasS
   const setViewport = useCanvasStore((state) => state.setViewport);
   const resetViewport = useCanvasStore((state) => state.resetViewport);
   const spawnOrFocusTranscript = useCanvasStore((state) => state.spawnOrFocusTranscript);
-  const focusedTitle = layout.focusedPaneId ? (panes[layout.focusedPaneId]?.title ?? null) : null;
+  const focusedPaneId = layout.focusedPaneId;
+  const focusedTitle = focusedPaneId ? (panes[focusedPaneId]?.title ?? null) : null;
+
+  // Stable across viewport-only renders so the memoized PaneLayer skips the pane subtree on pan/zoom.
+  // Re-created only when the data it reads changes (panes, focus, actions, launch context).
+  const renderPane = useCallback(
+    (paneId: string) => {
+      const pane = panes[paneId];
+      if (!pane) return null;
+      const viewer = resolveViewer(pane.contentRef);
+      const titleId = titleIdForPane(paneId);
+      const content = viewer.render({
+        pane,
+        actions: { closePane, focusPane, spawnOrFocusTranscript },
+        canvas: {
+          id: canvasId,
+          owner: "local",
+          workspaceHash,
+          focusedPaneId,
+          launch,
+          launchStatus,
+          launchSessionId,
+        },
+      });
+      return (
+        <PaneWindow
+          focused={focusedPaneId === paneId}
+          onClose={() => closePane(paneId)}
+          pane={pane}
+          titleId={titleId}
+        >
+          {content}
+        </PaneWindow>
+      );
+    },
+    [
+      panes,
+      closePane,
+      focusPane,
+      spawnOrFocusTranscript,
+      canvasId,
+      workspaceHash,
+      focusedPaneId,
+      launch,
+      launchStatus,
+      launchSessionId,
+    ],
+  );
 
   return (
     <main className="canvas-route-shell">
@@ -41,35 +89,7 @@ export function CanvasSurface({ launch, launchStatus, launchSessionId }: CanvasS
         onFocusPane={focusPane}
         onMovePane={movePane}
         onResizePane={resizePane}
-        renderPane={(paneId) => {
-          const pane = panes[paneId];
-          if (!pane) return null;
-          const viewer = resolveViewer(pane.contentRef);
-          const titleId = titleIdForPane(paneId);
-          const content = viewer.render({
-            pane,
-            actions: { closePane, focusPane, spawnOrFocusTranscript },
-            canvas: {
-              id: canvasId,
-              owner: "local",
-              workspaceHash,
-              focusedPaneId: layout.focusedPaneId,
-              launch,
-              launchStatus,
-              launchSessionId,
-            },
-          });
-          return (
-            <PaneWindow
-              focused={layout.focusedPaneId === paneId}
-              onClose={() => closePane(paneId)}
-              pane={pane}
-              titleId={titleId}
-            >
-              {content}
-            </PaneWindow>
-          );
-        }}
+        renderPane={renderPane}
         setViewport={setViewport}
         titleIdForPane={titleIdForPane}
       />

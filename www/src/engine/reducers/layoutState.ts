@@ -17,6 +17,10 @@ const MIN_SCALE = 0.45;
 const MAX_SCALE = 1.8;
 const Z_STEP = 1;
 
+// How long a pane stays mounted in the "closing" state before removeNode unmounts it. The exit
+// animation (PaneFrame) is timed to this exact window so the pane finishes fading as it is removed.
+export const CLOSE_DELAY_MS = 200;
+
 export function createInitialEngineLayoutState(): EngineLayoutState {
   return {
     mode: "floating",
@@ -68,13 +72,38 @@ export function updateNodeRect(
   };
 }
 
+function rectsEqual(a: WorldRect, b: WorldRect): boolean {
+  return a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height;
+}
+
+// Apply many planned rects in a single nodes copy. updateNodeRect spreads the whole nodes map on every
+// call, so planning N panes one-by-one was O(N^2) allocation churn. This copies nodes at most once,
+// writes a new node object only for rects that actually changed (unchanged nodes keep their reference
+// so memoized consumers can bail), ignores ids with no node, and returns the SAME state ref when
+// nothing changed.
+export function updateNodeRects(
+  state: EngineLayoutState,
+  rects: Record<PaneId, WorldRect>,
+): EngineLayoutState {
+  let nextNodes: Record<PaneId, PaneNode> | null = null;
+  for (const [paneId, rect] of Object.entries(rects)) {
+    const node = state.nodes[paneId];
+    if (!node || rectsEqual(node.rect, rect)) continue;
+    if (!nextNodes) nextNodes = { ...state.nodes };
+    nextNodes[paneId] = { ...node, rect };
+  }
+  if (!nextNodes) return state;
+  return { ...state, nodes: nextNodes };
+}
+
 export function markNodeClosing(state: EngineLayoutState, paneId: PaneId): EngineLayoutState {
   const node = state.nodes[paneId];
   if (!node) return state;
   return {
     ...state,
-    focusedPaneId:
-      state.focusedPaneId === paneId ? nearestPaneId(state, paneId) : state.focusedPaneId,
+    // Closing the focused pane clears the selection; it does not hop to a neighbour. An operator
+    // close should never silently re-target focus onto a pane they did not pick.
+    focusedPaneId: state.focusedPaneId === paneId ? null : state.focusedPaneId,
     nodes: { ...state.nodes, [paneId]: { ...node, lifecycle: "closing" } },
   };
 }
@@ -84,7 +113,7 @@ export function removeNode(state: EngineLayoutState, paneId: PaneId): EngineLayo
   return {
     ...state,
     nodes,
-    focusedPaneId: state.focusedPaneId === paneId ? firstOpenPaneId(nodes) : state.focusedPaneId,
+    focusedPaneId: state.focusedPaneId === paneId ? null : state.focusedPaneId,
   };
 }
 
@@ -140,26 +169,4 @@ export function frameRectViewport(
     panX: bounds.width / 2 - centerX * scale,
     panY: bounds.height / 2 - centerY * scale,
   };
-}
-
-function firstOpenPaneId(nodes: Record<PaneId, PaneNode>): PaneId | null {
-  return Object.values(nodes).find((node) => node.lifecycle === "open")?.paneId ?? null;
-}
-
-function nearestPaneId(state: EngineLayoutState, removedPaneId: PaneId): PaneId | null {
-  const removed = state.nodes[removedPaneId];
-  if (!removed) return firstOpenPaneId(state.nodes);
-  const removedCenter = centerOf(removed.rect);
-  let nearest: { paneId: PaneId; distance: number } | null = null;
-  for (const node of Object.values(state.nodes)) {
-    if (node.paneId === removedPaneId || node.lifecycle !== "open") continue;
-    const center = centerOf(node.rect);
-    const distance = Math.hypot(center.x - removedCenter.x, center.y - removedCenter.y);
-    if (!nearest || distance < nearest.distance) nearest = { paneId: node.paneId, distance };
-  }
-  return nearest?.paneId ?? null;
-}
-
-function centerOf(rect: WorldRect): { x: number; y: number } {
-  return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
 }

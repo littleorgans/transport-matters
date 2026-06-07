@@ -13,15 +13,28 @@
 .canvas-viewport {
   position: absolute;
   inset: 0;
-  cursor: grab;
+  cursor: auto;
   overflow: hidden;
   outline: none;
 }
 .canvas-viewport:focus-visible {
   box-shadow: inset var(--canvas-focus-ring);
 }
-.canvas-viewport:active {
-  cursor: grabbing;
+/* Shift held: pan affordance. While actively panning, force the closed hand over everything. */
+.canvas-viewport--pan-ready {
+  cursor: grab;
+}
+.canvas-viewport--panning,
+.canvas-viewport--panning * {
+  /* biome-ignore lint/complexity/noImportantStyles: override every child's cursor while panning. */
+  cursor: grabbing !important;
+}
+/* No text selection while Shift is held or panning (Shift is the pan modifier on the canvas). */
+.canvas-viewport--pan-ready,
+.canvas-viewport--pan-ready *,
+.canvas-viewport--panning,
+.canvas-viewport--panning * {
+  user-select: none;
 }
 
 .canvas-world {
@@ -34,8 +47,12 @@
 }
 
 [data-pane-frame="true"] {
+  /* contain isolates each pane's internal layout/paint without pinning a compositor layer. Do NOT add
+     a static will-change here: with many panes it forces one always-on GPU layer per pane, which the
+     browser evicts on tab-blur / when framed off-screen and must re-rasterize all at once on return
+     or DEFRAME (lag + half-painted panes). framer-motion adds will-change transiently while a pane is
+     actually animating, which is the only time it helps. */
   contain: layout paint style;
-  will-change: transform, opacity;
 }
 
 .canvas-command-bar {
@@ -101,7 +118,10 @@
   background: rgb(var(--shadow-rgb) / 0.74);
   box-shadow: var(--canvas-pane-shadow);
   outline: 1px solid rgb(var(--highlight-rgb) / 0.04);
-  backdrop-filter: blur(18px);
+  /* Deliberately NO backdrop-filter: a per-pane blur promotes one compositor layer per pane, and at
+     scale<1 with many panes the browser evicts those layer tiles on tab-hide and fails to re-raster
+     them on restore, so panes go blank until a repaint (confirmed by A/B). The 0.74 background above
+     keeps panes opaque without it. */
 }
 .canvas-pane-window[data-focused="true"] {
   border-color: rgb(var(--accent-rgb) / 0.78);
@@ -189,6 +209,7 @@
   width: var(--canvas-resize-size);
   height: var(--canvas-resize-size);
   cursor: nwse-resize;
+  user-select: none;
 }
 .canvas-pane-window__resize::after {
   position: absolute;

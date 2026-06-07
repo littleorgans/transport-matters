@@ -1,16 +1,19 @@
 import { create } from "zustand";
 import {
   type CanvasViewport,
+  CLOSE_DELAY_MS,
   createInitialEngineLayoutState,
   createPaneNode,
   type EngineLayoutState,
   focusNode,
   frameRectViewport,
+  markNodeClosing,
   nextPaneZ,
   type PaneId,
   removeNode,
   setViewport as setEngineViewport,
   updateNodeRect,
+  updateNodeRects,
   upsertNode,
   type ViewportBounds,
   type WorldRect,
@@ -28,10 +31,21 @@ const DEFAULT_BOUNDS: ViewportBounds = { width: 1600, height: 1000 };
 const SEED_RECT: WorldRect = { x: 48, y: 48, width: 360, height: 280 };
 const FRAME_MS = 320;
 const INITIAL_STRATEGY_ID = BUILT_IN_CONFIGS[0]?.strategyId ?? listLayouts()[0]?.id ?? "grid-fit";
+// Above this many open panes, unframe stops animating the camera and snaps straight to the overview:
+// flying the scaled world back out re-rasterizes every pane each frame, which janks at scale.
+export const UNFRAME_FLY_PANE_LIMIT = 60;
 
 interface FramingState {
-  framedPaneId: PaneId | null;
-  priorViewport: CanvasViewport | null;
+  // Single-level framing. `paneId` is the framed pane (null at the overview). `overview` is the camera
+  // snapshotted when framing began, restored on unframe. Framing a different pane while framed just
+  // moves the camera and keeps the original overview, so unframe always pans back out to where the
+  // user started. No nested frame history: stepping out of a frame returns to the overview, full stop.
+  paneId: PaneId | null;
+  overview: CanvasViewport | null;
+}
+
+export function framedPaneId(framing: FramingState): PaneId | null {
+  return framing.paneId;
 }
 
 export interface CanvasLabState {
@@ -126,32 +140,83 @@ function fitViewport(
   };
 }
 
+// Pure planner: run the active strategy over the open panes, write every planned rect back, and
+// (when fitToContent) recompute the fit camera. Shared by organize() and addPane() so the new pane
+// can be planned into its final slot within a single store commit. No get/set: callers own the set.
+function planLayout(
+  layout: EngineLayoutState,
+  bounds: ViewportBounds,
+  activeStrategyId: string,
+  params: LayoutParams,
+  fitToContent: boolean,
+): EngineLayoutState {
+  const { rects, frame } = resolveLayout(activeStrategyId).plan(
+    { paneIds: openPaneIds(layout), viewport: bounds },
+    params,
+  );
+  let next = updateNodeRects(layout, rects);
+  if (fitToContent) {
+    const fitted = fitViewport(rects, bounds, frame);
+    if (fitted) next = setEngineViewport(next, fitted);
+  }
+  return next;
+}
+
 export const useCanvasLabStore = create<CanvasLabState>()((set, get) => ({
   layout: createInitialEngineLayoutState(),
   bounds: DEFAULT_BOUNDS,
   activeStrategyId: INITIAL_STRATEGY_ID,
   params: seedParams(INITIAL_STRATEGY_ID),
   fitToContent: true,
-  framing: { framedPaneId: null, priorViewport: null },
+  framing: { paneId: null, overview: null },
   flying: false,
   nextPaneIndex: 0,
 
   addPane() {
     const index = get().nextPaneIndex + 1;
     const paneId = `lab-${index}`;
-    set((state) => ({
-      nextPaneIndex: index,
-      layout: focusNode(
+    // Born at its planned slot in a single commit: seed the node, then plan over the seeded layout
+    // in the SAME set. Two separate sets (seed then organize) would render the pane at SEED_RECT's
+    // top-left corner for one frame before springing to its slot (the "fly in from top-left").
+    set((state) => {
+      const seeded = focusNode(
         upsertNode(state.layout, createPaneNode(paneId, SEED_RECT, nextPaneZ(state.layout.nodes))),
         paneId,
-      ),
-    }));
-    get().organize();
+      );
+      return {
+        nextPaneIndex: index,
+        layout: planLayout(
+          seeded,
+          state.bounds,
+          state.activeStrategyId,
+          state.params,
+          state.fitToContent,
+        ),
+      };
+    });
   },
 
   closePane(paneId) {
-    set((state) => ({ layout: removeNode(state.layout, paneId) }));
-    get().organize();
+    // Two-phase close so the exit reads cleanly: mark the pane closing (PaneFrame fades + scales it
+    // out in place, neighbours hold their slots), then after the exit window remove it and re-plan so
+    // the survivors flow in to fill the gap. Mirrors the production canvasStore close protocol.
+    set((state) => ({ layout: markNodeClosing(state.layout, paneId) }));
+    window.setTimeout(() => {
+      set((state) => ({
+        // Reflow the survivors into the gap, but never refit the camera on close (fitToContent is
+        // forced off here regardless of the toggle). Removing a pane only shrinks the content box,
+        // so the current view already fits; a refit would just zoom in to chase the smaller content
+        // and snap abruptly, which reads as the canvas "zooming in then out". Organize/addPane still
+        // refit when content genuinely changes the fit.
+        layout: planLayout(
+          removeNode(state.layout, paneId),
+          state.bounds,
+          state.activeStrategyId,
+          state.params,
+          false,
+        ),
+      }));
+    }, CLOSE_DELAY_MS);
   },
 
   focusPane(paneId) {
@@ -180,20 +245,15 @@ export const useCanvasLabStore = create<CanvasLabState>()((set, get) => ({
   },
 
   organize() {
-    const { layout, bounds, activeStrategyId, params, fitToContent } = get();
-    const { rects, frame } = resolveLayout(activeStrategyId).plan(
-      { paneIds: openPaneIds(layout), viewport: bounds },
-      params,
-    );
-    let next = layout;
-    for (const [paneId, rect] of Object.entries(rects)) {
-      next = updateNodeRect(next, paneId, rect);
-    }
-    if (fitToContent) {
-      const fitted = fitViewport(rects, bounds, frame);
-      if (fitted) next = setEngineViewport(next, fitted);
-    }
-    set({ layout: next });
+    set((state) => ({
+      layout: planLayout(
+        state.layout,
+        state.bounds,
+        state.activeStrategyId,
+        state.params,
+        state.fitToContent,
+      ),
+    }));
   },
 
   setBounds(bounds) {
@@ -203,7 +263,8 @@ export const useCanvasLabStore = create<CanvasLabState>()((set, get) => ({
 
   framePane(paneId) {
     const { layout, bounds, framing } = get();
-    if (framing.framedPaneId === paneId) {
+    // Re-framing the current pane toggles it off.
+    if (framing.paneId === paneId) {
       get().unframe();
       return;
     }
@@ -212,28 +273,36 @@ export const useCanvasLabStore = create<CanvasLabState>()((set, get) => ({
     if (!node) return;
     startFly();
     set((state) => ({
-      framing: { framedPaneId: paneId, priorViewport: state.layout.viewport },
-      layout: setEngineViewport(state.layout, frameRectViewport(node.rect, bounds)),
+      framing: {
+        paneId,
+        // Snapshot the pre-framing camera only when entering from the overview; switching frames keeps
+        // it so unframe still pans back out to where the user started, not to the previous frame.
+        overview: state.framing.overview ?? state.layout.viewport,
+      },
+      // Frame the pane and select it (white border).
+      layout: focusNode(
+        setEngineViewport(state.layout, frameRectViewport(node.rect, bounds)),
+        paneId,
+      ),
     }));
   },
 
   unframe() {
-    const prior = get().framing.priorViewport;
-    if (!prior) {
-      set({ framing: { framedPaneId: null, priorViewport: null } });
-      return;
-    }
-    startFly();
+    const { framing, layout } = get();
+    if (framing.paneId === null) return;
+    // Pan back out to the overview captured when framing began. Above the pane limit the camera snaps
+    // instead of flying, since animating the scaled world back out re-rasterizes every pane per frame.
+    if (openPaneIds(layout).length <= UNFRAME_FLY_PANE_LIMIT) startFly();
     set((state) => ({
-      framing: { framedPaneId: null, priorViewport: null },
-      layout: setEngineViewport(state.layout, prior),
+      framing: { paneId: null, overview: null },
+      layout: setEngineViewport(state.layout, state.framing.overview ?? state.layout.viewport),
     }));
   },
 
   resetView() {
     startFly();
     set((state) => ({
-      framing: { framedPaneId: null, priorViewport: null },
+      framing: { paneId: null, overview: null },
       layout: setEngineViewport(state.layout, { panX: 0, panY: 0, scale: 1 }),
     }));
   },
@@ -264,7 +333,7 @@ export function resetCanvasLabStoreForTests(): void {
     activeStrategyId: INITIAL_STRATEGY_ID,
     params: seedParams(INITIAL_STRATEGY_ID),
     fitToContent: true,
-    framing: { framedPaneId: null, priorViewport: null },
+    framing: { paneId: null, overview: null },
     flying: false,
     nextPaneIndex: 0,
   });
