@@ -31,21 +31,19 @@ const SEED_RECT: WorldRect = { x: 48, y: 48, width: 360, height: 280 };
 const FRAME_MS = 320;
 const INITIAL_STRATEGY_ID = BUILT_IN_CONFIGS[0]?.strategyId ?? listLayouts()[0]?.id ?? "grid-fit";
 
-interface FramingFrame {
-  paneId: PaneId;
-  priorViewport: CanvasViewport;
-}
-
 interface FramingState {
-  // Stack of active frames. Framing a pane pushes the current viewport; unframe pops one level, so
-  // nested frames step back in order: frame 3, frame 4, unframe -> the framed-3 view, unframe -> the
-  // overview. A single slot loses the original viewport the moment a second pane is framed.
-  stack: FramingFrame[];
+  // LIFO stack of framed paneIds. Framing a pane pushes it; unframe pops one level. Each framed view
+  // is RE-DERIVED from the pane's current rect on the way back, never restored from a snapshot, so a
+  // pane the user panned away from (or resized) while framed still steps back into view. Only the
+  // pre-framing camera is snapshotted: `overview`, captured when the first frame is pushed and
+  // restored when the last is popped. Null when nothing is framed.
+  stack: PaneId[];
+  overview: CanvasViewport | null;
 }
 
 // The currently framed pane is the top of the stack (null when nothing is framed).
 export function framedPaneId(framing: FramingState): PaneId | null {
-  return framing.stack[framing.stack.length - 1]?.paneId ?? null;
+  return framing.stack[framing.stack.length - 1] ?? null;
 }
 
 export interface CanvasLabState {
@@ -171,7 +169,7 @@ export const useCanvasLabStore = create<CanvasLabState>()((set, get) => ({
   activeStrategyId: INITIAL_STRATEGY_ID,
   params: seedParams(INITIAL_STRATEGY_ID),
   fitToContent: true,
-  framing: { stack: [] },
+  framing: { stack: [], overview: null },
   flying: false,
   nextPaneIndex: 0,
 
@@ -272,31 +270,44 @@ export const useCanvasLabStore = create<CanvasLabState>()((set, get) => ({
     startFly();
     set((state) => ({
       framing: {
-        stack: [...state.framing.stack, { paneId, priorViewport: state.layout.viewport }],
+        stack: [...state.framing.stack, paneId],
+        // Snapshot the pre-framing camera the first time we frame; deeper frames keep it untouched
+        // so the final unframe returns to where the user started, not to an intermediate frame.
+        overview: state.framing.overview ?? state.layout.viewport,
       },
-      // Select the framed pane (white border).
-      layout: focusNode(setEngineViewport(state.layout, frameRectViewport(node.rect, bounds)), paneId),
+      // Frame the pane and select it (white border).
+      layout: focusNode(
+        setEngineViewport(state.layout, frameRectViewport(node.rect, bounds)),
+        paneId,
+      ),
     }));
   },
 
   unframe() {
-    const { stack } = get().framing;
-    const top = stack[stack.length - 1];
-    if (!top) return;
-    // Pop one level: restore the viewport captured when this pane was framed. With nested frames
-    // that steps back to the previously framed pane; the last pop returns to the overview.
+    if (get().framing.stack.length === 0) return;
     startFly();
     set((state) => {
       const nextStack = state.framing.stack.slice(0, -1);
-      const restored = setEngineViewport(state.layout, top.priorViewport);
-      // Re-select the pane we return to (the new top frame) so stepping back highlights it (white
-      // border). Derived from the stack, not a captured prior focus: a frame button's pointerdown
-      // focuses the pane before framePane runs, which would corrupt a captured value. At the overview
-      // (empty stack) the last-framed pane keeps the selection.
-      const returnTo = nextStack[nextStack.length - 1]?.paneId;
+      const returnTo = nextStack[nextStack.length - 1];
+      // Stepping back to an underlying frame: RE-FRAME that pane from its current rect so it is
+      // actually on-screen, even if the camera was panned (or the pane moved/resized) since. A
+      // captured snapshot would restore wherever the camera last sat and leave the re-selected pane
+      // off-screen. Only the last pop restores the snapshotted pre-framing overview.
+      let restored = state.layout;
+      if (returnTo) {
+        const returnNode = state.layout.nodes[returnTo];
+        if (returnNode) {
+          restored = focusNode(
+            setEngineViewport(state.layout, frameRectViewport(returnNode.rect, state.bounds)),
+            returnTo,
+          );
+        }
+      } else {
+        restored = setEngineViewport(state.layout, state.framing.overview ?? state.layout.viewport);
+      }
       return {
-        framing: { stack: nextStack },
-        layout: returnTo ? focusNode(restored, returnTo) : restored,
+        framing: { stack: nextStack, overview: returnTo ? state.framing.overview : null },
+        layout: restored,
       };
     });
   },
@@ -304,7 +315,7 @@ export const useCanvasLabStore = create<CanvasLabState>()((set, get) => ({
   resetView() {
     startFly();
     set((state) => ({
-      framing: { stack: [] },
+      framing: { stack: [], overview: null },
       layout: setEngineViewport(state.layout, { panX: 0, panY: 0, scale: 1 }),
     }));
   },
@@ -335,7 +346,7 @@ export function resetCanvasLabStoreForTests(): void {
     activeStrategyId: INITIAL_STRATEGY_ID,
     params: seedParams(INITIAL_STRATEGY_ID),
     fitToContent: true,
-    framing: { stack: [] },
+    framing: { stack: [], overview: null },
     flying: false,
     nextPaneIndex: 0,
   });

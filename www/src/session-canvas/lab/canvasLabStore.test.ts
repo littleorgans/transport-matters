@@ -12,7 +12,7 @@ describe("canvasLabStore framing", () => {
 
     store().framePane("lab-1");
     expect(framedPaneId(store().framing)).toBe("lab-1");
-    expect(store().framing.stack[0]?.priorViewport).toEqual(priorViewport);
+    expect(store().framing.overview).toEqual(priorViewport); // pre-framing camera snapshotted
     expect(store().layout.viewport).not.toEqual(priorViewport); // camera moved
 
     store().framePane("lab-1"); // toggle -> unframe
@@ -47,6 +47,27 @@ describe("canvasLabStore framing", () => {
     expect(framedPaneId(store().framing)).toBeNull();
     expect(store().layout.viewport).toEqual(overview);
     expect(store().layout.focusedPaneId).toBe("lab-3");
+  });
+
+  it("re-frames the underlying pane on unframe even after the camera was panned away", () => {
+    // Regression: frame A, manually pan the camera elsewhere, frame B, unframe. Stepping back to A
+    // must re-frame A from its rect so it is on-screen. Restoring the viewport captured when B was
+    // framed (the panned-away camera) would leave the re-selected A off-screen.
+    resetCanvasLabStoreForTests();
+    for (let index = 0; index < 4; index += 1) store().addPane(); // lab-1 .. lab-4
+
+    store().framePane("lab-4");
+    const framed4 = store().layout.viewport;
+
+    store().setViewport({ panX: -5000, panY: -5000, scale: 0.5 }); // user pans far from lab-4
+    expect(store().layout.viewport).not.toEqual(framed4);
+
+    store().framePane("lab-1"); // frame a second pane from the panned-away camera
+    store().unframe(); // pop lab-1 -> must re-frame lab-4, not restore the panned-away camera
+
+    expect(framedPaneId(store().framing)).toBe("lab-4");
+    expect(store().layout.focusedPaneId).toBe("lab-4");
+    expect(store().layout.viewport).toEqual(framed4); // lab-4 is framed and visible again
   });
 
   it("does not frame when only one pane is open", () => {
