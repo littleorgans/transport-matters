@@ -100,19 +100,23 @@ function boundingBox(rects: Record<PaneId, WorldRect>): WorldRect | null {
   return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
 }
 
-// Lab-side Fit to content: zoom the camera so the planned bounding box fits inside the viewport,
-// only when it would otherwise overflow. Uses the SAME shared fitScale the grid-fit planner
-// simulates when choosing its column count, so the two can never drift. Strategies never emit
-// camera data (seam: strategies own rects, the camera owns the transform). setEngineViewport
-// applies the engine clampScale bounds when the result is committed.
+// Lab-side Fit to content: zoom the camera so the planned content fits inside the viewport, only
+// when it would otherwise overflow. Frames the strategy's `frame` rect when it supplies one (e.g.
+// grid-fit pads its grid by `margin` so that margin survives as on-screen breathing room) and falls
+// back to the rect bounding box otherwise. Uses the SAME shared fitScale the planner simulates when
+// choosing its column count, so the two can never drift. Strategies never emit camera transforms
+// (seam: strategies own geometry, the camera owns the transform). setEngineViewport applies the
+// engine clampScale bounds when the result is committed.
 function fitViewport(
   rects: Record<PaneId, WorldRect>,
   bounds: ViewportBounds,
+  frame?: WorldRect,
 ): CanvasViewport | null {
-  const box = boundingBox(rects);
-  if (!box) return null;
+  const box = frame ?? boundingBox(rects);
+  if (!box) return null; // no panes: leave the camera untouched
+  // fitScale caps at 1 (never magnify). Always recompute and commit so a zoomed-out transform from a
+  // smaller bounds/pane-count can never persist as stale slack once the content fits again.
   const scale = fitScale(box.width, box.height, bounds);
-  if (scale >= 1) return null; // already fits; do not zoom in
   const centerX = box.x + box.width / 2;
   const centerY = box.y + box.height / 2;
   return {
@@ -177,7 +181,7 @@ export const useCanvasLabStore = create<CanvasLabState>()((set, get) => ({
 
   organize() {
     const { layout, bounds, activeStrategyId, params, fitToContent } = get();
-    const { rects } = resolveLayout(activeStrategyId).plan(
+    const { rects, frame } = resolveLayout(activeStrategyId).plan(
       { paneIds: openPaneIds(layout), viewport: bounds },
       params,
     );
@@ -186,7 +190,7 @@ export const useCanvasLabStore = create<CanvasLabState>()((set, get) => ({
       next = updateNodeRect(next, paneId, rect);
     }
     if (fitToContent) {
-      const fitted = fitViewport(rects, bounds);
+      const fitted = fitViewport(rects, bounds, frame);
       if (fitted) next = setEngineViewport(next, fitted);
     }
     set({ layout: next });

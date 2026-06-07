@@ -146,6 +146,12 @@ export function planGridFit(input: PlanInput, params: GridFitParams): PlanResult
   const usableW = viewport.width - 2 * margin;
   const lastRowIndex = rows - 1;
 
+  // The frame is the grid padded by `margin` on every side, so Fit-to-content keeps that margin as
+  // on-screen breathing room instead of zooming the grid flush to the viewport edges.
+  const gridW = cols * cellW + (cols - 1) * gap;
+  const gridH = rows * cellH + (rows - 1) * gap;
+  const frame: WorldRect = { x: 0, y: 0, width: gridW + 2 * margin, height: gridH + 2 * margin };
+
   const rects: Record<string, WorldRect> = {};
   paneIds.forEach((paneId, index) => {
     const row = Math.floor(index / cols);
@@ -162,7 +168,7 @@ export function planGridFit(input: PlanInput, params: GridFitParams): PlanResult
     };
   });
 
-  return { rects, reason: `grid-fit ${cols}x${rows}` };
+  return { rects, reason: `grid-fit ${cols}x${rows}`, frame };
 }
 
 registerLayout({

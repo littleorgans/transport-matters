@@ -70,12 +70,24 @@ describe("canvasLabStore setParam validation", () => {
 });
 
 describe("canvasLabStore fit to content", () => {
-  it("zooms the camera to fit the overflowing grid bounding box", () => {
+  it("zooms the camera to fit the margin-padded grid frame", () => {
     resetCanvasLabStoreForTests();
     for (let index = 0; index < 12; index += 1) store().addPane();
     store().setBounds({ width: 900, height: 1000 });
-    // The zoom-aware selector picks 3x4 (gridW 1008 x gridH 1032); the lab fits that bbox into the
-    // 900x1000 viewport via the SAME shared fitScale: min(1, 900/1008, 1000/1032) = 900/1008 ≈ 0.893.
-    expect(store().layout.viewport.scale).toBeCloseTo(0.893, 2);
+    // The selector picks 3x4 (gridW 1008 x gridH 1032). The lab fits the frame — the grid padded by
+    // margin (48) on every side, 1104 x 1128 — so that margin survives as on-screen breathing room:
+    // min(1, 900/1104, 1000/1128) = 900/1104 ≈ 0.815.
+    expect(store().layout.viewport.scale).toBeCloseTo(0.815, 2);
+  });
+
+  it("resets a stale zoom-out once the content fits again (no lingering slack)", () => {
+    resetCanvasLabStoreForTests();
+    for (let index = 0; index < 12; index += 1) store().addPane();
+    store().setBounds({ width: 900, height: 1000 }); // overflow -> scale < 1
+    expect(store().layout.viewport.scale).toBeLessThan(1);
+    store().setBounds({ width: 2200, height: 1400 }); // now fits -> must snap back to 1, centered
+    expect(store().layout.viewport.scale).toBe(1);
+    expect(store().layout.viewport.panX).toBe(0);
+    expect(store().layout.viewport.panY).toBe(0);
   });
 });
