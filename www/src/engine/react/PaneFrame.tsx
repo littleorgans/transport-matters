@@ -55,6 +55,7 @@ export function PaneFrame({
   // drag start; the live rect is computed off the cumulative pointer movement from it, not per-tick
   // deltas, so a fixed store rect can never drift the accumulation.
   const [liveRect, setLiveRect] = useState<WorldRect | null>(null);
+  const moveBase = useRef<WorldRect | null>(null);
   const resizeBase = useRef<WorldRect | null>(null);
 
   const closing = node.lifecycle === "closing";
@@ -75,22 +76,26 @@ export function PaneFrame({
   const renderRect = liveRect ?? node.rect;
 
   const bindDrag = useDrag(
-    ({ movement: [moveX, moveY], delta: [deltaX, deltaY], event, first, last, shiftKey }) => {
+    ({ movement: [moveX, moveY], event, first, last, shiftKey }) => {
       // Shift+drag belongs to the canvas (pan), not the pane: leave the pane where it is.
       if (shiftKey) return;
       const target = event.target;
       if (first) dragMode.current = dragModeForTarget(target);
       if (!dragMode.current) return;
       event.stopPropagation();
-      const scale = currentWorldScale(event.currentTarget);
+      const scale = currentWorldScale(target);
       if (first) {
         setDragging(true);
         onFocus(node.paneId);
+        if (dragMode.current === "move") moveBase.current = node.rect;
         if (dragMode.current === "resize") resizeBase.current = node.rect;
       }
       if (dragMode.current === "move") {
-        // Move commits live: position is cheap and the pane must track the cursor as it travels.
-        onMove(node.paneId, moveRect(node.rect, deltaX / scale, deltaY / scale));
+        // Move commits live: position is cheap and the pane must track the cursor as it travels. Off
+        // cumulative movement from the drag-start base, not per-tick deltas, so render cadence cannot
+        // drift the grabbed point away from the pointer.
+        const base = moveBase.current ?? node.rect;
+        onMove(node.paneId, moveRect(base, moveX / scale, moveY / scale));
       } else {
         // Resize tracks locally (liveRect drives the box 1:1) and commits to the store only on
         // release, so content holds its pre-drag layout and reflows once. Off cumulative movement
@@ -102,6 +107,7 @@ export function PaneFrame({
       }
       if (last) {
         dragMode.current = null;
+        moveBase.current = null;
         resizeBase.current = null;
         setLiveRect(null);
         setDragging(false);
