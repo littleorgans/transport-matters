@@ -22,6 +22,8 @@ export type SocketFactory = (url: string) => WebSocket;
 interface OpenTerminalSocketOptions {
   url?: string;
   socketFactory?: SocketFactory;
+  /** Connection lifecycle, so the pane can surface a refused/closed state. */
+  onStatus?: (status: "open" | "closed", info?: { code: number; reason: string }) => void;
 }
 
 const WEBSOCKET_OPEN = 1;
@@ -34,19 +36,21 @@ function toBytes(data: ArrayBuffer | ArrayBufferView): Uint8Array {
   return new Uint8Array(data);
 }
 
-/** Same-origin ws(s):// URL for the backend terminal endpoint. */
+/** Same-origin ws(s):// URL for the backend terminal endpoint, seeded with the PTY size. */
 export function terminalSocketUrl(
+  cols: number,
+  rows: number,
   location: { protocol: string; host: string } = window.location,
 ): string {
   const scheme = location.protocol === "https:" ? "wss:" : "ws:";
-  return `${scheme}//${location.host}/api/v1/terminal`;
+  return `${scheme}//${location.host}/api/v1/terminal?cols=${cols}&rows=${rows}`;
 }
 
 export function openTerminalSocket(
   term: TerminalIO,
   options: OpenTerminalSocketOptions = {},
 ): TerminalSocket {
-  const url = options.url ?? terminalSocketUrl();
+  const url = options.url ?? terminalSocketUrl(80, 24);
   const createSocket = options.socketFactory ?? ((target) => new WebSocket(target));
   const socket = createSocket(url);
   socket.binaryType = "arraybuffer";
@@ -61,14 +65,25 @@ export function openTerminalSocket(
       outbox.push(payload);
       return;
     }
-    socket.send(payload);
+    // Drop input once the socket is closing/closed; calling send() on a
+    // non-OPEN socket throws InvalidStateError (e.g. typing after the PTY exits).
+    if (socket.readyState === WEBSOCKET_OPEN) socket.send(payload);
   };
 
   socket.onopen = () => {
     const queued = outbox ?? [];
     outbox = null;
     for (const payload of queued) socket.send(payload);
+    options.onStatus?.("open");
   };
+
+  socket.onclose = (event) => {
+    options.onStatus?.("closed", { code: event.code, reason: event.reason });
+  };
+
+  // A failed handshake (server down, refused) may fire onerror without a useful
+  // close code; surface it as a generic abnormal close so the pane still reacts.
+  socket.onerror = () => options.onStatus?.("closed", { code: 1006, reason: "error" });
 
   socket.onmessage = (event) => {
     // Binary frames are raw PTY output; a string frame would be an out-of-band
@@ -87,8 +102,12 @@ export function openTerminalSocket(
     },
     close() {
       subscription.dispose();
+      // Detach handlers first so the deliberate teardown never reports as a
+      // refused/closed connection to the pane.
       socket.onopen = null;
       socket.onmessage = null;
+      socket.onclose = null;
+      socket.onerror = null;
       socket.close();
     },
   };

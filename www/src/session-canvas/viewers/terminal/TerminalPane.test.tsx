@@ -1,4 +1,4 @@
-import { render } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TerminalPane } from "./TerminalPane";
 
@@ -67,7 +67,18 @@ describe("TerminalPane", () => {
     const socket = only(sockets);
     expect(terminal.loadAddon).toHaveBeenCalledTimes(1);
     expect(terminal.open).toHaveBeenCalledTimes(1);
-    expect(socket.url).toMatch(/\/api\/v1\/terminal$/);
+    expect(socket.url).toMatch(/\/api\/v1\/terminal\?cols=80&rows=24$/);
+  });
+
+  it("surfaces a refused state when the socket is rejected (close 1008)", () => {
+    render(<TerminalPane />);
+    const socket = only(sockets);
+
+    act(() => {
+      socket.onclose?.({ code: 1008, reason: "origin not allowed" });
+    });
+
+    expect(screen.getByRole("alert")).toHaveTextContent(/refused/i);
   });
 
   it("sends an initial resize control frame sized to the terminal", () => {

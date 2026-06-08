@@ -1,8 +1,8 @@
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
-import { type ReactElement, useEffect, useRef } from "react";
-import { openTerminalSocket } from "./terminalSocket";
+import { type ReactElement, useEffect, useRef, useState } from "react";
+import { openTerminalSocket, terminalSocketUrl } from "./terminalSocket";
 import "./terminal-pane.css";
 
 /**
@@ -14,6 +14,9 @@ import "./terminal-pane.css";
  */
 export function TerminalPane(): ReactElement {
   const surfaceRef = useRef<HTMLDivElement>(null);
+  // Non-null once the socket closes involuntarily (refused / lost). The
+  // deliberate unmount close detaches the handler, so it never lands here.
+  const [closedCode, setClosedCode] = useState<number | null>(null);
 
   useEffect(() => {
     const surface = surfaceRef.current;
@@ -33,7 +36,14 @@ export function TerminalPane(): ReactElement {
     term.open(surface);
     fit.fit();
 
-    const socket = openTerminalSocket(term);
+    let disposed = false;
+    const socket = openTerminalSocket(term, {
+      url: terminalSocketUrl(term.cols, term.rows),
+      onStatus: (status, info) => {
+        if (disposed) return;
+        setClosedCode(status === "open" ? null : (info?.code ?? 1006));
+      },
+    });
     socket.sendResize(term.cols, term.rows);
 
     // Re-fit when the pane is resized so the backend PTY tracks the viewport.
@@ -44,6 +54,7 @@ export function TerminalPane(): ReactElement {
     observer.observe(surface);
 
     return () => {
+      disposed = true;
       observer.disconnect();
       socket.close();
       term.dispose();
@@ -53,8 +64,19 @@ export function TerminalPane(): ReactElement {
   return (
     <div className="terminal-pane">
       <div className="terminal-pane__surface" ref={surfaceRef} />
+      {closedCode === null ? null : (
+        <p className="terminal-pane__status" role="alert">
+          {closedMessage(closedCode)}
+        </p>
+      )}
     </div>
   );
+}
+
+/** Human-readable reason for an involuntary socket close. */
+function closedMessage(code: number): string {
+  if (code === 1008) return "Terminal connection refused (origin not allowed).";
+  return "Terminal connection closed. Reopen the pane to retry.";
 }
 
 /** A canvas cannot resolve CSS variables, so read the token off the host. */
