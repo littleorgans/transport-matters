@@ -5,8 +5,14 @@ from typing import TYPE_CHECKING, Any
 import pytest
 
 from transport_matters.session.models import ChildSessionRow, EventRow
-from transport_matters.session.test_foundation import event, root_session
+from transport_matters.session.test_foundation import event, root_session, tool_result_event
 from transport_matters.session.timeline import project_timeline
+from transport_matters.session.timeline_models import (
+    SessionUpdatedStreamEvent,
+    SubagentUpdatedStreamEvent,
+    TimelineItemStreamEvent,
+)
+from transport_matters.session.timeline_stream import project_timeline_stream_envelopes
 
 if TYPE_CHECKING:
     from transport_matters.session.timeline_models import TimelineResponse
@@ -63,6 +69,66 @@ def test_projector_maps_turn_rows_to_message_items() -> None:
             },
         }
     ]
+
+
+def test_stream_projection_reuses_backlog_item_and_resource_shapes() -> None:
+    session = root_session()
+    rows = [tool_result_event(0, text="stdout"), tool_result_event(1, text="stderr")]
+    backlog = project_timeline(session=session, events=rows)
+
+    envelopes = project_timeline_stream_envelopes(
+        session=session,
+        events=rows,
+        emitted_at="2026-06-06T00:00:00+00:00",
+    )
+
+    resource_id = "tool-output:s1:0:0"
+    assert set(backlog.resources) == {resource_id, "tool-output:s1:1:0"}
+    assert len(envelopes) == 4
+    assert envelopes[0].id == "timeline:s1:0"
+    assert envelopes[0].revision == 0
+    assert envelopes[0].event == TimelineItemStreamEvent(
+        item=backlog.items[0],
+        resources={resource_id: backlog.resources[resource_id]},
+    )
+
+
+def test_stream_projection_emits_session_update_envelope_with_revision() -> None:
+    session = root_session()
+    backlog = project_timeline(session=session, events=[])
+
+    envelopes = project_timeline_stream_envelopes(
+        session=session,
+        events=[],
+        include_session_update=True,
+        emitted_at="2026-06-06T00:00:00+00:00",
+    )
+
+    assert len(envelopes) == 1
+    assert envelopes[0].id == "session:s1"
+    assert envelopes[0].revision == int(session.started_at.timestamp() * 1000)
+    assert envelopes[0].event == SessionUpdatedStreamEvent(session=backlog.session)
+
+
+def test_stream_projection_emits_subagent_update_envelope_with_revision() -> None:
+    session = root_session()
+    child = _child_session()
+    backlog = project_timeline(session=session, events=[event(0)], child_sessions=[child])
+
+    envelopes = project_timeline_stream_envelopes(
+        session=session,
+        events=[event(0)],
+        child_sessions=[child],
+        emitted_at="2026-06-06T00:00:00+00:00",
+    )
+    subagent_envelope = next(
+        item for item in envelopes if item.id == "subagent:s1:subagent-session:child"
+    )
+
+    assert subagent_envelope.revision == 2
+    assert subagent_envelope.event == SubagentUpdatedStreamEvent(
+        subagent=backlog.subagents["subagent-session:child"]
+    )
 
 
 @pytest.mark.parametrize(

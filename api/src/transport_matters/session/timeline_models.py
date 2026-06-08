@@ -255,3 +255,40 @@ class TimelineResponse(TimelineModel):
     subagents: dict[str, SubagentSummary]
     layout_hints: list[LayoutHint]
     next_from_seq: int | None
+
+
+class TimelineItemStreamEvent(TimelineModel):
+    kind: Literal["timeline-item"] = "timeline-item"
+    item: TimelineItem
+    resources: dict[str, ResourceSummary] = Field(default_factory=dict)
+
+
+class SubagentUpdatedStreamEvent(TimelineModel):
+    kind: Literal["subagent-updated"] = "subagent-updated"
+    subagent: SubagentSummary
+
+
+class ResourceUpdatedStreamEvent(TimelineModel):
+    kind: Literal["resource-updated"] = "resource-updated"
+    resource: ResourceSummary
+
+
+class SessionUpdatedStreamEvent(TimelineModel):
+    kind: Literal["session-updated"] = "session-updated"
+    session: SessionHeader
+
+
+TimelineStreamEventType = (
+    TimelineItemStreamEvent
+    | SubagentUpdatedStreamEvent
+    | ResourceUpdatedStreamEvent
+    | SessionUpdatedStreamEvent
+)
+TimelineStreamEvent = Annotated[TimelineStreamEventType, Field(discriminator="kind")]
+
+
+class TimelineStreamEnvelope(TimelineModel):
+    id: str
+    revision: int
+    emitted_at: str
+    event: TimelineStreamEvent

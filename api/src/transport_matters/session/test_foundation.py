@@ -68,6 +68,25 @@ def event(seq: int = 1, *, session_id: str = "s1", search_text: str = "alpha bet
     )
 
 
+def tool_result_event(
+    seq: int = 1, *, session_id: str = "s1", text: str = "tool output"
+) -> EventRow:
+    return event(seq, session_id=session_id, search_text=text).model_copy(
+        update={
+            "ir": {
+                "parts": [
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": f"tool-{seq}",
+                        "content": [{"type": "text", "text": text}],
+                    }
+                ]
+            },
+            "search_text": text,
+        }
+    )
+
+
 def test_schema_round_trips_session_event_and_artifact(dao: SessionDao) -> None:
     inserted_session = dao.upsert_session(root_session())
     inserted_event = dao.insert_event(event(search_text="generated microscope image"))
