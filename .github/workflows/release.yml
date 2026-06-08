@@ -118,6 +118,7 @@ jobs:
           uv run ruff check src/
           uv run ruff format --check src/
           uv run mypy src/
+          uv run python -m pytest src/transport_matters/session/test_migrate.py -q
           uv run pytest --cov=transport_matters --cov-report=term
 
       - name: Build wheel + sdist
