@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import asyncio
 import json
-from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, cast
 
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+from transport_matters.api.v1.session_test_support import session_client as _client
 from transport_matters.config import get_settings
 from transport_matters.main import create_app, lifespan
 from transport_matters.session.dao import AsyncSessionDao
@@ -18,40 +18,17 @@ from transport_matters.session.listen import (
 )
 from transport_matters.session.pool import async_connect, create_async_pool
 from transport_matters.session.test_foundation import event, root_session
-from transport_matters.session.testing import TestDb
 from transport_matters.session.timeline import project_timeline
 
 from .session_routes import _event_stream, _timeline_stream
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Callable, Iterator
+    from collections.abc import Callable
 
     from psycopg import AsyncConnection
     from psycopg.rows import DictRow
 
-
-@pytest.fixture
-def test_db() -> Iterator[TestDb]:
-    db = TestDb.create()
-    try:
-        yield db
-    finally:
-        db.drop()
-
-
-@asynccontextmanager
-async def _client(test_db: TestDb) -> AsyncIterator[AsyncClient]:
-    pool = create_async_pool(test_db.database_url, min_size=1, max_size=4)
-    await pool.open()
-    app = create_app()
-    app.state.session_pool = pool
-    app.state.session_event_hub = SessionEventHub()
-    transport = ASGITransport(app=app)
-    try:
-        async with AsyncClient(transport=transport, base_url="http://test") as client:
-            yield client
-    finally:
-        await pool.close()
+    from transport_matters.session.testing import TestDb
 
 
 def _contains_key(value: object, key: str) -> bool:

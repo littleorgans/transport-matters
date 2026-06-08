@@ -6,12 +6,15 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from transport_matters import config
+from transport_matters.api.v1.session_test_support import create_test_db
 from transport_matters.main import create_app
 from transport_matters.storage import init_storage, reset_storage
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Generator
     from pathlib import Path
+
+    from transport_matters.session.testing import TestDb
 
 
 @pytest.fixture(autouse=True)
@@ -51,3 +54,8 @@ async def client() -> AsyncGenerator[AsyncClient]:
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         yield ac
+
+
+@pytest.fixture
+def test_db() -> Generator[TestDb]:
+    yield from create_test_db()

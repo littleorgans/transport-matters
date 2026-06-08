@@ -13,6 +13,8 @@ from pydantic import BaseModel, ConfigDict
 
 from transport_matters.session.dao import AsyncSessionDao
 from transport_matters.session.listen import SessionEventHub
+from transport_matters.session.resource_content import load_resource_content
+from transport_matters.session.resource_content_models import ResourceContentResponse
 from transport_matters.session.timeline import project_timeline, required_timeline_anchor_before_seq
 from transport_matters.session.timeline_models import TimelineResponse, TimelineStreamEnvelope
 from transport_matters.session.timeline_stream import project_timeline_stream_envelopes
@@ -195,6 +197,32 @@ async def get_session_timeline(
         page_from_seq=from_seq,
         next_from_seq=next_from_seq,
     )
+
+
+@router.get(
+    "/sessions/{session_id}/resources/{resource_id}",
+    response_model=ResourceContentResponse,
+)
+async def get_session_resource(
+    session_id: str,
+    resource_id: str,
+    pool: Any = Depends(_session_pool),
+    owner: Annotated[str, Query(min_length=1)] = DEFAULT_OWNER,
+    range_start: Annotated[int | None, Query(ge=0)] = None,
+    range_end: Annotated[int | None, Query(ge=0)] = None,
+    include_debug: bool = False,
+) -> ResourceContentResponse:
+    async with pool.connection() as conn:
+        session = await _require_session(conn, session_id, owner)
+        return await load_resource_content(
+            conn,
+            session=session,
+            owner=owner,
+            resource_id=resource_id,
+            range_start=range_start,
+            range_end=range_end,
+            include_debug=include_debug,
+        )
 
 
 @router.get("/sessions/{session_id}/events/stream")
