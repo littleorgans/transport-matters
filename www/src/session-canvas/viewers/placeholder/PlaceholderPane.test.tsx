@@ -1,6 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { PaneRecord, ViewerProps } from "../../model/paneRecords";
+import { titleForRef } from "../registry";
 import { PlaceholderPane, type PlaceholderPaneRef } from "./PlaceholderPane";
 
 function placeholderProps(ref: PlaceholderPaneRef, title: string): ViewerProps<PlaceholderPaneRef> {
@@ -29,7 +30,7 @@ function placeholderProps(ref: PlaceholderPaneRef, title: string): ViewerProps<P
 }
 
 describe("PlaceholderPane", () => {
-  it("renders subagent identity from the new SubagentRef shape", () => {
+  it("renders subagent identity and the real child-session title from the new SubagentRef shape", () => {
     const ref: PlaceholderPaneRef = {
       kind: "subagent-timeline",
       owner: "local",
@@ -37,12 +38,15 @@ describe("PlaceholderPane", () => {
       subagentId: "sub-xyz",
       parentSessionId: "parent-123",
       parentSeq: 7,
+      title: "Investigate auth regression",
     };
 
-    render(<PlaceholderPane {...placeholderProps(ref, "Subagent sub-xyz")} />);
+    // Title flows ref -> registry titleForRef -> pane.title -> rendered heading.
+    render(<PlaceholderPane {...placeholderProps(ref, titleForRef(ref))} />);
 
-    // Registry-owned title is rendered as the pane heading.
-    expect(screen.getByText("Subagent sub-xyz")).toBeInTheDocument();
+    expect(screen.getByText("Investigate auth regression")).toBeInTheDocument();
+    // Not the id-fabricated title the registry used before the ref carried a title.
+    expect(screen.queryByText(/^Subagent sub-xyz/)).not.toBeInTheDocument();
     expect(screen.getByText("sub-xyz")).toBeInTheDocument();
     expect(screen.getByText("sess-abc")).toBeInTheDocument();
     expect(screen.getByText("parent-123")).toBeInTheDocument();
@@ -57,10 +61,11 @@ describe("PlaceholderPane", () => {
       subagentId: "sub",
       parentSessionId: "p",
       parentSeq: null,
+      title: "Child task",
     };
 
     expect(() =>
-      render(<PlaceholderPane {...placeholderProps(ref, "Subagent sub")} />),
+      render(<PlaceholderPane {...placeholderProps(ref, titleForRef(ref))} />),
     ).not.toThrow();
     expect(screen.queryByText("null")).not.toBeInTheDocument();
   });

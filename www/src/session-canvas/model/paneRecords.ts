@@ -34,6 +34,7 @@ export type PaneContentRef =
       subagentId: string;
       parentSessionId: string;
       parentSeq: number | null;
+      title: string;
     }
   | { kind: "resource"; owner: "local"; sessionId: string; resourceId: string }
   | {
