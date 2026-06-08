@@ -124,7 +124,9 @@ class ClaudeAdapter(TranscriptAdapter):
             cli=binding.cli or self.cli,
             role=message.get("role", record["type"]),
             seq=ctx.seq,
-            is_sidechain=bool(record.get("isSidechain", False)),
+            is_sidechain=False
+            if binding.parent_session_id is not None
+            else bool(record.get("isSidechain", False)),
             parent_id=record.get("parentUuid"),
             ts=record.get("timestamp"),
             model=message.get("model"),

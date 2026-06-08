@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from transport_matters.index.adapters import get_adapter
@@ -14,13 +15,18 @@ from transport_matters.index.adapters.base import (
     decode_source_descriptor,
 )
 from transport_matters.index.sessions import synth_session_id
+from transport_matters.index.subagents import (
+    SubagentSpawnLink,
+    discover_child_transcripts,
+    iter_without_replayed_prefix,
+    record_subagent_spawn_links,
+)
 from transport_matters.index.tailer import iter_complete_records
 from transport_matters.storage.disk_layout import DiskStorageLayout
 from transport_matters.storage.session_facts import OwnedSessionFacts, read_run_session_facts
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
-    from pathlib import Path
 
 ReplayRecord = tuple[SessionBinding, RawRecord, int, FileTailSource]
 _RUN_INDEX_GLOB = "*/*/*/index.jsonl"
@@ -79,6 +85,27 @@ def _replay_owned(root: Path, owned: OwnedSessionFacts) -> Iterator[ReplayRecord
     )
     for seq, record in enumerate(records):
         yield binding, record, seq, source
+    links: dict[str, SubagentSpawnLink] = {}
+    pending_codex_calls: dict[str, SubagentSpawnLink] = {}
+    record_subagent_spawn_links(
+        provider=binding.provider,
+        records=records,
+        start_seq=0,
+        links=links,
+        pending_codex_calls=pending_codex_calls,
+    )
+    for child in discover_child_transcripts(
+        parent_binding=binding,
+        parent_source=source,
+        spawn_links=links,
+    ):
+        child_path = Path(child.source.path)
+        if not child_path.exists():
+            continue
+        child_records, _child_consumed = iter_complete_records(child_path.read_bytes())
+        filtered = iter_without_replayed_prefix(child_records, child.skip_until_user_text)
+        for seq, record in enumerate(filtered):
+            yield child.binding, record, seq, child.source
 
 
 def _session_id(owned: OwnedSessionFacts, provider: str) -> str:

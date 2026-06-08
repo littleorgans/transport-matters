@@ -14,7 +14,7 @@ drift (DRY). DAG: imports ``index`` + ``adapters`` only.
 import json
 import logging
 import threading
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -23,6 +23,12 @@ from transport_matters.index.adapters.base import (
     RunContext,
     TurnContext,
     decode_source_descriptor,
+)
+from transport_matters.index.subagents import (
+    SubagentSpawnLink,
+    discover_child_transcripts,
+    is_replay_anchor,
+    record_subagent_spawn_links,
 )
 
 if TYPE_CHECKING:
@@ -71,13 +77,18 @@ class TailCursor:
     source: TranscriptSource
     adapter: TranscriptAdapter
     byte_offset: int = 0  # FileTail: last fully-consumed byte
-    seq: int = 0  # next TurnContext.seq / source_line (record ordinal within the session)
+    seq: int = 0  # next TurnContext.seq, scoped to stored rows for this session
+    source_line: int = 0  # next source record ordinal, including deduped replay records
     parent_id: str | None = (
         None  # last emitted turn_id (linear-chain fallback for native-less formats)
     )
     parent_seq: int | None = None  # seq for parent_id, used by event parent_seq
     model: str | None = None  # last model hint (e.g. codex turn_context.model), threaded onto turns
     stat_signature: tuple[int, float] | None = None  # (size, mtime) to skip unchanged files
+    skip_until_user_text: str | None = None
+    skip_until_seen: bool = False
+    subagent_spawn_links: dict[str, SubagentSpawnLink] = field(default_factory=dict)
+    pending_codex_spawn_calls: dict[str, SubagentSpawnLink] = field(default_factory=dict)
 
 
 def ingest_records[RecordWrite](
@@ -98,11 +109,17 @@ def ingest_records[RecordWrite](
     ``parent_id``.
     """
     seq = cursor.seq
+    source_line = cursor.source_line
     parent_id = cursor.parent_id
     parent_seq = cursor.parent_seq
     model = cursor.model
     writes: list[RecordWrite] = []
     for record in records:
+        if cursor.skip_until_user_text is not None and not cursor.skip_until_seen:
+            cursor.skip_until_seen = is_replay_anchor(record, cursor.skip_until_user_text)
+            if not cursor.skip_until_seen:
+                source_line += 1
+                continue
         hint = cursor.adapter.model_hint(record)
         if hint is not None:
             model = hint
@@ -110,7 +127,7 @@ def ingest_records[RecordWrite](
             binding=cursor.binding,
             source_path=source_path,
             seq=seq,
-            source_line=seq,
+            source_line=source_line,
             parent_id=parent_id,
             parent_seq=parent_seq,
             model=model,
@@ -118,12 +135,14 @@ def ingest_records[RecordWrite](
         turn = cursor.adapter.normalize(record, ctx)
         writes.append(build_record(record, turn, ctx))
         seq += 1
+        source_line += 1
         if turn is not None:
             parent_id = turn.turn_id
             parent_seq = turn.seq
     if writes:
         submit_batch(cursor.binding, writes)
     cursor.seq = seq
+    cursor.source_line = source_line
     cursor.parent_id = parent_id
     cursor.parent_seq = parent_seq
     cursor.model = model
@@ -207,6 +226,7 @@ class TranscriptTailer:
             stat = path.stat()
         except FileNotFoundError:
             return
+        self._register_child_cursors(cursor)
         signature = (stat.st_size, stat.st_mtime)
         if cursor.stat_signature == signature:
             return  # unchanged file
@@ -226,6 +246,13 @@ class TranscriptTailer:
         if records:
             if self._build_record is None or self._submit_batch is None:
                 raise RuntimeError("TranscriptTailer requires build_record and submit_batch")
+            record_subagent_spawn_links(
+                provider=cursor.binding.provider,
+                records=records,
+                start_seq=cursor.seq,
+                links=cursor.subagent_spawn_links,
+                pending_codex_calls=cursor.pending_codex_spawn_calls,
+            )
             ingest_records(
                 records,
                 cursor,
@@ -233,10 +260,29 @@ class TranscriptTailer:
                 build_record=self._build_record,
                 submit_batch=self._submit_batch,
             )
+            self._register_child_cursors(cursor)
         cursor.byte_offset += consumed
         # Mark this stat consumed LAST (mirroring byte_offset): only a fully-successful poll skips the
         # next unchanged read. A mid-poll raise leaves the old signature so the stat guard re-enters.
         cursor.stat_signature = signature
+
+    def _register_child_cursors(self, cursor: TailCursor) -> None:
+        source = cursor.source
+        if not isinstance(source, FileTailSource):
+            return
+        for child in discover_child_transcripts(
+            parent_binding=cursor.binding,
+            parent_source=source,
+            spawn_links=cursor.subagent_spawn_links,
+        ):
+            self.register(
+                TailCursor(
+                    binding=child.binding,
+                    source=child.source,
+                    adapter=cursor.adapter,
+                    skip_until_user_text=child.skip_until_user_text,
+                )
+            )
 
 
 async def register_session_cursor(
