@@ -1,0 +1,44 @@
+/* Co-located styles for the terminal pane. The host fills the pane body; xterm
+   renders and scrolls inside it. Colors come from the canvas design tokens; the
+   xterm canvas itself is painted from the same tokens read at mount time
+   (TerminalPane reads them via getComputedStyle, since a canvas cannot resolve
+   CSS variables on its own). */
+.terminal-pane {
+  position: relative;
+  display: flex;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  padding: var(--canvas-pane-padding);
+  background: var(--color-well);
+  overflow: hidden;
+}
+
+/* Surfaced when the PTY socket closes/refuses: a hairline banner over the dead
+   terminal so the pane never just freezes blank. */
+.terminal-pane__status {
+  position: absolute;
+  inset: auto var(--canvas-pane-padding) var(--canvas-pane-padding);
+  margin: 0;
+  padding: calc(var(--canvas-pane-gap) * 0.75) var(--canvas-pane-gap);
+  border: 1px solid var(--color-rose);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-txt);
+  font-size: 0.72rem;
+  text-align: center;
+}
+
+.terminal-pane__surface {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* xterm sizes its own viewport; let it own scrolling so the pane body never
+   double-scrolls, and inherit the pane's surface color. */
+.terminal-pane .xterm,
+.terminal-pane .xterm-viewport {
+  height: 100%;
+  background-color: transparent;
+}

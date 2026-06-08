@@ -98,6 +98,13 @@ describe("registry pane ids", () => {
     expect(titleForRef(ref)).toBe("Investigate auth regression");
   });
 
+  it("routes the local terminal surface to the terminal viewer", () => {
+    const ref: CanvasPaneRef = { kind: "terminal", owner: "local" };
+    expect(viewerIdForRef(ref)).toBe("terminal");
+    expect(titleForRef(ref)).toBe("Terminal");
+    expect(paneIdForRef(ref)).toBe("terminal");
+  });
+
   it("resolves a viewer whose dedupe key is the registry pane id", () => {
     const ref: PaneContentRef = {
       kind: "resource",

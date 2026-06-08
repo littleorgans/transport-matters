@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { LayoutCanvas } from "../../engine";
 import { listLayouts } from "../../engine/layout";
+import { CommandBarSections } from "../components/CommandBarSections";
 import { PaneChrome } from "../components/PaneChrome";
 import { RouteSwitcher } from "../components/RouteSwitcher";
+import type { PaneContentRef, ViewerProps } from "../model/paneRecords";
+import { renderPaneContent, titleForRef, viewerIdForRef } from "../viewers/registry";
 import { ControlsPanel } from "./ControlsPanel";
 import { framedPaneId, useCanvasLabStore } from "./canvasLabStore";
 import { LabCardPane } from "./viewers/LabCardPane";
@@ -18,7 +21,9 @@ export function CanvasLabRoute() {
   const expandedPane = useCanvasLabStore((state) => state.expandedPaneId);
   const activeStrategyId = useCanvasLabStore((state) => state.activeStrategyId);
   const fitToContent = useCanvasLabStore((state) => state.fitToContent);
+  const contentRefs = useCanvasLabStore((state) => state.contentRefs);
   const addPane = useCanvasLabStore((state) => state.addPane);
+  const addTerminal = useCanvasLabStore((state) => state.addTerminal);
   const organize = useCanvasLabStore((state) => state.organize);
   const closePane = useCanvasLabStore((state) => state.closePane);
   const focusPane = useCanvasLabStore((state) => state.focusPane);
@@ -70,10 +75,14 @@ export function CanvasLabRoute() {
   const focusedPaneId = layout.focusedPaneId;
   const renderPane = useCallback(
     (paneId: string) => {
-      const isRuler = paneIndexOf(paneId) % 2 === 1;
+      // Real content (terminal, future fixtures) dispatches through the shared viewer registry, so a
+      // new viewer is a registry entry, not a branch here. The lab's card/ruler stubs read the lab
+      // store directly (they prove layouts, not content), so they stay lab-local.
+      const ref = contentRefs[paneId];
+      const demoIsRuler = paneIndexOf(paneId) % 2 === 1;
       return (
         <PaneChrome
-          badge={isRuler ? "ruler" : "card"}
+          badge={ref ? ref.kind : demoIsRuler ? "ruler" : "card"}
           expanded={expandedPane === paneId}
           focused={focusedPaneId === paneId}
           onClose={() => closePane(paneId)}
@@ -84,11 +93,26 @@ export function CanvasLabRoute() {
           title={paneId}
           titleId={titleIdForPane(paneId)}
         >
-          {isRuler ? <LabRulerPane paneId={paneId} /> : <LabCardPane paneId={paneId} />}
+          {ref ? (
+            renderPaneContent(labContentProps(paneId, ref, focusedPaneId, closePane, focusPane))
+          ) : demoIsRuler ? (
+            <LabRulerPane paneId={paneId} />
+          ) : (
+            <LabCardPane paneId={paneId} />
+          )}
         </PaneChrome>
       );
     },
-    [closePane, expandPane, framePane, framedPane, expandedPane, focusedPaneId],
+    [
+      contentRefs,
+      closePane,
+      focusPane,
+      expandPane,
+      framePane,
+      framedPane,
+      expandedPane,
+      focusedPaneId,
+    ],
   );
 
   return (
@@ -103,35 +127,47 @@ export function CanvasLabRoute() {
             <span>Canvas lab</span>
             <span>{paneCount} panes</span>
           </div>
-          <div className="canvas-command-bar__buttons">
-            <RouteSwitcher />
-            <button className="canvas-button" onClick={addPane} type="button">
-              Add pane
-            </button>
-            <button className="canvas-button" onClick={organize} type="button">
-              Organize
-            </button>
-            <label className="canvas-lab-toggle">
-              <input
-                checked={fitToContent}
-                onChange={(event) => setFitToContent(event.target.checked)}
-                type="checkbox"
-              />
-              Fit to content
-            </label>
-            <select
-              aria-label="Layout strategy"
-              onChange={(event) => setStrategy(event.target.value)}
-              value={activeStrategyId}
-            >
-              {strategies.map((strategy) => (
-                <option key={strategy.id} value={strategy.id}>
-                  {strategy.label}
-                </option>
-              ))}
-            </select>
-          </div>
-          <ControlsPanel />
+          <CommandBarSections
+            primary={
+              <>
+                <RouteSwitcher />
+                <button className="canvas-button" onClick={addPane} type="button">
+                  Add pane
+                </button>
+                <button className="canvas-button" onClick={organize} type="button">
+                  Organize
+                </button>
+                <button className="canvas-button" onClick={addTerminal} type="button">
+                  Add terminal
+                </button>
+              </>
+            }
+            secondary={
+              <>
+                <label className="canvas-lab-toggle">
+                  <input
+                    checked={fitToContent}
+                    onChange={(event) => setFitToContent(event.target.checked)}
+                    type="checkbox"
+                  />
+                  Fit to content
+                </label>
+                <select
+                  aria-label="Layout strategy"
+                  onChange={(event) => setStrategy(event.target.value)}
+                  value={activeStrategyId}
+                >
+                  {strategies.map((strategy) => (
+                    <option key={strategy.id} value={strategy.id}>
+                      {strategy.label}
+                    </option>
+                  ))}
+                </select>
+                <ControlsPanel />
+              </>
+            }
+            secondaryLabel="Layout"
+          />
         </div>
       )}
       <div className="canvas-lab-stage" ref={stageRef}>
@@ -159,4 +195,39 @@ function titleIdForPane(paneId: string): string {
 function paneIndexOf(paneId: string): number {
   const parsed = Number.parseInt(paneId.replace(/^lab-/, ""), 10);
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+const noop = (): void => {};
+
+// The lab has no session context, so it synthesizes the minimal ViewerProps the registry needs.
+// Lab content viewers (terminal, future fixtures) are self-contained and ignore the canvas/actions
+// context; the fields exist only to satisfy the shared contract.
+function labContentProps(
+  paneId: string,
+  ref: PaneContentRef,
+  focusedPaneId: string | null,
+  closePane: (paneId: string) => void,
+  focusPane: (paneId: string) => void,
+): ViewerProps {
+  return {
+    pane: {
+      paneId,
+      viewerId: viewerIdForRef(ref),
+      title: titleForRef(ref),
+      contentRef: ref,
+      chromeState: "default",
+      createdAt: "",
+      lastFocusedAt: null,
+    },
+    canvas: {
+      id: "canvas-lab",
+      owner: "local",
+      workspaceHash: null,
+      focusedPaneId,
+      launch: { owner: "local", workspaceHash: null, cli: null, runId: null },
+      launchStatus: "unavailable",
+      launchSessionId: null,
+    },
+    actions: { closePane, focusPane, spawnOrFocusTranscript: noop },
+  };
 }

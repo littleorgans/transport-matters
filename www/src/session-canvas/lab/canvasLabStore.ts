@@ -27,6 +27,7 @@ import {
   type ParamValue,
   resolveLayout,
 } from "../../engine/layout";
+import type { PaneContentRef } from "../model/paneRecords";
 import { fitExpandFrameToWidth, planExpandedLayout } from "./expandLayout";
 
 const DEFAULT_BOUNDS: ViewportBounds = { width: 1600, height: 1000 };
@@ -62,7 +63,10 @@ export interface CanvasLabState {
   flying: boolean;
   paneMotion: boolean;
   nextPaneIndex: number;
+  /** Real content per pane (a viewer-registry ref). Demo card/ruler panes carry none. */
+  contentRefs: Record<PaneId, PaneContentRef>;
   addPane(): void;
+  addTerminal(): void;
   closePane(paneId: PaneId): void;
   focusPane(paneId: PaneId): void;
   updatePaneRect(paneId: PaneId, rect: WorldRect): void;
@@ -184,6 +188,24 @@ function isZoomedInPastOverview(current: CanvasViewport, overview: CanvasViewpor
   return current.scale > overview.scale + CLOSE_ZOOM_RESET_EPSILON;
 }
 
+// Born at its planned slot in a single commit: seed the node, then plan over the seeded layout in the
+// SAME set. Two separate sets (seed then organize) would render the pane at SEED_RECT's top-left corner
+// for one frame before springing to its slot (the "fly in from top-left"). Shared by addPane/addTerminal.
+function seedPaneLayout(state: CanvasLabState, paneId: PaneId): EngineLayoutState {
+  const seeded = focusNode(
+    upsertNode(state.layout, createPaneNode(paneId, SEED_RECT, nextPaneZ(state.layout.nodes))),
+    paneId,
+  );
+  return planLayout(
+    seeded,
+    state.bounds,
+    state.activeStrategyId,
+    state.params,
+    state.fitToContent,
+    state.expandedPaneId,
+  );
+}
+
 export const useCanvasLabStore = create<CanvasLabState>()((set, get) => ({
   layout: createInitialEngineLayoutState(),
   bounds: DEFAULT_BOUNDS,
@@ -195,30 +217,21 @@ export const useCanvasLabStore = create<CanvasLabState>()((set, get) => ({
   flying: false,
   paneMotion: false,
   nextPaneIndex: 0,
+  contentRefs: {},
 
   addPane() {
     const index = get().nextPaneIndex + 1;
+    set((state) => ({ nextPaneIndex: index, layout: seedPaneLayout(state, `lab-${index}`) }));
+  },
+
+  addTerminal() {
+    const index = get().nextPaneIndex + 1;
     const paneId = `lab-${index}`;
-    // Born at its planned slot in a single commit: seed the node, then plan over the seeded layout
-    // in the SAME set. Two separate sets (seed then organize) would render the pane at SEED_RECT's
-    // top-left corner for one frame before springing to its slot (the "fly in from top-left").
-    set((state) => {
-      const seeded = focusNode(
-        upsertNode(state.layout, createPaneNode(paneId, SEED_RECT, nextPaneZ(state.layout.nodes))),
-        paneId,
-      );
-      return {
-        nextPaneIndex: index,
-        layout: planLayout(
-          seeded,
-          state.bounds,
-          state.activeStrategyId,
-          state.params,
-          state.fitToContent,
-          state.expandedPaneId,
-        ),
-      };
-    });
+    set((state) => ({
+      nextPaneIndex: index,
+      contentRefs: { ...state.contentRefs, [paneId]: { kind: "terminal", owner: "local" } },
+      layout: seedPaneLayout(state, paneId),
+    }));
   },
 
   closePane(paneId) {
@@ -260,9 +273,11 @@ export const useCanvasLabStore = create<CanvasLabState>()((set, get) => ({
           layout = overviewLayout;
         }
       }
+      const { [paneId]: _closed, ...contentRefs } = state.contentRefs;
       set({
         expandedPaneId,
         framing,
+        contentRefs,
         // Reflow survivors into the gap. A fitted close is reserved for exiting expand mode, leaving a
         // frame, or undoing manual zoom-in; normal overview and zoomed-out closes keep the camera stable.
         layout,
@@ -438,5 +453,6 @@ export function resetCanvasLabStoreForTests(): void {
     flying: false,
     paneMotion: false,
     nextPaneIndex: 0,
+    contentRefs: {},
   });
 }

@@ -36,6 +36,8 @@ export default defineConfig({
       "/api": {
         target: "http://localhost:8788",
         changeOrigin: true,
+        // Forward WebSocket upgrades (terminal pane streams over /api/v1/terminal).
+        ws: true,
       },
     },
   },
