@@ -10,6 +10,8 @@ from urllib.parse import urlparse
 
 import typer
 
+from transport_matters.captured_run import build_start_invocation
+
 from .home_seed import seed_home_dir
 from .identity import CLI_COMMAND
 from .launch_profile import (
@@ -19,23 +21,16 @@ from .launch_profile import (
 )
 from .launch_runtime import (
     CLIENT_NAME_CLAUDE,
-    build_launch_env,
-    build_managed_child_env,
-    build_mitmdump_argv,
     preflight_session_store_or_exit,
     prepare_launch,
     print_invocation,
     reject_passthrough_without_client,
     run_with_workspace_manifest,
 )
-from .net import loopback_http_url
-from .runner import ManagedClient
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Sequence
+    from collections.abc import Callable
     from importlib.resources.abc import Traversable
-
-    from .launch_profile import LaunchProfile, ManagedSession
 
 
 def _validate_upstream(upstream: str) -> None:
@@ -54,92 +49,6 @@ def _validate_upstream(upstream: str) -> None:
         err=True,
     )
     raise typer.Exit(2)
-
-
-def _build_start_invocation(
-    *,
-    addon_path: Path,
-    mitmdump: str,
-    upstream: str,
-    working_dir: Path,
-    resolved_storage: Path,
-    run_id: str,
-    home_dir: Path | None,
-    claude_path: str | None,
-    claude_passthrough_user: Sequence[str],
-    no_claude: bool,
-    no_system_prompt: bool,
-    debug: bool,
-    profile: LaunchProfile,
-    managed_session: ManagedSession | None,
-    inject_system_prompt: Callable[..., list[str]],
-    user_supplied_system_prompt: Callable[[list[str]], bool],
-) -> Callable[[int, int], tuple[list[str], dict[str, str], ManagedClient | None]]:
-    """Build the retry-safe invocation factory for `transport-matters claude`.
-
-    ``managed_session`` is the §5.2c owned session (minted ONCE before the retry loop, so every
-    attempt injects the SAME ``--session-id``): its native id + descriptor flow to the addon via the
-    launch env, and ``profile.client_argv`` injects the owned id so claude adopts it. ``None`` for an
-    un-owned launch (proxy-only or a user-pinned session) — claude rides the external-adoption path."""
-
-    def build_invocation(
-        proxy_port: int,
-        web_port: int,
-    ) -> tuple[list[str], dict[str, str], ManagedClient | None]:
-        passthrough = list(claude_passthrough_user)
-        if not no_claude and not no_system_prompt and not user_supplied_system_prompt(passthrough):
-            passthrough = inject_system_prompt(
-                passthrough,
-                proxy_port=proxy_port,
-                web_port=web_port,
-            )
-
-        native_session_id = (
-            managed_session.native_session_id if managed_session is not None else None
-        )
-        env = build_launch_env(
-            working_dir=working_dir,
-            storage_dir=resolved_storage,
-            proxy_port=proxy_port,
-            web_port=web_port,
-            run_id=run_id,
-            cli=CLIENT_NAME_CLAUDE,
-            home_dir=home_dir,
-            owned_native_session_id=native_session_id,
-            owned_source_descriptor=(
-                managed_session.source_descriptor if managed_session is not None else None
-            ),
-        )
-        argv = build_mitmdump_argv(
-            mitmdump=mitmdump,
-            mode=f"reverse:{upstream}",
-            proxy_port=proxy_port,
-            addon_path=addon_path,
-            debug=debug,
-        )
-
-        client = None
-        if claude_path is not None:
-            client_env = build_managed_child_env(
-                env,
-                client_name=CLIENT_NAME_CLAUDE,
-                home_dir=home_dir,
-                extra_env={"ANTHROPIC_BASE_URL": loopback_http_url(proxy_port)},
-            )
-            client = ManagedClient(
-                name=CLIENT_NAME_CLAUDE,
-                display_name="Claude",
-                argv=profile.client_argv(
-                    client_path=claude_path,
-                    passthrough=passthrough,
-                    native_session_id=native_session_id,
-                ),
-                env=client_env,
-                cwd=working_dir,
-            )
-        return argv, env, client
-
-    return build_invocation
 
 
 def run_start(
@@ -220,7 +129,7 @@ def run_start(
     )
 
     with as_file(prepared.addon_traversable) as addon_path:
-        build_invocation = _build_start_invocation(
+        build_invocation = build_start_invocation(
             addon_path=addon_path,
             mitmdump=prepared.mitmdump,
             upstream=upstream,

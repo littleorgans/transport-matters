@@ -35,8 +35,11 @@ __all__ = [
     "LaunchRetryExhaustedOutcome",
     "_run_client_children",
     "handle_bind_failure",
+    "mitmdump_log_path",
     "run_children",
     "run_client_with_retry",
+    "run_prepared_client_on_local_tty",
+    "start_prepared_proxy",
 ]
 
 
@@ -508,6 +511,112 @@ def _run_client_children(
     _raise_launch_outcome(outcome)
 
 
+def mitmdump_log_path(storage_dir: Path) -> Path:
+    logs_dir = storage_dir / "logs"
+    logs_dir.mkdir(parents=True, exist_ok=True)
+    return logs_dir / "mitmdump.log"
+
+
+def start_prepared_proxy(
+    *,
+    sup: ProcessSupervisor,
+    mitmdump_argv: list[str],
+    mitmdump_env: dict[str, str],
+    mitmdump_log: Path,
+    proxy_port: int,
+    web_port: int,
+    on_backend_ready: Callable[[], None] | None = None,
+) -> LaunchOutcome | None:
+    """Start background mitmdump and wait until the captured backend is ready."""
+    sup.spawn(
+        "mitmdump",
+        mitmdump_argv,
+        env={**mitmdump_env, "PYTHONUNBUFFERED": "1"},
+        log_path=mitmdump_log,
+    )
+    if not wait_for_port_ready("127.0.0.1", proxy_port):
+        # Distinguish "port stolen between allocate and spawn" (retryable
+        # upstairs) from "config is broken" (do not retry).
+        return _proxy_not_ready_outcome(
+            sup=sup,
+            proxy_port=proxy_port,
+            web_port=web_port,
+            log_path=mitmdump_log,
+        )
+
+    # Ctrl+C during the readiness wait lands as a flag on the supervisor. Bail
+    # out before spawning the client.
+    if sup.received_signal is not None:
+        sup.terminate_all()
+        return LaunchExitOutcome(0)
+
+    if on_backend_ready is not None:
+        outcome = _wait_web_ui_ready_for_hook(
+            sup=sup,
+            proxy_port=proxy_port,
+            web_port=web_port,
+            log_path=mitmdump_log,
+        )
+        if outcome is not None:
+            return outcome
+        _notify_backend_ready(sup, on_backend_ready)
+    return None
+
+
+def run_prepared_client_on_local_tty(
+    *,
+    sup: ProcessSupervisor,
+    client: ManagedClient,
+    web_port: int,
+    mitmdump_log: Path,
+) -> LaunchOutcome:
+    """Attach an already prepared managed client to the local terminal."""
+    # Spawn the client attached to a real PTY; the supervisor keeps
+    # non-interactive fallback and signal routing behavior unchanged.
+    sup.spawn(
+        client.name,
+        client.argv,
+        env=client.env,
+        cwd=client.cwd,
+        foreground=True,
+        pty=True,
+    )
+
+    name, rc = sup.wait_any()
+    if name == SIGNAL_EXIT:
+        sup.terminate_all()
+        return LaunchExitOutcome(0)
+
+    if name == client.name:
+        typer.secho(
+            f"{client.display_name} exited; web UI still live at "
+            f"{loopback_http_url(web_port)}. Ctrl+C to stop.",
+            fg=typer.colors.CYAN,
+        )
+        # Wait on the proxy; Ctrl+C flips us into terminate_all.
+        name, rc = sup.wait_one("mitmdump")
+        if name == SIGNAL_EXIT:
+            sup.terminate_all()
+            return LaunchExitOutcome(0)
+        if rc != 0:
+            sup.terminate_all()
+            return LaunchExitOutcome(
+                exit_code=1,
+                error=f"mitmdump exited unexpectedly (rc={rc}).",
+                log_path=mitmdump_log,
+            )
+        sup.terminate_all()
+        return LaunchExitOutcome(0)
+
+    # mitmdump died first. Surface the error and tear down the client.
+    sup.terminate_all()
+    return LaunchExitOutcome(
+        exit_code=1,
+        error=f"mitmdump exited unexpectedly (rc={rc}).",
+        log_path=mitmdump_log,
+    )
+
+
 def _raise_launch_outcome(outcome: LaunchOutcome) -> None:
     if isinstance(outcome, LaunchBindFailureOutcome):
         raise outcome.failure
@@ -543,13 +652,8 @@ def run_client_children_until_outcome(
     - proxy-only mode: mitmdump runs in the foreground; its exit code
       is ours.
     """
-    # The log path is only needed in the default (background-mitmdump)
-    # path; `--no-claude` keeps mitmdump in the foreground. We still
-    # create the directory up front so a later launch without
-    # `--no-claude` doesn't race on it.
-    logs_dir = storage_dir / "logs"
-    logs_dir.mkdir(parents=True, exist_ok=True)
-    mitmdump_log = logs_dir / "mitmdump.log"
+    # Create logs up front so later non-proxy-only launches do not race on it.
+    mitmdump_log = mitmdump_log_path(storage_dir)
 
     sup = ProcessSupervisor()
     sup.install_signal_handlers()
@@ -574,90 +678,22 @@ def run_client_children_until_outcome(
             # mitmdump exited on its own — propagate its code.
             return LaunchExitOutcome(rc)
 
-        # Default path: mitmdump in background (logs to file), then claude.
-        sup.spawn(
-            "mitmdump",
-            mitmdump_argv,
-            env={**mitmdump_env, "PYTHONUNBUFFERED": "1"},
-            log_path=mitmdump_log,
+        outcome = start_prepared_proxy(
+            sup=sup,
+            mitmdump_argv=mitmdump_argv,
+            mitmdump_env=mitmdump_env,
+            mitmdump_log=mitmdump_log,
+            proxy_port=proxy_port,
+            web_port=web_port,
+            on_backend_ready=on_backend_ready,
         )
-        if not wait_for_port_ready("127.0.0.1", proxy_port):
-            # Distinguish "port stolen between allocate and spawn"
-            # (retryable upstairs) from "config is broken" (don't retry).
-            # The log scan returns None for non-bind failures.
-            return _proxy_not_ready_outcome(
-                sup=sup,
-                proxy_port=proxy_port,
-                web_port=web_port,
-                log_path=mitmdump_log,
-            )
-
-        # Ctrl+C during the readiness wait lands as a flag on the
-        # supervisor. Bail out here rather than spawning claude just to
-        # tear it down on the next line — cleaner exit, one less spawn.
-        if sup.received_signal is not None:
-            sup.terminate_all()
-            return LaunchExitOutcome(0)
-
-        if on_backend_ready is not None:
-            outcome = _wait_web_ui_ready_for_hook(
-                sup=sup,
-                proxy_port=proxy_port,
-                web_port=web_port,
-                log_path=mitmdump_log,
-            )
-            if outcome is not None:
-                return outcome
-            _notify_backend_ready(sup, on_backend_ready)
-
-        # Spawn the client attached to a real PTY. The supervisor falls
-        # back to inherited stdio with a warning if our stdin isn't a
-        # TTY (CI, piped input), so this stays safe in non-interactive
-        # runs. cbreak keeps SIGINT routed to us, so Ctrl+C still
-        # flips us into the `SIGNAL_EXIT` branch below.
-        sup.spawn(
-            client.name,
-            client.argv,
-            env=client.env,
-            cwd=client.cwd,
-            foreground=True,
-            pty=True,
-        )
-
-        name, rc = sup.wait_any()
-        if name == SIGNAL_EXIT:
-            sup.terminate_all()
-            return LaunchExitOutcome(0)
-
-        if name == client.name:
-            typer.secho(
-                f"{client.display_name} exited; web UI still live at "
-                f"{loopback_http_url(web_port)}. Ctrl+C to stop.",
-                fg=typer.colors.CYAN,
-            )
-            # Wait on the proxy; Ctrl+C (SIGNAL_EXIT) flips us into
-            # terminate_all below.
-            name, rc = sup.wait_one("mitmdump")
-            if name == SIGNAL_EXIT:
-                sup.terminate_all()
-                return LaunchExitOutcome(0)
-            if rc != 0:
-                sup.terminate_all()
-                return LaunchExitOutcome(
-                    exit_code=1,
-                    error=f"mitmdump exited unexpectedly (rc={rc}).",
-                    log_path=mitmdump_log,
-                )
-            sup.terminate_all()
-            return LaunchExitOutcome(0)
-
-        # mitmdump died first. Surface the error with a pointer at the
-        # log, tear down the client, and exit non-zero.
-        sup.terminate_all()
-        return LaunchExitOutcome(
-            exit_code=1,
-            error=f"mitmdump exited unexpectedly (rc={rc}).",
-            log_path=mitmdump_log,
+        if outcome is not None:
+            return outcome
+        return run_prepared_client_on_local_tty(
+            sup=sup,
+            client=client,
+            web_port=web_port,
+            mitmdump_log=mitmdump_log,
         )
     finally:
         sup.restore_signal_handlers()
