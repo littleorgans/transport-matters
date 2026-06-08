@@ -6,7 +6,6 @@ import json
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, cast
 
-from transport_matters.api.v1.exchanges import exchange_detail_route
 from transport_matters.session import exchange_correlation
 from transport_matters.session.resource_content_models import (
     BinaryContentResponse,
@@ -291,7 +290,6 @@ async def _load_wire_redirect(
             "exchangeId": parsed.exchange_id,
         },
         exchange_id=parsed.exchange_id,
-        route=exchange_detail_route(parsed.exchange_id),
         initial_view="request",
     )
 

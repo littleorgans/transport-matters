@@ -1,15 +1,17 @@
 from __future__ import annotations
 
+import ast
 import base64
 import hashlib
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import pytest
 
 from transport_matters.api.v1.exchanges import exchange_detail_route
 from transport_matters.api.v1.session_test_support import session_client
-from transport_matters.session import exchange_correlation
+from transport_matters.session import exchange_correlation, resource_content
 from transport_matters.session.artifacts import artifact_hash
 from transport_matters.session.dao import AsyncSessionDao
 from transport_matters.session.pool import create_async_pool
@@ -19,6 +21,19 @@ from transport_matters.session.test_foundation import event, root_session
 if TYPE_CHECKING:
     from transport_matters.session.models import EventRow
     from transport_matters.session.testing import TestDb
+
+
+def test_session_resource_content_layer_does_not_import_api_v1() -> None:
+    source = Path(resource_content.__file__).read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    imported_modules: set[str] = set()
+    for node in tree.body:
+        if isinstance(node, ast.ImportFrom) and node.module is not None:
+            imported_modules.add(node.module)
+        if isinstance(node, ast.Import):
+            imported_modules.update(alias.name for alias in node.names)
+
+    assert not any(module.startswith("transport_matters.api.v1") for module in imported_modules)
 
 
 @dataclass(frozen=True)
