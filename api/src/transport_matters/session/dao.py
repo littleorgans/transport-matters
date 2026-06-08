@@ -178,6 +178,19 @@ ORDER BY seq
 _GET_EVENTS_FOR_OWNER_SQL = _get_events_for_owner_sql(_EVENT_READ_COLUMNS)
 _GET_EVENTS_WITH_RAW_FOR_OWNER_SQL = _get_events_for_owner_sql(_EVENT_OWNER_COLUMNS)
 
+_GET_LATEST_TURN_BEFORE_WITH_RAW_FOR_OWNER_SQL = f"""
+SELECT {_EVENT_OWNER_COLUMNS}
+FROM "event" AS e
+JOIN "session" AS s ON s.session_id = e.session_id
+WHERE e.session_id = %(session_id)s
+  AND s.owner = %(owner)s
+  AND e.kind = 'turn'
+  AND e.is_sidechain = false
+  AND e.seq < %(before_seq)s
+ORDER BY e.seq DESC
+LIMIT 1
+"""
+
 _LIST_CHILD_SESSIONS_FOR_OWNER_SQL = f"""
 SELECT {_CHILD_SESSION_COLUMNS}, min(e.seq) AS first_seq, max(e.seq) AS last_seq
 FROM "session" AS c
@@ -548,6 +561,16 @@ class AsyncSessionDao:
         )
         rows = await cursor.fetchall()
         return [_event(row) for row in rows]
+
+    async def get_latest_turn_before_with_raw_for_owner(
+        self, session_id: str, *, owner: str, before_seq: int
+    ) -> EventRow | None:
+        cursor = await self._conn.execute(
+            _GET_LATEST_TURN_BEFORE_WITH_RAW_FOR_OWNER_SQL,
+            {"session_id": session_id, "owner": owner, "before_seq": before_seq},
+        )
+        row = await cursor.fetchone()
+        return _event(row) if row is not None else None
 
     async def events_matching_ir(
         self, filter_: dict[str, Any], *, limit: int = 50

@@ -12,6 +12,7 @@ from transport_matters.session.timeline_models import (
     LayoutHint,
     MessageItem,
     MessageRole,
+    ResourceRef,
     ResourceSummaryType,
     SessionHeader,
     SessionStatus,
@@ -22,6 +23,7 @@ from transport_matters.session.timeline_models import (
     SubagentSummary,
     TimelineItemType,
     TimelineResponse,
+    ToolOutputResourceSummary,
 )
 
 if TYPE_CHECKING:
@@ -52,6 +54,7 @@ _ROLE_ALIASES: dict[str, MessageRole] = {
     "tool": "tool",
     "tool_result": "tool",
 }
+_TOOL_OUTPUT_LABEL = "Tool output"
 
 
 def project_timeline(
@@ -80,10 +83,11 @@ def project_timeline(
             sidechain_groups.setdefault(_sidechain_root_id(row), []).append(row)
             continue
         if row.kind == "turn":
-            message = _message_item(row)
+            message, message_resources = _message_item(row)
             message_item_indices_by_seq[row.seq] = len(items)
             items.append(message)
             messages_by_seq[row.seq] = message
+            resources.update(message_resources)
             last_message_seq = row.seq
             continue
 
@@ -138,16 +142,33 @@ def project_timeline(
     )
 
 
-def _message_item(row: EventRow) -> MessageItem:
+def required_timeline_anchor_before_seq(events: list[EventRow]) -> int | None:
+    """Return the first live window seq that needs a prior message anchor."""
+    last_message_seq: int | None = None
+    for row in events:
+        if row.is_sidechain:
+            continue
+        if row.kind == "turn":
+            last_message_seq = row.seq
+            continue
+        if _native_record_key(row.raw) == "system.turn_duration" and last_message_seq is None:
+            return row.seq
+    return None
+
+
+def _message_item(row: EventRow) -> tuple[MessageItem, dict[str, ResourceSummaryType]]:
+    parts = _parts(row.ir)
+    resource_refs, resources = _message_resources(row, parts)
     return MessageItem(
         id=f"message:{row.session_id}:{row.seq}",
         seq=row.seq,
         role=_message_role(row.role),
         ts=_ts(row),
         model=row.model,
-        parts=_parts(row.ir),
+        parts=parts,
+        resource_refs=resource_refs,
         source=_source_ref(row),
-    )
+    ), resources
 
 
 def _meta_item(row: EventRow) -> TimelineItemType | None:
@@ -193,6 +214,56 @@ def _meta_item(row: EventRow) -> TimelineItemType | None:
         collapsed=True,
         source=_source_ref(row),
     )
+
+
+def _message_resources(
+    row: EventRow, parts: list[ContentPart]
+) -> tuple[list[ResourceRef], dict[str, ResourceSummaryType]]:
+    refs: list[ResourceRef] = []
+    resources: dict[str, ResourceSummaryType] = {}
+    for block_index, part in enumerate(parts):
+        if part.get("type") != "tool_result":
+            continue
+        resource_id = f"tool-output:{row.session_id}:{row.seq}:{block_index}"
+        refs.append(
+            ResourceRef(
+                resource_id=resource_id,
+                relation="generated",
+                confidence="verified",
+                block_index=block_index,
+            )
+        )
+        resources[resource_id] = ToolOutputResourceSummary(
+            id=resource_id,
+            title=_tool_output_title(part),
+            text_preview=_tool_output_preview(part),
+            source=_source_ref(row),
+        )
+    return refs, resources
+
+
+def _tool_output_title(part: ContentPart) -> str:
+    tool_use_id = part.get("tool_use_id")
+    if isinstance(tool_use_id, str) and tool_use_id:
+        return f"{_TOOL_OUTPUT_LABEL} {tool_use_id}"
+    return _TOOL_OUTPUT_LABEL
+
+
+def _tool_output_preview(part: ContentPart) -> str:
+    content = part.get("content")
+    if not isinstance(content, list):
+        return _TOOL_OUTPUT_LABEL
+    chunks: list[str] = []
+    for item in content:
+        if isinstance(item, str):
+            chunks.append(item)
+            continue
+        if isinstance(item, dict):
+            text = item.get("text")
+            if isinstance(text, str):
+                chunks.append(text)
+    preview = "\n".join(chunk for chunk in chunks if chunk)
+    return _truncate(preview or _TOOL_OUTPUT_LABEL)
 
 
 def _append_child_subagents(

@@ -32,6 +32,7 @@ def project_timeline_stream_envelopes(
     emitted_at: str | None = None,
     page_from_seq: int | None = None,
 ) -> list[TimelineStreamEnvelope]:
+    projection_revision_seq = max((row.seq for row in events), default=None)
     projection = project_timeline(
         session=session,
         events=events,
@@ -45,7 +46,17 @@ def project_timeline_stream_envelopes(
     if include_session_update:
         envelopes.append(_session_updated_envelope(session, projection.session, stamp))
     envelopes.extend(
-        _timeline_item_envelope(session.session_id, item, projection.resources, stamp)
+        _timeline_item_envelope(
+            session.session_id,
+            item,
+            projection.resources,
+            stamp,
+            revision=_item_revision(
+                item_seq=item.seq,
+                page_from_seq=page_from_seq,
+                projection_revision_seq=projection_revision_seq,
+            ),
+        )
         for item in projection.items
     )
     envelopes.extend(
@@ -64,16 +75,30 @@ def _timeline_item_envelope(
     item: TimelineItemType,
     resources: dict[str, ResourceSummaryType],
     emitted_at: str,
+    *,
+    revision: int,
 ) -> TimelineStreamEnvelope:
     return TimelineStreamEnvelope(
         id=f"timeline:{session_id}:{item.seq}",
-        revision=item.seq,
+        revision=revision,
         emitted_at=emitted_at,
         event=TimelineItemStreamEvent(
             item=item,
             resources=_resources_for_item(item, resources),
         ),
     )
+
+
+def _item_revision(
+    *, item_seq: int, page_from_seq: int | None, projection_revision_seq: int | None
+) -> int:
+    if (
+        page_from_seq is not None
+        and projection_revision_seq is not None
+        and item_seq < page_from_seq
+    ):
+        return max(item_seq, projection_revision_seq)
+    return item_seq
 
 
 def _resource_updated_envelope(

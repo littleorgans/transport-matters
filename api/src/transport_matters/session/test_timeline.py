@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Any
 import pytest
 
 from transport_matters.session.models import ChildSessionRow, EventRow
-from transport_matters.session.test_foundation import event, root_session
+from transport_matters.session.test_foundation import event, root_session, tool_result_event
 from transport_matters.session.timeline import project_timeline
 from transport_matters.session.timeline_models import (
     SessionUpdatedStreamEvent,
@@ -73,21 +73,23 @@ def test_projector_maps_turn_rows_to_message_items() -> None:
 
 def test_stream_projection_reuses_backlog_item_and_resource_shapes() -> None:
     session = root_session()
-    row = event(0)
-    backlog = project_timeline(session=session, events=[row])
+    rows = [tool_result_event(0, text="stdout"), tool_result_event(1, text="stderr")]
+    backlog = project_timeline(session=session, events=rows)
 
     envelopes = project_timeline_stream_envelopes(
         session=session,
-        events=[row],
+        events=rows,
         emitted_at="2026-06-06T00:00:00+00:00",
     )
 
-    assert len(envelopes) == 1
+    resource_id = "tool-output:s1:0:0"
+    assert set(backlog.resources) == {resource_id, "tool-output:s1:1:0"}
+    assert len(envelopes) == 4
     assert envelopes[0].id == "timeline:s1:0"
     assert envelopes[0].revision == 0
     assert envelopes[0].event == TimelineItemStreamEvent(
         item=backlog.items[0],
-        resources=backlog.resources,
+        resources={resource_id: backlog.resources[resource_id]},
     )
 
 

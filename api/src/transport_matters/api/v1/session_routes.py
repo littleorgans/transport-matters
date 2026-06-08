@@ -13,12 +13,12 @@ from pydantic import BaseModel, ConfigDict
 
 from transport_matters.session.dao import AsyncSessionDao
 from transport_matters.session.listen import SessionEventHub
-from transport_matters.session.timeline import project_timeline
+from transport_matters.session.timeline import project_timeline, required_timeline_anchor_before_seq
 from transport_matters.session.timeline_models import TimelineResponse, TimelineStreamEnvelope
 from transport_matters.session.timeline_stream import project_timeline_stream_envelopes
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncGenerator, Callable
+    from collections.abc import AsyncGenerator, Awaitable, Callable
 
     from psycopg import AsyncConnection
     from psycopg.rows import DictRow
@@ -26,16 +26,9 @@ if TYPE_CHECKING:
 
     from transport_matters.session.models import EventReadRow, EventRow, SessionRow
 
-    StreamBatchLoader = Callable[
-        [
-            AsyncConnectionPool[AsyncConnection[DictRow]],
-            str,
-            str,
-            int,
-            int | None,
-        ],
-        AsyncGenerator[tuple[int, list[str]]],
-    ]
+    StreamBatchLoader = Callable[[int, int | None], AsyncGenerator[tuple[int, list[str]]]]
+    StreamPage = tuple[int, int, list[str]]
+    StreamPageFetcher = Callable[[int, int | None], Awaitable[StreamPage | None]]
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -231,8 +224,8 @@ async def stream_session_timeline(
     last_seq: Annotated[int, Query(ge=-1)] = -1,
 ) -> StreamingResponse:
     async with pool.connection() as conn:
-        await _require_session(conn, session_id, owner)
-    generator = _timeline_stream(session_id, owner, last_seq, pool, hub)
+        session = await _require_session(conn, session_id, owner)
+    generator = _timeline_stream(session, owner, last_seq, pool, hub)
     return StreamingResponse(
         generator,
         media_type="text/event-stream",
@@ -247,26 +240,30 @@ async def _event_stream(
     pool: AsyncConnectionPool[AsyncConnection[DictRow]],
     hub: SessionEventHub,
 ) -> AsyncGenerator[str]:
+    async def load_batches(
+        from_seq: int, to_seq: int | None
+    ) -> AsyncGenerator[tuple[int, list[str]]]:
+        async for batch in _load_event_frame_batches(pool, session_id, owner, from_seq, to_seq):
+            yield batch
+
     async for frame in _stream_session_frames(
         session_id,
-        owner,
         last_seq,
-        pool,
         hub,
-        load_batches=_load_event_frame_batches,
+        load_batches=load_batches,
     ):
         yield frame
 
 
 async def _timeline_stream(
-    session_id: str,
+    session: SessionRow,
     owner: str,
     last_seq: int,
     pool: AsyncConnectionPool[AsyncConnection[DictRow]],
     hub: SessionEventHub,
 ) -> AsyncGenerator[str]:
-    async with pool.connection() as conn:
-        session = await _require_session(conn, session_id, owner)
+    # Slice 2 emits the session snapshot at connect. Live session only changes need
+    # a session level signal and are deferred with the slice 4 parentless update work.
     envelopes = project_timeline_stream_envelopes(
         session=session,
         events=[],
@@ -274,22 +271,25 @@ async def _timeline_stream(
     )
     for envelope in envelopes:
         yield _sse_data(envelope)
+
+    async def load_batches(
+        from_seq: int, to_seq: int | None
+    ) -> AsyncGenerator[tuple[int, list[str]]]:
+        async for batch in _load_timeline_frame_batches(pool, session, owner, from_seq, to_seq):
+            yield batch
+
     async for frame in _stream_session_frames(
-        session_id,
-        owner,
+        session.session_id,
         last_seq,
-        pool,
         hub,
-        load_batches=_load_timeline_frame_batches,
+        load_batches=load_batches,
     ):
         yield frame
 
 
 async def _stream_session_frames(
     session_id: str,
-    owner: str,
     last_seq: int,
-    pool: AsyncConnectionPool[AsyncConnection[DictRow]],
     hub: SessionEventHub,
     *,
     load_batches: StreamBatchLoader,
@@ -297,7 +297,7 @@ async def _stream_session_frames(
     subscription = hub.subscribe(session_id)
     sent_seq = last_seq
     try:
-        async for batch_seq, frames in load_batches(pool, session_id, owner, sent_seq + 1, None):
+        async for batch_seq, frames in load_batches(sent_seq + 1, None):
             if batch_seq > sent_seq:
                 for frame in frames:
                     yield frame
@@ -312,9 +312,7 @@ async def _stream_session_frames(
                 continue
             if signal.last_seq is not None and signal.last_seq <= sent_seq:
                 continue
-            async for batch_seq, frames in load_batches(
-                pool, session_id, owner, sent_seq + 1, signal.last_seq
-            ):
+            async for batch_seq, frames in load_batches(sent_seq + 1, signal.last_seq):
                 if batch_seq > sent_seq:
                     for frame in frames:
                         yield frame
@@ -333,58 +331,90 @@ async def _load_event_frame_batches(
     from_seq: int,
     to_seq: int | None,
 ) -> AsyncGenerator[tuple[int, list[str]]]:
-    next_seq = from_seq
-    while True:
+    async def fetch_page(
+        next_seq: int, page_to_seq: int | None
+    ) -> tuple[int, int, list[str]] | None:
         async with pool.connection() as conn:
             rows = await AsyncSessionDao(conn).get_events_for_owner(
                 session_id,
                 owner=owner,
                 from_seq=next_seq,
-                to_seq=to_seq,
+                to_seq=page_to_seq,
                 limit=STREAM_FETCH_LIMIT,
             )
         if not rows:
-            return
-        for row in rows:
-            yield row.seq, [_sse_data(SessionEventView.from_row(row))]
-        if len(rows) < STREAM_FETCH_LIMIT:
-            return
-        next_seq = rows[-1].seq + 1
+            return None
+        return rows[-1].seq, len(rows), [_sse_data(SessionEventView.from_row(row)) for row in rows]
+
+    async for batch in _paginate_seq(from_seq, to_seq, fetch_page):
+        yield batch
 
 
 async def _load_timeline_frame_batches(
     pool: AsyncConnectionPool[AsyncConnection[DictRow]],
-    session_id: str,
+    session: SessionRow,
     owner: str,
     from_seq: int,
     to_seq: int | None,
 ) -> AsyncGenerator[tuple[int, list[str]]]:
-    next_seq = from_seq
-    while True:
+    async def fetch_page(
+        next_seq: int, page_to_seq: int | None
+    ) -> tuple[int, int, list[str]] | None:
         async with pool.connection() as conn:
             dao = AsyncSessionDao(conn)
-            session = await _require_session(conn, session_id, owner)
             rows = await dao.get_events_with_raw_for_owner(
-                session_id,
+                session.session_id,
                 owner=owner,
                 from_seq=next_seq,
-                to_seq=to_seq,
+                to_seq=page_to_seq,
                 limit=STREAM_FETCH_LIMIT,
             )
-            child_sessions = await dao.list_child_sessions_for_owner(session_id, owner=owner)
-        if not rows:
-            return
+            if not rows:
+                # Slice 4 owns subagent/resource changes that arrive without a new parent event.
+                # This event driven stream has no row to project for those updates.
+                return None
+            anchor_before_seq = required_timeline_anchor_before_seq(rows)
+            anchor = (
+                await dao.get_latest_turn_before_with_raw_for_owner(
+                    session.session_id,
+                    owner=owner,
+                    before_seq=anchor_before_seq,
+                )
+                if anchor_before_seq is not None
+                else None
+            )
+            child_sessions = await dao.list_child_sessions_for_owner(
+                session.session_id, owner=owner
+            )
+        projection_rows = [anchor, *rows] if anchor is not None else rows
         envelopes = project_timeline_stream_envelopes(
             session=session,
-            events=rows,
+            events=projection_rows,
             child_sessions=child_sessions,
             include_session_update=False,
             page_from_seq=next_seq,
         )
-        yield rows[-1].seq, [_sse_data(envelope) for envelope in envelopes]
-        if len(rows) < STREAM_FETCH_LIMIT:
+        return rows[-1].seq, len(rows), [_sse_data(envelope) for envelope in envelopes]
+
+    async for batch in _paginate_seq(from_seq, to_seq, fetch_page):
+        yield batch
+
+
+async def _paginate_seq(
+    from_seq: int,
+    to_seq: int | None,
+    fetch_page: StreamPageFetcher,
+) -> AsyncGenerator[tuple[int, list[str]]]:
+    next_seq = from_seq
+    while True:
+        page = await fetch_page(next_seq, to_seq)
+        if page is None:
             return
-        next_seq = rows[-1].seq + 1
+        batch_seq, row_count, frames = page
+        yield batch_seq, frames
+        if row_count < STREAM_FETCH_LIMIT:
+            return
+        next_seq = batch_seq + 1
 
 
 async def _require_session(
