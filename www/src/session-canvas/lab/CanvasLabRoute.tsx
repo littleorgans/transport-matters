@@ -8,18 +8,21 @@ import { framedPaneId, useCanvasLabStore } from "./canvasLabStore";
 import { LabCardPane } from "./viewers/LabCardPane";
 import { LabRulerPane } from "./viewers/LabRulerPane";
 
-const SEED_PANES = 50;
+const SEED_PANES = 4;
 
 export function CanvasLabRoute() {
   const layout = useCanvasLabStore((state) => state.layout);
   const flying = useCanvasLabStore((state) => state.flying);
+  const paneMotion = useCanvasLabStore((state) => state.paneMotion);
   const framedPane = useCanvasLabStore((state) => framedPaneId(state.framing));
+  const expandedPane = useCanvasLabStore((state) => state.expandedPaneId);
   const activeStrategyId = useCanvasLabStore((state) => state.activeStrategyId);
   const fitToContent = useCanvasLabStore((state) => state.fitToContent);
   const addPane = useCanvasLabStore((state) => state.addPane);
   const organize = useCanvasLabStore((state) => state.organize);
   const closePane = useCanvasLabStore((state) => state.closePane);
   const focusPane = useCanvasLabStore((state) => state.focusPane);
+  const expandPane = useCanvasLabStore((state) => state.expandPane);
   const framePane = useCanvasLabStore((state) => state.framePane);
   const updatePaneRect = useCanvasLabStore((state) => state.updatePaneRect);
   const setStrategy = useCanvasLabStore((state) => state.setStrategy);
@@ -43,7 +46,7 @@ export function CanvasLabRoute() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
-  // Seed a few panes on first mount so the lab is not empty (count guard survives StrictMode).
+  // Seed panes on first mount so expand mode starts with a dense right-column stress case.
   useEffect(() => {
     if (Object.keys(useCanvasLabStore.getState().layout.nodes).length > 0) return;
     for (let index = 0; index < SEED_PANES; index += 1) addPane();
@@ -71,10 +74,12 @@ export function CanvasLabRoute() {
       return (
         <PaneChrome
           badge={isRuler ? "ruler" : "card"}
+          expanded={expandedPane === paneId}
           focused={focusedPaneId === paneId}
           onClose={() => closePane(paneId)}
+          onExpand={() => expandPane(paneId)}
           onFrame={() => framePane(paneId)}
-          onHeaderDoubleClick={() => framePane(paneId)}
+          onHeaderDoubleClick={(event) => (event.shiftKey ? expandPane(paneId) : framePane(paneId))}
           state={framedPane === paneId ? "framed" : "default"}
           title={paneId}
           titleId={titleIdForPane(paneId)}
@@ -83,7 +88,7 @@ export function CanvasLabRoute() {
         </PaneChrome>
       );
     },
-    [closePane, framePane, framedPane, focusedPaneId],
+    [closePane, expandPane, framePane, framedPane, expandedPane, focusedPaneId],
   );
 
   return (
@@ -137,6 +142,7 @@ export function CanvasLabRoute() {
           onFocusPane={focusPane}
           onMovePane={updatePaneRect}
           onResizePane={updatePaneRect}
+          paneMotion={paneMotion}
           renderPane={renderPane}
           setViewport={setViewport}
           titleIdForPane={titleIdForPane}

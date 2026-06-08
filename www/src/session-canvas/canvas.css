@@ -137,6 +137,7 @@
   background: linear-gradient(180deg, rgb(var(--highlight-rgb) / 0.06), transparent);
   padding: var(--canvas-pane-gap) var(--canvas-pane-padding);
   cursor: grab;
+  touch-action: none;
   user-select: none;
 }
 .canvas-pane-window__header:active {
@@ -209,6 +210,7 @@
   width: var(--canvas-resize-size);
   height: var(--canvas-resize-size);
   cursor: nwse-resize;
+  touch-action: none;
   user-select: none;
 }
 .canvas-pane-window__resize::after {

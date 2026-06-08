@@ -113,6 +113,35 @@ describe("canvasLabStore close", () => {
   });
 });
 
+describe("canvasLabStore expand", () => {
+  it("animates pane geometry while expanding and unexpanding", () => {
+    vi.useFakeTimers();
+    try {
+      resetCanvasLabStoreForTests();
+      store().addPane(); // lab-1
+      store().addPane(); // lab-2
+      store().addPane(); // lab-3
+
+      store().expandPane("lab-1");
+      expect(store().expandedPaneId).toBe("lab-1");
+      expect(store().flying).toBe(true);
+      expect(store().paneMotion).toBe(true);
+
+      vi.advanceTimersByTime(1000);
+      expect(store().flying).toBe(false);
+      expect(store().paneMotion).toBe(false);
+
+      store().expandPane("lab-1"); // toggle -> unexpand
+      expect(store().expandedPaneId).toBeNull();
+      expect(store().flying).toBe(true);
+      expect(store().paneMotion).toBe(true);
+    } finally {
+      resetCanvasLabStoreForTests();
+      vi.useRealTimers();
+    }
+  });
+});
+
 describe("canvasLabStore setParam validation", () => {
   it("clamps a number param to its control range", () => {
     resetCanvasLabStoreForTests();
