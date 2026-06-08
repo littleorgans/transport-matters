@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { lazy, type ReactNode, Suspense } from "react";
 import type { PaneId, WorldRect } from "../../engine";
 import type {
   CanvasPaneRef,
@@ -15,6 +15,12 @@ import { ResourcePane } from "./resource/ResourcePane";
 import { SessionPickerPane } from "./session-picker/SessionPickerPane";
 import { TranscriptChatPane } from "./transcript-chat/TranscriptChatPane";
 
+// xterm is heavy (~50KB gzip) and only needed once a terminal pane is opened, so split it into its
+// own chunk instead of weighing down every canvas load.
+const TerminalPane = lazy(() =>
+  import("./terminal/TerminalPane").then((module) => ({ default: module.TerminalPane })),
+);
+
 export const PICKER_PANE_ID = "session-picker";
 const TRANSCRIPT_PANE_PREFIX = "transcript:";
 const SUBAGENT_PANE_PREFIX = "subagent:";
@@ -24,6 +30,7 @@ const EXCHANGE_PANE_PREFIX = "exchange:";
 const PICKER_RECT: WorldRect = Object.freeze({ x: 48, y: 48, width: 440, height: 640 });
 const TRANSCRIPT_RECT: WorldRect = Object.freeze({ x: 512, y: 48, width: 720, height: 640 });
 const PLACEHOLDER_RECT: WorldRect = Object.freeze({ x: 560, y: 88, width: 560, height: 560 });
+const TERMINAL_RECT: WorldRect = Object.freeze({ x: 512, y: 48, width: 760, height: 520 });
 const CASCADE_OFFSET = 28;
 
 /**
@@ -51,6 +58,7 @@ function contentStep(paneCount: number): number {
 
 type ResourceRef = Extract<PaneContentRef, { kind: "resource" }>;
 type ExchangeRef = Extract<PaneContentRef, { kind: "provider-exchange" }>;
+type TerminalRef = Extract<PaneContentRef, { kind: "terminal" }>;
 
 const registry: ViewerRegistration[] = [
   defineViewer<PickerPaneRef>({
@@ -89,6 +97,22 @@ const registry: ViewerRegistration[] = [
         exchangeId={props.pane.contentRef.exchangeId}
         initialView={props.pane.contentRef.initialView}
       />
+    ),
+  }),
+  defineViewer<TerminalRef>({
+    id: "terminal",
+    canRender: (ref): ref is TerminalRef => ref.kind === "terminal",
+    paneId: () => "terminal",
+    title: () => "Terminal",
+    defaultRect: (_ref, index) => cascadeRect(TERMINAL_RECT, contentStep(index)),
+    // The terminal is self-contained (its own xterm + PTY socket); it ignores viewer props. It is
+    // lazy, so a Suspense boundary covers the one-time chunk fetch.
+    render: () => (
+      <Suspense
+        fallback={<div aria-busy="true" className="canvas-transcript canvas-transcript--center" />}
+      >
+        <TerminalPane />
+      </Suspense>
     ),
   }),
   defineViewer<PlaceholderPaneRef>({

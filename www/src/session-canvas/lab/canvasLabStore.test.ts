@@ -8,6 +8,47 @@ import {
 
 const store = useCanvasLabStore.getState;
 
+describe("canvasLabStore terminals", () => {
+  const terminalRef = { kind: "terminal", owner: "local" } as const;
+
+  it("spawns a pane that carries a terminal content ref", () => {
+    resetCanvasLabStoreForTests();
+
+    store().addTerminal();
+
+    expect(store().contentRefs["lab-1"]).toEqual(terminalRef);
+    expect(store().layout.nodes["lab-1"]).toBeDefined();
+  });
+
+  it("spawns multiple independent terminals alongside demo panes", () => {
+    resetCanvasLabStoreForTests();
+
+    store().addTerminal(); // lab-1
+    store().addPane(); // lab-2 (demo card/ruler, no content ref)
+    store().addTerminal(); // lab-3
+
+    expect(store().contentRefs).toEqual({ "lab-1": terminalRef, "lab-3": terminalRef });
+    expect(Object.keys(store().layout.nodes).sort()).toEqual(["lab-1", "lab-2", "lab-3"]);
+  });
+
+  it("forgets a pane's content ref once its close animation completes", () => {
+    vi.useFakeTimers();
+    try {
+      resetCanvasLabStoreForTests();
+      store().addTerminal(); // lab-1
+      store().addTerminal(); // lab-2
+
+      store().closePane("lab-1");
+      vi.runAllTimers();
+
+      expect(store().contentRefs).toEqual({ "lab-2": terminalRef });
+      expect(store().layout.nodes["lab-1"]).toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
 describe("canvasLabStore framing", () => {
   it("frames a pane (capturing the overview) and toggles back on a second call", () => {
     resetCanvasLabStoreForTests();

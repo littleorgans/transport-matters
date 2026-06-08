@@ -7,7 +7,8 @@ export type ViewerId =
   | "transcript-chat"
   | "placeholder"
   | "resource"
-  | "provider-exchange";
+  | "provider-exchange"
+  | "terminal";
 export type PaneChromeState = "default" | "loading" | "error" | "empty";
 
 export interface CanvasModel {
@@ -48,7 +49,8 @@ export type PaneContentRef =
       sessionId: string;
       exchangeId: string;
       initialView?: string;
-    };
+    }
+  | { kind: "terminal"; owner: "local" };
 
 /** The built-in session picker is canvas chrome, not transcript content. */
 export type PickerPaneRef = { kind: "session-picker"; owner: "local" };

@@ -1,14 +1,15 @@
 import { describe, expectTypeOf, it } from "vitest";
 import type { CanvasPaneRef, PaneContentRef, PickerPaneRef } from "./paneRecords";
 
-// The exported transcript content contract must stay exactly the four spec kinds
-// (NOTES/transcript-canvas-ui-frontend.md:50-54). The session picker is canvas
-// chrome and lives on CanvasPaneRef, not PaneContentRef. These assertions are
-// enforced by `pnpm typecheck` (src test files are part of the tsc project).
+// The content contract is the four transcript kinds plus the local terminal
+// surface (an interactive PTY, rendered through the same viewer registry). The
+// session picker is canvas chrome and lives on CanvasPaneRef, not
+// PaneContentRef. These assertions are enforced by `pnpm typecheck` (src test
+// files are part of the tsc project).
 describe("PaneContentRef contract", () => {
-  it("exports exactly the four transcript content kinds", () => {
+  it("exports the transcript content kinds plus the terminal surface", () => {
     expectTypeOf<PaneContentRef["kind"]>().toEqualTypeOf<
-      "session-timeline" | "subagent-timeline" | "resource" | "provider-exchange"
+      "session-timeline" | "subagent-timeline" | "resource" | "provider-exchange" | "terminal"
     >();
   });
 
