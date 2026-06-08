@@ -187,6 +187,7 @@ async def get_session_timeline(
         child_sessions=child_sessions,
         include_resources=include_resources,
         include_debug=include_debug,
+        page_from_seq=from_seq,
         next_from_seq=next_from_seq,
     )
 

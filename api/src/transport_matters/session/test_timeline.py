@@ -171,4 +171,98 @@ def test_projector_emits_child_and_virtual_sidechain_subagents() -> None:
     items = payload["items"]
     assert [item["kind"] for item in items] == ["message", "subagent", "subagent"]
     assert len(items[0]["subagentRefs"]) == 2
+    child_item = next(
+        item
+        for item in items
+        if item["kind"] == "subagent" and item["subagentRef"]["mode"] == "child-session"
+    )
+    assert child_item["source"]["eventKind"] == "turn"
     assert {hint["target"]["kind"] for hint in payload["layoutHints"]} == {"subagent-timeline"}
+
+
+def test_projector_links_child_forked_at_meta_to_prior_message() -> None:
+    child = _child_session().model_copy(update={"forked_at_seq": 1})
+
+    response = project_timeline(
+        session=root_session(),
+        events=[event(0), _meta(1, {"type": "mode", "mode": "default"})],
+        child_sessions=[child],
+    )
+    items = _json(response)["items"]
+
+    assert items[0]["kind"] == "message"
+    assert items[0]["subagentRefs"] == [
+        {
+            "subagentId": "subagent-session:child",
+            "sessionId": "child",
+            "parentSessionId": "s1",
+            "parentSeq": 1,
+            "mode": "child-session",
+            "title": "Code reviewer",
+        }
+    ]
+
+
+def test_projector_emits_child_when_fork_seq_is_gap_in_page() -> None:
+    child = _child_session().model_copy(update={"forked_at_seq": 1})
+
+    response = project_timeline(
+        session=root_session(),
+        events=[event(0), event(2)],
+        child_sessions=[child],
+    )
+    payload = _json(response)
+
+    assert "subagent-session:child" in payload["subagents"]
+    assert [item["kind"] for item in payload["items"]] == ["message", "subagent", "message"]
+    assert payload["items"][0]["subagentRefs"][0]["parentSeq"] == 1
+
+
+def test_projector_emits_child_when_fork_seq_is_page_lower_bound_gap() -> None:
+    child = _child_session().model_copy(update={"forked_at_seq": 1})
+
+    response = project_timeline(
+        session=root_session(),
+        events=[event(2)],
+        child_sessions=[child],
+        page_from_seq=1,
+    )
+    payload = _json(response)
+
+    assert "subagent-session:child" in payload["subagents"]
+    assert [item["kind"] for item in payload["items"]] == ["subagent", "message"]
+
+
+def test_projector_groups_sidechain_meta_with_virtual_subagent() -> None:
+    sidechain_meta = _meta(1, {"type": "event_msg", "message": "working"}).model_copy(
+        update={
+            "parent_native_id": "turn0",
+            "parent_seq": 0,
+            "is_sidechain": True,
+        }
+    )
+
+    response = project_timeline(
+        session=root_session(),
+        events=[event(0), sidechain_meta],
+    )
+    payload = _json(response)
+
+    assert [item["kind"] for item in payload["items"]] == ["message", "subagent"]
+    assert payload["items"][0]["subagentRefs"][0]["mode"] == "virtual-sidechain"
+    virtual = next(iter(payload["subagents"].values()))
+    assert virtual["mode"] == "virtual-sidechain"
+    assert virtual["firstSeq"] == 1
+    assert virtual["lastSeq"] == 1
+
+
+def test_projector_does_not_emit_debug_native_resources_in_slice_one() -> None:
+    response = project_timeline(
+        session=root_session(),
+        events=[_meta(1, {"type": "event_msg", "message": "working"})],
+        include_debug=True,
+    )
+    payload = _json(response)
+
+    assert payload["resources"] == {}
+    assert payload["items"][0]["resourceRefs"] == []

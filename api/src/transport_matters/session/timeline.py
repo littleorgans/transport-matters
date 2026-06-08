@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from hashlib import sha256
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 from transport_matters.session.timeline_models import (
     Badge,
@@ -12,8 +12,6 @@ from transport_matters.session.timeline_models import (
     LayoutHint,
     MessageItem,
     MessageRole,
-    NativeRecordResourceSummary,
-    ResourceRef,
     ResourceSummaryType,
     SessionHeader,
     SessionStatus,
@@ -63,6 +61,7 @@ def project_timeline(
     child_sessions: list[ChildSessionRow] | tuple[ChildSessionRow, ...] = (),
     include_resources: bool = True,
     include_debug: bool = False,
+    page_from_seq: int | None = None,
     next_from_seq: int | None = None,
 ) -> TimelineResponse:
     items: list[TimelineItemType] = []
@@ -70,21 +69,40 @@ def project_timeline(
     subagents: dict[str, SubagentSummary] = {}
     layout_hints: list[LayoutHint] = []
     messages_by_seq: dict[int, MessageItem] = {}
-    last_message: MessageItem | None = None
+    message_item_indices_by_seq: dict[int, int] = {}
+    last_message_seq: int | None = None
     sidechain_groups: dict[str, list[EventRow]] = {}
+    event_kinds_by_seq: dict[int, Literal["turn", "meta"]] = {}
 
     for row in events:
+        event_kinds_by_seq[row.seq] = _source_event_kind(row.kind)
+        if row.is_sidechain:
+            sidechain_groups.setdefault(_sidechain_root_id(row), []).append(row)
+            continue
         if row.kind == "turn":
-            if row.is_sidechain:
-                sidechain_groups.setdefault(_sidechain_root_id(row), []).append(row)
-                continue
             message = _message_item(row)
+            message_item_indices_by_seq[row.seq] = len(items)
             items.append(message)
             messages_by_seq[row.seq] = message
-            last_message = message
+            last_message_seq = row.seq
             continue
 
-        meta_item = _meta_item(row, last_message)
+        if _native_record_key(row.raw) == "system.turn_duration":
+            if last_message_seq is not None:
+                _attach_message_badge(
+                    items=items,
+                    messages_by_seq=messages_by_seq,
+                    message_item_indices_by_seq=message_item_indices_by_seq,
+                    seq=last_message_seq,
+                    badge=Badge(
+                        label="Turn duration",
+                        value=_turn_duration_value(row.raw),
+                        tone="neutral",
+                    ),
+                )
+            continue
+
+        meta_item = _meta_item(row)
         if meta_item is not None:
             items.append(meta_item)
 
@@ -92,7 +110,10 @@ def project_timeline(
         session=session,
         child_sessions=child_sessions,
         visible_parent_seqs={row.seq for row in events},
+        visible_seq_window=_seq_window(events, from_seq=page_from_seq),
+        event_kinds_by_seq=event_kinds_by_seq,
         messages_by_seq=messages_by_seq,
+        message_item_indices_by_seq=message_item_indices_by_seq,
         items=items,
         subagents=subagents,
         layout_hints=layout_hints,
@@ -101,13 +122,11 @@ def project_timeline(
         session=session,
         sidechain_groups=sidechain_groups,
         messages_by_seq=messages_by_seq,
+        message_item_indices_by_seq=message_item_indices_by_seq,
         items=items,
         subagents=subagents,
         layout_hints=layout_hints,
     )
-
-    if include_resources and include_debug:
-        _append_debug_native_resources(items, resources)
 
     return TimelineResponse(
         session=SessionHeader.from_row(session),
@@ -131,14 +150,8 @@ def _message_item(row: EventRow) -> MessageItem:
     )
 
 
-def _meta_item(row: EventRow, last_message: MessageItem | None) -> TimelineItemType | None:
+def _meta_item(row: EventRow) -> TimelineItemType | None:
     key = _native_record_key(row.raw)
-    if key == "system.turn_duration":
-        if last_message is not None:
-            last_message.badges.append(
-                Badge(label="Turn duration", value=_turn_duration_value(row.raw), tone="neutral")
-            )
-        return None
     if key in _NO_ITEM_META_KEYS:
         return None
     if key in _STATE_LABELS:
@@ -187,13 +200,20 @@ def _append_child_subagents(
     session: SessionRow,
     child_sessions: list[ChildSessionRow] | tuple[ChildSessionRow, ...],
     visible_parent_seqs: set[int],
+    visible_seq_window: tuple[int, int] | None,
+    event_kinds_by_seq: dict[int, Literal["turn", "meta"]],
     messages_by_seq: dict[int, MessageItem],
+    message_item_indices_by_seq: dict[int, int],
     items: list[TimelineItemType],
     subagents: dict[str, SubagentSummary],
     layout_hints: list[LayoutHint],
 ) -> None:
     for child in child_sessions:
-        if child.forked_at_seq is not None and child.forked_at_seq not in visible_parent_seqs:
+        if not _child_subagent_is_visible(
+            child.forked_at_seq,
+            visible_parent_seqs=visible_parent_seqs,
+            visible_seq_window=visible_seq_window,
+        ):
             continue
         subagent_ref = _child_subagent_ref(session, child)
         summary = SubagentSummary(
@@ -210,7 +230,12 @@ def _append_child_subagents(
             last_seq=child.last_seq,
         )
         subagents[summary.subagent_id] = summary
-        _attach_subagent_ref(messages_by_seq, subagent_ref)
+        _attach_subagent_ref(
+            items=items,
+            messages_by_seq=messages_by_seq,
+            message_item_indices_by_seq=message_item_indices_by_seq,
+            ref=subagent_ref,
+        )
         seq = child.forked_at_seq if child.forked_at_seq is not None else 0
         items.append(
             SubagentItem(
@@ -221,7 +246,11 @@ def _append_child_subagents(
                 subagent_ref=subagent_ref,
                 summary=None,
                 status=summary.status,
-                source=_synthetic_source(session.session_id, seq),
+                source=_synthetic_source(
+                    session.session_id,
+                    seq,
+                    event_kind=event_kinds_by_seq.get(seq, "meta"),
+                ),
             )
         )
         layout_hints.append(_subagent_layout_hint(session.owner, summary, seq))
@@ -232,6 +261,7 @@ def _append_virtual_sidechains(
     session: SessionRow,
     sidechain_groups: dict[str, list[EventRow]],
     messages_by_seq: dict[int, MessageItem],
+    message_item_indices_by_seq: dict[int, int],
     items: list[TimelineItemType],
     subagents: dict[str, SubagentSummary],
     layout_hints: list[LayoutHint],
@@ -266,7 +296,12 @@ def _append_virtual_sidechains(
             last_seq=ordered[-1].seq,
         )
         subagents[subagent_id] = summary
-        _attach_subagent_ref(messages_by_seq, subagent_ref)
+        _attach_subagent_ref(
+            items=items,
+            messages_by_seq=messages_by_seq,
+            message_item_indices_by_seq=message_item_indices_by_seq,
+            ref=subagent_ref,
+        )
         items.append(
             SubagentItem(
                 id=f"subagent:{session.session_id}:{subagent_id}",
@@ -282,28 +317,6 @@ def _append_virtual_sidechains(
         layout_hints.append(_subagent_layout_hint(session.owner, summary, anchor_seq))
 
 
-def _append_debug_native_resources(
-    items: list[TimelineItemType], resources: dict[str, ResourceSummaryType]
-) -> None:
-    for item in items:
-        if not isinstance(item, ContextItem):
-            continue
-        resource_id = f"native:{item.source.session_id}:{item.source.seq}"
-        resources[resource_id] = NativeRecordResourceSummary(
-            id=resource_id,
-            title=f"Native record {item.source.seq}",
-            source=item.source,
-        )
-        item.resource_refs.append(
-            ResourceRef(
-                resource_id=resource_id,
-                relation="mentioned",
-                confidence="verified",
-                block_index=None,
-            )
-        )
-
-
 def _child_subagent_ref(session: SessionRow, child: ChildSessionRow) -> SubagentRef:
     title = child.title or child.native_session_id or child.session_id
     return SubagentRef(
@@ -316,12 +329,82 @@ def _child_subagent_ref(session: SessionRow, child: ChildSessionRow) -> Subagent
     )
 
 
-def _attach_subagent_ref(messages_by_seq: dict[int, MessageItem], ref: SubagentRef) -> None:
-    if ref.parent_seq is None:
+def _attach_message_badge(
+    *,
+    items: list[TimelineItemType],
+    messages_by_seq: dict[int, MessageItem],
+    message_item_indices_by_seq: dict[int, int],
+    seq: int,
+    badge: Badge,
+) -> None:
+    message = messages_by_seq.get(seq)
+    if message is None:
         return
-    message = messages_by_seq.get(ref.parent_seq)
-    if message is not None:
-        message.subagent_refs.append(ref)
+    updated = message.model_copy(update={"badges": [*message.badges, badge]})
+    _replace_message_item(
+        items=items,
+        messages_by_seq=messages_by_seq,
+        message_item_indices_by_seq=message_item_indices_by_seq,
+        message=updated,
+    )
+
+
+def _attach_subagent_ref(
+    *,
+    items: list[TimelineItemType],
+    messages_by_seq: dict[int, MessageItem],
+    message_item_indices_by_seq: dict[int, int],
+    ref: SubagentRef,
+) -> None:
+    attach_seq = _nearest_message_seq(messages_by_seq, ref.parent_seq)
+    if attach_seq is None:
+        return
+    message = messages_by_seq[attach_seq]
+    updated = message.model_copy(update={"subagent_refs": [*message.subagent_refs, ref]})
+    _replace_message_item(
+        items=items,
+        messages_by_seq=messages_by_seq,
+        message_item_indices_by_seq=message_item_indices_by_seq,
+        message=updated,
+    )
+
+
+def _replace_message_item(
+    *,
+    items: list[TimelineItemType],
+    messages_by_seq: dict[int, MessageItem],
+    message_item_indices_by_seq: dict[int, int],
+    message: MessageItem,
+) -> None:
+    messages_by_seq[message.seq] = message
+    index = message_item_indices_by_seq.get(message.seq)
+    if index is not None:
+        items[index] = message
+
+
+def _nearest_message_seq(
+    messages_by_seq: dict[int, MessageItem], parent_seq: int | None
+) -> int | None:
+    if parent_seq is None:
+        return None
+    if parent_seq in messages_by_seq:
+        return parent_seq
+    previous_seqs = [seq for seq in messages_by_seq if seq < parent_seq]
+    return max(previous_seqs, default=None)
+
+
+def _child_subagent_is_visible(
+    forked_at_seq: int | None,
+    *,
+    visible_parent_seqs: set[int],
+    visible_seq_window: tuple[int, int] | None,
+) -> bool:
+    if forked_at_seq is None or forked_at_seq in visible_parent_seqs:
+        return True
+    if visible_seq_window is None:
+        return False
+    first_seq, last_seq = visible_seq_window
+    return first_seq <= forked_at_seq <= last_seq
 
 
 def _subagent_layout_hint(
@@ -347,7 +430,7 @@ def _source_ref(row: EventRow) -> SourceRef:
     return SourceRef(
         session_id=row.session_id,
         seq=row.seq,
-        event_kind="meta" if row.kind == "meta" else "turn",
+        event_kind=_source_event_kind(row.kind),
         source_path=row.source_path,
         source_line=row.source_line,
         raw_available=True,
@@ -355,16 +438,30 @@ def _source_ref(row: EventRow) -> SourceRef:
     )
 
 
-def _synthetic_source(session_id: str, seq: int) -> SourceRef:
+def _synthetic_source(
+    session_id: str, seq: int, *, event_kind: Literal["turn", "meta"]
+) -> SourceRef:
     return SourceRef(
         session_id=session_id,
         seq=seq,
-        event_kind="meta",
+        event_kind=event_kind,
         source_path=None,
         source_line=None,
         raw_available=False,
         ir_available=False,
     )
+
+
+def _source_event_kind(kind: object) -> Literal["turn", "meta"]:
+    return "meta" if str(kind) == "meta" else "turn"
+
+
+def _seq_window(events: list[EventRow], *, from_seq: int | None) -> tuple[int, int] | None:
+    if not events:
+        return None
+    seqs = [row.seq for row in events]
+    first_seq = from_seq if from_seq is not None else min(seqs)
+    return first_seq, max(seqs)
 
 
 def _parts(ir: JsonObject | None) -> list[ContentPart]:

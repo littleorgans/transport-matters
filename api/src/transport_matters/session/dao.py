@@ -70,6 +70,21 @@ _EVENT_OWNER_COLUMNS = ", ".join(f"e.{name}" for name in _EVENT_COLUMN_NAMES)
 _EVENT_READ_COLUMNS = ", ".join(f"e.{name}" for name in _EVENT_READ_COLUMN_NAMES)
 _ARTIFACT_COLUMNS = "hash, media_type, size_bytes, bytes, created_at"
 
+
+def _get_events_for_owner_sql(event_columns: str) -> str:
+    return f"""
+SELECT {event_columns}
+FROM "event" AS e
+JOIN "session" AS s ON s.session_id = e.session_id
+WHERE e.session_id = %(session_id)s
+  AND s.owner = %(owner)s
+  AND (%(from_seq)s::integer IS NULL OR e.seq >= %(from_seq)s::integer)
+  AND (%(to_seq)s::integer IS NULL OR e.seq <= %(to_seq)s::integer)
+ORDER BY e.seq
+LIMIT %(limit)s
+"""
+
+
 _UPSERT_SESSION_SQL = f"""
 INSERT INTO "session" (
     session_id, provider, cli, run_id, cwd, workspace_slug, workspace_hash,
@@ -160,29 +175,8 @@ WHERE session_id = %(session_id)s
   AND (%(to_seq)s::integer IS NULL OR seq <= %(to_seq)s::integer)
 ORDER BY seq
 """
-_GET_EVENTS_FOR_OWNER_SQL = f"""
-SELECT {_EVENT_READ_COLUMNS}
-FROM "event" AS e
-JOIN "session" AS s ON s.session_id = e.session_id
-WHERE e.session_id = %(session_id)s
-  AND s.owner = %(owner)s
-  AND (%(from_seq)s::integer IS NULL OR e.seq >= %(from_seq)s::integer)
-  AND (%(to_seq)s::integer IS NULL OR e.seq <= %(to_seq)s::integer)
-ORDER BY e.seq
-LIMIT %(limit)s
-"""
-
-_GET_EVENTS_WITH_RAW_FOR_OWNER_SQL = f"""
-SELECT {_EVENT_OWNER_COLUMNS}
-FROM "event" AS e
-JOIN "session" AS s ON s.session_id = e.session_id
-WHERE e.session_id = %(session_id)s
-  AND s.owner = %(owner)s
-  AND (%(from_seq)s::integer IS NULL OR e.seq >= %(from_seq)s::integer)
-  AND (%(to_seq)s::integer IS NULL OR e.seq <= %(to_seq)s::integer)
-ORDER BY e.seq
-LIMIT %(limit)s
-"""
+_GET_EVENTS_FOR_OWNER_SQL = _get_events_for_owner_sql(_EVENT_READ_COLUMNS)
+_GET_EVENTS_WITH_RAW_FOR_OWNER_SQL = _get_events_for_owner_sql(_EVENT_OWNER_COLUMNS)
 
 _LIST_CHILD_SESSIONS_FOR_OWNER_SQL = f"""
 SELECT {_CHILD_SESSION_COLUMNS}, min(e.seq) AS first_seq, max(e.seq) AS last_seq
