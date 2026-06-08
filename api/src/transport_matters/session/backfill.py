@@ -18,7 +18,7 @@ from transport_matters.index.sessions import synth_session_id
 from transport_matters.index.subagents import (
     SubagentSpawnLink,
     discover_child_transcripts,
-    iter_without_replayed_prefix,
+    iter_without_replayed_prefix_with_source_lines,
     record_subagent_spawn_links,
 )
 from transport_matters.index.tailer import iter_complete_records
@@ -103,9 +103,11 @@ def _replay_owned(root: Path, owned: OwnedSessionFacts) -> Iterator[ReplayRecord
         if not child_path.exists():
             continue
         child_records, _child_consumed = iter_complete_records(child_path.read_bytes())
-        filtered = iter_without_replayed_prefix(child_records, child.skip_until_user_text)
-        for seq, record in enumerate(filtered):
-            yield child.binding, record, seq, child.source
+        filtered = iter_without_replayed_prefix_with_source_lines(
+            child_records, child.skip_until_user_text
+        )
+        for source_line, record in filtered:
+            yield child.binding, record, source_line, child.source
 
 
 def _session_id(owned: OwnedSessionFacts, provider: str) -> str:

@@ -65,16 +65,25 @@ def discover_child_transcripts(
 def iter_without_replayed_prefix(
     records: Iterable[RawRecord], skip_until_user_text: str | None
 ) -> Iterator[RawRecord]:
+    for _source_line, record in iter_without_replayed_prefix_with_source_lines(
+        records, skip_until_user_text
+    ):
+        yield record
+
+
+def iter_without_replayed_prefix_with_source_lines(
+    records: Iterable[RawRecord], skip_until_user_text: str | None
+) -> Iterator[tuple[int, RawRecord]]:
     if skip_until_user_text is None:
-        yield from records
+        yield from enumerate(records)
         return
     found = False
-    for record in records:
+    for source_line, record in enumerate(records):
         if not found:
             found = _is_user_text_record(record, skip_until_user_text)
             if not found:
                 continue
-        yield record
+        yield source_line, record
 
 
 def is_replay_anchor(record: RawRecord, text: str) -> bool:
@@ -119,11 +128,14 @@ def _record_codex_spawn_links(
     call_id = _string(payload.get("call_id"))
     if kind == "function_call" and payload.get("name") == "spawn_agent" and call_id:
         arguments = _json_object(payload.get("arguments"))
-        message = _string(arguments.get("message"))
+        message = _spawn_prompt_text(arguments)
+        replay_anchor_text = message
+        if arguments.get("fork_context") is True and replay_anchor_text is None:
+            replay_anchor_text = ""
         pending_calls[call_id] = SubagentSpawnLink(
             parent_seq=seq,
             title=message,
-            replay_anchor_text=message,
+            replay_anchor_text=replay_anchor_text,
         )
         return
     if kind != "function_call_output" or not call_id:
@@ -254,6 +266,26 @@ def _content_blocks(content: Any) -> Iterator[dict[str, Any]]:
                 yield item
 
 
+def _spawn_prompt_text(arguments: dict[str, Any]) -> str | None:
+    message = _string(arguments.get("message"))
+    if message is not None:
+        return message
+    return _items_text(arguments.get("items"))
+
+
+def _items_text(items: Any) -> str | None:
+    if not isinstance(items, list):
+        return None
+    chunks: list[str] = []
+    for item in items:
+        if not isinstance(item, dict) or item.get("type") != "text":
+            continue
+        text = _string(item.get("text"))
+        if text is not None:
+            chunks.append(text)
+    return "\n".join(chunks) if chunks else None
+
+
 def _is_user_text_record(record: RawRecord, text: str) -> bool:
     if record.get("type") != "response_item":
         return False
@@ -262,10 +294,18 @@ def _is_user_text_record(record: RawRecord, text: str) -> bool:
         return False
     if payload.get("type") != "message" or payload.get("role") != "user":
         return False
-    for block in _content_blocks(payload.get("content")):
-        if block.get("type") == "input_text" and block.get("text") == text:
-            return True
-    return False
+    return _input_text(payload.get("content")) == text
+
+
+def _input_text(content: Any) -> str | None:
+    chunks: list[str] = []
+    for block in _content_blocks(content):
+        if block.get("type") != "input_text":
+            continue
+        text = _string(block.get("text"))
+        if text is not None:
+            chunks.append(text)
+    return "\n".join(chunks) if chunks else None
 
 
 def _first_session_meta(path: Path) -> dict[str, Any]:
