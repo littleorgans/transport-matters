@@ -14,6 +14,7 @@ const { terminals, MockTerminal, MockFitAddon } = vi.hoisted(() => {
     rows = 24;
     loadAddon = vi.fn();
     open = vi.fn();
+    focus = vi.fn();
     write = vi.fn();
     dispose = vi.fn();
     onData = vi.fn(() => ({ dispose: vi.fn() }));
@@ -68,6 +69,11 @@ describe("TerminalPane", () => {
     expect(terminal.loadAddon).toHaveBeenCalledTimes(1);
     expect(terminal.open).toHaveBeenCalledTimes(1);
     expect(socket.url).toMatch(/\/api\/terminal\?cols=80&rows=24$/);
+  });
+
+  it("focuses the terminal on mount so keys (incl. Ctrl-C) reach the PTY", () => {
+    render(<TerminalPane />);
+    expect(only(terminals).focus).toHaveBeenCalledTimes(1);
   });
 
   it("surfaces a refused state when the socket is rejected (close 1008)", () => {

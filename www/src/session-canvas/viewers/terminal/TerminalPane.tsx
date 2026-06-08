@@ -35,6 +35,10 @@ export function TerminalPane(): ReactElement {
     term.loadAddon(fit);
     term.open(surface);
     fit.fit();
+    // Focus the new pane so it's typeable immediately and control keys (Ctrl-C,
+    // Ctrl-D, ...) reach the PTY instead of the browser. xterm only emits keys
+    // via onData while its textarea holds focus.
+    term.focus();
 
     let disposed = false;
     const socket = openTerminalSocket(term, {
