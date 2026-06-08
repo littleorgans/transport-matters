@@ -6,7 +6,7 @@ import pytest
 
 from transport_matters.session.models import ChildSessionRow, EventRow
 from transport_matters.session.test_foundation import event, root_session, tool_result_event
-from transport_matters.session.timeline import project_timeline
+from transport_matters.session.timeline import project_timeline, required_timeline_anchor_before_seq
 from transport_matters.session.timeline_models import (
     SessionUpdatedStreamEvent,
     SubagentUpdatedStreamEvent,
@@ -211,7 +211,7 @@ def test_projector_maps_turn_duration_to_prior_message_badge() -> None:
     assert items[0]["badges"] == [{"label": "Turn duration", "value": "42 ms", "tone": "neutral"}]
 
 
-def test_projector_emits_child_and_virtual_sidechain_subagents() -> None:
+def test_projector_emits_only_child_session_subagents() -> None:
     sidechain = event(1).model_copy(
         update={
             "native_turn_id": "sidechain-turn",
@@ -229,19 +229,13 @@ def test_projector_emits_child_and_virtual_sidechain_subagents() -> None:
     payload = _json(response)
 
     subagents = payload["subagents"]
-    assert subagents["subagent-session:child"]["mode"] == "child-session"
-    virtual_ids = [key for key in subagents if key.startswith("subagent-sidechain:s1:")]
-    assert len(virtual_ids) == 1
-    assert subagents[virtual_ids[0]]["mode"] == "virtual-sidechain"
+    assert list(subagents) == ["subagent-session:child"]
+    assert "mode" not in subagents["subagent-session:child"]
 
     items = payload["items"]
-    assert [item["kind"] for item in items] == ["message", "subagent", "subagent"]
-    assert len(items[0]["subagentRefs"]) == 2
-    child_item = next(
-        item
-        for item in items
-        if item["kind"] == "subagent" and item["subagentRef"]["mode"] == "child-session"
-    )
+    assert [item["kind"] for item in items] == ["message", "subagent", "message"]
+    assert len(items[0]["subagentRefs"]) == 1
+    child_item = next(item for item in items if item["kind"] == "subagent")
     assert child_item["source"]["eventKind"] == "turn"
     assert {hint["target"]["kind"] for hint in payload["layoutHints"]} == {"subagent-timeline"}
 
@@ -263,7 +257,6 @@ def test_projector_links_child_forked_at_meta_to_prior_message() -> None:
             "sessionId": "child",
             "parentSessionId": "s1",
             "parentSeq": 1,
-            "mode": "child-session",
             "title": "Code reviewer",
         }
     ]
@@ -299,7 +292,7 @@ def test_projector_emits_child_when_fork_seq_is_page_lower_bound_gap() -> None:
     assert [item["kind"] for item in payload["items"]] == ["subagent", "message"]
 
 
-def test_projector_groups_sidechain_meta_with_virtual_subagent() -> None:
+def test_projector_does_not_emit_virtual_sidechain_for_sidechain_meta() -> None:
     sidechain_meta = _meta(1, {"type": "event_msg", "message": "working"}).model_copy(
         update={
             "parent_native_id": "turn0",
@@ -314,12 +307,21 @@ def test_projector_groups_sidechain_meta_with_virtual_subagent() -> None:
     )
     payload = _json(response)
 
-    assert [item["kind"] for item in payload["items"]] == ["message", "subagent"]
-    assert payload["items"][0]["subagentRefs"][0]["mode"] == "virtual-sidechain"
-    virtual = next(iter(payload["subagents"].values()))
-    assert virtual["mode"] == "virtual-sidechain"
-    assert virtual["firstSeq"] == 1
-    assert virtual["lastSeq"] == 1
+    assert [item["kind"] for item in payload["items"]] == ["message", "context"]
+    assert payload["items"][0]["subagentRefs"] == []
+    assert payload["subagents"] == {}
+    assert payload["layoutHints"] == []
+
+
+def test_required_timeline_anchor_treats_sidechain_turns_as_regular_turns() -> None:
+    sidechain = event(0).model_copy(update={"is_sidechain": True})
+
+    assert (
+        required_timeline_anchor_before_seq(
+            [sidechain, _meta(1, {"type": "system", "subtype": "turn_duration", "ms": 42})]
+        )
+        is None
+    )
 
 
 def test_projector_does_not_emit_debug_native_resources_in_slice_one() -> None:

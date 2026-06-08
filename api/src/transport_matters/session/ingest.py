@@ -59,6 +59,9 @@ def build_session(binding: SessionBinding) -> SessionRow:
         minted=binding.minted,
         source_descriptor=_descriptor_json(binding.source_descriptor),
         home_dir=binding.home_dir,
+        title=binding.title,
+        parent_session_id=binding.parent_session_id,
+        forked_at_seq=binding.forked_at_seq,
         started_at=_parse_required_datetime(binding.started_at),
     )
 

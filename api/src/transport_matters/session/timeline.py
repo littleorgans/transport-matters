@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from hashlib import sha256
 from typing import TYPE_CHECKING, Any, Literal
 
 from transport_matters.session.timeline_models import (
@@ -74,14 +73,10 @@ def project_timeline(
     messages_by_seq: dict[int, MessageItem] = {}
     message_item_indices_by_seq: dict[int, int] = {}
     last_message_seq: int | None = None
-    sidechain_groups: dict[str, list[EventRow]] = {}
     event_kinds_by_seq: dict[int, Literal["turn", "meta"]] = {}
 
     for row in events:
         event_kinds_by_seq[row.seq] = _source_event_kind(row.kind)
-        if row.is_sidechain:
-            sidechain_groups.setdefault(_sidechain_root_id(row), []).append(row)
-            continue
         if row.kind == "turn":
             message, message_resources = _message_item(row)
             message_item_indices_by_seq[row.seq] = len(items)
@@ -122,15 +117,6 @@ def project_timeline(
         subagents=subagents,
         layout_hints=layout_hints,
     )
-    _append_virtual_sidechains(
-        session=session,
-        sidechain_groups=sidechain_groups,
-        messages_by_seq=messages_by_seq,
-        message_item_indices_by_seq=message_item_indices_by_seq,
-        items=items,
-        subagents=subagents,
-        layout_hints=layout_hints,
-    )
 
     return TimelineResponse(
         session=SessionHeader.from_row(session),
@@ -146,8 +132,6 @@ def required_timeline_anchor_before_seq(events: list[EventRow]) -> int | None:
     """Return the first live window seq that needs a prior message anchor."""
     last_message_seq: int | None = None
     for row in events:
-        if row.is_sidechain:
-            continue
         if row.kind == "turn":
             last_message_seq = row.seq
             continue
@@ -292,7 +276,6 @@ def _append_child_subagents(
             session_id=subagent_ref.session_id,
             parent_session_id=subagent_ref.parent_session_id,
             parent_seq=subagent_ref.parent_seq,
-            mode=subagent_ref.mode,
             provider=child.provider,
             cli=child.cli or "",
             title=subagent_ref.title,
@@ -327,67 +310,6 @@ def _append_child_subagents(
         layout_hints.append(_subagent_layout_hint(session.owner, summary, seq))
 
 
-def _append_virtual_sidechains(
-    *,
-    session: SessionRow,
-    sidechain_groups: dict[str, list[EventRow]],
-    messages_by_seq: dict[int, MessageItem],
-    message_item_indices_by_seq: dict[int, int],
-    items: list[TimelineItemType],
-    subagents: dict[str, SubagentSummary],
-    layout_hints: list[LayoutHint],
-) -> None:
-    for root_id, group in sidechain_groups.items():
-        ordered = sorted(group, key=lambda item: item.seq)
-        first = ordered[0]
-        parent_seq = first.parent_seq
-        anchor_seq = parent_seq if parent_seq is not None else first.seq
-        digest = sha256(root_id.encode("utf-8")).hexdigest()
-        subagent_id = f"subagent-sidechain:{session.session_id}:{digest}"
-        title = f"Sidechain {first.native_turn_id or first.seq}"
-        subagent_ref = SubagentRef(
-            subagent_id=subagent_id,
-            session_id=session.session_id,
-            parent_session_id=session.session_id,
-            parent_seq=parent_seq,
-            mode="virtual-sidechain",
-            title=title,
-        )
-        summary = SubagentSummary(
-            subagent_id=subagent_id,
-            session_id=session.session_id,
-            parent_session_id=session.session_id,
-            parent_seq=parent_seq,
-            mode="virtual-sidechain",
-            provider=first.provider,
-            cli=first.cli,
-            title=title,
-            status="unknown",
-            first_seq=ordered[0].seq,
-            last_seq=ordered[-1].seq,
-        )
-        subagents[subagent_id] = summary
-        _attach_subagent_ref(
-            items=items,
-            messages_by_seq=messages_by_seq,
-            message_item_indices_by_seq=message_item_indices_by_seq,
-            ref=subagent_ref,
-        )
-        items.append(
-            SubagentItem(
-                id=f"subagent:{session.session_id}:{subagent_id}",
-                seq=anchor_seq,
-                ts=_ts(first),
-                title=title,
-                subagent_ref=subagent_ref,
-                summary="Inline sidechain record. Normalize to a child session to view it as a pane.",
-                status="unknown",
-                source=_source_ref(first),
-            )
-        )
-        layout_hints.append(_subagent_layout_hint(session.owner, summary, anchor_seq))
-
-
 def _child_subagent_ref(session: SessionRow, child: ChildSessionRow) -> SubagentRef:
     title = child.title or child.native_session_id or child.session_id
     return SubagentRef(
@@ -395,7 +317,6 @@ def _child_subagent_ref(session: SessionRow, child: ChildSessionRow) -> Subagent
         session_id=child.session_id,
         parent_session_id=session.session_id,
         parent_seq=child.forked_at_seq,
-        mode="child-session",
         title=title,
     )
 
@@ -614,10 +535,6 @@ def _turn_duration_value(raw: JsonObject) -> str | None:
         if isinstance(value, int | float):
             return f"{value:g} ms"
     return _summary_value(raw, fallback="completed")
-
-
-def _sidechain_root_id(row: EventRow) -> str:
-    return row.parent_native_id or row.native_turn_id or f"seq:{row.seq}"
 
 
 def _message_role(role: str | None) -> MessageRole:

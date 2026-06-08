@@ -16,7 +16,6 @@ BadgeTone = Literal["neutral", "trust", "warning"]
 OpenPolicy = Literal["auto", "click", "collapsed"]
 ResourceRelation = Literal["attached", "read", "written", "mentioned", "generated", "wire-evidence"]
 ResourceConfidence = Literal["verified", "inferred", "mentioned"]
-SubagentMode = Literal["child-session", "virtual-sidechain"]
 SessionStatus = Literal["active", "completed", "archived", "unknown"]
 DiagnosticSeverity = Literal["info", "warning", "error"]
 
@@ -102,7 +101,6 @@ class SubagentRef(TimelineModel):
     session_id: str
     parent_session_id: str
     parent_seq: int | None
-    mode: SubagentMode
     title: str
 
 
@@ -111,7 +109,6 @@ class SubagentSummary(TimelineModel):
     session_id: str
     parent_session_id: str
     parent_seq: int | None
-    mode: SubagentMode
     provider: str
     cli: str
     title: str

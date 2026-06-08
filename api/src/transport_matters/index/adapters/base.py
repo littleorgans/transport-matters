@@ -39,6 +39,9 @@ class SessionBinding(BaseModel):
     source_descriptor: str | None = (
         None  # JSON locating the transcript source (set in §7.3, slice 4b)
     )
+    parent_session_id: str | None = None
+    forked_at_seq: int | None = None
+    title: str | None = None
     home_dir: str | None = (
         None  # managed --agent-home-dir for this run; threaded from RunFacts so ``locate`` resolves the
         # transcript root under the managed home (§5.2c external-adoption). Survives the re-bind via
