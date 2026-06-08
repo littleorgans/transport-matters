@@ -237,6 +237,15 @@ ON CONFLICT (session_id, seq, artifact_hash) DO UPDATE SET ref = EXCLUDED.ref
 RETURNING session_id, seq, artifact_hash, ref
 """
 
+_GET_EVENT_ARTIFACTS_FOR_SEQS_SQL = """
+SELECT ea.session_id, ea.seq, ea.artifact_hash, ea.ref, a.media_type, a.size_bytes
+FROM event_artifact AS ea
+JOIN artifact AS a ON a.hash = ea.artifact_hash
+WHERE ea.session_id = %(session_id)s
+  AND ea.seq = ANY(%(seqs)s::integer[])
+ORDER BY ea.seq, ea.artifact_hash
+"""
+
 
 def _jsonb(value: dict[str, Any] | None) -> Jsonb | None:
     # Any: provider and IR JSON are intentionally opaque at this DAO boundary.
@@ -273,6 +282,18 @@ def _event_artifact(row: Mapping[str, Any]) -> EventArtifactRow:
     return EventArtifactRow.model_validate(dict(row))
 
 
+def _events_with_artifacts(
+    events: list[EventRow], artifacts: list[EventArtifactRow]
+) -> list[EventRow]:
+    artifacts_by_seq: dict[int, list[EventArtifactRow]] = {}
+    for artifact in artifacts:
+        artifacts_by_seq.setdefault(artifact.seq, []).append(artifact)
+    return [
+        event.model_copy(update={"artifacts": tuple(artifacts_by_seq.get(event.seq, ()))})
+        for event in events
+    ]
+
+
 def _session_params(session: SessionRow) -> dict[str, Any]:
     # Any: psycopg parameter maps accept scalars plus Jsonb wrappers.
     data = session.model_dump(mode="python", exclude={"created_at", "updated_at"})
@@ -282,7 +303,7 @@ def _session_params(session: SessionRow) -> dict[str, Any]:
 
 def _event_params(event: EventRow) -> dict[str, Any]:
     # Any: psycopg parameter maps accept scalars plus Jsonb wrappers.
-    data = event.model_dump(mode="python", exclude={"created_at"})
+    data = event.model_dump(mode="python", exclude={"artifacts", "created_at"})
     data["raw"] = Jsonb(event.raw)
     data["ir"] = _jsonb(event.ir)
     return data
@@ -396,7 +417,14 @@ class SessionDao:
                 "limit": limit,
             },
         ).fetchall()
-        return [_event(row) for row in rows]
+        events = [_event(row) for row in rows]
+        if not events:
+            return events
+        artifact_rows = self._conn.execute(
+            _GET_EVENT_ARTIFACTS_FOR_SEQS_SQL,
+            {"session_id": session_id, "seqs": [event.seq for event in events]},
+        ).fetchall()
+        return _events_with_artifacts(events, [_event_artifact(row) for row in artifact_rows])
 
     def events_matching_ir(self, filter_: dict[str, Any], *, limit: int = 50) -> list[EventRow]:
         # Any: filter JSON is a caller supplied JSONB containment expression.
@@ -560,7 +588,15 @@ class AsyncSessionDao:
             },
         )
         rows = await cursor.fetchall()
-        return [_event(row) for row in rows]
+        events = [_event(row) for row in rows]
+        if not events:
+            return events
+        artifact_cursor = await self._conn.execute(
+            _GET_EVENT_ARTIFACTS_FOR_SEQS_SQL,
+            {"session_id": session_id, "seqs": [event.seq for event in events]},
+        )
+        artifact_rows = await artifact_cursor.fetchall()
+        return _events_with_artifacts(events, [_event_artifact(row) for row in artifact_rows])
 
     async def get_latest_turn_before_with_raw_for_owner(
         self, session_id: str, *, owner: str, before_seq: int

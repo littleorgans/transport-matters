@@ -21,6 +21,17 @@ class EventKind(StrEnum):
 JsonObject = dict[str, Any]  # Any: provider transcript JSON is intentionally opaque.
 
 
+class EventArtifactRow(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    session_id: str
+    seq: int
+    artifact_hash: str
+    ref: JsonObject | None = None
+    media_type: str | None = None
+    size_bytes: int | None = None
+
+
 class SessionRow(BaseModel):
     model_config = ConfigDict(frozen=True, use_enum_values=True)
 
@@ -74,6 +85,7 @@ class EventRow(BaseModel):
     source_line: int | None = None
     search_text: str | None = None
     created_at: datetime | None = None
+    artifacts: tuple[EventArtifactRow, ...] = ()
 
 
 class EventReadRow(BaseModel):
@@ -107,15 +119,6 @@ class ArtifactRow(BaseModel):
     size_bytes: int
     data: bytes = Field(alias="bytes")
     created_at: datetime | None = None
-
-
-class EventArtifactRow(BaseModel):
-    model_config = ConfigDict(frozen=True)
-
-    session_id: str
-    seq: int
-    artifact_hash: str
-    ref: JsonObject | None = None
 
 
 class InlineArtifact(BaseModel):

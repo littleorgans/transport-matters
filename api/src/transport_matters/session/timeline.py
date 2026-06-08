@@ -11,7 +11,6 @@ from transport_matters.session.timeline_models import (
     LayoutHint,
     MessageItem,
     MessageRole,
-    ResourceRef,
     ResourceSummaryType,
     SessionHeader,
     SessionStatus,
@@ -22,7 +21,10 @@ from transport_matters.session.timeline_models import (
     SubagentSummary,
     TimelineItemType,
     TimelineResponse,
-    ToolOutputResourceSummary,
+)
+from transport_matters.session.timeline_resources import (
+    context_item_with_resources,
+    message_resources,
 )
 
 if TYPE_CHECKING:
@@ -53,7 +55,6 @@ _ROLE_ALIASES: dict[str, MessageRole] = {
     "tool": "tool",
     "tool_result": "tool",
 }
-_TOOL_OUTPUT_LABEL = "Tool output"
 
 
 def project_timeline(
@@ -103,6 +104,9 @@ def project_timeline(
 
         meta_item = _meta_item(row)
         if meta_item is not None:
+            if isinstance(meta_item, ContextItem):
+                meta_item, context_resources = context_item_with_resources(row, meta_item)
+                resources.update(context_resources)
             items.append(meta_item)
 
     _append_child_subagents(
@@ -142,7 +146,8 @@ def required_timeline_anchor_before_seq(events: list[EventRow]) -> int | None:
 
 def _message_item(row: EventRow) -> tuple[MessageItem, dict[str, ResourceSummaryType]]:
     parts = _parts(row.ir)
-    resource_refs, resources = _message_resources(row, parts)
+    source = _source_ref(row)
+    resource_refs, resources = message_resources(row, parts, source=source)
     return MessageItem(
         id=f"message:{row.session_id}:{row.seq}",
         seq=row.seq,
@@ -151,7 +156,7 @@ def _message_item(row: EventRow) -> tuple[MessageItem, dict[str, ResourceSummary
         model=row.model,
         parts=parts,
         resource_refs=resource_refs,
-        source=_source_ref(row),
+        source=source,
     ), resources
 
 
@@ -198,56 +203,6 @@ def _meta_item(row: EventRow) -> TimelineItemType | None:
         collapsed=True,
         source=_source_ref(row),
     )
-
-
-def _message_resources(
-    row: EventRow, parts: list[ContentPart]
-) -> tuple[list[ResourceRef], dict[str, ResourceSummaryType]]:
-    refs: list[ResourceRef] = []
-    resources: dict[str, ResourceSummaryType] = {}
-    for block_index, part in enumerate(parts):
-        if part.get("type") != "tool_result":
-            continue
-        resource_id = f"tool-output:{row.session_id}:{row.seq}:{block_index}"
-        refs.append(
-            ResourceRef(
-                resource_id=resource_id,
-                relation="generated",
-                confidence="verified",
-                block_index=block_index,
-            )
-        )
-        resources[resource_id] = ToolOutputResourceSummary(
-            id=resource_id,
-            title=_tool_output_title(part),
-            text_preview=_tool_output_preview(part),
-            source=_source_ref(row),
-        )
-    return refs, resources
-
-
-def _tool_output_title(part: ContentPart) -> str:
-    tool_use_id = part.get("tool_use_id")
-    if isinstance(tool_use_id, str) and tool_use_id:
-        return f"{_TOOL_OUTPUT_LABEL} {tool_use_id}"
-    return _TOOL_OUTPUT_LABEL
-
-
-def _tool_output_preview(part: ContentPart) -> str:
-    content = part.get("content")
-    if not isinstance(content, list):
-        return _TOOL_OUTPUT_LABEL
-    chunks: list[str] = []
-    for item in content:
-        if isinstance(item, str):
-            chunks.append(item)
-            continue
-        if isinstance(item, dict):
-            text = item.get("text")
-            if isinstance(text, str):
-                chunks.append(text)
-    preview = "\n".join(chunk for chunk in chunks if chunk)
-    return _truncate(preview or _TOOL_OUTPUT_LABEL)
 
 
 def _append_child_subagents(

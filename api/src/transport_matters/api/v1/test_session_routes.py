@@ -17,7 +17,7 @@ from transport_matters.session.listen import (
     SessionEventSignal,
 )
 from transport_matters.session.pool import async_connect, create_async_pool
-from transport_matters.session.test_foundation import event, root_session, tool_result_event
+from transport_matters.session.test_foundation import event, root_session
 from transport_matters.session.testing import TestDb
 from transport_matters.session.timeline import project_timeline
 
@@ -241,7 +241,14 @@ async def test_session_timeline_stream_emits_live_item_with_stable_id(
             timeline_item = cast("dict[str, object]", timeline_event["item"])
             assert timeline_event["kind"] == "timeline-item"
             assert timeline_item["id"] == "message:s1:0"
-            assert timeline_event["resources"] == {}
+            assert timeline_event["resources"] == {
+                "native:s1:0": {
+                    "kind": "native-record",
+                    "id": "native:s1:0",
+                    "title": "Native record",
+                    "source": timeline_item["source"],
+                }
+            }
         finally:
             await stream.aclose()
 
@@ -250,7 +257,7 @@ async def test_session_timeline_stream_reemits_enriched_prior_item(
     test_db: TestDb,
 ) -> None:
     hub = SessionEventHub()
-    turn = tool_result_event(0, session_id="s1", text="stdout")
+    turn = event(0, session_id="s1", search_text="stdout")
     duration = event(1, session_id="s1").model_copy(
         update={
             "kind": "meta",
@@ -260,7 +267,7 @@ async def test_session_timeline_stream_reemits_enriched_prior_item(
         }
     )
     backlog = project_timeline(session=root_session("s1"), events=[turn, duration])
-    resource_id = "tool-output:s1:0:0"
+    resource_id = "native:s1:0"
 
     async with create_async_pool(test_db.database_url, min_size=1, max_size=3) as pool:
         async with pool.connection() as conn:
