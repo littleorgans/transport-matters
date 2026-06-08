@@ -19,14 +19,13 @@ export interface PaneRecord {
   paneId: PaneId;
   viewerId: ViewerId;
   title: string;
-  contentRef: PaneContentRef;
+  contentRef: CanvasPaneRef;
   chromeState: PaneChromeState;
   createdAt: string;
   lastFocusedAt: string | null;
 }
 
 export type PaneContentRef =
-  | { kind: "session-picker"; owner: "local" }
   | { kind: "session-timeline"; owner: "local"; sessionId: string }
   | {
       kind: "subagent-timeline";
@@ -45,6 +44,12 @@ export type PaneContentRef =
       initialView?: string;
     };
 
+/** The built-in session picker is canvas chrome, not transcript content. */
+export type PickerPaneRef = { kind: "session-picker"; owner: "local" };
+
+/** Every pane the canvas manages: the picker plus opened transcript content. */
+export type CanvasPaneRef = PickerPaneRef | PaneContentRef;
+
 /**
  * The pre-slice-3 transcript ref shape. Accepted at the spawn boundary and
  * aliased onto `session-timeline` so existing session panes keep working.
@@ -52,7 +57,7 @@ export type PaneContentRef =
 export type LegacyPaneContentRef = { kind: "session"; owner: "local"; sessionId: string };
 
 /** Any ref the store will accept for spawning, including the legacy alias. */
-export type SpawnablePaneRef = PaneContentRef | LegacyPaneContentRef;
+export type SpawnablePaneRef = CanvasPaneRef | LegacyPaneContentRef;
 
 export interface SpawnSessionDescriptor {
   session_id: string;
@@ -81,15 +86,15 @@ export interface ViewerCanvasContext {
   launchSessionId: string | null;
 }
 
-export interface ViewerProps<TRef extends PaneContentRef = PaneContentRef> {
+export interface ViewerProps<TRef extends CanvasPaneRef = CanvasPaneRef> {
   pane: PaneRecord & { contentRef: TRef };
   canvas: ViewerCanvasContext;
   actions: PaneActions;
 }
 
-export interface ViewerRegistration<TRef extends PaneContentRef = PaneContentRef> {
+export interface ViewerRegistration<TRef extends CanvasPaneRef = CanvasPaneRef> {
   id: ViewerId;
-  canRender(ref: PaneContentRef): ref is TRef;
+  canRender(ref: CanvasPaneRef): ref is TRef;
   /** Deterministic pane id; also the dedupe key. */
   paneId(ref: TRef): PaneId;
   title(ref: TRef): string;

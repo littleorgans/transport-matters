@@ -1,8 +1,10 @@
 import type { ReactNode } from "react";
 import type { PaneId, WorldRect } from "../../engine";
 import type {
+  CanvasPaneRef,
   PaneContentRef,
   PaneRecord,
+  PickerPaneRef,
   ViewerId,
   ViewerProps,
   ViewerRegistration,
@@ -28,7 +30,7 @@ const CASCADE_OFFSET = 28;
  * registry. Safe because `resolveViewer` only calls a registration after its own
  * `canRender` guard has matched.
  */
-function defineViewer<TRef extends PaneContentRef>(
+function defineViewer<TRef extends CanvasPaneRef>(
   reg: ViewerRegistration<TRef>,
 ): ViewerRegistration {
   return reg as ViewerRegistration;
@@ -68,10 +70,9 @@ function placeholderTitle(ref: PlaceholderPaneRef): string {
 }
 
 const registry: ViewerRegistration[] = [
-  defineViewer<Extract<PaneContentRef, { kind: "session-picker" }>>({
+  defineViewer<PickerPaneRef>({
     id: "session-picker",
-    canRender: (ref): ref is Extract<PaneContentRef, { kind: "session-picker" }> =>
-      ref.kind === "session-picker",
+    canRender: (ref): ref is PickerPaneRef => ref.kind === "session-picker",
     paneId: () => PICKER_PANE_ID,
     title: () => "Session picker",
     defaultRect: () => ({ ...PICKER_RECT }),
@@ -105,26 +106,26 @@ export function registerViewer(viewer: ViewerRegistration): void {
   else registry.push(viewer);
 }
 
-export function resolveViewer(ref: PaneContentRef): ViewerRegistration {
+export function resolveViewer(ref: CanvasPaneRef): ViewerRegistration {
   const viewer = registry.find((entry) => entry.canRender(ref));
   if (!viewer) throw new Error(`No viewer registered for ${ref.kind}.`);
   return viewer;
 }
 
 /** Registry-owned dedupe key for a ref. */
-export function paneIdForRef(ref: PaneContentRef): PaneId {
+export function paneIdForRef(ref: CanvasPaneRef): PaneId {
   return resolveViewer(ref).paneId(ref);
 }
 
-export function titleForRef(ref: PaneContentRef): string {
+export function titleForRef(ref: CanvasPaneRef): string {
   return resolveViewer(ref).title(ref);
 }
 
-export function rectForRef(ref: PaneContentRef, paneCount: number): WorldRect {
+export function rectForRef(ref: CanvasPaneRef, paneCount: number): WorldRect {
   return resolveViewer(ref).defaultRect(ref, paneCount);
 }
 
-export function viewerIdForRef(ref: PaneContentRef): ViewerId {
+export function viewerIdForRef(ref: CanvasPaneRef): ViewerId {
   return resolveViewer(ref).id;
 }
 

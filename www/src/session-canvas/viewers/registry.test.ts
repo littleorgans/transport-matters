@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
-import type { PaneContentRef } from "../model/paneRecords";
+import type { CanvasPaneRef, PaneContentRef } from "../model/paneRecords";
 import { paneIdForRef, resolveViewer } from "./registry";
 
 describe("registry pane ids", () => {
   it("generates a deterministic pane id per kind", () => {
-    const cases: Array<[PaneContentRef, string]> = [
+    const cases: Array<[CanvasPaneRef, string]> = [
       [{ kind: "session-picker", owner: "local" }, "session-picker"],
       [{ kind: "session-timeline", owner: "local", sessionId: "s1" }, "transcript:s1"],
       [

@@ -2,12 +2,9 @@ import { useEffect, useMemo, useState } from "react";
 import { displayCwd, formatRelativeAge } from "../../../lib/formatting";
 import type { SessionSummary } from "../../api/sessionClient";
 import { useSessions } from "../../hooks/useSessions";
-import type { ViewerProps } from "../../model/paneRecords";
+import type { PickerPaneRef, ViewerProps } from "../../model/paneRecords";
 
-export function SessionPickerPane({
-  canvas,
-  actions,
-}: ViewerProps<{ kind: "session-picker"; owner: "local" }>) {
+export function SessionPickerPane({ canvas, actions }: ViewerProps<PickerPaneRef>) {
   const { data, error, isLoading, refetch } = useSessions({
     owner: "local",
     workspaceHash: canvas.workspaceHash,

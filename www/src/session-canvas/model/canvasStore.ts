@@ -18,6 +18,7 @@ import type { CanvasLaunchContext } from "../route";
 import { PICKER_PANE_ID, paneIdForRef, rectForRef, titleForRef } from "../viewers/registry";
 import type {
   CanvasModel,
+  CanvasPaneRef,
   PaneContentRef,
   PaneRecord,
   SpawnablePaneRef,
@@ -120,7 +121,7 @@ export const useCanvasStore = create<CanvasStoreState>()((set, get) => ({
 
 function createInitialCanvasModel(launch: CanvasLaunchContext): CanvasModel {
   const layout = createInitialEngineLayoutState();
-  const ref: PaneContentRef = { kind: "session-picker", owner: "local" };
+  const ref: CanvasPaneRef = { kind: "session-picker", owner: "local" };
   const pane = createPaneRecord(ref, "Session picker", new Date().toISOString());
   const node = createPaneNode(pane.paneId, rectForRef(ref, 0), nextPaneZ(layout.nodes));
   const nextLayout = focusNode(upsertNode(layout, node), pane.paneId);
@@ -137,7 +138,7 @@ function createInitialCanvasModel(launch: CanvasLaunchContext): CanvasModel {
 
 function insertPane(
   state: CanvasStoreState,
-  ref: PaneContentRef,
+  ref: CanvasPaneRef,
   title: string,
   focus: boolean,
 ): Partial<CanvasStoreState> {

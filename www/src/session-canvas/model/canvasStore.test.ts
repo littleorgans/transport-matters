@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { makeSessionSummary } from "../testUtils";
+import { PICKER_PANE_ID } from "../viewers/registry";
 import { resetCanvasStoreForTests, useCanvasStore } from "./canvasStore";
 
 describe("canvasStore", () => {
@@ -38,11 +39,16 @@ describe("canvasStore", () => {
     expect(state.layout.focusedPaneId).toBe("transcript:abc");
   });
 
-  it("focuses the existing pane when the same resource ref is opened twice", () => {
+  it("re-focuses the existing pane when the same resource ref is opened twice", () => {
     resetCanvasStoreForTests();
     const ref = { kind: "resource", owner: "local", sessionId: "abc", resourceId: "r1" } as const;
 
     useCanvasStore.getState().spawnPane(ref);
+    // Move focus off the resource so the second open must re-focus it via the
+    // dedupe path; otherwise the focus assertion would hold even without it.
+    useCanvasStore.getState().focusPane(PICKER_PANE_ID);
+    expect(useCanvasStore.getState().layout.focusedPaneId).toBe(PICKER_PANE_ID);
+
     useCanvasStore.getState().spawnPane(ref);
 
     const state = useCanvasStore.getState();

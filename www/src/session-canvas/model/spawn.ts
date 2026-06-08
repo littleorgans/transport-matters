@@ -1,6 +1,6 @@
 import { paneIdForRef, viewerIdForRef } from "../viewers/registry";
 import type {
-  PaneContentRef,
+  CanvasPaneRef,
   PaneRecord,
   SpawnablePaneRef,
   SpawnSessionDescriptor,
@@ -11,7 +11,7 @@ import type {
  * both resolve to the same registry pane id, an already-open session pane is
  * reused rather than duplicated.
  */
-export function normalizeRef(ref: SpawnablePaneRef): PaneContentRef {
+export function normalizeRef(ref: SpawnablePaneRef): CanvasPaneRef {
   if (ref.kind === "session") {
     return { kind: "session-timeline", owner: ref.owner, sessionId: ref.sessionId };
   }
@@ -24,7 +24,7 @@ export function titleForSession(session: SpawnSessionDescriptor): string {
   return `${cli} session ${session.session_id.slice(0, 8)}`;
 }
 
-export function createPaneRecord(ref: PaneContentRef, title: string, now: string): PaneRecord {
+export function createPaneRecord(ref: CanvasPaneRef, title: string, now: string): PaneRecord {
   return {
     paneId: paneIdForRef(ref),
     viewerId: viewerIdForRef(ref),
