@@ -77,7 +77,12 @@ class JsonContentResponse(ResourceContentBase):
 class ExchangeRedirectResponse(ResourceContentBase):
     kind: Literal["exchange-redirect"] = "exchange-redirect"
     exchange_id: str
-    route: str | None = None
+    route: str
+    initial_view: InitialExchangeView | None
+
+
+class ExchangeRedirectDescriptor(ResourceContentBase):
+    exchange_id: str
     initial_view: InitialExchangeView | None
 
 
@@ -97,3 +102,4 @@ ResourceContentResponseType = (
     | MissingResourceResponse
 )
 ResourceContentResponse = Annotated[ResourceContentResponseType, Field(discriminator="kind")]
+ResourceContentResolutionType = ResourceContentResponseType | ExchangeRedirectDescriptor

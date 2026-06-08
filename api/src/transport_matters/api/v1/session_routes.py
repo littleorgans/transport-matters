@@ -16,7 +16,9 @@ from transport_matters.session.dao import AsyncSessionDao
 from transport_matters.session.listen import SessionEventHub
 from transport_matters.session.resource_content import load_resource_content
 from transport_matters.session.resource_content_models import (
+    ExchangeRedirectDescriptor,
     ExchangeRedirectResponse,
+    ResourceContentResolutionType,
     ResourceContentResponse,
     ResourceContentResponseType,
 )
@@ -232,10 +234,15 @@ async def get_session_resource(
 
 
 def _api_resource_content_response(
-    content: ResourceContentResponseType,
+    content: ResourceContentResolutionType,
 ) -> ResourceContentResponseType:
-    if isinstance(content, ExchangeRedirectResponse):
-        return content.model_copy(update={"route": exchange_detail_route(content.exchange_id)})
+    if isinstance(content, ExchangeRedirectDescriptor):
+        return ExchangeRedirectResponse.model_validate(
+            {
+                **content.model_dump(),
+                "route": exchange_detail_route(content.exchange_id),
+            }
+        )
     return content
 
 

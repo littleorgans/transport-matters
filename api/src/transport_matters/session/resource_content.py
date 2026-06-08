@@ -9,13 +9,14 @@ from typing import TYPE_CHECKING, Any, cast
 from transport_matters.session import exchange_correlation
 from transport_matters.session.resource_content_models import (
     BinaryContentResponse,
-    ExchangeRedirectResponse,
+    ExchangeRedirectDescriptor,
     ImageContentResponse,
     JsonContentResponse,
     JsonObject,
     MissingResourceReason,
     MissingResourceResponse,
     ResourceContentProvenance,
+    ResourceContentResolutionType,
     ResourceContentResponseType,
     TextContentResponse,
     TextRange,
@@ -101,7 +102,7 @@ async def load_resource_content(
     range_start: int | None = None,
     range_end: int | None = None,
     include_debug: bool = False,
-) -> ResourceContentResponseType:
+) -> ResourceContentResolutionType:
     parsed = _parse_resource_id(resource_id)
     if parsed is None:
         return _missing_response(
@@ -260,7 +261,7 @@ async def _load_wire_redirect(
     owner: str,
     resource_id: str,
     parsed: WireResourceId,
-) -> ResourceContentResponseType:
+) -> ResourceContentResolutionType:
     cursor = await conn.execute(
         _wire_resource_sql(),
         _wire_resource_params(
@@ -278,7 +279,7 @@ async def _load_wire_redirect(
             message="Wire exchange is not correlated with this session.",
             content_provenance="structured-wire",
         )
-    return ExchangeRedirectResponse(
+    return ExchangeRedirectDescriptor(
         id=resource_id,
         title="Wire exchange",
         media_type=None,
