@@ -4,6 +4,7 @@ import {
   CLOSE_DELAY_MS,
   createInitialEngineLayoutState,
   createPaneNode,
+  DEFAULT_CANVAS_VIEWPORT,
   type EngineLayoutState,
   focusNode,
   frameRectViewport,
@@ -31,6 +32,7 @@ import { fitExpandFrameToWidth, planExpandedLayout } from "./expandLayout";
 const DEFAULT_BOUNDS: ViewportBounds = { width: 1600, height: 1000 };
 const SEED_RECT: WorldRect = { x: 48, y: 48, width: 360, height: 280 };
 const FRAME_MS = 320;
+const CLOSE_ZOOM_RESET_EPSILON = 0.001;
 const INITIAL_STRATEGY_ID = BUILT_IN_CONFIGS[0]?.strategyId ?? listLayouts()[0]?.id ?? "grid-fit";
 // Above this many open panes, unframe stops animating the camera and snaps straight to the overview:
 // flying the scaled world back out re-rasterizes every pane each frame, which janks at scale.
@@ -178,6 +180,10 @@ function planLayout(
   return next;
 }
 
+function isZoomedInPastOverview(current: CanvasViewport, overview: CanvasViewport): boolean {
+  return current.scale > overview.scale + CLOSE_ZOOM_RESET_EPSILON;
+}
+
 export const useCanvasLabStore = create<CanvasLabState>()((set, get) => ({
   layout: createInitialEngineLayoutState(),
   bounds: DEFAULT_BOUNDS,
@@ -221,23 +227,45 @@ export const useCanvasLabStore = create<CanvasLabState>()((set, get) => ({
     // the survivors flow in to fill the gap. Mirrors the production canvasStore close protocol.
     set((state) => ({ layout: markNodeClosing(state.layout, paneId) }));
     window.setTimeout(() => {
-      const collapsing = get().expandedPaneId === paneId;
-      if (collapsing) startFly({ paneMotion: true });
-      set((state) => {
-        const expandedPaneId = collapsing ? null : state.expandedPaneId;
-        return {
+      const state = get();
+      const collapsing = state.expandedPaneId === paneId;
+      const unframing = state.framing.paneId === paneId;
+      const expandedPaneId = collapsing ? null : state.expandedPaneId;
+      const framing = collapsing || unframing ? { paneId: null, overview: null } : state.framing;
+      const removed = removeNode(state.layout, paneId);
+      let layout = planLayout(
+        removed,
+        state.bounds,
+        state.activeStrategyId,
+        state.params,
+        collapsing,
+        expandedPaneId,
+      );
+      if (collapsing) {
+        startFly({ paneMotion: true });
+      } else if (unframing) {
+        startFly();
+        layout = setEngineViewport(layout, state.framing.overview ?? DEFAULT_CANVAS_VIEWPORT);
+      } else {
+        const overviewLayout = planLayout(
+          removed,
+          state.bounds,
+          state.activeStrategyId,
+          state.params,
+          true,
           expandedPaneId,
-          // Reflow the survivors into the gap. Only refit when closing the expanded pane, since that
-          // exits expand mode; closing right-column panes should not move the camera.
-          layout: planLayout(
-            removeNode(state.layout, paneId),
-            state.bounds,
-            state.activeStrategyId,
-            state.params,
-            collapsing,
-            expandedPaneId,
-          ),
-        };
+        );
+        if (isZoomedInPastOverview(state.layout.viewport, overviewLayout.viewport)) {
+          if (openPaneIds(layout).length <= UNFRAME_FLY_PANE_LIMIT) startFly();
+          layout = overviewLayout;
+        }
+      }
+      set({
+        expandedPaneId,
+        framing,
+        // Reflow survivors into the gap. A fitted close is reserved for exiting expand mode, leaving a
+        // frame, or undoing manual zoom-in; normal overview and zoomed-out closes keep the camera stable.
+        layout,
       });
     }, CLOSE_DELAY_MS);
   },

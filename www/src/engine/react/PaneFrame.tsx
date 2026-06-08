@@ -152,7 +152,7 @@ export function PaneFrame({
         y: renderRect.y,
       }}
     >
-      <div {...bindDrag()} className="h-full">
+      <div {...bindDrag()} className="h-full" style={{ touchAction: "none" }}>
         {children}
       </div>
     </motion.div>
