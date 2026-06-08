@@ -19,7 +19,8 @@ if TYPE_CHECKING:
     from starlette.testclient import WebSocketTestSession
 
 
-ALLOWED_ORIGIN = "http://testserver"
+BACKEND_ORIGIN = "http://localhost:8788"
+TERMINAL_ROUTE = "/api/terminal"
 
 
 def test_terminal_runs_shell_command(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -28,8 +29,8 @@ def test_terminal_runs_shell_command(monkeypatch: pytest.MonkeyPatch, tmp_path: 
     with (
         client,
         client.websocket_connect(
-            "/api/v1/terminal?cols=80&rows=24",
-            headers={"Origin": ALLOWED_ORIGIN},
+            f"{TERMINAL_ROUTE}?cols=80&rows=24",
+            headers=_websocket_headers(BACKEND_ORIGIN),
         ) as websocket,
     ):
         websocket.send_bytes(b"printf hi\nexit\n")
@@ -54,8 +55,8 @@ def test_terminal_resize_control_applies_winsize(
     with (
         client,
         client.websocket_connect(
-            "/api/v1/terminal",
-            headers={"Origin": ALLOWED_ORIGIN},
+            TERMINAL_ROUTE,
+            headers=_websocket_headers(BACKEND_ORIGIN),
         ) as websocket,
     ):
         websocket.send_text('{"type":"resize","cols":120,"rows":33}')
@@ -82,8 +83,8 @@ def test_terminal_disconnect_kills_child_and_closes_master_fd(
     with (
         client,
         client.websocket_connect(
-            "/api/v1/terminal",
-            headers={"Origin": ALLOWED_ORIGIN},
+            TERMINAL_ROUTE,
+            headers=_websocket_headers(BACKEND_ORIGIN),
         ),
     ):
         assert sessions
@@ -103,8 +104,29 @@ def test_terminal_rejects_origin_mismatch(monkeypatch: pytest.MonkeyPatch, tmp_p
         client,
         pytest.raises(WebSocketDisconnect) as exc_info,
         client.websocket_connect(
-            "/api/v1/terminal",
-            headers={"Origin": "http://evil.test"},
+            TERMINAL_ROUTE,
+            headers=_websocket_headers("http://evil.test"),
+        ),
+    ):
+        pass
+
+    assert exc_info.value.code == status.WS_1008_POLICY_VIOLATION
+
+
+def test_terminal_rejects_non_loopback_host_with_matching_origin(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    client = _client(monkeypatch, tmp_path)
+
+    with (
+        client,
+        pytest.raises(WebSocketDisconnect) as exc_info,
+        client.websocket_connect(
+            TERMINAL_ROUTE,
+            headers=_websocket_headers(
+                "http://evil.test:8788",
+                host="evil.test:8788",
+            ),
         ),
     ):
         pass
@@ -115,25 +137,46 @@ def test_terminal_rejects_origin_mismatch(monkeypatch: pytest.MonkeyPatch, tmp_p
 def test_terminal_accepts_configured_dev_origin_through_proxy(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    client = _client(monkeypatch, tmp_path, base_url="http://localhost:8788")
+    client = _client(monkeypatch, tmp_path)
 
     with (
         client,
         client.websocket_connect(
-            "/api/v1/terminal",
-            headers={"Origin": "http://localhost:5175"},
+            TERMINAL_ROUTE,
+            headers=_websocket_headers("http://localhost:5175"),
         ) as websocket,
     ):
         websocket.send_bytes(b"exit\n")
         _receive_until_disconnect(websocket, needle=b"exit")
 
 
-def _client(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, *, base_url: str = "http://testserver"
-) -> TestClient:
+def test_terminal_accepts_same_origin_loopback_ip(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    client = _client(monkeypatch, tmp_path)
+
+    with (
+        client,
+        client.websocket_connect(
+            TERMINAL_ROUTE,
+            headers=_websocket_headers(
+                "http://127.0.0.1:8788",
+                host="127.0.0.1:8788",
+            ),
+        ) as websocket,
+    ):
+        websocket.send_bytes(b"exit\n")
+        _receive_until_disconnect(websocket, needle=b"exit")
+
+
+def _client(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> TestClient:
     monkeypatch.setenv("SHELL", _shell_for_tests())
     monkeypatch.setenv("TRANSPORT_MATTERS_CWD", str(tmp_path))
-    return TestClient(create_app(), base_url=base_url)
+    return TestClient(create_app())
+
+
+def _websocket_headers(origin: str, *, host: str = "localhost:8788") -> dict[str, str]:
+    return {"Origin": origin, "Host": host}
 
 
 def _shell_for_tests() -> str:

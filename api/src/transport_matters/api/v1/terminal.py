@@ -34,6 +34,7 @@ MAX_COLS = 500
 MAX_ROWS = 200
 PTY_READ_CHUNK_SIZE = 8192
 CHILD_EXIT_TIMEOUT_S = 1.0
+_TERMINAL_LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
 
 
 class TerminalControlError(ValueError):
@@ -76,6 +77,10 @@ def _workspace_root(settings: Settings) -> Path:
 
 
 def _origin_allowed(websocket: WebSocket, settings: Settings) -> bool:
+    request_origin = _request_origin(websocket, settings)
+    if request_origin is None:
+        return False
+
     origin = websocket.headers.get("origin")
     normalized_origin = _normalized_origin(origin)
     if normalized_origin is None:
@@ -89,7 +94,7 @@ def _origin_allowed(websocket: WebSocket, settings: Settings) -> bool:
     if normalized_origin in configured_origins:
         return True
 
-    return normalized_origin == _request_origin(websocket)
+    return normalized_origin == request_origin
 
 
 def _normalized_origin(value: str | None) -> str | None:
@@ -106,13 +111,43 @@ def _normalized_origin(value: str | None) -> str | None:
     return f"{parsed.scheme.lower()}://{parsed.netloc.lower()}"
 
 
-def _request_origin(websocket: WebSocket) -> str | None:
-    host = websocket.headers.get("host")
+def _request_origin(websocket: WebSocket, settings: Settings) -> str | None:
+    host = _trusted_loopback_host(
+        websocket.headers.get("host"),
+        allowed_port=settings.web_port,
+    )
     if not host:
         return None
 
     scheme = "https" if websocket.url.scheme == "wss" else "http"
-    return f"{scheme}://{host.lower()}"
+    return f"{scheme}://{host}"
+
+
+def _trusted_loopback_host(value: str | None, *, allowed_port: int) -> str | None:
+    if not value:
+        return None
+
+    try:
+        parsed = urlsplit(f"//{value}")
+        port = parsed.port
+    except ValueError:
+        return None
+
+    if (
+        parsed.username
+        or parsed.password
+        or parsed.path
+        or parsed.query
+        or parsed.fragment
+        or port != allowed_port
+    ):
+        return None
+
+    hostname = parsed.hostname.lower() if parsed.hostname else None
+    if hostname not in _TERMINAL_LOOPBACK_HOSTS:
+        return None
+
+    return parsed.netloc.lower()
 
 
 def _spawn_terminal_pty(*, cols: int, rows: int, cwd: Path) -> TerminalPty:
