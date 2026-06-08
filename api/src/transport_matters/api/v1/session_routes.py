@@ -13,6 +13,8 @@ from pydantic import BaseModel, ConfigDict
 
 from transport_matters.session.dao import AsyncSessionDao
 from transport_matters.session.listen import SessionEventHub, SessionEventSignal
+from transport_matters.session.timeline import project_timeline
+from transport_matters.session.timeline_models import TimelineResponse
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
@@ -154,6 +156,39 @@ async def list_session_events(
     events = [SessionEventView.from_row(row) for row in rows]
     next_from_seq = events[-1].seq + 1 if len(events) == limit else None
     return SessionEventListResponse(events=events, next_from_seq=next_from_seq)
+
+
+@router.get("/sessions/{session_id}/timeline", response_model=TimelineResponse)
+async def get_session_timeline(
+    session_id: str,
+    pool: Any = Depends(_session_pool),
+    owner: Annotated[str, Query(min_length=1)] = DEFAULT_OWNER,
+    from_seq: Annotated[int | None, Query(ge=0)] = None,
+    to_seq: Annotated[int | None, Query(ge=0)] = None,
+    limit: Annotated[int, Query(ge=1, le=1000)] = 500,
+    include_resources: bool = True,
+    include_debug: bool = False,
+) -> TimelineResponse:
+    async with pool.connection() as conn:
+        session = await _require_session(conn, session_id, owner)
+        dao = AsyncSessionDao(conn)
+        rows = await dao.get_events_with_raw_for_owner(
+            session_id,
+            owner=owner,
+            from_seq=from_seq,
+            to_seq=to_seq,
+            limit=limit,
+        )
+        child_sessions = await dao.list_child_sessions_for_owner(session_id, owner=owner)
+    next_from_seq = rows[-1].seq + 1 if len(rows) == limit else None
+    return project_timeline(
+        session=session,
+        events=rows,
+        child_sessions=child_sessions,
+        include_resources=include_resources,
+        include_debug=include_debug,
+        next_from_seq=next_from_seq,
+    )
 
 
 @router.get("/sessions/{session_id}/events/stream")

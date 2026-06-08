@@ -53,6 +53,14 @@ async def _client(test_db: TestDb) -> AsyncIterator[AsyncClient]:
         await pool.close()
 
 
+def _contains_key(value: object, key: str) -> bool:
+    if isinstance(value, dict):
+        return key in value or any(_contains_key(item, key) for item in value.values())
+    if isinstance(value, list):
+        return any(_contains_key(item, key) for item in value)
+    return False
+
+
 async def test_session_routes_are_owner_scoped_and_omit_raw(test_db: TestDb) -> None:
     async with (
         create_async_pool(test_db.database_url, min_size=1, max_size=2) as pool,
@@ -77,6 +85,53 @@ async def test_session_routes_are_owner_scoped_and_omit_raw(test_db: TestDb) -> 
         assert "raw" not in payload["events"][0]
 
         hidden = await client.get("/api/sessions/s1/events", params={"owner": "other"})
+        assert hidden.status_code == 404
+
+
+async def test_session_timeline_is_owner_scoped_paginated_and_omits_raw(
+    test_db: TestDb,
+) -> None:
+    async with (
+        create_async_pool(test_db.database_url, min_size=1, max_size=2) as pool,
+        pool.connection() as conn,
+    ):
+        dao = AsyncSessionDao(conn)
+        await dao.upsert_session(root_session("s1", native_session_id="native1"))
+        await dao.upsert_session(
+            root_session("s2", native_session_id="native2").model_copy(update={"owner": "other"})
+        )
+        await dao.insert_event(event(0, session_id="s1", search_text="alpha"))
+        await dao.insert_event(
+            event(1, session_id="s1", search_text="permission").model_copy(
+                update={
+                    "kind": "meta",
+                    "raw": {"type": "permission-mode", "mode": "plan"},
+                    "ir": None,
+                    "role": None,
+                }
+            )
+        )
+        await dao.insert_event(event(0, session_id="s2", search_text="other"))
+
+    async with _client(test_db) as client:
+        first = await client.get("/api/sessions/s1/timeline", params={"limit": 1})
+        assert first.status_code == 200
+        first_payload = first.json()
+        assert first_payload["session"]["sessionId"] == "s1"
+        assert first_payload["nextFromSeq"] == 1
+        assert [item["kind"] for item in first_payload["items"]] == ["message"]
+        assert first_payload["items"][0]["source"]["rawAvailable"] is True
+        assert not _contains_key(first_payload, "raw")
+
+        second = await client.get("/api/sessions/s1/timeline", params={"from_seq": 1, "limit": 1})
+        assert second.status_code == 200
+        second_payload = second.json()
+        assert second_payload["nextFromSeq"] == 2
+        assert [(item["kind"], item["label"]) for item in second_payload["items"]] == [
+            ("state", "Permission mode")
+        ]
+
+        hidden = await client.get("/api/sessions/s1/timeline", params={"owner": "other"})
         assert hidden.status_code == 404
 
 

@@ -45,6 +45,13 @@ class SessionRow(BaseModel):
     updated_at: datetime | None = None
 
 
+class ChildSessionRow(SessionRow):
+    model_config = ConfigDict(frozen=True, use_enum_values=True)
+
+    first_seq: int | None = None
+    last_seq: int | None = None
+
+
 class EventRow(BaseModel):
     model_config = ConfigDict(frozen=True, use_enum_values=True)
 
