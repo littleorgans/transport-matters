@@ -2,9 +2,8 @@ import { useCallback } from "react";
 import { LayoutCanvas } from "../../engine";
 import type { LaunchResolutionStatus } from "../api/launchResolution";
 import { useCanvasStore } from "../model/canvasStore";
-import { PICKER_PANE_ID } from "../model/spawn";
 import type { CanvasLaunchContext } from "../route";
-import { resolveViewer } from "../viewers/registry";
+import { PICKER_PANE_ID, renderPaneContent } from "../viewers/registry";
 import { CanvasCommandBar } from "./CanvasCommandBar";
 import { PaneWindow } from "./PaneWindow";
 
@@ -35,9 +34,8 @@ export function CanvasSurface({ launch, launchStatus, launchSessionId }: CanvasS
     (paneId: string) => {
       const pane = panes[paneId];
       if (!pane) return null;
-      const viewer = resolveViewer(pane.contentRef);
       const titleId = titleIdForPane(paneId);
-      const content = viewer.render({
+      const content = renderPaneContent({
         pane,
         actions: { closePane, focusPane, spawnOrFocusTranscript },
         canvas: {

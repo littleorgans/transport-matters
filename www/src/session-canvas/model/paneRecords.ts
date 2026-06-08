@@ -1,8 +1,8 @@
-import type { EngineLayoutState, PaneId } from "../../engine";
+import type { EngineLayoutState, PaneId, WorldRect } from "../../engine";
 import type { CanvasLaunchContext } from "../route";
 
 export type CanvasId = string;
-export type ViewerId = "session-picker" | "transcript-chat";
+export type ViewerId = "session-picker" | "transcript-chat" | "placeholder";
 export type PaneChromeState = "default" | "loading" | "error" | "empty";
 
 export interface CanvasModel {
@@ -19,15 +19,45 @@ export interface PaneRecord {
   paneId: PaneId;
   viewerId: ViewerId;
   title: string;
-  contentRef: PaneContentRef;
+  contentRef: CanvasPaneRef;
   chromeState: PaneChromeState;
   createdAt: string;
   lastFocusedAt: string | null;
 }
 
 export type PaneContentRef =
-  | { kind: "session-picker"; owner: "local" }
-  | { kind: "session"; sessionId: string; owner: "local" };
+  | { kind: "session-timeline"; owner: "local"; sessionId: string }
+  | {
+      kind: "subagent-timeline";
+      owner: "local";
+      sessionId: string;
+      subagentId: string;
+      parentSessionId: string;
+      parentSeq: number | null;
+    }
+  | { kind: "resource"; owner: "local"; sessionId: string; resourceId: string }
+  | {
+      kind: "provider-exchange";
+      owner: "local";
+      sessionId: string;
+      exchangeId: string;
+      initialView?: string;
+    };
+
+/** The built-in session picker is canvas chrome, not transcript content. */
+export type PickerPaneRef = { kind: "session-picker"; owner: "local" };
+
+/** Every pane the canvas manages: the picker plus opened transcript content. */
+export type CanvasPaneRef = PickerPaneRef | PaneContentRef;
+
+/**
+ * The pre-slice-3 transcript ref shape. Accepted at the spawn boundary and
+ * aliased onto `session-timeline` so existing session panes keep working.
+ */
+export type LegacyPaneContentRef = { kind: "session"; owner: "local"; sessionId: string };
+
+/** Any ref the store will accept for spawning, including the legacy alias. */
+export type SpawnablePaneRef = CanvasPaneRef | LegacyPaneContentRef;
 
 export interface SpawnSessionDescriptor {
   session_id: string;
@@ -56,15 +86,19 @@ export interface ViewerCanvasContext {
   launchSessionId: string | null;
 }
 
-export interface ViewerProps<TRef extends PaneContentRef = PaneContentRef> {
+export interface ViewerProps<TRef extends CanvasPaneRef = CanvasPaneRef> {
   pane: PaneRecord & { contentRef: TRef };
   canvas: ViewerCanvasContext;
   actions: PaneActions;
 }
 
-export interface ViewerRegistration<TRef extends PaneContentRef = PaneContentRef> {
+export interface ViewerRegistration<TRef extends CanvasPaneRef = CanvasPaneRef> {
   id: ViewerId;
+  canRender(ref: CanvasPaneRef): ref is TRef;
+  /** Deterministic pane id; also the dedupe key. */
+  paneId(ref: TRef): PaneId;
   title(ref: TRef): string;
-  canRender(ref: PaneContentRef): ref is TRef;
+  /** Stable initial rect so loading content never shifts layout. */
+  defaultRect(ref: TRef, index: number): WorldRect;
   render(props: ViewerProps<TRef>): React.ReactNode;
 }
