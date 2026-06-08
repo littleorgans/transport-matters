@@ -58,21 +58,31 @@ describe("registry pane ids", () => {
     expect(paneIdForRef(a)).toBe(paneIdForRef(b));
   });
 
-  it("routes the three new pane kinds to the placeholder viewer", () => {
-    const refs: PaneContentRef[] = [
-      {
-        kind: "subagent-timeline",
-        owner: "local",
-        sessionId: "s1",
-        subagentId: "sub1",
-        parentSessionId: "s1",
-        parentSeq: 1,
-        title: "Child task",
-      },
-      { kind: "resource", owner: "local", sessionId: "s1", resourceId: "r1" },
-      { kind: "provider-exchange", owner: "local", sessionId: "s1", exchangeId: "e1" },
-    ];
-    for (const ref of refs) expect(viewerIdForRef(ref)).toBe("placeholder");
+  it("routes each pane kind to its viewer (subagent stays a placeholder)", () => {
+    const subagent: PaneContentRef = {
+      kind: "subagent-timeline",
+      owner: "local",
+      sessionId: "s1",
+      subagentId: "sub1",
+      parentSessionId: "s1",
+      parentSeq: 1,
+      title: "Child task",
+    };
+    const resource: PaneContentRef = {
+      kind: "resource",
+      owner: "local",
+      sessionId: "s1",
+      resourceId: "r1",
+    };
+    const exchange: PaneContentRef = {
+      kind: "provider-exchange",
+      owner: "local",
+      sessionId: "s1",
+      exchangeId: "e1",
+    };
+    expect(viewerIdForRef(subagent)).toBe("placeholder");
+    expect(viewerIdForRef(resource)).toBe("resource");
+    expect(viewerIdForRef(exchange)).toBe("provider-exchange");
   });
 
   it("titles a subagent pane from the ref title, not a fabricated id", () => {

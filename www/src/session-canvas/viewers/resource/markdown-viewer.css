@@ -1,0 +1,104 @@
+/* Markdown resource viewer. Co-located with the feature; tokens from index.css
+   :root. Never edit index.css. */
+
+.canvas-md {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--canvas-pane-gap);
+}
+.canvas-md__toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--canvas-pane-gap);
+}
+.canvas-md__toggle {
+  display: inline-flex;
+  min-inline-size: 0;
+  margin: 0;
+  border: none;
+  padding: 0;
+  gap: 1px;
+}
+.canvas-md__truncated {
+  margin: 0;
+  color: var(--color-amber);
+  font-size: 0.74rem;
+}
+
+.canvas-md__body {
+  overflow: auto;
+  color: var(--color-txt-2);
+  font-size: 0.86rem;
+  line-height: 1.6;
+}
+.canvas-md__body > :first-child {
+  margin-top: 0;
+}
+.canvas-md__h {
+  margin: 1.1em 0 0.5em;
+  color: var(--color-txt);
+  line-height: 1.3;
+}
+.canvas-md__h1 {
+  font-size: 1.3rem;
+}
+.canvas-md__h2 {
+  font-size: 1.15rem;
+}
+.canvas-md__h3 {
+  font-size: 1rem;
+}
+.canvas-md__h4,
+.canvas-md__h5,
+.canvas-md__h6 {
+  font-size: 0.9rem;
+}
+.canvas-md__p {
+  margin: 0 0 0.85em;
+}
+.canvas-md__list {
+  margin: 0 0 0.85em;
+  padding-left: 1.4em;
+}
+.canvas-md__item {
+  margin: 0.15em 0;
+}
+.canvas-md__quote {
+  margin: 0 0 0.85em;
+  border-left: 3px solid var(--color-edge);
+  padding: 0.1em 0 0.1em 0.9em;
+  color: var(--color-txt-3);
+}
+.canvas-md__pre {
+  overflow: auto;
+  margin: 0 0 0.85em;
+  border: 1px solid var(--color-edge-subtle);
+  background: var(--color-canvas);
+  padding: var(--canvas-row-padding);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+.canvas-md__code {
+  border: 1px solid var(--color-edge-subtle);
+  background: var(--color-canvas);
+  padding: 0.05em 0.35em;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.82em;
+}
+.canvas-md__link {
+  color: var(--color-sky, var(--color-txt));
+  text-decoration: underline;
+}
+.canvas-md__link:focus-visible {
+  outline: 2px solid var(--color-accent, var(--color-amber));
+  outline-offset: 2px;
+}
+.canvas-md__hr {
+  margin: 1.2em 0;
+  border: none;
+  border-top: 1px solid var(--color-edge);
+}

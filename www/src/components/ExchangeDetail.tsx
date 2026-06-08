@@ -16,9 +16,17 @@ import { ExpandWindowIcon } from "./icons";
 
 interface ExchangeDetailProps {
   id: string;
+  /**
+   * Called when the exchange 404s. Defaults to clearing the legacy route
+   * selection; the canvas passes a no-op so a reused pane never mutates legacy
+   * route state.
+   */
+  onMissing?: () => void;
+  /** Tab to open initially. Defaults to "inspect". */
+  initialTab?: DetailTab;
 }
 
-type DetailTab = "inspect" | "request" | "response" | "transport";
+export type DetailTab = "inspect" | "request" | "response" | "transport";
 
 function hasCodexTimeline(detail: ExchangeDetailPayload): boolean {
   return detail.entry.provider === "codex" && detail.events != null && detail.turn != null;
@@ -192,8 +200,8 @@ function DownloadIcon({ className }: { className?: string }) {
   );
 }
 
-export function ExchangeDetail({ id }: ExchangeDetailProps) {
-  const [tab, setTab] = useState<DetailTab>("inspect");
+export function ExchangeDetail({ id, onMissing, initialTab = "inspect" }: ExchangeDetailProps) {
+  const [tab, setTab] = useState<DetailTab>(initialTab);
   const deferredTab = useDeferredValue(tab);
   const [transportFocus, setTransportFocus] = useState<{
     exchangeId: string;
@@ -212,12 +220,17 @@ export function ExchangeDetail({ id }: ExchangeDetailProps) {
     retry: false,
   });
 
-  // Clear stale selection if the exchange no longer exists (e.g., storage wiped)
+  // Clear stale selection if the exchange no longer exists (e.g., storage wiped).
+  // The canvas injects a no-op onMissing so a reused pane never touches route state.
   useEffect(() => {
     if (error && error instanceof Error && error.message.includes("404")) {
-      useUIStore.getState().setSelectedId(null);
+      if (onMissing) {
+        onMissing();
+      } else {
+        useUIStore.getState().setSelectedId(null);
+      }
     }
-  }, [error]);
+  }, [error, onMissing]);
 
   if (isLoading) {
     return (

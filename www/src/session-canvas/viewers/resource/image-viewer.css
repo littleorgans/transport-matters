@@ -1,0 +1,66 @@
+/* Image resource viewer. Co-located with the feature; tokens from index.css
+   :root. Never edit index.css. */
+
+.canvas-image {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--canvas-pane-gap);
+}
+.canvas-image__controls {
+  display: flex;
+  align-items: center;
+  gap: var(--canvas-pane-gap);
+}
+.canvas-image__button {
+  border: 1px solid var(--color-edge);
+  background: var(--color-surface);
+  padding: 0.2em 0.6em;
+  color: var(--color-txt-2);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+.canvas-image__button:hover {
+  border-color: var(--color-edge);
+  color: var(--color-txt);
+}
+.canvas-image__button:focus-visible {
+  outline: 2px solid var(--color-txt-3);
+  outline-offset: 2px;
+}
+.canvas-image__zoom {
+  color: var(--color-txt-2);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.78rem;
+}
+.canvas-image__stage {
+  display: flex;
+  width: 100%;
+  min-height: 0;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  overflow: auto;
+  border: 1px solid var(--color-edge-subtle);
+  background: var(--color-canvas);
+  padding: var(--canvas-row-padding);
+  cursor: default;
+  font: inherit;
+  text-align: center;
+}
+.canvas-image__stage:focus-visible {
+  outline: 2px solid var(--color-txt-3);
+  outline-offset: -2px;
+}
+.canvas-image__img {
+  display: block;
+  max-width: 100%;
+  transform-origin: top left;
+}
+.canvas-image__note {
+  margin: 0;
+  color: var(--color-txt-3);
+  font-size: 0.86rem;
+}

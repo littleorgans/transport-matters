@@ -69,35 +69,4 @@ describe("PlaceholderPane", () => {
     ).not.toThrow();
     expect(screen.queryByText("null")).not.toBeInTheDocument();
   });
-
-  it("renders resource identity", () => {
-    const ref: PlaceholderPaneRef = {
-      kind: "resource",
-      owner: "local",
-      sessionId: "sess-1",
-      resourceId: "res-9",
-    };
-
-    render(<PlaceholderPane {...placeholderProps(ref, "Resource res-9")} />);
-
-    expect(screen.getByText("res-9")).toBeInTheDocument();
-    expect(screen.getByText("sess-1")).toBeInTheDocument();
-  });
-
-  it("renders provider-exchange as a shell with no data fetching or legacy route state", () => {
-    const ref: PlaceholderPaneRef = {
-      kind: "provider-exchange",
-      owner: "local",
-      sessionId: "sess-2",
-      exchangeId: "ex-5",
-    };
-
-    // Rendered WITHOUT a QueryClientProvider on purpose: a placeholder that queried
-    // exchange detail or coupled to legacy route state would throw here.
-    render(<PlaceholderPane {...placeholderProps(ref, "Exchange ex-5")} />);
-
-    expect(screen.getByText("ex-5")).toBeInTheDocument();
-    expect(screen.getByText("sess-2")).toBeInTheDocument();
-    expect(screen.getByText(/not yet wired/i)).toBeInTheDocument();
-  });
 });

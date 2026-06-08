@@ -1,0 +1,29 @@
+/* Text resource viewer. Co-located with the feature; tokens from index.css
+   :root. Never edit index.css. */
+
+.canvas-text {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--canvas-pane-gap);
+}
+.canvas-text__toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--canvas-pane-gap);
+}
+.canvas-text__note {
+  margin: 0;
+  color: var(--color-amber);
+  font-size: 0.74rem;
+}
+.canvas-text__body {
+  overflow: auto;
+  min-height: 0;
+  flex: 1;
+  border: 1px solid var(--color-edge-subtle);
+  background: var(--color-canvas);
+  font-family: var(--font-mono, ui-monospace, monospace);
+}

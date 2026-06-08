@@ -2,7 +2,12 @@ import type { EngineLayoutState, PaneId, WorldRect } from "../../engine";
 import type { CanvasLaunchContext } from "../route";
 
 export type CanvasId = string;
-export type ViewerId = "session-picker" | "transcript-chat" | "placeholder";
+export type ViewerId =
+  | "session-picker"
+  | "transcript-chat"
+  | "placeholder"
+  | "resource"
+  | "provider-exchange";
 export type PaneChromeState = "default" | "loading" | "error" | "empty";
 
 export interface CanvasModel {

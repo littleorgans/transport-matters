@@ -10,6 +10,8 @@ import type {
   ViewerRegistration,
 } from "../model/paneRecords";
 import { PlaceholderPane, type PlaceholderPaneRef } from "./placeholder/PlaceholderPane";
+import { ProviderExchangeResourceViewer } from "./resource/ProviderExchangeResourceViewer";
+import { ResourcePane } from "./resource/ResourcePane";
 import { SessionPickerPane } from "./session-picker/SessionPickerPane";
 import { TranscriptChatPane } from "./transcript-chat/TranscriptChatPane";
 
@@ -47,28 +49,8 @@ function contentStep(paneCount: number): number {
   return Math.max(0, paneCount - 1);
 }
 
-function placeholderPaneId(ref: PlaceholderPaneRef): PaneId {
-  switch (ref.kind) {
-    case "subagent-timeline":
-      return `${SUBAGENT_PANE_PREFIX}${ref.sessionId}:${ref.subagentId}`;
-    case "resource":
-      return `${RESOURCE_PANE_PREFIX}${ref.sessionId}:${ref.resourceId}`;
-    case "provider-exchange":
-      return `${EXCHANGE_PANE_PREFIX}${ref.sessionId}:${ref.exchangeId}`;
-  }
-}
-
-function placeholderTitle(ref: PlaceholderPaneRef): string {
-  switch (ref.kind) {
-    case "subagent-timeline":
-      // The real backend child-session title travels on the ref (SubagentRef.title).
-      return ref.title;
-    case "resource":
-      return `Resource ${ref.resourceId.slice(0, 8)}`;
-    case "provider-exchange":
-      return `Exchange ${ref.exchangeId.slice(0, 8)}`;
-  }
-}
+type ResourceRef = Extract<PaneContentRef, { kind: "resource" }>;
+type ExchangeRef = Extract<PaneContentRef, { kind: "provider-exchange" }>;
 
 const registry: ViewerRegistration[] = [
   defineViewer<PickerPaneRef>({
@@ -88,14 +70,33 @@ const registry: ViewerRegistration[] = [
     defaultRect: (_ref, index) => cascadeRect(TRANSCRIPT_RECT, contentStep(index)),
     render: (props) => <TranscriptChatPane {...props} />,
   }),
+  defineViewer<ResourceRef>({
+    id: "resource",
+    canRender: (ref): ref is ResourceRef => ref.kind === "resource",
+    paneId: (ref) => `${RESOURCE_PANE_PREFIX}${ref.sessionId}:${ref.resourceId}`,
+    title: (ref) => `Resource ${ref.resourceId.slice(0, 8)}`,
+    defaultRect: (_ref, index) => cascadeRect(PLACEHOLDER_RECT, contentStep(index)),
+    render: (props) => <ResourcePane {...props} />,
+  }),
+  defineViewer<ExchangeRef>({
+    id: "provider-exchange",
+    canRender: (ref): ref is ExchangeRef => ref.kind === "provider-exchange",
+    paneId: (ref) => `${EXCHANGE_PANE_PREFIX}${ref.sessionId}:${ref.exchangeId}`,
+    title: (ref) => `Exchange ${ref.exchangeId.slice(0, 8)}`,
+    defaultRect: (_ref, index) => cascadeRect(PLACEHOLDER_RECT, contentStep(index)),
+    render: (props) => (
+      <ProviderExchangeResourceViewer
+        exchangeId={props.pane.contentRef.exchangeId}
+        initialView={props.pane.contentRef.initialView}
+      />
+    ),
+  }),
   defineViewer<PlaceholderPaneRef>({
     id: "placeholder",
-    canRender: (ref): ref is PlaceholderPaneRef =>
-      ref.kind === "subagent-timeline" ||
-      ref.kind === "resource" ||
-      ref.kind === "provider-exchange",
-    paneId: (ref) => placeholderPaneId(ref),
-    title: (ref) => placeholderTitle(ref),
+    canRender: (ref): ref is PlaceholderPaneRef => ref.kind === "subagent-timeline",
+    paneId: (ref) => `${SUBAGENT_PANE_PREFIX}${ref.sessionId}:${ref.subagentId}`,
+    // The real backend child-session title travels on the ref (SubagentRef.title).
+    title: (ref) => ref.title,
     defaultRect: (_ref, index) => cascadeRect(PLACEHOLDER_RECT, contentStep(index)),
     render: (props) => <PlaceholderPane {...props} />,
   }),

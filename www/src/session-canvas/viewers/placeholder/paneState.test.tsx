@@ -74,11 +74,26 @@ describe("ResourcePaneStateView", () => {
     render(
       <ResourcePaneStateView
         actions={[{ label: "Open externally" }]}
-        provenance="raw-bytes"
+        provenance="raw-provider-debug"
         state={{ status: "binary-unsupported", mediaType: "application/pdf" }}
       />,
     );
     expect(screen.getByRole("button", { name: "Open externally" })).toBeInTheDocument();
-    expect(screen.getByText(PROVENANCE_LABEL["raw-bytes"])).toBeInTheDocument();
+    expect(screen.getByText(PROVENANCE_LABEL["raw-provider-debug"])).toBeInTheDocument();
+  });
+
+  it("renders a backend message override in place of the canned error detail", () => {
+    render(
+      <ResourcePaneStateView
+        messageOverride="This resource was never correlated to a turn."
+        provenance="captured"
+        state={{ status: "missing" }}
+      />,
+    );
+    expect(screen.getByText("This resource was never correlated to a turn.")).toBeInTheDocument();
+    // The canned default detail is replaced, not appended.
+    expect(
+      screen.queryByText("This resource is no longer available in the run store."),
+    ).not.toBeInTheDocument();
   });
 });

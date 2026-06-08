@@ -2,11 +2,8 @@ import type { PaneContentRef, ViewerProps } from "../../model/paneRecords";
 import { PaneStateFrame } from "./paneState";
 import type { ProvenanceKind } from "./provenance";
 
-/** Content kinds that resolve to the placeholder renderer until their real viewers land. */
-export type PlaceholderPaneRef = Extract<
-  PaneContentRef,
-  { kind: "subagent-timeline" | "resource" | "provider-exchange" }
->;
+/** The remaining pane kind whose real viewer has not landed yet. */
+export type PlaceholderPaneRef = Extract<PaneContentRef, { kind: "subagent-timeline" }>;
 
 interface IdentityRow {
   label: string;
@@ -22,56 +19,26 @@ const NULL_VALUE = "n/a";
 
 /** Ref-derived identity rows. Subagent reads the post-slice-4 SubagentRef shape. */
 export function placeholderIdentity(ref: PlaceholderPaneRef): PlaceholderIdentity {
-  switch (ref.kind) {
-    case "subagent-timeline":
-      return {
-        kindLabel: "Subagent timeline",
-        rows: [
-          { label: "Subagent", value: ref.subagentId },
-          { label: "Session", value: ref.sessionId },
-          { label: "Parent session", value: ref.parentSessionId },
-          {
-            label: "Parent seq",
-            value: ref.parentSeq === null ? NULL_VALUE : String(ref.parentSeq),
-          },
-        ],
-      };
-    case "resource":
-      return {
-        kindLabel: "Resource",
-        rows: [
-          { label: "Resource", value: ref.resourceId },
-          { label: "Session", value: ref.sessionId },
-        ],
-      };
-    case "provider-exchange":
-      return {
-        kindLabel: "Provider exchange",
-        rows: [
-          { label: "Exchange", value: ref.exchangeId },
-          { label: "Session", value: ref.sessionId },
-        ],
-      };
-  }
+  return {
+    kindLabel: "Subagent timeline",
+    rows: [
+      { label: "Subagent", value: ref.subagentId },
+      { label: "Session", value: ref.sessionId },
+      { label: "Parent session", value: ref.parentSessionId },
+      { label: "Parent seq", value: ref.parentSeq === null ? NULL_VALUE : String(ref.parentSeq) },
+    ],
+  };
 }
 
-/** Default truth label per kind; slices 6-8 refine it from the resolver response. */
-export function placeholderProvenance(ref: PlaceholderPaneRef): ProvenanceKind {
-  switch (ref.kind) {
-    case "subagent-timeline":
-      return "native-record";
-    case "resource":
-      return "captured";
-    case "provider-exchange":
-      return "structured-wire";
-  }
+/** Truth label for the subagent placeholder; its real viewer arrives in a later slice. */
+export function placeholderProvenance(): ProvenanceKind {
+  return "native-record";
 }
 
 /**
- * Stable placeholder shell for the three pane kinds whose real viewers arrive in
- * later slices. Renders the registry-owned title and ref-derived identity plus a
- * clear "not yet wired" body. No data fetching and no coupling to legacy route
- * state: a provider-exchange placeholder is a shell, not the exchange detail view.
+ * Stable placeholder shell for the subagent pane kind, whose real viewer arrives
+ * in a later slice. Renders the registry-owned title and ref-derived identity
+ * plus a clear "not yet wired" body. No data fetching, no legacy route state.
  */
 export function PlaceholderPane({ pane }: ViewerProps<PlaceholderPaneRef>) {
   const ref = pane.contentRef;
@@ -79,7 +46,7 @@ export function PlaceholderPane({ pane }: ViewerProps<PlaceholderPaneRef>) {
   return (
     <PaneStateFrame
       header={<PlaceholderHeader identity={identity} title={pane.title} />}
-      provenance={placeholderProvenance(ref)}
+      provenance={placeholderProvenance()}
       status="placeholder"
     >
       <p className="canvas-resource-pane__note">
