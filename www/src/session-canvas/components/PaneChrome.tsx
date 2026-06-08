@@ -9,9 +9,11 @@ export interface PaneChromeProps {
   titleId: string;
   focused: boolean;
   closeDisabled?: boolean;
+  expanded?: boolean;
   onClose?: () => void;
+  onExpand?: () => void;
   onFrame?: () => void;
-  onHeaderDoubleClick?: () => void;
+  onHeaderDoubleClick?: (event: React.MouseEvent) => void;
   children: React.ReactNode;
 }
 
@@ -22,7 +24,9 @@ export function PaneChrome({
   titleId,
   focused,
   closeDisabled = false,
+  expanded = false,
   onClose,
+  onExpand,
   onFrame,
   onHeaderDoubleClick,
   children,
@@ -52,12 +56,22 @@ export function PaneChrome({
           <span className="canvas-pane-window__state">{state}</span>
           {onFrame ? (
             <button
-              aria-label={`Frame ${title}`}
+              aria-label={`${state === "framed" ? "Unframe" : "Frame"} ${title}`}
               className="canvas-button"
               onClick={onFrame}
               type="button"
             >
-              Frame
+              {state === "framed" ? "uF" : "F"}
+            </button>
+          ) : null}
+          {onExpand ? (
+            <button
+              aria-label={`${expanded ? "Unexpand" : "Expand"} ${title}`}
+              className="canvas-button"
+              onClick={onExpand}
+              type="button"
+            >
+              {expanded ? "uE" : "E"}
             </button>
           ) : null}
           {onClose ? (

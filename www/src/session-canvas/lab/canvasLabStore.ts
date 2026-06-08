@@ -26,6 +26,7 @@ import {
   type ParamValue,
   resolveLayout,
 } from "../../engine/layout";
+import { fitExpandFrameToWidth, planExpandedLayout } from "./expandLayout";
 
 const DEFAULT_BOUNDS: ViewportBounds = { width: 1600, height: 1000 };
 const SEED_RECT: WorldRect = { x: 48, y: 48, width: 360, height: 280 };
@@ -55,6 +56,7 @@ export interface CanvasLabState {
   params: LayoutParams;
   fitToContent: boolean;
   framing: FramingState;
+  expandedPaneId: PaneId | null;
   flying: boolean;
   nextPaneIndex: number;
   addPane(): void;
@@ -66,6 +68,8 @@ export interface CanvasLabState {
   setFitToContent(on: boolean): void;
   organize(): void;
   setBounds(bounds: ViewportBounds): void;
+  expandPane(paneId: PaneId): void;
+  unexpand(): void;
   framePane(paneId: PaneId): void;
   unframe(): void;
   resetView(): void;
@@ -149,9 +153,20 @@ function planLayout(
   activeStrategyId: string,
   params: LayoutParams,
   fitToContent: boolean,
+  expandedPaneId: PaneId | null,
 ): EngineLayoutState {
+  const paneIds = openPaneIds(layout);
+  if (expandedPaneId && paneIds.includes(expandedPaneId)) {
+    const { rects, frame } = planExpandedLayout({ paneIds, expandedPaneId, viewport: bounds });
+    let next = updateNodeRects(layout, rects);
+    if (fitToContent) {
+      next = setEngineViewport(next, fitExpandFrameToWidth(frame, bounds));
+    }
+    return next;
+  }
+
   const { rects, frame } = resolveLayout(activeStrategyId).plan(
-    { paneIds: openPaneIds(layout), viewport: bounds },
+    { paneIds, viewport: bounds },
     params,
   );
   let next = updateNodeRects(layout, rects);
@@ -169,6 +184,7 @@ export const useCanvasLabStore = create<CanvasLabState>()((set, get) => ({
   params: seedParams(INITIAL_STRATEGY_ID),
   fitToContent: true,
   framing: { paneId: null, overview: null },
+  expandedPaneId: null,
   flying: false,
   nextPaneIndex: 0,
 
@@ -191,6 +207,7 @@ export const useCanvasLabStore = create<CanvasLabState>()((set, get) => ({
           state.activeStrategyId,
           state.params,
           state.fitToContent,
+          state.expandedPaneId,
         ),
       };
     });
@@ -202,20 +219,24 @@ export const useCanvasLabStore = create<CanvasLabState>()((set, get) => ({
     // the survivors flow in to fill the gap. Mirrors the production canvasStore close protocol.
     set((state) => ({ layout: markNodeClosing(state.layout, paneId) }));
     window.setTimeout(() => {
-      set((state) => ({
-        // Reflow the survivors into the gap, but never refit the camera on close (fitToContent is
-        // forced off here regardless of the toggle). Removing a pane only shrinks the content box,
-        // so the current view already fits; a refit would just zoom in to chase the smaller content
-        // and snap abruptly, which reads as the canvas "zooming in then out". Organize/addPane still
-        // refit when content genuinely changes the fit.
-        layout: planLayout(
-          removeNode(state.layout, paneId),
-          state.bounds,
-          state.activeStrategyId,
-          state.params,
-          false,
-        ),
-      }));
+      const collapsing = get().expandedPaneId === paneId;
+      if (collapsing) startFly();
+      set((state) => {
+        const expandedPaneId = collapsing ? null : state.expandedPaneId;
+        return {
+          expandedPaneId,
+          // Reflow the survivors into the gap. Only refit when closing the expanded pane, since that
+          // exits expand mode; closing right-column panes should not move the camera.
+          layout: planLayout(
+            removeNode(state.layout, paneId),
+            state.bounds,
+            state.activeStrategyId,
+            state.params,
+            collapsing,
+            expandedPaneId,
+          ),
+        };
+      });
     }, CLOSE_DELAY_MS);
   },
 
@@ -252,6 +273,7 @@ export const useCanvasLabStore = create<CanvasLabState>()((set, get) => ({
         state.activeStrategyId,
         state.params,
         state.fitToContent,
+        state.expandedPaneId,
       ),
     }));
   },
@@ -259,6 +281,46 @@ export const useCanvasLabStore = create<CanvasLabState>()((set, get) => ({
   setBounds(bounds) {
     set({ bounds });
     get().organize();
+  },
+
+  expandPane(paneId) {
+    const { layout, expandedPaneId } = get();
+    if (expandedPaneId === paneId) {
+      get().unexpand();
+      return;
+    }
+    if (!layout.nodes[paneId]) return;
+    if (openPaneIds(layout).length <= 1) return;
+    startFly();
+    set((state) => ({
+      expandedPaneId: paneId,
+      framing: { paneId: null, overview: null },
+      layout: planLayout(
+        focusNode(state.layout, paneId),
+        state.bounds,
+        state.activeStrategyId,
+        state.params,
+        true,
+        paneId,
+      ),
+    }));
+  },
+
+  unexpand() {
+    if (get().expandedPaneId === null) return;
+    startFly();
+    set((state) => ({
+      expandedPaneId: null,
+      framing: { paneId: null, overview: null },
+      layout: planLayout(
+        state.layout,
+        state.bounds,
+        state.activeStrategyId,
+        state.params,
+        true,
+        null,
+      ),
+    }));
   },
 
   framePane(paneId) {
@@ -303,6 +365,7 @@ export const useCanvasLabStore = create<CanvasLabState>()((set, get) => ({
     startFly();
     set((state) => ({
       framing: { paneId: null, overview: null },
+      expandedPaneId: null,
       layout: setEngineViewport(state.layout, { panX: 0, panY: 0, scale: 1 }),
     }));
   },
@@ -334,6 +397,7 @@ export function resetCanvasLabStoreForTests(): void {
     params: seedParams(INITIAL_STRATEGY_ID),
     fitToContent: true,
     framing: { paneId: null, overview: null },
+    expandedPaneId: null,
     flying: false,
     nextPaneIndex: 0,
   });
