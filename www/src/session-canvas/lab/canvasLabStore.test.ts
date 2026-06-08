@@ -111,6 +111,56 @@ describe("canvasLabStore close", () => {
       vi.useRealTimers();
     }
   });
+
+  it("resets manual zoom-in when closing a pane", () => {
+    vi.useFakeTimers();
+    try {
+      resetCanvasLabStoreForTests();
+      for (let index = 0; index < 24; index += 1) store().addPane();
+      const fittedScale = store().layout.viewport.scale;
+      expect(fittedScale).toBeLessThan(1);
+      const zoomed = { panX: -240, panY: -120, scale: Math.min(1, fittedScale + 0.2) };
+      store().setViewport(zoomed);
+
+      const target = Object.keys(store().layout.nodes)[0];
+      if (!target) throw new Error("expected a seeded pane to close");
+      store().closePane(target);
+      vi.advanceTimersByTime(200); // CLOSE_DELAY_MS: removal + reflow commit
+
+      expect(store().layout.nodes[target]).toBeUndefined();
+      expect(store().layout.viewport.scale).toBeLessThan(zoomed.scale);
+      expect(store().layout.viewport).not.toEqual(zoomed);
+    } finally {
+      resetCanvasLabStoreForTests();
+      vi.useRealTimers();
+    }
+  });
+
+  it("closes a framed pane by leaving frame mode and restoring the overview", () => {
+    vi.useFakeTimers();
+    try {
+      resetCanvasLabStoreForTests();
+      store().addPane(); // lab-1
+      store().addPane(); // lab-2
+      const overview = store().layout.viewport;
+
+      store().framePane("lab-1");
+      expect(framedPaneId(store().framing)).toBe("lab-1");
+      expect(store().layout.viewport).not.toEqual(overview);
+      vi.advanceTimersByTime(1000); // frame fly settled
+
+      store().closePane("lab-1");
+      vi.advanceTimersByTime(200); // CLOSE_DELAY_MS: removal + reflow commit
+
+      expect(store().layout.nodes["lab-1"]).toBeUndefined();
+      expect(framedPaneId(store().framing)).toBeNull();
+      expect(store().layout.viewport).toEqual(overview);
+      expect(store().flying).toBe(true);
+    } finally {
+      resetCanvasLabStoreForTests();
+      vi.useRealTimers();
+    }
+  });
 });
 
 describe("canvasLabStore expand", () => {
