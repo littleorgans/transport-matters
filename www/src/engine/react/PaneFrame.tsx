@@ -12,6 +12,8 @@ export interface PaneFrameProps {
   // When true, all transitions go instant. Set during a wheel zoom so the size FLIP does not
   // rubber-band against the per-tick scale change.
   instant?: boolean;
+  // Opt-in for layout mode changes where the pane's world rect should visibly transform.
+  layoutMotion?: boolean;
   onFocus(paneId: string): void;
   onMove(paneId: string, rect: WorldRect): void;
   onResize(paneId: string, rect: WorldRect): void;
@@ -20,6 +22,7 @@ export interface PaneFrameProps {
 
 const MINIMUM_PANE_RECT = { width: 300, height: 220 };
 const NORMAL_TRANSITION = { type: "spring", stiffness: 360, damping: 38 } as const;
+const LAYOUT_MOTION_TRANSITION = { duration: 0.32, ease: [0.22, 1, 0.36, 1] } as const;
 const REDUCED_TRANSITION = { duration: 0 } as const;
 const SNAP_TRANSITION = { duration: 0 } as const;
 // Exit fade/scale-out is a tween timed to the removal window, so the pane reaches opacity 0 exactly
@@ -33,6 +36,7 @@ export function PaneFrame({
   focused,
   titleId,
   instant = false,
+  layoutMotion = false,
   onFocus,
   onMove,
   onResize,
@@ -55,7 +59,12 @@ export function PaneFrame({
 
   const closing = node.lifecycle === "closing";
   const baseTransition =
-    prefersReducedMotion || instant || dragging ? REDUCED_TRANSITION : NORMAL_TRANSITION;
+    prefersReducedMotion || instant || dragging
+      ? REDUCED_TRANSITION
+      : layoutMotion
+        ? LAYOUT_MOTION_TRANSITION
+        : NORMAL_TRANSITION;
+  const positionTransition = layoutMotion ? baseTransition : SNAP_TRANSITION;
   // opacity + scale spring on the way in (the reveal) and tween out on close (timed to removal). Both
   // collapse to instant under reduced motion.
   let revealTransition: Transition = baseTransition;
@@ -117,13 +126,14 @@ export function PaneFrame({
       role="region"
       style={{ height: renderRect.height, width: renderRect.width, zIndex: node.z }}
       tabIndex={0}
-      // Per-axis transitions: size (layout) + reveal (default) spring; position always snaps so a
-      // pane never animates between slots (a reflow that moved it would "fly across the screen").
+      // Per-axis transitions: size (layout) + reveal (default) spring. Position normally snaps so a
+      // reflow does not fly panes across the screen; explicit layoutMotion lets mode changes such as
+      // E/uE transform the pane rects.
       transition={{
         default: revealTransition,
         layout: baseTransition,
-        x: SNAP_TRANSITION,
-        y: SNAP_TRANSITION,
+        x: positionTransition,
+        y: positionTransition,
       }}
       // x/y MUST be in initial and equal the mount rect (framer zeroes any transform prop absent from
       // initial, which would fly the pane in from the origin). Born-at-slot keeps node.rect final on

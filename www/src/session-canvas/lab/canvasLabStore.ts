@@ -58,6 +58,7 @@ export interface CanvasLabState {
   framing: FramingState;
   expandedPaneId: PaneId | null;
   flying: boolean;
+  paneMotion: boolean;
   nextPaneIndex: number;
   addPane(): void;
   closePane(paneId: PaneId): void;
@@ -186,6 +187,7 @@ export const useCanvasLabStore = create<CanvasLabState>()((set, get) => ({
   framing: { paneId: null, overview: null },
   expandedPaneId: null,
   flying: false,
+  paneMotion: false,
   nextPaneIndex: 0,
 
   addPane() {
@@ -220,7 +222,7 @@ export const useCanvasLabStore = create<CanvasLabState>()((set, get) => ({
     set((state) => ({ layout: markNodeClosing(state.layout, paneId) }));
     window.setTimeout(() => {
       const collapsing = get().expandedPaneId === paneId;
-      if (collapsing) startFly();
+      if (collapsing) startFly({ paneMotion: true });
       set((state) => {
         const expandedPaneId = collapsing ? null : state.expandedPaneId;
         return {
@@ -291,7 +293,7 @@ export const useCanvasLabStore = create<CanvasLabState>()((set, get) => ({
     }
     if (!layout.nodes[paneId]) return;
     if (openPaneIds(layout).length <= 1) return;
-    startFly();
+    startFly({ paneMotion: true });
     set((state) => ({
       expandedPaneId: paneId,
       framing: { paneId: null, overview: null },
@@ -308,7 +310,7 @@ export const useCanvasLabStore = create<CanvasLabState>()((set, get) => ({
 
   unexpand() {
     if (get().expandedPaneId === null) return;
-    startFly();
+    startFly({ paneMotion: true });
     set((state) => ({
       expandedPaneId: null,
       framing: { paneId: null, overview: null },
@@ -377,13 +379,20 @@ export const useCanvasLabStore = create<CanvasLabState>()((set, get) => ({
 
 let flyTimer: number | null = null;
 
-// Brief transform-transition flag for the camera "fly" on frame/unframe/reset.
-function startFly(): void {
-  useCanvasLabStore.setState({ flying: true });
+interface FlyOptions {
+  paneMotion?: boolean;
+}
+
+// Brief transition flags for camera fly and opt-in pane geometry motion.
+function startFly(options: FlyOptions = {}): void {
+  useCanvasLabStore.setState({
+    flying: true,
+    paneMotion: options.paneMotion ?? false,
+  });
   if (flyTimer !== null) window.clearTimeout(flyTimer);
   flyTimer = window.setTimeout(() => {
     flyTimer = null;
-    useCanvasLabStore.setState({ flying: false });
+    useCanvasLabStore.setState({ flying: false, paneMotion: false });
   }, FRAME_MS);
 }
 
@@ -399,6 +408,7 @@ export function resetCanvasLabStoreForTests(): void {
     framing: { paneId: null, overview: null },
     expandedPaneId: null,
     flying: false,
+    paneMotion: false,
     nextPaneIndex: 0,
   });
 }

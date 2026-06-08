@@ -13,6 +13,7 @@ const SEED_PANES = 4;
 export function CanvasLabRoute() {
   const layout = useCanvasLabStore((state) => state.layout);
   const flying = useCanvasLabStore((state) => state.flying);
+  const paneMotion = useCanvasLabStore((state) => state.paneMotion);
   const framedPane = useCanvasLabStore((state) => framedPaneId(state.framing));
   const expandedPane = useCanvasLabStore((state) => state.expandedPaneId);
   const activeStrategyId = useCanvasLabStore((state) => state.activeStrategyId);
@@ -141,6 +142,7 @@ export function CanvasLabRoute() {
           onFocusPane={focusPane}
           onMovePane={updatePaneRect}
           onResizePane={updatePaneRect}
+          paneMotion={paneMotion}
           renderPane={renderPane}
           setViewport={setViewport}
           titleIdForPane={titleIdForPane}
