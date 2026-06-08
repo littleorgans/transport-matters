@@ -1,0 +1,126 @@
+/* Resource / subagent / provider-exchange placeholder pane styles. Co-located with
+   the feature per the slice-5 CSS decision (mirror the canvas.css extraction, never
+   add to index.css). Uses the global tokens defined in index.css :root. Imported
+   once in main.tsx. Slices 6-8 extend these classes as the real viewers land. */
+
+.canvas-resource-pane {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+  flex-direction: column;
+  gap: var(--canvas-pane-gap);
+  padding: var(--canvas-pane-padding);
+  overflow: auto;
+  color: var(--color-txt-2);
+}
+.canvas-resource-pane[data-tone="error"] {
+  border-left: 2px solid var(--color-amber);
+}
+
+.canvas-resource-pane__header {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--canvas-pane-gap) * 0.5);
+  border-bottom: 1px solid var(--color-edge-subtle);
+  padding-bottom: var(--canvas-pane-gap);
+}
+.canvas-resource-pane__kind {
+  margin: 0;
+  color: var(--color-txt-3);
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.canvas-resource-pane__title {
+  overflow: hidden;
+  margin: 0;
+  color: var(--color-txt);
+  font-size: 0.95rem;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.canvas-resource-pane__identity {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: calc(var(--canvas-pane-gap) * 0.4) var(--canvas-pane-gap);
+  margin: 0;
+}
+.canvas-resource-pane__id-row {
+  display: contents;
+}
+.canvas-resource-pane__id-label {
+  color: var(--color-txt-3);
+  font-size: 0.7rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.canvas-resource-pane__id-value {
+  margin: 0;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.78rem;
+  color: var(--color-txt-2);
+  word-break: break-all;
+}
+
+.canvas-resource-pane__provenance {
+  align-self: flex-start;
+  margin: 0;
+  border: 1px solid var(--color-edge);
+  background: var(--color-surface);
+  padding: calc(var(--canvas-pane-gap) * 0.4) var(--canvas-pane-gap);
+  color: var(--color-txt-3);
+  font-size: 0.7rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.canvas-resource-pane__body {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--canvas-pane-gap);
+}
+.canvas-resource-pane__note {
+  max-width: 56ch;
+  margin: 0;
+  color: var(--color-txt-2);
+  font-size: 0.82rem;
+  line-height: 1.55;
+}
+
+.canvas-resource-pane__message {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--canvas-pane-gap) * 0.5);
+  border: 1px solid var(--color-edge-subtle);
+  background: var(--color-canvas);
+  padding: var(--canvas-row-padding);
+}
+.canvas-resource-pane__message-title {
+  margin: 0;
+  color: var(--color-txt);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+.canvas-resource-pane__message-detail {
+  max-width: 56ch;
+  margin: 0;
+  color: var(--color-txt-2);
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+.canvas-resource-pane__skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: var(--canvas-pane-gap);
+}
+
+.canvas-resource-pane__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--canvas-pane-gap);
+}

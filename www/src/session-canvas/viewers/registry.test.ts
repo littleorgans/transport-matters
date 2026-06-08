@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { CanvasPaneRef, PaneContentRef } from "../model/paneRecords";
-import { paneIdForRef, resolveViewer } from "./registry";
+import { paneIdForRef, resolveViewer, titleForRef, viewerIdForRef } from "./registry";
 
 describe("registry pane ids", () => {
   it("generates a deterministic pane id per kind", () => {
@@ -15,6 +15,7 @@ describe("registry pane ids", () => {
           subagentId: "sub1",
           parentSessionId: "s1",
           parentSeq: 3,
+          title: "Child task",
         },
         "subagent:s1:sub1",
       ],
@@ -40,6 +41,7 @@ describe("registry pane ids", () => {
       subagentId: "sub1",
       parentSessionId: "s1",
       parentSeq: 1,
+      title: "Child task",
     };
     const b: PaneContentRef = { ...a, parentSeq: 9 };
     expect(paneIdForRef(a)).toBe(paneIdForRef(b));
@@ -54,6 +56,36 @@ describe("registry pane ids", () => {
     };
     const b: PaneContentRef = { ...a, initialView: "raw" };
     expect(paneIdForRef(a)).toBe(paneIdForRef(b));
+  });
+
+  it("routes the three new pane kinds to the placeholder viewer", () => {
+    const refs: PaneContentRef[] = [
+      {
+        kind: "subagent-timeline",
+        owner: "local",
+        sessionId: "s1",
+        subagentId: "sub1",
+        parentSessionId: "s1",
+        parentSeq: 1,
+        title: "Child task",
+      },
+      { kind: "resource", owner: "local", sessionId: "s1", resourceId: "r1" },
+      { kind: "provider-exchange", owner: "local", sessionId: "s1", exchangeId: "e1" },
+    ];
+    for (const ref of refs) expect(viewerIdForRef(ref)).toBe("placeholder");
+  });
+
+  it("titles a subagent pane from the ref title, not a fabricated id", () => {
+    const ref: PaneContentRef = {
+      kind: "subagent-timeline",
+      owner: "local",
+      sessionId: "s1",
+      subagentId: "sub1",
+      parentSessionId: "s1",
+      parentSeq: 3,
+      title: "Investigate auth regression",
+    };
+    expect(titleForRef(ref)).toBe("Investigate auth regression");
   });
 
   it("resolves a viewer whose dedupe key is the registry pane id", () => {

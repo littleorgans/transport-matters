@@ -61,7 +61,8 @@ function placeholderPaneId(ref: PlaceholderPaneRef): PaneId {
 function placeholderTitle(ref: PlaceholderPaneRef): string {
   switch (ref.kind) {
     case "subagent-timeline":
-      return `Subagent ${ref.subagentId.slice(0, 8)}`;
+      // The real backend child-session title travels on the ref (SubagentRef.title).
+      return ref.title;
     case "resource":
       return `Resource ${ref.resourceId.slice(0, 8)}`;
     case "provider-exchange":

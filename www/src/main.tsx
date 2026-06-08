@@ -4,6 +4,7 @@ import { createRoot } from "react-dom/client";
 import { fetchMeta } from "./api";
 import "./index.css";
 import "./session-canvas/canvas.css";
+import "./session-canvas/viewers/placeholder/placeholder-pane.css";
 import { queryClient } from "./lib/queryClient";
 import { selectRootRoute } from "./session-canvas/route";
 
