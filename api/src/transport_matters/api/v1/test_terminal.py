@@ -112,10 +112,28 @@ def test_terminal_rejects_origin_mismatch(monkeypatch: pytest.MonkeyPatch, tmp_p
     assert exc_info.value.code == status.WS_1008_POLICY_VIOLATION
 
 
-def _client(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> TestClient:
+def test_terminal_accepts_configured_dev_origin_through_proxy(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    client = _client(monkeypatch, tmp_path, base_url="http://localhost:8788")
+
+    with (
+        client,
+        client.websocket_connect(
+            "/api/v1/terminal",
+            headers={"Origin": "http://localhost:5175"},
+        ) as websocket,
+    ):
+        websocket.send_bytes(b"exit\n")
+        _receive_until_disconnect(websocket, needle=b"exit")
+
+
+def _client(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, *, base_url: str = "http://testserver"
+) -> TestClient:
     monkeypatch.setenv("SHELL", _shell_for_tests())
     monkeypatch.setenv("TRANSPORT_MATTERS_CWD", str(tmp_path))
-    return TestClient(create_app())
+    return TestClient(create_app(), base_url=base_url)
 
 
 def _shell_for_tests() -> str:
