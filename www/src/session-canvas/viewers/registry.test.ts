@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { CanvasPaneRef, PaneContentRef } from "../model/paneRecords";
-import { paneIdForRef, resolveViewer } from "./registry";
+import { paneIdForRef, resolveViewer, viewerIdForRef } from "./registry";
 
 describe("registry pane ids", () => {
   it("generates a deterministic pane id per kind", () => {
@@ -54,6 +54,22 @@ describe("registry pane ids", () => {
     };
     const b: PaneContentRef = { ...a, initialView: "raw" };
     expect(paneIdForRef(a)).toBe(paneIdForRef(b));
+  });
+
+  it("routes the three new pane kinds to the placeholder viewer", () => {
+    const refs: PaneContentRef[] = [
+      {
+        kind: "subagent-timeline",
+        owner: "local",
+        sessionId: "s1",
+        subagentId: "sub1",
+        parentSessionId: "s1",
+        parentSeq: 1,
+      },
+      { kind: "resource", owner: "local", sessionId: "s1", resourceId: "r1" },
+      { kind: "provider-exchange", owner: "local", sessionId: "s1", exchangeId: "e1" },
+    ];
+    for (const ref of refs) expect(viewerIdForRef(ref)).toBe("placeholder");
   });
 
   it("resolves a viewer whose dedupe key is the registry pane id", () => {
