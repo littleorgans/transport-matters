@@ -1,0 +1,46 @@
+/* Binary resource viewer. Co-located with the feature; tokens from index.css
+   :root. Never edit index.css. */
+
+.canvas-binary {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--canvas-pane-gap);
+}
+.canvas-binary__meta {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: calc(var(--canvas-pane-gap) * 0.4) var(--canvas-pane-gap);
+  margin: 0;
+  border: 1px solid var(--color-edge-subtle);
+  background: var(--color-surface);
+  padding: var(--canvas-row-padding);
+}
+.canvas-binary__row {
+  display: contents;
+}
+.canvas-binary__label {
+  color: var(--color-txt-3);
+  font-size: 0.7rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.canvas-binary__value {
+  margin: 0;
+  color: var(--color-txt);
+  font-size: 0.82rem;
+  word-break: break-word;
+}
+.canvas-binary__hash {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  color: var(--color-txt-2);
+  word-break: break-all;
+}
+.canvas-binary__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--canvas-pane-gap);
+  border-top: 1px solid var(--color-edge);
+  padding-top: var(--canvas-pane-gap);
+}

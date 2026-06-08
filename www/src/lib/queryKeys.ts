@@ -12,6 +12,27 @@ export function turnContentKey(id: string): readonly ["turn-content", string] {
   return ["turn-content", id];
 }
 
+export function resourceContentKey(args: {
+  sessionId: string;
+  resourceId: string;
+  owner: string;
+  rangeStart?: number | null;
+  rangeEnd?: number | null;
+  includeDebug?: boolean;
+}) {
+  return [
+    "session-resource",
+    {
+      sessionId: args.sessionId,
+      resourceId: args.resourceId,
+      owner: args.owner,
+      rangeStart: args.rangeStart ?? null,
+      rangeEnd: args.rangeEnd ?? null,
+      includeDebug: args.includeDebug ?? false,
+    },
+  ] as const;
+}
+
 export interface SessionsKeyArgs {
   owner: string;
   workspaceHash?: string | null;

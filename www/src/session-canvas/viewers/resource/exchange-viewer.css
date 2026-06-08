@@ -1,0 +1,12 @@
+/* Provider-exchange viewer wrapper. ExchangeDetail brings its own styling; this
+   only gives it a full-height flex column inside the pane. Co-located; never
+   edit index.css. */
+
+.canvas-exchange {
+  display: flex;
+  min-height: 0;
+  height: 100%;
+  flex: 1;
+  flex-direction: column;
+  overflow: hidden;
+}

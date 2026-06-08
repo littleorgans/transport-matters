@@ -99,12 +99,19 @@ export function ResourcePaneStateView({
   provenance,
   header,
   actions,
+  messageOverride,
   children,
 }: {
   state: ResourcePaneState;
   provenance: ProvenanceKind;
   header?: ReactNode;
   actions?: PaneAction[];
+  /**
+   * Backend-supplied message that replaces the canned error detail. Lets a
+   * missing pane render the server's own text for reasons that have no
+   * dedicated state (e.g. `uncorrelated`), never a generic toast.
+   */
+  messageOverride?: string;
   children?: ReactNode;
 }) {
   return (
@@ -115,7 +122,9 @@ export function ResourcePaneStateView({
       status={state.status}
       tone={STATE_TONE[state.status]}
     >
-      <StateBody state={state}>{children}</StateBody>
+      <StateBody messageOverride={messageOverride} state={state}>
+        {children}
+      </StateBody>
     </PaneStateFrame>
   );
 }
@@ -138,62 +147,64 @@ function PaneActionsBar({ actions }: { actions?: PaneAction[] }) {
   );
 }
 
-function StateBody({ state, children }: { state: ResourcePaneState; children?: ReactNode }) {
+function StateBody({
+  state,
+  messageOverride,
+  children,
+}: {
+  state: ResourcePaneState;
+  messageOverride?: string;
+  children?: ReactNode;
+}) {
+  if (state.status === "loading") {
+    return (
+      <div aria-hidden="true" className="canvas-resource-pane__skeleton">
+        <div className="canvas-picker__skeleton" />
+        <div className="canvas-picker__skeleton" />
+      </div>
+    );
+  }
+  if (state.status === "ready") return <>{children}</>;
+  const { title, detail } = errorContent(state);
+  return <StateMessage detail={messageOverride ?? detail} title={title} />;
+}
+
+type ErrorState = Exclude<ResourcePaneState, { status: "loading" } | { status: "ready" }>;
+
+/** Canned title + fallback detail per error state. `messageOverride` wins over detail. */
+function errorContent(state: ErrorState): { title: string; detail: string } {
   switch (state.status) {
-    case "loading":
-      return (
-        <div aria-hidden="true" className="canvas-resource-pane__skeleton">
-          <div className="canvas-picker__skeleton" />
-          <div className="canvas-picker__skeleton" />
-        </div>
-      );
-    case "ready":
-      return <>{children}</>;
     case "missing":
-      return (
-        <StateMessage
-          detail="This resource is no longer available in the run store."
-          title="Resource not found"
-        />
-      );
+      return {
+        title: "Resource not found",
+        detail: "This resource is no longer available in the run store.",
+      };
     case "too-large":
-      return <StateMessage detail={tooLargeDetail(state)} title="Resource too large to inline" />;
+      return { title: "Resource too large to inline", detail: tooLargeDetail(state) };
     case "binary-unsupported":
-      return (
-        <StateMessage
-          detail={
-            state.mediaType
-              ? `Media type ${state.mediaType} has no inline viewer.`
-              : "This binary has no inline viewer."
-          }
-          title="Binary resource unsupported"
-        />
-      );
+      return {
+        title: "Binary resource unsupported",
+        detail: state.mediaType
+          ? `Media type ${state.mediaType} has no inline viewer.`
+          : "This binary has no inline viewer.",
+      };
     case "outside-workspace":
-      return (
-        <StateMessage
-          detail={
-            state.path
-              ? `${state.path} resolves outside the captured workspace.`
-              : "This path resolves outside the captured workspace."
-          }
-          title="Path is outside the workspace"
-        />
-      );
+      return {
+        title: "Path is outside the workspace",
+        detail: state.path
+          ? `${state.path} resolves outside the captured workspace.`
+          : "This path resolves outside the captured workspace.",
+      };
     case "permission-denied":
-      return (
-        <StateMessage
-          detail="The run store denied access to this resource."
-          title="Permission denied"
-        />
-      );
+      return {
+        title: "Permission denied",
+        detail: "The run store denied access to this resource.",
+      };
     case "debug-unavailable":
-      return (
-        <StateMessage
-          detail="Raw provider bytes are not retained for this turn."
-          title="Debug data unavailable"
-        />
-      );
+      return {
+        title: "Debug data unavailable",
+        detail: "Raw provider bytes are not retained for this turn.",
+      };
   }
 }
 
