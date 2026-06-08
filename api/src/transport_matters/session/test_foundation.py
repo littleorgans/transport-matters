@@ -95,6 +95,21 @@ def test_get_events_for_owner_returns_lightweight_read_rows(dao: SessionDao) -> 
     assert rows[0].ir == {"parts": [{"type": "text", "text": "large image"}]}
 
 
+def test_get_events_with_raw_for_owner_preserves_raw_and_scopes_owner(dao: SessionDao) -> None:
+    dao.upsert_session(root_session())
+    dao.upsert_session(
+        root_session("s2", native_session_id="native2").model_copy(update={"owner": "other"})
+    )
+    dao.insert_event(event(search_text="raw event").model_copy(update={"raw": {"type": "mode"}}))
+    dao.insert_event(event(session_id="s2", search_text="hidden"))
+
+    rows = dao.get_events_with_raw_for_owner("s1", owner="local")
+
+    assert len(rows) == 1
+    assert rows[0].raw == {"type": "mode"}
+    assert dao.get_events_with_raw_for_owner("s1", owner="other") == []
+
+
 def test_session_native_uniqueness_scopes_owner_run_provider(dao: SessionDao) -> None:
     dao.upsert_session(root_session("s1", native_session_id="native"))
     dao.upsert_session(

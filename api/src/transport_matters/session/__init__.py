@@ -2,6 +2,7 @@ from transport_matters.session.artifacts import ARTIFACT_HASH_ALGO, artifact_has
 from transport_matters.session.dao import AsyncSessionDao, SessionDao
 from transport_matters.session.models import (
     ArtifactRow,
+    ChildSessionRow,
     EventArtifactRow,
     EventKind,
     EventReadRow,
@@ -23,6 +24,7 @@ __all__ = [
     "ARTIFACT_HASH_ALGO",
     "ArtifactRow",
     "AsyncSessionDao",
+    "ChildSessionRow",
     "EventArtifactRow",
     "EventKind",
     "EventReadRow",
