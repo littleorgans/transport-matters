@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from transport_matters.session import exchange_correlation
 from transport_matters.session.timeline_models import (
     ContentPart,
     ContextItem,
@@ -21,15 +22,6 @@ if TYPE_CHECKING:
 _INLINE_ARTIFACT_TITLE = "Inline artifact"
 _NATIVE_RECORD_TITLE = "Native record"
 _WIRE_EXCHANGE_TITLE = "Wire exchange"
-_EXCHANGE_ID_KEYS = ("exchange_id", "exchangeId")
-_EXCHANGE_ID_CONTAINERS = (
-    "transport_matters",
-    "transportMatters",
-    "transport",
-    "wire",
-    "correlation",
-    "turn",
-)
 
 
 def message_resources(
@@ -255,21 +247,7 @@ def _artifact_block_index(artifact: EventArtifactRow) -> int | None:
 
 
 def _wire_exchange_id(row: EventRow) -> str | None:
-    return _exchange_id_from_record(row.ir)
-
-
-def _exchange_id_from_record(record: object) -> str | None:
-    if not isinstance(record, dict):
-        return None
-    for key in _EXCHANGE_ID_KEYS:
-        exchange_id = _non_empty_string(record.get(key))
-        if exchange_id is not None:
-            return exchange_id
-    for key in _EXCHANGE_ID_CONTAINERS:
-        exchange_id = _exchange_id_from_record(record.get(key))
-        if exchange_id is not None:
-            return exchange_id
-    return None
+    return exchange_correlation.exchange_id_from_record(row.ir)
 
 
 def _non_empty_string(value: object) -> str | None:
