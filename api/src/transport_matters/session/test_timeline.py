@@ -86,7 +86,7 @@ def test_projector_maps_turn_rows_to_message_items() -> None:
             "resourceRefs": [
                 {
                     "resourceId": "native:s1:0",
-                    "relation": "read",
+                    "relation": "native-record",
                     "confidence": "verified",
                     "blockIndex": None,
                 }
@@ -138,7 +138,7 @@ def test_projector_emits_conservative_resource_refs_for_inline_native_and_wire()
     assert payload["items"][0]["resourceRefs"] == [
         {
             "resourceId": "native:s1:0",
-            "relation": "read",
+            "relation": "native-record",
             "confidence": "verified",
             "blockIndex": None,
         },
@@ -187,7 +187,7 @@ def test_projector_does_not_emit_verified_file_refs_for_mentioned_path() -> None
     assert payload["items"][0]["resourceRefs"] == [
         {
             "resourceId": "native:s1:0",
-            "relation": "read",
+            "relation": "native-record",
             "confidence": "verified",
             "blockIndex": None,
         }
@@ -201,12 +201,82 @@ def test_projector_does_not_emit_wire_ref_when_exchange_id_is_absent() -> None:
     assert payload["items"][0]["resourceRefs"] == [
         {
             "resourceId": "native:s1:0",
-            "relation": "read",
+            "relation": "native-record",
             "confidence": "verified",
             "blockIndex": None,
         }
     ]
     assert all(not resource_id.startswith("wire:") for resource_id in payload["resources"])
+
+
+def test_projector_does_not_trust_provider_raw_exchange_keys() -> None:
+    provider_raw = event(0).model_copy(
+        update={
+            "raw": {
+                "turn": {"exchange_id": "provider-turn"},
+                "correlation": {"exchangeId": "provider-correlation"},
+            },
+        }
+    )
+
+    payload = _json(project_timeline(session=root_session(), events=[provider_raw]))
+
+    assert payload["items"][0]["resourceRefs"] == [
+        {
+            "resourceId": "native:s1:0",
+            "relation": "native-record",
+            "confidence": "verified",
+            "blockIndex": None,
+        }
+    ]
+    assert all(not resource_id.startswith("wire:") for resource_id in payload["resources"])
+
+
+def test_projector_dedupes_inline_artifact_by_hash_when_block_index_disagrees() -> None:
+    mismatched_inline = event(0).model_copy(
+        update={
+            "ir": {
+                "parts": [
+                    {
+                        "type": "image",
+                        "artifact_hash": "sha256-inline-mismatch",
+                        "media_type": "image/png",
+                    },
+                    {"type": "text", "text": "caption"},
+                ],
+            },
+            "artifacts": (
+                EventArtifactRow(
+                    session_id="s1",
+                    seq=0,
+                    artifact_hash="sha256-inline-mismatch",
+                    ref={"block_index": 1},
+                    media_type="image/png",
+                    size_bytes=17,
+                ),
+            ),
+        }
+    )
+
+    payload = _json(project_timeline(session=root_session(), events=[mismatched_inline]))
+
+    assert payload["items"][0]["resourceRefs"] == [
+        {
+            "resourceId": "native:s1:0",
+            "relation": "native-record",
+            "confidence": "verified",
+            "blockIndex": None,
+        },
+        {
+            "resourceId": "inline:sha256-inline-mismatch",
+            "relation": "attached",
+            "confidence": "verified",
+            "blockIndex": 0,
+        },
+    ]
+    assert [
+        resource_id for resource_id in payload["resources"] if resource_id.startswith("inline:")
+    ] == ["inline:sha256-inline-mismatch"]
 
 
 def test_stream_projection_emits_session_update_envelope_with_revision() -> None:
@@ -451,7 +521,7 @@ def test_projector_emits_native_refs_for_context_items() -> None:
     assert payload["items"][0]["resourceRefs"] == [
         {
             "resourceId": "native:s1:1",
-            "relation": "read",
+            "relation": "native-record",
             "confidence": "verified",
             "blockIndex": None,
         }

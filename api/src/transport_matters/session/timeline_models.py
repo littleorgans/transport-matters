@@ -14,7 +14,15 @@ PaneContentRef = JsonObject
 MessageRole = Literal["user", "assistant", "system", "tool"]
 BadgeTone = Literal["neutral", "trust", "warning"]
 OpenPolicy = Literal["auto", "click", "collapsed"]
-ResourceRelation = Literal["attached", "read", "written", "mentioned", "generated", "wire-evidence"]
+ResourceRelation = Literal[
+    "attached",
+    "read",
+    "written",
+    "mentioned",
+    "generated",
+    "wire-evidence",
+    "native-record",
+]
 ResourceConfidence = Literal["verified", "inferred", "mentioned"]
 SessionStatus = Literal["active", "completed", "archived", "unknown"]
 DiagnosticSeverity = Literal["info", "warning", "error"]
