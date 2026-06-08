@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import errno
 import os
+import select
+import signal
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -97,6 +100,36 @@ def test_terminal_disconnect_kills_child_and_closes_master_fd(
         os.fstat(session.master_fd)
 
 
+def test_terminal_ctrl_c_interrupts_foreground_child_when_parent_ignores_sigint(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("SHELL", _shell_for_tests())
+    original_sigint = signal.getsignal(signal.SIGINT)
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
+    try:
+        session = terminal._spawn_terminal_pty(cols=80, rows=24, cwd=tmp_path)
+    finally:
+        signal.signal(signal.SIGINT, original_sigint)
+
+    try:
+        terminal._write_all(session.master_fd, _python_interrupt_probe_command())
+        output = _read_pty_until(
+            session.master_fd,
+            needle=b"TM_READY",
+        )
+        assert b"TM_READY" in output
+
+        terminal._write_all(session.master_fd, b"\x03")
+        output = _read_pty_until(
+            session.master_fd,
+            needle=b"TM_INTERRUPTED",
+        )
+
+        assert b"TM_INTERRUPTED" in output
+    finally:
+        terminal._terminate_terminal_pty(session)
+
+
 def test_terminal_rejects_origin_mismatch(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     client = _client(monkeypatch, tmp_path)
 
@@ -177,6 +210,43 @@ def _client(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> TestClient:
 
 def _websocket_headers(origin: str, *, host: str = "localhost:8788") -> dict[str, str]:
     return {"Origin": origin, "Host": host}
+
+
+def _python_interrupt_probe_command() -> bytes:
+    script = (
+        "import time\n"
+        'print("TM_READY", flush=True)\n'
+        "try:\n"
+        "    time.sleep(30)\n"
+        "except KeyboardInterrupt:\n"
+        '    print("TM_INTERRUPTED", flush=True)\n'
+    )
+    return f"python -c 'exec(bytes.fromhex(\"{script.encode().hex()}\").decode())'\n".encode()
+
+
+def _read_pty_until(fd: int, *, needle: bytes, timeout_s: float = 5.0) -> bytes:
+    deadline = time.monotonic() + timeout_s
+    chunks = bytearray()
+    while time.monotonic() < deadline:
+        timeout = min(0.05, max(0.0, deadline - time.monotonic()))
+        ready, _, _ = select.select([fd], [], [], timeout)
+        if not ready:
+            continue
+
+        try:
+            chunk = os.read(fd, terminal.PTY_READ_CHUNK_SIZE)
+        except OSError as exc:
+            if exc.errno == errno.EIO:
+                break
+            raise
+        if not chunk:
+            break
+
+        chunks.extend(chunk)
+        if needle in chunks:
+            break
+
+    return bytes(chunks)
 
 
 def _shell_for_tests() -> str:

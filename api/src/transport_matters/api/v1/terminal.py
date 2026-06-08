@@ -17,12 +17,16 @@ import subprocess
 import termios
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect, WebSocketException, status
 from starlette.websockets import WebSocketState
 
 from transport_matters.config import Settings, get_settings
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +39,15 @@ MAX_ROWS = 200
 PTY_READ_CHUNK_SIZE = 8192
 CHILD_EXIT_TIMEOUT_S = 1.0
 _TERMINAL_LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
+_TERMINAL_CHILD_DEFAULT_SIGNALS = (
+    signal.SIGHUP,
+    signal.SIGINT,
+    signal.SIGQUIT,
+    signal.SIGTERM,
+    signal.SIGTSTP,
+    signal.SIGTTIN,
+    signal.SIGTTOU,
+)
 
 
 class TerminalControlError(ValueError):
@@ -163,7 +176,7 @@ def _spawn_terminal_pty(*, cols: int, rows: int, cwd: Path) -> TerminalPty:
             stderr=slave_fd,
             cwd=cwd,
             env=env,
-            start_new_session=True,
+            preexec_fn=_prepare_terminal_child(slave_fd),
             close_fds=True,
         )
     except Exception:
@@ -173,6 +186,17 @@ def _spawn_terminal_pty(*, cols: int, rows: int, cwd: Path) -> TerminalPty:
 
     _close_fd(slave_fd)
     return TerminalPty(master_fd=master_fd, process=process)
+
+
+def _prepare_terminal_child(slave_fd: int) -> Callable[[], None]:
+    def prepare() -> None:
+        os.setsid()
+        fcntl.ioctl(slave_fd, termios.TIOCSCTTY, 0)
+        os.tcsetpgrp(slave_fd, os.getpgrp())
+        for child_signal in _TERMINAL_CHILD_DEFAULT_SIGNALS:
+            signal.signal(child_signal, signal.SIG_DFL)
+
+    return prepare
 
 
 def _shell_argv() -> list[str]:
