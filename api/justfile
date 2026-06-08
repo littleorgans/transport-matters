@@ -31,6 +31,9 @@ spike:
 test *args:
     uv run python -m pytest {{args}}
 
+migration-smoke:
+    uv run python -m pytest src/transport_matters/session/test_migrate.py -q
+
 coverage:
     uv run python -m pytest --cov=transport_matters --cov-report=term-missing --cov-report=html
 
@@ -68,6 +71,7 @@ ci:
     uv run ruff format --check src/
     uv run ruff check src/
     uv run mypy src/
+    just migration-smoke
     uv run python -m pytest
 
 # ------------- Maintenance -------------

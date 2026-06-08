@@ -75,7 +75,9 @@ jobs:
       - name: Run tests with coverage
         env:
           TRANSPORT_MATTERS_TEST_DATABASE_URL: postgresql://tm:tm@localhost:5432/postgres
-        run: uv run pytest --cov=transport_matters --cov-report=term
+        run: |
+          uv run python -m pytest src/transport_matters/session/test_migrate.py -q
+          uv run pytest --cov=transport_matters --cov-report=term
 
   frontend:
     name: frontend
