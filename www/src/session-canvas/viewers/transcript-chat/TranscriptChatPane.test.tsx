@@ -44,13 +44,17 @@ describe("TranscriptChatPane", () => {
   });
 });
 
-function transcriptProps(): ViewerProps<{ kind: "session"; sessionId: string; owner: "local" }> {
+function transcriptProps(): ViewerProps<{
+  kind: "session-timeline";
+  owner: "local";
+  sessionId: string;
+}> {
   return {
     pane: {
       paneId: "transcript:session-1",
       viewerId: "transcript-chat",
       title: "Transcript",
-      contentRef: { kind: "session", owner: "local", sessionId: "session-1" },
+      contentRef: { kind: "session-timeline", owner: "local", sessionId: "session-1" },
       chromeState: "default",
       createdAt: "2026-06-06T17:00:00Z",
       lastFocusedAt: null,

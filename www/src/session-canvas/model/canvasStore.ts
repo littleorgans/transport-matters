@@ -15,19 +15,15 @@ import {
   type WorldRect,
 } from "../../engine";
 import type { CanvasLaunchContext } from "../route";
+import { PICKER_PANE_ID, paneIdForRef, rectForRef, titleForRef } from "../viewers/registry";
 import type {
   CanvasModel,
   PaneContentRef,
   PaneRecord,
+  SpawnablePaneRef,
   SpawnSessionDescriptor,
 } from "./paneRecords";
-import {
-  createPaneRecord,
-  PICKER_PANE_ID,
-  paneIdForRef,
-  rectForRef,
-  titleForSession,
-} from "./spawn";
+import { createPaneRecord, normalizeRef, titleForSession } from "./spawn";
 
 interface CanvasStoreState extends CanvasModel {
   closePane(paneId: PaneId): void;
@@ -37,7 +33,7 @@ interface CanvasStoreState extends CanvasModel {
   resizePane(paneId: PaneId, rect: WorldRect): void;
   resetViewport(): void;
   setViewport(viewport: CanvasViewport): void;
-  spawnPane(ref: PaneContentRef, options?: SpawnPaneOptions): PaneId;
+  spawnPane(ref: SpawnablePaneRef, options?: SpawnPaneOptions): PaneId;
   spawnOrFocusTranscript(session: SpawnSessionDescriptor): void;
 }
 
@@ -100,20 +96,24 @@ export const useCanvasStore = create<CanvasStoreState>()((set, get) => ({
   },
 
   spawnPane(ref, options) {
-    const paneId = paneIdForRef(ref);
+    const normalized = normalizeRef(ref);
+    const paneId = paneIdForRef(normalized);
     const existing = get().panes[paneId];
     if (existing) {
       if (options?.focus !== false) get().focusPane(paneId);
       return paneId;
     }
-    const title =
-      options?.title ?? (ref.kind === "session-picker" ? "Session picker" : "Transcript");
-    set((state) => insertPane(state, ref, title, options?.focus !== false));
+    const title = options?.title ?? titleForRef(normalized);
+    set((state) => insertPane(state, normalized, title, options?.focus !== false));
     return paneId;
   },
 
   spawnOrFocusTranscript(session) {
-    const ref: PaneContentRef = { kind: "session", owner: "local", sessionId: session.session_id };
+    const ref: PaneContentRef = {
+      kind: "session-timeline",
+      owner: "local",
+      sessionId: session.session_id,
+    };
     get().spawnPane(ref, { focus: true, title: titleForSession(session) });
   },
 }));

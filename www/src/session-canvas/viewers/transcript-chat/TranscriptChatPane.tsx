@@ -9,7 +9,7 @@ import { TranscriptMessage } from "./TranscriptMessage";
 
 export function TranscriptChatPane({
   pane,
-}: ViewerProps<{ kind: "session"; sessionId: string; owner: "local" }>) {
+}: ViewerProps<{ kind: "session-timeline"; owner: "local"; sessionId: string }>) {
   const sessionId = pane.contentRef.sessionId;
   const [state, dispatch] = useReducer(sessionEventReducer, sessionId, createSessionEventState);
   const backlog = useSessionEvents({ owner: "local", sessionId });
