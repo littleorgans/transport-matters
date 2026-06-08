@@ -20,7 +20,7 @@ from transport_matters.session.pool import async_connect, create_async_pool
 from transport_matters.session.test_foundation import event, root_session
 from transport_matters.session.testing import TestDb
 
-from .session_routes import _event_stream
+from .session_routes import _event_stream, _timeline_stream
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Callable, Iterator
@@ -206,6 +206,56 @@ async def test_session_event_stream_catches_up_after_listener_reconnect_gap(
         finally:
             await stream.aclose()
             await listener.aclose()
+
+
+async def test_session_timeline_stream_emits_live_item_with_stable_id(
+    test_db: TestDb,
+) -> None:
+    hub = SessionEventHub()
+    async with create_async_pool(test_db.database_url, min_size=1, max_size=3) as pool:
+        async with pool.connection() as conn:
+            await AsyncSessionDao(conn).upsert_session(root_session("s1"))
+
+        stream = _timeline_stream("s1", "local", -1, pool, hub)
+        try:
+            session_frame = _frame_payload(await asyncio.wait_for(anext(stream), timeout=2.0))
+            assert session_frame["id"] == "session:s1"
+            session_event = cast("dict[str, object]", session_frame["event"])
+            assert session_event["kind"] == "session-updated"
+
+            timeline_frame_task = asyncio.create_task(anext(stream))
+            await _wait_for(lambda: hub.subscriber_count("s1") == 1)
+            async with pool.connection() as conn:
+                await AsyncSessionDao(conn).insert_event(
+                    event(0, session_id="s1", search_text="live")
+                )
+            hub.publish(SessionEventSignal(session_id="s1", first_seq=0, last_seq=0))
+
+            timeline_frame = _frame_payload(
+                await asyncio.wait_for(timeline_frame_task, timeout=2.0)
+            )
+            assert timeline_frame["id"] == "timeline:s1:0"
+            assert timeline_frame["revision"] == 0
+            timeline_event = cast("dict[str, object]", timeline_frame["event"])
+            timeline_item = cast("dict[str, object]", timeline_event["item"])
+            assert timeline_event["kind"] == "timeline-item"
+            assert timeline_item["id"] == "message:s1:0"
+            assert timeline_event["resources"] == {}
+        finally:
+            await stream.aclose()
+
+
+async def test_session_timeline_stream_is_owner_scoped(test_db: TestDb) -> None:
+    async with (
+        create_async_pool(test_db.database_url, min_size=1, max_size=2) as pool,
+        pool.connection() as conn,
+    ):
+        await AsyncSessionDao(conn).upsert_session(root_session("s1"))
+
+    async with _client(test_db) as client:
+        hidden = await client.get("/api/sessions/s1/timeline/stream", params={"owner": "other"})
+
+    assert hidden.status_code == 404
 
 
 async def test_app_lifespan_releases_session_listener_connection(
