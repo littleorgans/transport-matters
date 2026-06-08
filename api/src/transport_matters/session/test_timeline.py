@@ -4,8 +4,8 @@ from typing import TYPE_CHECKING, Any
 
 import pytest
 
-from transport_matters.session.models import ChildSessionRow, EventRow
-from transport_matters.session.test_foundation import event, root_session, tool_result_event
+from transport_matters.session.models import ChildSessionRow, EventArtifactRow, EventRow
+from transport_matters.session.test_foundation import event, root_session
 from transport_matters.session.timeline import project_timeline, required_timeline_anchor_before_seq
 from transport_matters.session.timeline_models import (
     SessionUpdatedStreamEvent,
@@ -24,6 +24,34 @@ def _json(response: TimelineResponse) -> dict[str, Any]:
 
 def _meta(seq: int, raw: dict[str, object]) -> EventRow:
     return event(seq).model_copy(update={"kind": "meta", "raw": raw, "ir": None, "role": None})
+
+
+def _inline_artifact_event() -> EventRow:
+    return event(0).model_copy(
+        update={
+            "ir": {
+                "parts": [
+                    {
+                        "type": "image",
+                        "artifact_hash": "sha256-inline-1",
+                        "media_type": "image/png",
+                    },
+                    {"type": "text", "text": "alpha beta"},
+                ],
+                "exchange_id": "exchange-1",
+            },
+            "artifacts": (
+                EventArtifactRow(
+                    session_id="s1",
+                    seq=0,
+                    artifact_hash="sha256-inline-1",
+                    ref={"block_index": 0},
+                    media_type="image/png",
+                    size_bytes=11,
+                ),
+            ),
+        }
+    )
 
 
 def _child_session() -> ChildSessionRow:
@@ -55,7 +83,14 @@ def test_projector_maps_turn_rows_to_message_items() -> None:
             "ts": "2026-06-06T00:00:00+00:00",
             "model": None,
             "parts": [{"type": "text", "text": "alpha beta"}],
-            "resourceRefs": [],
+            "resourceRefs": [
+                {
+                    "resourceId": "native:s1:0",
+                    "relation": "read",
+                    "confidence": "verified",
+                    "blockIndex": None,
+                }
+            ],
             "subagentRefs": [],
             "badges": [],
             "source": {
@@ -73,7 +108,7 @@ def test_projector_maps_turn_rows_to_message_items() -> None:
 
 def test_stream_projection_reuses_backlog_item_and_resource_shapes() -> None:
     session = root_session()
-    rows = [tool_result_event(0, text="stdout"), tool_result_event(1, text="stderr")]
+    rows = [_inline_artifact_event()]
     backlog = project_timeline(session=session, events=rows)
 
     envelopes = project_timeline_stream_envelopes(
@@ -82,15 +117,96 @@ def test_stream_projection_reuses_backlog_item_and_resource_shapes() -> None:
         emitted_at="2026-06-06T00:00:00+00:00",
     )
 
-    resource_id = "tool-output:s1:0:0"
-    assert set(backlog.resources) == {resource_id, "tool-output:s1:1:0"}
+    assert set(backlog.resources) == {
+        "inline:sha256-inline-1",
+        "native:s1:0",
+        "wire:exchange-1",
+    }
     assert len(envelopes) == 4
     assert envelopes[0].id == "timeline:s1:0"
     assert envelopes[0].revision == 0
     assert envelopes[0].event == TimelineItemStreamEvent(
         item=backlog.items[0],
-        resources={resource_id: backlog.resources[resource_id]},
+        resources=backlog.resources,
     )
+
+
+def test_projector_emits_conservative_resource_refs_for_inline_native_and_wire() -> None:
+    response = project_timeline(session=root_session(), events=[_inline_artifact_event()])
+    payload = _json(response)
+
+    assert payload["items"][0]["resourceRefs"] == [
+        {
+            "resourceId": "native:s1:0",
+            "relation": "read",
+            "confidence": "verified",
+            "blockIndex": None,
+        },
+        {
+            "resourceId": "inline:sha256-inline-1",
+            "relation": "attached",
+            "confidence": "verified",
+            "blockIndex": 0,
+        },
+        {
+            "resourceId": "wire:exchange-1",
+            "relation": "wire-evidence",
+            "confidence": "verified",
+            "blockIndex": None,
+        },
+    ]
+    assert payload["resources"]["inline:sha256-inline-1"] == {
+        "kind": "inline",
+        "id": "inline:sha256-inline-1",
+        "title": "Inline artifact",
+        "mediaType": "image/png",
+        "artifactHash": "sha256-inline-1",
+        "sizeBytes": 11,
+    }
+    assert payload["resources"]["native:s1:0"]["source"] == payload["items"][0]["source"]
+    assert payload["resources"]["wire:exchange-1"] == {
+        "kind": "wire",
+        "id": "wire:exchange-1",
+        "title": "Wire exchange",
+        "exchangeId": "exchange-1",
+        "structuredOnly": True,
+    }
+
+
+def test_projector_does_not_emit_verified_file_refs_for_mentioned_path() -> None:
+    mentioned = event(0, search_text="Mentioned NOTES/demo.md").model_copy(
+        update={
+            "ir": {
+                "parts": [{"type": "text", "text": "Mentioned NOTES/demo.md"}],
+            },
+        }
+    )
+
+    payload = _json(project_timeline(session=root_session(), events=[mentioned]))
+
+    assert payload["items"][0]["resourceRefs"] == [
+        {
+            "resourceId": "native:s1:0",
+            "relation": "read",
+            "confidence": "verified",
+            "blockIndex": None,
+        }
+    ]
+    assert all(not resource_id.startswith("file-") for resource_id in payload["resources"])
+
+
+def test_projector_does_not_emit_wire_ref_when_exchange_id_is_absent() -> None:
+    payload = _json(project_timeline(session=root_session(), events=[event(0)]))
+
+    assert payload["items"][0]["resourceRefs"] == [
+        {
+            "resourceId": "native:s1:0",
+            "relation": "read",
+            "confidence": "verified",
+            "blockIndex": None,
+        }
+    ]
+    assert all(not resource_id.startswith("wire:") for resource_id in payload["resources"])
 
 
 def test_stream_projection_emits_session_update_envelope_with_revision() -> None:
@@ -324,7 +440,7 @@ def test_required_timeline_anchor_treats_sidechain_turns_as_regular_turns() -> N
     )
 
 
-def test_projector_does_not_emit_debug_native_resources_in_slice_one() -> None:
+def test_projector_emits_native_refs_for_context_items() -> None:
     response = project_timeline(
         session=root_session(),
         events=[_meta(1, {"type": "event_msg", "message": "working"})],
@@ -332,5 +448,12 @@ def test_projector_does_not_emit_debug_native_resources_in_slice_one() -> None:
     )
     payload = _json(response)
 
-    assert payload["resources"] == {}
-    assert payload["items"][0]["resourceRefs"] == []
+    assert payload["items"][0]["resourceRefs"] == [
+        {
+            "resourceId": "native:s1:1",
+            "relation": "read",
+            "confidence": "verified",
+            "blockIndex": None,
+        }
+    ]
+    assert payload["resources"]["native:s1:1"]["kind"] == "native-record"

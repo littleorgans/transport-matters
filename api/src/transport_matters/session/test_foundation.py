@@ -99,6 +99,12 @@ def test_schema_round_trips_session_event_and_artifact(dao: SessionDao) -> None:
     assert artifact.hash == artifact_hash(b"image-bytes")
     assert artifact.data == b"image-bytes"
     assert link.artifact_hash == artifact.hash
+    with_raw = dao.get_events_with_raw_for_owner("s1", owner="local")
+    assert len(with_raw) == 1
+    assert len(with_raw[0].artifacts) == 1
+    assert with_raw[0].artifacts[0].artifact_hash == artifact.hash
+    assert with_raw[0].artifacts[0].media_type == "image/png"
+    assert with_raw[0].artifacts[0].size_bytes == len(b"image-bytes")
 
 
 def test_get_events_for_owner_returns_lightweight_read_rows(dao: SessionDao) -> None:
