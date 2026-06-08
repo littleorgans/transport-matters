@@ -67,7 +67,7 @@ describe("TerminalPane", () => {
     const socket = only(sockets);
     expect(terminal.loadAddon).toHaveBeenCalledTimes(1);
     expect(terminal.open).toHaveBeenCalledTimes(1);
-    expect(socket.url).toMatch(/\/api\/v1\/terminal\?cols=80&rows=24$/);
+    expect(socket.url).toMatch(/\/api\/terminal\?cols=80&rows=24$/);
   });
 
   it("surfaces a refused state when the socket is rejected (close 1008)", () => {

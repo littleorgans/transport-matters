@@ -43,7 +43,7 @@ export function terminalSocketUrl(
   location: { protocol: string; host: string } = window.location,
 ): string {
   const scheme = location.protocol === "https:" ? "wss:" : "ws:";
-  return `${scheme}//${location.host}/api/v1/terminal?cols=${cols}&rows=${rows}`;
+  return `${scheme}//${location.host}/api/terminal?cols=${cols}&rows=${rows}`;
 }
 
 export function openTerminalSocket(

@@ -63,13 +63,13 @@ function decode(value: unknown): string {
 describe("terminalSocketUrl", () => {
   it("derives a same-origin ws:// url with the size query for http pages", () => {
     expect(terminalSocketUrl(80, 24, { protocol: "http:", host: "localhost:5173" })).toBe(
-      "ws://localhost:5173/api/v1/terminal?cols=80&rows=24",
+      "ws://localhost:5173/api/terminal?cols=80&rows=24",
     );
   });
 
   it("upgrades to wss:// on https pages and carries the fitted size", () => {
     expect(terminalSocketUrl(120, 40, { protocol: "https:", host: "app.example.com" })).toBe(
-      "wss://app.example.com/api/v1/terminal?cols=120&rows=40",
+      "wss://app.example.com/api/terminal?cols=120&rows=40",
     );
   });
 });
@@ -86,7 +86,7 @@ describe("openTerminalSocket", () => {
     };
     const statuses: Array<{ status: "open" | "closed"; code?: number }> = [];
     const api = openTerminalSocket(term, {
-      url: "ws://host/api/v1/terminal",
+      url: "ws://host/api/terminal",
       socketFactory,
       onStatus: (status, info) => statuses.push({ status, code: info?.code }),
     });
@@ -97,7 +97,7 @@ describe("openTerminalSocket", () => {
 
   it("opens one socket and requests arraybuffer binary frames", () => {
     const { socket } = setup();
-    expect(socket.url).toBe("ws://host/api/v1/terminal");
+    expect(socket.url).toBe("ws://host/api/terminal");
     expect(socket.binaryType).toBe("arraybuffer");
   });
 
