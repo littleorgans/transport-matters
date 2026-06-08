@@ -83,7 +83,7 @@ def _add_native_record_resource(
         refs,
         seen_refs=seen_refs,
         resource_id=resource_id,
-        relation="read",
+        relation="native-record",
         confidence="verified",
         block_index=None,
     )
@@ -103,11 +103,11 @@ def _add_inline_artifact_resources(
     seen_refs: set[tuple[str, int | None]],
 ) -> None:
     artifact_by_hash = {artifact.artifact_hash: artifact for artifact in row.artifacts}
-    emitted_artifacts: set[tuple[str, int | None]] = set()
+    emitted_artifacts: set[str] = set()
 
     for block_index, part in enumerate(parts):
         artifact_hash = _inline_artifact_hash(part)
-        if artifact_hash is None:
+        if artifact_hash is None or artifact_hash in emitted_artifacts:
             continue
         artifact = artifact_by_hash.get(artifact_hash)
         _add_inline_artifact_resource(
@@ -119,11 +119,11 @@ def _add_inline_artifact_resources(
             resources=resources,
             seen_refs=seen_refs,
         )
-        emitted_artifacts.add((artifact_hash, block_index))
+        emitted_artifacts.add(artifact_hash)
 
     for artifact in row.artifacts:
         artifact_block_index = _artifact_block_index(artifact)
-        if (artifact.artifact_hash, artifact_block_index) in emitted_artifacts:
+        if artifact.artifact_hash in emitted_artifacts:
             continue
         _add_inline_artifact_resource(
             artifact_hash=artifact.artifact_hash,
@@ -134,6 +134,7 @@ def _add_inline_artifact_resources(
             resources=resources,
             seen_refs=seen_refs,
         )
+        emitted_artifacts.add(artifact.artifact_hash)
 
 
 def _add_inline_artifact_resource(
@@ -254,7 +255,7 @@ def _artifact_block_index(artifact: EventArtifactRow) -> int | None:
 
 
 def _wire_exchange_id(row: EventRow) -> str | None:
-    return _exchange_id_from_record(row.ir) or _exchange_id_from_record(row.raw)
+    return _exchange_id_from_record(row.ir)
 
 
 def _exchange_id_from_record(record: object) -> str | None:
