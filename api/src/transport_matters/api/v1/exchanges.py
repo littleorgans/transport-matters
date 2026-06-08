@@ -40,6 +40,9 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+EXCHANGES_ROUTE_PREFIX = "/exchanges"
+EXCHANGE_DETAIL_ROUTE_PATH = "/{exchange_id}"
+
 router = APIRouter()
 
 # Per-exchange locks serialize concurrent lazy recounts so the second
@@ -48,6 +51,10 @@ router = APIRouter()
 # bounded by in-flight recounts instead of every exchange ever opened.
 _compute_locks: WeakValueDictionary[str, asyncio.Lock] = WeakValueDictionary()
 _compute_locks_meta: asyncio.Lock = asyncio.Lock()
+
+
+def exchange_detail_route(exchange_id: str) -> str:
+    return f"/api{EXCHANGES_ROUTE_PREFIX}/{exchange_id}"
 
 
 async def _lock_for(exchange_id: str) -> asyncio.Lock:
@@ -153,7 +160,7 @@ async def list_exchanges(
         ) from exc
 
 
-@router.get("/{exchange_id}")
+@router.get(EXCHANGE_DETAIL_ROUTE_PATH)
 async def get_exchange(
     exchange_id: str,
     storage: StorageBackend = Depends(get_storage),

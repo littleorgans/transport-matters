@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, Any
 
 import pytest
 
+from transport_matters.session import exchange_correlation
 from transport_matters.session.models import ChildSessionRow, EventArtifactRow, EventRow
 from transport_matters.session.test_foundation import event, root_session
 from transport_matters.session.timeline import project_timeline, required_timeline_anchor_before_seq
@@ -230,6 +231,24 @@ def test_projector_does_not_trust_provider_raw_exchange_keys() -> None:
         }
     ]
     assert all(not resource_id.startswith("wire:") for resource_id in payload["resources"])
+
+
+def test_projector_wire_refs_use_shared_exchange_correlation_helper(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[object] = []
+
+    def fake_exchange_id(record: object) -> str | None:
+        calls.append(record)
+        return "shared-exchange"
+
+    monkeypatch.setattr(exchange_correlation, "exchange_id_from_record", fake_exchange_id)
+
+    response = project_timeline(session=root_session(), events=[event(0)])
+
+    payload = _json(response)
+    assert calls == [{"parts": [{"type": "text", "text": "alpha beta"}]}]
+    assert "wire:shared-exchange" in payload["resources"]
 
 
 def test_projector_dedupes_inline_artifact_by_hash_when_block_index_disagrees() -> None:

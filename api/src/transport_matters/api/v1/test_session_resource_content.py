@@ -7,7 +7,9 @@ from typing import TYPE_CHECKING, Any
 
 import pytest
 
+from transport_matters.api.v1.exchanges import exchange_detail_route
 from transport_matters.api.v1.session_test_support import session_client
+from transport_matters.session import exchange_correlation
 from transport_matters.session.artifacts import artifact_hash
 from transport_matters.session.dao import AsyncSessionDao
 from transport_matters.session.pool import create_async_pool
@@ -144,12 +146,48 @@ async def test_wire_resource_content_redirects_without_payload_duplication(test_
     assert payload["kind"] == "exchange-redirect"
     assert payload["id"] == "wire:exchange-1"
     assert payload["exchangeId"] == "exchange-1"
-    assert payload["route"] == "/api/exchanges/exchange-1"
+    assert payload["route"] == exchange_detail_route("exchange-1")
     assert payload["initialView"] == "request"
     assert payload["contentProvenance"] == "structured-wire"
     assert "requestIr" not in payload
     assert "responseIr" not in payload
     assert "transport" not in payload
+
+
+async def test_wire_resource_content_returns_uncorrelated_when_exchange_is_absent(
+    test_db: TestDb,
+) -> None:
+    await _seed_resource_session(test_db, [_turn()])
+
+    async with session_client(test_db) as client:
+        response = await client.get("/api/sessions/s1/resources/wire:missing-exchange")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["kind"] == "missing"
+    assert payload["reason"] == "uncorrelated"
+    assert payload["retryable"] is False
+
+
+async def test_wire_resource_content_uses_shared_exchange_correlation_params(
+    test_db: TestDb, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls: list[str] = []
+    original = exchange_correlation.exchange_id_containment_params
+
+    def spy(exchange_id: str) -> dict[str, Any]:
+        calls.append(exchange_id)
+        return original(exchange_id)
+
+    monkeypatch.setattr(exchange_correlation, "exchange_id_containment_params", spy)
+    row = _turn().model_copy(update={"ir": {"transport_matters": {"exchange_id": "exchange-1"}}})
+    await _seed_resource_session(test_db, [row])
+
+    async with session_client(test_db) as client:
+        response = await client.get("/api/sessions/s1/resources/wire:exchange-1")
+
+    assert response.status_code == 200
+    assert calls == ["exchange-1"]
 
 
 async def test_resource_content_rejects_ids_outside_session(test_db: TestDb) -> None:

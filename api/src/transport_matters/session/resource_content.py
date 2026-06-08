@@ -6,8 +6,8 @@ import json
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, cast
 
-from psycopg.types.json import Jsonb
-
+from transport_matters.api.v1.exchanges import exchange_detail_route
+from transport_matters.session import exchange_correlation
 from transport_matters.session.resource_content_models import (
     BinaryContentResponse,
     ExchangeRedirectResponse,
@@ -55,27 +55,14 @@ WHERE e.session_id = %(session_id)s
 LIMIT 1
 """
 
-_WIRE_RESOURCE_SQL = """
+_WIRE_RESOURCE_SQL_TEMPLATE = """
 SELECT e.seq
 FROM "event" AS e
 JOIN "session" AS s ON s.session_id = e.session_id
 WHERE e.session_id = %(session_id)s
   AND s.owner = %(owner)s
   AND (
-    e.ir @> %(top_snake)s
-    OR e.ir @> %(top_camel)s
-    OR e.ir @> %(transport_matters_snake)s
-    OR e.ir @> %(transport_matters_camel)s
-    OR e.ir @> %(transport_matters_js_snake)s
-    OR e.ir @> %(transport_matters_js_camel)s
-    OR e.ir @> %(transport_snake)s
-    OR e.ir @> %(transport_camel)s
-    OR e.ir @> %(wire_snake)s
-    OR e.ir @> %(wire_camel)s
-    OR e.ir @> %(correlation_snake)s
-    OR e.ir @> %(correlation_camel)s
-    OR e.ir @> %(turn_snake)s
-    OR e.ir @> %(turn_camel)s
+{exchange_id_containment_sql}
   )
 ORDER BY e.seq
 LIMIT 1
@@ -276,7 +263,7 @@ async def _load_wire_redirect(
     parsed: WireResourceId,
 ) -> ResourceContentResponseType:
     cursor = await conn.execute(
-        _WIRE_RESOURCE_SQL,
+        _wire_resource_sql(),
         _wire_resource_params(
             session_id=session.session_id,
             owner=owner,
@@ -288,7 +275,7 @@ async def _load_wire_redirect(
         return _missing_response(
             resource_id,
             session_id=session.session_id,
-            reason="not-found",
+            reason="uncorrelated",
             message="Wire exchange is not correlated with this session.",
             content_provenance="structured-wire",
         )
@@ -304,7 +291,7 @@ async def _load_wire_redirect(
             "exchangeId": parsed.exchange_id,
         },
         exchange_id=parsed.exchange_id,
-        route=f"/api/exchanges/{parsed.exchange_id}",
+        route=exchange_detail_route(parsed.exchange_id),
         initial_view="request",
     )
 
@@ -563,24 +550,17 @@ def _is_json_media_type(media_type: str) -> bool:
     return media_type == "application/json" or media_type.endswith("+json")
 
 
+def _wire_resource_sql() -> str:
+    return _WIRE_RESOURCE_SQL_TEMPLATE.format(
+        exchange_id_containment_sql=exchange_correlation.exchange_id_containment_sql("e.ir")
+    )
+
+
 def _wire_resource_params(*, session_id: str, owner: str, exchange_id: str) -> dict[str, Any]:
     return {
         "session_id": session_id,
         "owner": owner,
-        "top_snake": Jsonb({"exchange_id": exchange_id}),
-        "top_camel": Jsonb({"exchangeId": exchange_id}),
-        "transport_matters_snake": Jsonb({"transport_matters": {"exchange_id": exchange_id}}),
-        "transport_matters_camel": Jsonb({"transport_matters": {"exchangeId": exchange_id}}),
-        "transport_matters_js_snake": Jsonb({"transportMatters": {"exchange_id": exchange_id}}),
-        "transport_matters_js_camel": Jsonb({"transportMatters": {"exchangeId": exchange_id}}),
-        "transport_snake": Jsonb({"transport": {"exchange_id": exchange_id}}),
-        "transport_camel": Jsonb({"transport": {"exchangeId": exchange_id}}),
-        "wire_snake": Jsonb({"wire": {"exchange_id": exchange_id}}),
-        "wire_camel": Jsonb({"wire": {"exchangeId": exchange_id}}),
-        "correlation_snake": Jsonb({"correlation": {"exchange_id": exchange_id}}),
-        "correlation_camel": Jsonb({"correlation": {"exchangeId": exchange_id}}),
-        "turn_snake": Jsonb({"turn": {"exchange_id": exchange_id}}),
-        "turn_camel": Jsonb({"turn": {"exchangeId": exchange_id}}),
+        **exchange_correlation.exchange_id_containment_params(exchange_id),
     }
 
 

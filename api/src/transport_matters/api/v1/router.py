@@ -10,7 +10,9 @@ from transport_matters.api.v1 import (
 )
 
 api_router = APIRouter()
-api_router.include_router(exchanges.router, prefix="/exchanges", tags=["exchanges"])
+api_router.include_router(
+    exchanges.router, prefix=exchanges.EXCHANGES_ROUTE_PREFIX, tags=["exchanges"]
+)
 api_router.include_router(overrides.router, prefix="/overrides", tags=["overrides"])
 api_router.include_router(breakpoint_routes.router, prefix="/breakpoint", tags=["breakpoint"])
 api_router.include_router(meta.router, prefix="/meta", tags=["meta"])
