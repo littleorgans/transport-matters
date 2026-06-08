@@ -3,6 +3,8 @@ import type { JsonContentResponse } from "../../api/resourceContent";
 import { CodeText } from "./primitives/CodeText";
 import { CopyButton } from "./primitives/CopyButton";
 import { JsonTree } from "./primitives/JsonTree";
+import { TruncationNote } from "./primitives/TruncationNote";
+import "./json-viewer.css";
 
 type Mode = "tree" | "raw";
 
@@ -41,9 +43,7 @@ export function JsonResourceViewer({ content }: { content: JsonContentResponse }
         </fieldset>
         <CopyButton label="Copy" value={rawText} />
       </div>
-      {content.truncated && (
-        <p className="canvas-jsonview__note">Partial content shown (truncated by the server).</p>
-      )}
+      {content.truncated && <TruncationNote className="canvas-jsonview__note" />}
       {mode === "tree" ? <JsonTree value={content.value} /> : <CodeText text={rawText} />}
     </div>
   );

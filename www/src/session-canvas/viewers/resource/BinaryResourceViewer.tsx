@@ -1,5 +1,7 @@
 import type { ReactElement } from "react";
 import type { BinaryContentResponse } from "../../api/resourceContent";
+import { safeHref } from "./primitives/safeHref";
+import "./binary-viewer.css";
 
 /**
  * Binary resource viewer body: a metadata definition list plus an
@@ -23,6 +25,10 @@ export function BinaryResourceViewer({
       value: <span className="canvas-binary__hash">{content.sha256 ?? "unavailable"}</span>,
     },
   ];
+  // Scheme-check the backend-owned URL before it becomes a navigable link, the
+  // same guard markdown links use. An unsafe (or missing) URL degrades to the
+  // disabled affordance.
+  const downloadHref = content.downloadUrl !== null ? safeHref(content.downloadUrl) : null;
   return (
     <div className="canvas-binary">
       <dl className="canvas-binary__meta">
@@ -34,11 +40,11 @@ export function BinaryResourceViewer({
         ))}
       </dl>
       <div className="canvas-binary__actions">
-        {content.downloadUrl !== null ? (
+        {downloadHref !== null ? (
           <a
             className="canvas-button"
             download
-            href={content.downloadUrl}
+            href={downloadHref}
             rel="noopener noreferrer"
             target="_blank"
           >

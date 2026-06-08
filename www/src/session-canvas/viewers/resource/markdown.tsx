@@ -1,4 +1,5 @@
 import { createElement, Fragment, type ReactNode } from "react";
+import { safeHref } from "./primitives/safeHref";
 
 /**
  * Dependency-free markdown renderer for UNTRUSTED transcript content.
@@ -129,23 +130,6 @@ export function renderMarkdown(source: string): ReactNode {
   }
 
   return <>{blocks}</>;
-}
-
-/** Allow only safe link schemes; everything else collapses to inert text. */
-export function safeHref(raw: string): string | null {
-  const href = raw.trim();
-  if (href === "") return null;
-  // Control characters (incl. newlines/tabs) can smuggle a scheme past the
-  // check, e.g. "java\tscript:". Reject any href that contains one.
-  for (let k = 0; k < href.length; k += 1) {
-    if (href.charCodeAt(k) < 0x20) return null;
-  }
-  const scheme = href.match(/^([a-zA-Z][a-zA-Z0-9+.-]*):/);
-  if (scheme) {
-    const allowed = new Set(["http", "https", "mailto", "tel"]);
-    if (!allowed.has((scheme[1] ?? "").toLowerCase())) return null;
-  }
-  return href;
 }
 
 function isBlockStart(line: string): boolean {

@@ -3,6 +3,8 @@ import type { TextContentResponse } from "../../api/resourceContent";
 import { renderMarkdown } from "./markdown";
 import { CodeText } from "./primitives/CodeText";
 import { CopyButton } from "./primitives/CopyButton";
+import { TruncationNote } from "./primitives/TruncationNote";
+import "./markdown-viewer.css";
 
 type Mode = "rendered" | "source";
 
@@ -38,9 +40,10 @@ export function MarkdownResourceViewer({ content }: { content: TextContentRespon
         <CopyButton label="Copy source" value={content.text} />
       </div>
       {content.truncated && (
-        <p className="canvas-md__truncated">
-          Partial content shown (source truncated by the server).
-        </p>
+        <TruncationNote
+          className="canvas-md__truncated"
+          message="Partial content shown (source truncated by the server)."
+        />
       )}
       {mode === "rendered" ? (
         <div className="canvas-md__body">{renderMarkdown(content.text)}</div>

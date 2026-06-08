@@ -1,5 +1,6 @@
 import { type KeyboardEvent, type ReactElement, useState } from "react";
 import type { ImageContentResponse } from "../../api/resourceContent";
+import "./image-viewer.css";
 
 const ZOOM_MIN = 0.25;
 const ZOOM_MAX = 4;

@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import "./resource-primitives.css";
 
 /**
  * Collapsible JSON tree shared by the json and native-record viewers. Uses

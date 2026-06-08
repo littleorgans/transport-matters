@@ -1,6 +1,7 @@
 import { render } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { renderMarkdown, safeHref } from "./markdown";
+import { renderMarkdown } from "./markdown";
+import { safeHref } from "./primitives/safeHref";
 
 function renderMd(source: string): HTMLElement {
   return render(<div data-testid="md">{renderMarkdown(source)}</div>).container;

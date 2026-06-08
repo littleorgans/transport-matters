@@ -1,7 +1,8 @@
 /* Shared resource-viewer primitives: JSON tree, code/text gutter, copy control.
    Co-located with the feature (mirrors the placeholder-pane.css decision); uses
-   the global tokens from index.css :root. Imported once in main.tsx. Never edit
-   index.css. */
+   the global tokens from index.css :root. Imported by the primitive components
+   themselves (CodeText/CopyButton/JsonTree) so the styles always ship with the
+   component. Never edit index.css. */
 
 /* ── Copy control ─────────────────────────────────────────────────── */
 .canvas-resource-copy {

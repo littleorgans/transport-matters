@@ -1,5 +1,6 @@
 import type { ReactElement } from "react";
 import { type DetailTab, ExchangeDetail } from "../../../components/ExchangeDetail";
+import "./exchange-viewer.css";
 
 /**
  * Provider-exchange viewer. Reuses the existing ExchangeDetail component and its

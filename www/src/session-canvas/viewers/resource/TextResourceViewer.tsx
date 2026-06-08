@@ -2,6 +2,8 @@ import type { ReactElement } from "react";
 import type { TextContentResponse } from "../../api/resourceContent";
 import { CodeText } from "./primitives/CodeText";
 import { CopyButton } from "./primitives/CopyButton";
+import { TruncationNote } from "./primitives/TruncationNote";
+import "./text-viewer.css";
 
 /**
  * Plain-text resource viewer body: the captured text rendered with a
@@ -21,9 +23,7 @@ export function TextResourceViewer({ content }: { content: TextContentResponse }
           Showing bytes {range.start}–{range.end} of {range.total}
         </p>
       ) : (
-        truncated && (
-          <p className="canvas-text__note">Partial content shown (truncated by the server).</p>
-        )
+        truncated && <TruncationNote className="canvas-text__note" />
       )}
       <div className="canvas-text__body">
         <CodeText text={content.text} />

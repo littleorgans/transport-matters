@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import "./resource-primitives.css";
 
 /**
  * Copy-to-clipboard control shared by the text, json, and tool-output viewers

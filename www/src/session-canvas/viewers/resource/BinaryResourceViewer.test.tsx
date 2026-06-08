@@ -52,4 +52,14 @@ describe("BinaryResourceViewer", () => {
     expect(button).toBeDisabled();
     expect(screen.queryByRole("link", { name: /open externally/i })).toBeNull();
   });
+
+  it("degrades to a disabled button when the download url has an unsafe scheme", () => {
+    // A javascript: (or other non-http) downloadUrl must never reach the DOM as
+    // a navigable href. The same scheme allowlist used for markdown links guards
+    // the binary action (defense-in-depth), so an unsafe value degrades exactly
+    // like a missing url.
+    render(<BinaryResourceViewer content={makeContent({ downloadUrl: "javascript:alert(1)" })} />);
+    expect(screen.queryByRole("link", { name: /open externally/i })).toBeNull();
+    expect(screen.getByRole("button", { name: /open externally/i })).toBeDisabled();
+  });
 });

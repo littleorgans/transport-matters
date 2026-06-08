@@ -5,12 +5,6 @@ import { fetchMeta } from "./api";
 import "./index.css";
 import "./session-canvas/canvas.css";
 import "./session-canvas/viewers/placeholder/placeholder-pane.css";
-import "./session-canvas/viewers/resource/primitives/resource-primitives.css";
-import "./session-canvas/viewers/resource/markdown-viewer.css";
-import "./session-canvas/viewers/resource/text-viewer.css";
-import "./session-canvas/viewers/resource/json-viewer.css";
-import "./session-canvas/viewers/resource/image-viewer.css";
-import "./session-canvas/viewers/resource/binary-viewer.css";
 import { queryClient } from "./lib/queryClient";
 import { selectRootRoute } from "./session-canvas/route";
 

@@ -1,3 +1,5 @@
+import "./resource-primitives.css";
+
 /**
  * Code-style text with a line-number gutter, shared by the text and tool-output
  * viewers. Renders each line as plain text (React escapes it), so untrusted
