@@ -1,12 +1,13 @@
 import { act, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { CapturedClaudePane } from "./CapturedClaudePane";
+import { CapturedRunPane } from "./CapturedRunPane";
 
 // xterm renders to a real canvas/WebGL surface that jsdom cannot host, so the
 // terminal is mocked (as in TerminalPane.test). The point under test is the
-// captured-run wiring: the pane connects to the captured endpoint, surfaces the
-// ready frame's run id, and turns an error frame into a banner. The raw socket
-// protocol is proven separately in terminalSocket.test.ts.
+// captured-run wiring: the pane connects to the captured endpoint for its
+// provider and turns a launch-error frame into a banner. The raw socket protocol
+// is proven separately in terminalSocket.test.ts; the pane has no chrome of its
+// own (its captured identity is the window title), so there is nothing else to assert.
 const { terminals, MockTerminal, MockFitAddon } = vi.hoisted(() => {
   class MockTerminal {
     cols = 80;
@@ -61,7 +62,7 @@ const READY = JSON.stringify({
   cli: "claude",
 });
 
-describe("CapturedClaudePane", () => {
+describe("CapturedRunPane", () => {
   beforeEach(() => {
     terminals.length = 0;
     sockets.length = 0;
@@ -73,25 +74,18 @@ describe("CapturedClaudePane", () => {
     vi.clearAllMocks();
   });
 
-  it("connects to the captured Claude terminal endpoint, not the bare terminal", () => {
-    render(<CapturedClaudePane />);
+  it("connects to the claude captured endpoint for the claude provider", () => {
+    render(<CapturedRunPane provider="claude" />);
     expect(only(sockets).url).toMatch(/\/api\/captured-runs\/claude\/terminal\?cols=80&rows=24$/);
   });
 
-  it("marks the pane as a captured run before the ready frame lands", () => {
-    render(<CapturedClaudePane />);
-    expect(screen.getByText("captured")).toBeInTheDocument();
-    expect(screen.getByText(/starting captured claude/i)).toBeInTheDocument();
-  });
-
-  it("surfaces the run id once the ready frame arrives", () => {
-    render(<CapturedClaudePane />);
-    act(() => only(sockets).emitText(READY));
-    expect(screen.getByText(/run run-abc1/)).toBeInTheDocument();
+  it("connects to the codex captured endpoint for the codex provider", () => {
+    render(<CapturedRunPane provider="codex" />);
+    expect(only(sockets).url).toMatch(/\/api\/captured-runs\/codex\/terminal\?cols=80&rows=24$/);
   });
 
   it("turns a captured-run error frame into an alert banner", () => {
-    render(<CapturedClaudePane />);
+    render(<CapturedRunPane provider="claude" />);
     act(() =>
       only(sockets).emitText(
         JSON.stringify({ type: "captured-run.error", code: "launch_failed", message: "boom" }),
@@ -102,22 +96,24 @@ describe("CapturedClaudePane", () => {
     expect(alert).toHaveTextContent(/boom/);
   });
 
-  it("surfaces a refused state when the socket is rejected (close 1008)", () => {
-    render(<CapturedClaudePane />);
+  it("surfaces a refused state naming the provider when the socket is rejected (close 1008)", () => {
+    render(<CapturedRunPane provider="codex" />);
     act(() => {
       only(sockets).onclose?.({ code: 1008, reason: "origin not allowed" });
     });
-    expect(screen.getByRole("alert")).toHaveTextContent(/refused/i);
+    const alert = screen.getByRole("alert");
+    expect(alert).toHaveTextContent(/refused/i);
+    expect(alert).toHaveTextContent(/Codex/);
   });
 
   it("does not write inbound control frames to the terminal screen", () => {
-    render(<CapturedClaudePane />);
+    render(<CapturedRunPane provider="claude" />);
     act(() => only(sockets).emitText(READY));
     expect(only(terminals).write).not.toHaveBeenCalled();
   });
 
   it("closes the socket and disposes the terminal on unmount", () => {
-    const { unmount } = render(<CapturedClaudePane />);
+    const { unmount } = render(<CapturedRunPane provider="claude" />);
     const terminal = only(terminals);
     const socket = only(sockets);
     unmount();

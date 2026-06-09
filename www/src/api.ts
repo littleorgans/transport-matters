@@ -1,5 +1,6 @@
 import type {
   BreakpointStatusDetail,
+  CapabilitiesResponse,
   ExchangeDetail,
   HarnessDescriptor,
   IndexEntry,
@@ -361,4 +362,17 @@ export async function fetchMeta(): Promise<Meta> {
     workspaceId: raw.workspace_id,
     runId: raw.run_id,
   };
+}
+
+/**
+ * Local install state for each managed CLI (`claude`, `codex`). The desktop's
+ * lab gates its "Spawn" buttons on this so it never offers to launch a CLI that
+ * is not on PATH. Cheap and stable for a process lifetime, so callers cache it.
+ */
+export async function fetchCapabilities(): Promise<CapabilitiesResponse> {
+  return requestJson<CapabilitiesResponse>(
+    "/api/capabilities",
+    undefined,
+    "Failed to fetch capabilities",
+  );
 }

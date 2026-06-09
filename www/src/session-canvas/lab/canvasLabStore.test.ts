@@ -47,6 +47,24 @@ describe("canvasLabStore terminals", () => {
       vi.useRealTimers();
     }
   });
+
+  it("spawns captured-run panes carrying the chosen provider on their content ref", () => {
+    resetCanvasLabStoreForTests();
+
+    store().addCapturedRun("claude"); // lab-1
+    store().addCapturedRun("codex"); // lab-2
+
+    expect(store().contentRefs["lab-1"]).toEqual({
+      kind: "captured-run",
+      owner: "local",
+      provider: "claude",
+    });
+    expect(store().contentRefs["lab-2"]).toEqual({
+      kind: "captured-run",
+      owner: "local",
+      provider: "codex",
+    });
+  });
 });
 
 describe("canvasLabStore framing", () => {

@@ -63,6 +63,10 @@ install:
 install-local:
     rm -f "{{version_file}}"
     cd "{{www_dir}}" && pnpm install && pnpm build
+    # Desktop must be set up too, or `transport-matters desktop` has no Electron app:
+    # build compiles dist/main.js; electron:install fetches the Electron binary
+    # (pnpm does not run electron's own postinstall, hence the explicit script).
+    cd "{{desktop_dir}}" && pnpm install && pnpm build && pnpm electron:install
     uv tool install --force --python "$(cat "{{python_version_file}}")" --refresh-package transport-matters --editable "{{api_dir}}"
     transport-matters --version
 

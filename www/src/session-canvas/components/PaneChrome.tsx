@@ -2,6 +2,9 @@
 // primitive props only — no PaneRecord — so neither caller duplicates the chrome markup.
 // Optional onFrame / onHeaderDoubleClick add the lab's framing affordances without changing the
 // production DOM (PaneWindow passes neither, so no Frame button and no double-click handler).
+// Optional `compact` keeps the header to a single line (title + controls) by dropping the kicker
+// and the visible state label — the lab opts in so small tiled panes stay legible; production does
+// not, so its header is unchanged. The dropped text stays in `data-state` and the aria-label.
 export interface PaneChromeProps {
   title: string;
   badge: string;
@@ -10,6 +13,7 @@ export interface PaneChromeProps {
   focused: boolean;
   closeDisabled?: boolean;
   expanded?: boolean;
+  compact?: boolean;
   onClose?: () => void;
   onExpand?: () => void;
   onFrame?: () => void;
@@ -25,6 +29,7 @@ export function PaneChrome({
   focused,
   closeDisabled = false,
   expanded = false,
+  compact = false,
   onClose,
   onExpand,
   onFrame,
@@ -47,13 +52,13 @@ export function PaneChrome({
         onDoubleClick={onHeaderDoubleClick}
       >
         <div className="canvas-pane-window__title-wrap">
-          <p className="canvas-pane-window__viewer">{badge}</p>
+          {compact ? null : <p className="canvas-pane-window__viewer">{badge}</p>}
           <h2 className="canvas-pane-window__title" id={titleId}>
             {title}
           </h2>
         </div>
         <div className="canvas-pane-window__actions">
-          <span className="canvas-pane-window__state">{state}</span>
+          {compact ? null : <span className="canvas-pane-window__state">{state}</span>}
           {onFrame ? (
             <button
               aria-label={`${state === "framed" ? "Unframe" : "Frame"} ${title}`}

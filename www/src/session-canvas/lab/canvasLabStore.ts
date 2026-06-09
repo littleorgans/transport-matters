@@ -27,6 +27,7 @@ import {
   type ParamValue,
   resolveLayout,
 } from "../../engine/layout";
+import type { CliName } from "../../types";
 import type { PaneContentRef } from "../model/paneRecords";
 import { fitExpandFrameToWidth, planExpandedLayout } from "./expandLayout";
 
@@ -67,7 +68,7 @@ export interface CanvasLabState {
   contentRefs: Record<PaneId, PaneContentRef>;
   addPane(): void;
   addTerminal(): void;
-  addCapturedClaude(): void;
+  addCapturedRun(provider: CliName): void;
   closePane(paneId: PaneId): void;
   focusPane(paneId: PaneId): void;
   updatePaneRect(paneId: PaneId, rect: WorldRect): void;
@@ -243,8 +244,8 @@ export const useCanvasLabStore = create<CanvasLabState>()((set, get) => ({
     set((state) => spawnContentPane(state, { kind: "terminal", owner: "local" }));
   },
 
-  addCapturedClaude() {
-    set((state) => spawnContentPane(state, { kind: "captured-claude", owner: "local" }));
+  addCapturedRun(provider) {
+    set((state) => spawnContentPane(state, { kind: "captured-run", owner: "local", provider }));
   },
 
   closePane(paneId) {

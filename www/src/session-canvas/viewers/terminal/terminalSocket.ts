@@ -4,6 +4,8 @@
 // the socket constructor are both injected so the protocol is unit-testable
 // without a real terminal or a live server (the component wires the real ones).
 
+import type { CliName } from "../../../types";
+
 /** The slice of xterm's Terminal this module touches. */
 export interface TerminalIO {
   onData(handler: (data: string) => void): { dispose(): void };
@@ -59,11 +61,14 @@ export function terminalSocketUrl(
 }
 
 /**
- * Same-origin ws(s):// URL for the captured Claude terminal endpoint. An absolute
- * `cwd` selects the workspace directory; omitting it lets the backend resolve its
- * launch workspace (see api/v1/captured_terminal.py).
+ * Same-origin ws(s):// URL for a captured run's terminal endpoint. `provider`
+ * selects the managed CLI route (`/api/captured-runs/{provider}/terminal`, with
+ * provider ∈ claude|codex). An absolute `cwd` selects the workspace directory;
+ * omitting it lets the backend resolve its launch workspace (see
+ * api/v1/captured_terminal.py).
  */
 export function capturedTerminalSocketUrl(
+  provider: CliName,
   cols: number,
   rows: number,
   cwd?: string,
@@ -71,7 +76,7 @@ export function capturedTerminalSocketUrl(
 ): string {
   const query = new URLSearchParams({ cols: String(cols), rows: String(rows) });
   if (cwd !== undefined) query.set("cwd", cwd);
-  return `${socketScheme(location)}//${location.host}/api/captured-runs/claude/terminal?${query}`;
+  return `${socketScheme(location)}//${location.host}/api/captured-runs/${provider}/terminal?${query}`;
 }
 
 export function openTerminalSocket(
