@@ -7,13 +7,13 @@ from typing import Annotated, Literal, TypeAlias
 
 import typer
 
-from transport_matters import env_keys
+from transport_matters import captured_run, env_keys
 
 from .net import validate_port_option
 
 AgentName: TypeAlias = Literal["claude", "codex"]
 RouteName: TypeAlias = Literal["canvas", "canvas-lab"]
-CLAUDE_UPSTREAM_DEFAULT = "https://api.anthropic.com"
+CLAUDE_UPSTREAM_DEFAULT = captured_run.CLAUDE_UPSTREAM_DEFAULT
 
 AgentOption: TypeAlias = Annotated[
     AgentName,

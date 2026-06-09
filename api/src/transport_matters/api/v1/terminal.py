@@ -25,22 +25,22 @@ MAX_ROWS = terminal_bridge.MAX_ROWS
 PTY_READ_CHUNK_SIZE = terminal_bridge.PTY_READ_CHUNK_SIZE
 TerminalControlError = terminal_bridge.TerminalControlError
 TerminalPty = terminal_bridge.TerminalPty
-_close_fd = terminal_bridge._close_fd
-_close_terminal_master = terminal_bridge._close_terminal_master
-_close_websocket_if_connected = terminal_bridge._close_websocket_if_connected
-_normalized_origin = terminal_bridge._normalized_origin
-_origin_allowed = terminal_bridge._origin_allowed
-_parse_control_frame = terminal_bridge._parse_control_frame
-_prepare_terminal_child = terminal_bridge._prepare_terminal_child
-_receive_websocket_input = terminal_bridge._receive_websocket_input
-_request_origin = terminal_bridge._request_origin
-_send_pty_output = terminal_bridge._send_pty_output
-_set_winsize = terminal_bridge._set_winsize
-_terminate_process_group = terminal_bridge._terminate_process_group
-_terminate_terminal_pty = terminal_bridge._terminate_terminal_pty
-_trusted_loopback_host = terminal_bridge._trusted_loopback_host
-_validated_dimension = terminal_bridge._validated_dimension
-_write_all = terminal_bridge._write_all
+_close_fd = terminal_bridge.close_fd
+_close_terminal_master = terminal_bridge.close_terminal_master
+_close_websocket_if_connected = terminal_bridge.close_websocket_if_connected
+_normalized_origin = terminal_bridge.normalize_origin
+_origin_allowed = terminal_bridge.origin_allowed
+_parse_control_frame = terminal_bridge.parse_control_frame
+_prepare_terminal_child = terminal_bridge.prepare_terminal_child
+_receive_websocket_input = terminal_bridge.receive_websocket_input
+_request_origin = terminal_bridge.request_origin_from_websocket
+_send_pty_output = terminal_bridge.send_pty_output
+_set_winsize = terminal_bridge.set_winsize
+_terminate_process_group = terminal_bridge.terminate_process_group
+_terminate_terminal_pty = terminal_bridge.terminate_terminal_pty
+_trusted_loopback_host = terminal_bridge.trusted_loopback_host
+_validated_dimension = terminal_bridge.validated_dimension
+_write_all = terminal_bridge.write_all
 spawn_pty_process = terminal_bridge.spawn_pty_process
 
 __all__ = [
@@ -131,8 +131,8 @@ def _shell_argv() -> list[str]:
 
 
 async def _bridge_websocket_to_pty(websocket: WebSocket, session: TerminalPty) -> None:
-    await terminal_bridge._bridge_websocket_to_pty(
+    await terminal_bridge.bridge_websocket_to_pty(
         websocket,
         session,
-        set_winsize=_set_winsize,
+        set_winsize_fn=_set_winsize,
     )

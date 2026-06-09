@@ -26,7 +26,6 @@ from __future__ import annotations
 
 import shutil
 import sysconfig
-from functools import partial
 from importlib.resources import files
 from pathlib import Path  # noqa: TC003
 from typing import TYPE_CHECKING, Annotated, TypedDict
@@ -37,7 +36,10 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Iterable
     from importlib.resources.abc import Traversable
 
+    from transport_matters.captured_run import CapturedRunDependencies
+
 from transport_matters import __version__
+from transport_matters.captured_run import default_claude_run_dependencies
 from transport_matters.lock import WorkspaceLock, WorkspaceLocked
 from transport_matters.manifest import Manifest
 from transport_matters.manifest import write as manifest_write
@@ -71,7 +73,6 @@ from .launch_options import (
     WebPortOption,
     WorkDirOption,
 )
-from .launch_runtime import resolve_mitmdump_executable
 from .net import port_in_use, wait_for_port_ready
 from .paths import resolve_paths
 from .ports import PortAllocationError, allocate_port_pair
@@ -91,7 +92,7 @@ class _SharedDesktopLaunchKwargs(TypedDict):
     print_command: bool
     require_addon: Callable[[], Traversable]
     resolve_mitmdump: Callable[[], str | None]
-    which: Callable[[str], str | None]
+    which: Callable[..., str | None]
     port_in_use: Callable[[int], bool]
     allocate_port_pair: Callable[[], tuple[int, int]]
     run_client_with_retry: Callable[..., None]
@@ -161,6 +162,18 @@ def require_addon() -> Traversable:
 
 
 _require_addon = require_addon
+
+
+def _claude_run_dependencies() -> CapturedRunDependencies:
+    return default_claude_run_dependencies(
+        require_addon=require_addon,
+        which=shutil.which,
+        get_scripts_dir=sysconfig.get_path,
+        port_in_use=port_in_use,
+        allocate_port_pair=allocate_port_pair,
+        inject_system_prompt=inject_system_prompt,
+        user_supplied_system_prompt=user_supplied_system_prompt,
+    )
 
 
 def _require_force_http_fallback_addon() -> Traversable:
@@ -262,6 +275,7 @@ def claude(
 ) -> None:
     """Start the Transport Matters workbench: proxy + Claude Code."""
     claude_passthrough = _split_passthrough(ctx)
+    dependencies = _claude_run_dependencies()
     resolved_home_dir = _resolve_home_dir_option(
         home_dir,
         create=not print_command,
@@ -279,17 +293,13 @@ def claude(
         no_system_prompt=no_system_prompt,
         debug=debug,
         print_command=print_command,
-        require_addon=_require_addon,
-        resolve_mitmdump=partial(
-            resolve_mitmdump_executable,
-            which=shutil.which,
-            get_scripts_dir=sysconfig.get_path,
-        ),
-        which=shutil.which,
-        port_in_use=port_in_use,
-        allocate_port_pair=allocate_port_pair,
-        inject_system_prompt=inject_system_prompt,
-        user_supplied_system_prompt=user_supplied_system_prompt,
+        require_addon=dependencies.require_addon,
+        resolve_mitmdump=dependencies.resolve_mitmdump,
+        which=dependencies.which,
+        port_in_use=dependencies.port_in_use,
+        allocate_port_pair=dependencies.allocate_port_pair,
+        inject_system_prompt=dependencies.inject_system_prompt,
+        user_supplied_system_prompt=dependencies.user_supplied_system_prompt,
         print_banner=print_banner,
         run_client_with_retry=run_client_with_retry,
     )
@@ -319,6 +329,7 @@ def codex(
 ) -> None:
     """Start the Transport Matters workbench: proxy + Codex."""
     codex_passthrough = _split_passthrough(ctx)
+    dependencies = _claude_run_dependencies()
     resolved_home_dir = _resolve_home_dir_option(
         home_dir,
         create=not print_command,
@@ -335,16 +346,12 @@ def codex(
         debug=debug,
         force_http_fallback=force_http_fallback,
         print_command=print_command,
-        require_addon=_require_addon,
+        require_addon=dependencies.require_addon,
         require_force_http_fallback_addon=_require_force_http_fallback_addon,
-        resolve_mitmdump=partial(
-            resolve_mitmdump_executable,
-            which=shutil.which,
-            get_scripts_dir=sysconfig.get_path,
-        ),
-        which=shutil.which,
-        port_in_use=port_in_use,
-        allocate_port_pair=allocate_port_pair,
+        resolve_mitmdump=dependencies.resolve_mitmdump,
+        which=dependencies.which,
+        port_in_use=dependencies.port_in_use,
+        allocate_port_pair=dependencies.allocate_port_pair,
         resolve_codex_ca_certificate=resolve_codex_ca_certificate,
         print_client_banner=print_client_banner,
         run_client_with_retry=run_client_with_retry,
@@ -393,6 +400,7 @@ def desktop(
         home_dir,
         create=not print_command,
     )
+    dependencies = _claude_run_dependencies()
     shared_launch_kwargs: _SharedDesktopLaunchKwargs = {
         "directory": work_dir,
         "proxy_port": proxy_port,
@@ -401,15 +409,11 @@ def desktop(
         "home_dir": resolved_home_dir,
         "debug": debug,
         "print_command": print_command,
-        "require_addon": _require_addon,
-        "resolve_mitmdump": partial(
-            resolve_mitmdump_executable,
-            which=shutil.which,
-            get_scripts_dir=sysconfig.get_path,
-        ),
-        "which": shutil.which,
-        "port_in_use": port_in_use,
-        "allocate_port_pair": allocate_port_pair,
+        "require_addon": dependencies.require_addon,
+        "resolve_mitmdump": dependencies.resolve_mitmdump,
+        "which": dependencies.which,
+        "port_in_use": dependencies.port_in_use,
+        "allocate_port_pair": dependencies.allocate_port_pair,
         "run_client_with_retry": plan.run_client_with_retry,
     }
     if plan.agent == "claude":
@@ -420,8 +424,8 @@ def desktop(
             claude_bin=claude_bin,
             no_claude=no_claude,
             no_system_prompt=no_system_prompt,
-            inject_system_prompt=inject_system_prompt,
-            user_supplied_system_prompt=user_supplied_system_prompt,
+            inject_system_prompt=dependencies.inject_system_prompt,
+            user_supplied_system_prompt=dependencies.user_supplied_system_prompt,
             print_banner=print_banner,
         )
         return

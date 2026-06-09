@@ -3,10 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
-import shutil
-import sysconfig
-from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
@@ -15,18 +13,14 @@ from fastapi import APIRouter, Query, WebSocket, WebSocketException, status
 from starlette.websockets import WebSocketDisconnect
 
 from transport_matters.api.v1 import terminal_bridge
-from transport_matters.captured_run import CapturedRunRequest, prepare_captured_run
-from transport_matters.cli import require_addon
-from transport_matters.cli.launch_options import CLAUDE_UPSTREAM_DEFAULT
-from transport_matters.cli.launch_runtime import (
-    CLIENT_NAME_CLAUDE,
-    check_session_store,
-    resolve_mitmdump_executable,
+from transport_matters.captured_run import (
+    CLAUDE_CLIENT_NAME,
+    CLAUDE_UPSTREAM_DEFAULT,
+    CapturedRunBindConflict,
+    CapturedRunRequest,
+    default_claude_run_dependencies,
+    prepare_captured_run,
 )
-from transport_matters.cli.net import port_in_use
-from transport_matters.cli.ports import allocate_port_pair
-from transport_matters.cli.prompt import inject_system_prompt, user_supplied_system_prompt
-from transport_matters.cli.runner import BindFailure
 from transport_matters.config import get_settings
 
 if TYPE_CHECKING:
@@ -46,11 +40,12 @@ CapturedRunErrorCode = Literal[
 
 CAPTURED_CLAUDE_TERMINAL_ROUTE = "/captured-runs/claude/terminal"
 _CLOSE_REASON_LIMIT_BYTES = 123
+_CAPTURED_TERMINAL_INSTALL_SIGNAL_HANDLERS = False
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-_bridge_websocket_to_pty = terminal_bridge._bridge_websocket_to_pty
+_bridge_websocket_to_pty = terminal_bridge.bridge_websocket_to_pty
 spawn_pty_process = terminal_bridge.spawn_pty_process
 
 
@@ -70,7 +65,7 @@ async def captured_claude_terminal_socket(
 ) -> None:
     """Bridge one WebSocket to one captured Claude Code PTY run."""
     settings = get_settings()
-    if not terminal_bridge._origin_allowed(websocket, settings):
+    if not terminal_bridge.origin_allowed(websocket, settings):
         raise WebSocketException(
             code=status.WS_1008_POLICY_VIOLATION,
             reason="origin not allowed",
@@ -92,7 +87,8 @@ async def captured_claude_terminal_socket(
                 "captured Claude launch did not produce a client process",
             )
 
-        await websocket.send_json(_ready_frame(spawn_spec))
+        if not await _send_json_if_connected(websocket, _ready_frame(spawn_spec)):
+            return
         terminal_session = spawn_pty_process(
             argv=client.argv,
             env=client.env,
@@ -103,7 +99,7 @@ async def captured_claude_terminal_socket(
         await _bridge_websocket_to_pty(websocket, terminal_session)
     except CapturedTerminalLaunchError as exc:
         await _send_error_and_close(websocket, code=exc.code, message=exc.message)
-    except BindFailure as exc:
+    except CapturedRunBindConflict as exc:
         await _send_error_and_close(websocket, code="bind_conflict", message=str(exc))
     except WebSocketDisconnect:
         pass
@@ -117,10 +113,11 @@ async def captured_claude_terminal_socket(
         logger.exception("captured Claude terminal launch failed")
         await _send_error_and_close(websocket, code="launch_failed", message=str(exc))
     finally:
-        if terminal_session is not None:
-            terminal_bridge._terminate_terminal_pty(terminal_session)
-        if lease is not None:
-            lease.close()
+        await _teardown_captured_terminal_run_async(
+            terminal_session,
+            lease,
+            install_signal_handlers=_CAPTURED_TERMINAL_INSTALL_SIGNAL_HANDLERS,
+        )
 
 
 def _prepare_captured_claude_run(
@@ -128,14 +125,15 @@ def _prepare_captured_claude_run(
     cwd: str | None,
     settings: Settings,
 ) -> tuple[CapturedRunSpawnSpec, CapturedRunLease]:
-    store_error = check_session_store()
+    dependencies = default_claude_run_dependencies()
+    store_error = dependencies.check_session_store()
     if store_error is not None:
         raise CapturedTerminalLaunchError("session_store_unavailable", store_error)
 
     working_dir = _query_working_dir(cwd, settings)
     return prepare_captured_run(
         CapturedRunRequest(
-            client_name=CLIENT_NAME_CLAUDE,
+            client_name=CLAUDE_CLIENT_NAME,
             passthrough=(),
             directory=working_dir,
             proxy_port=None,
@@ -148,18 +146,14 @@ def _prepare_captured_claude_run(
             no_system_prompt=False,
             debug=settings.debug,
         ),
-        require_addon=require_addon,
-        resolve_mitmdump=partial(
-            resolve_mitmdump_executable,
-            which=shutil.which,
-            get_scripts_dir=sysconfig.get_path,
-        ),
-        which=shutil.which,
-        port_in_use=_port_in_use_except_current_web(settings),
-        allocate_port_pair=allocate_port_pair,
-        inject_system_prompt=inject_system_prompt,
-        user_supplied_system_prompt=user_supplied_system_prompt,
-        install_signal_handlers=False,
+        require_addon=dependencies.require_addon,
+        resolve_mitmdump=dependencies.resolve_mitmdump,
+        which=dependencies.which,
+        port_in_use=_port_in_use_except_current_web(settings, dependencies.port_in_use),
+        allocate_port_pair=dependencies.allocate_port_pair,
+        inject_system_prompt=dependencies.inject_system_prompt,
+        user_supplied_system_prompt=dependencies.user_supplied_system_prompt,
+        install_signal_handlers=_CAPTURED_TERMINAL_INSTALL_SIGNAL_HANDLERS,
     )
 
 
@@ -173,7 +167,10 @@ def _query_working_dir(cwd: str | None, settings: Settings) -> Path:
     return working_dir
 
 
-def _port_in_use_except_current_web(settings: Settings) -> Callable[[int], bool]:
+def _port_in_use_except_current_web(
+    settings: Settings,
+    port_in_use: Callable[[int], bool],
+) -> Callable[[int], bool]:
     def current_web_port_aware_check(port: int) -> bool:
         if port == settings.web_port:
             return False
@@ -190,7 +187,7 @@ def _ready_frame(spawn_spec: CapturedRunSpawnSpec) -> dict[str, object]:
         "storageDir": str(spawn_spec.storage_dir),
         "proxyPort": spawn_spec.proxy_port,
         "webPort": spawn_spec.web_port,
-        "cli": CLIENT_NAME_CLAUDE,
+        "cli": CLAUDE_CLIENT_NAME,
     }
     if spawn_spec.managed_session is not None:
         frame["nativeSessionId"] = spawn_spec.managed_session.native_session_id
@@ -203,18 +200,50 @@ async def _send_error_and_close(
     code: CapturedRunErrorCode,
     message: str,
 ) -> None:
-    await websocket.send_json(
+    await _send_json_if_connected(
+        websocket,
         {
             "type": "captured-run.error",
             "code": code,
             "message": message,
-        }
+        },
     )
-    await terminal_bridge._close_websocket_if_connected(
+    await terminal_bridge.close_websocket_if_connected(
         websocket,
         code=status.WS_1011_INTERNAL_ERROR,
         reason=_bounded_close_reason(code, message),
     )
+
+
+async def _send_json_if_connected(websocket: WebSocket, payload: dict[str, object]) -> bool:
+    if not terminal_bridge.websocket_connected(websocket):
+        return False
+    with contextlib.suppress(RuntimeError, WebSocketDisconnect):
+        await websocket.send_json(payload)
+        return True
+    return False
+
+
+async def _teardown_captured_terminal_run_async(
+    terminal_session: TerminalPty | None,
+    lease: CapturedRunLease | None,
+    *,
+    install_signal_handlers: bool,
+) -> None:
+    if install_signal_handlers:
+        _teardown_captured_terminal_run(terminal_session, lease)
+        return
+    await asyncio.to_thread(_teardown_captured_terminal_run, terminal_session, lease)
+
+
+def _teardown_captured_terminal_run(
+    terminal_session: TerminalPty | None,
+    lease: CapturedRunLease | None,
+) -> None:
+    if terminal_session is not None:
+        terminal_bridge.terminate_terminal_pty(terminal_session)
+    if lease is not None:
+        lease.close()
 
 
 def _bounded_close_reason(code: str, message: str) -> str:
