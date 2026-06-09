@@ -49,6 +49,14 @@ outbound turn for review or edit before release. Codex turns carry
 incremental request payloads on later turns; the UI reflects that wire
 reality.
 
+A captured run can also surface inside the desktop instead of a detached CLI.
+Spawning Claude into a canvas pane runs the same `transport-matters claude`
+launch (reverse proxy, run directory, owned session) through a shared
+`prepare_captured_run()` seam, with the PTY bridged to an xterm pane rather
+than the local terminal. The first cut is pane-owned and ephemeral, dying with
+its WebSocket. A server-managed run-manager that owns the run and lets panes
+attach and reconnect remains a planned slice.
+
 `transport-matters doctor` is the first command when something feels wrong.
 
 See [PROJECT.md](./PROJECT.md) for more.
