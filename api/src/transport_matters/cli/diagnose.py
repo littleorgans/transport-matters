@@ -18,6 +18,7 @@ from pathlib import Path
 import typer
 
 from transport_matters import __version__
+from transport_matters.capabilities import detect_clis
 from transport_matters.config import (
     DATABASE_URL_GUIDANCE,
     MissingDatabaseConfigError,
@@ -103,6 +104,13 @@ def run_doctor() -> None:
         )
         typer.echo("        The web UI will not load. This is expected for")
         typer.echo("        source checkouts; release wheels embed the bundle.")
+
+    # Managed client CLIs.
+    for name, capability in detect_clis().items():
+        if capability.installed:
+            _ok(name, capability.version or "version unknown")
+        else:
+            typer.secho(f"  warn  missing {name}", fg=typer.colors.YELLOW)
 
     # Storage directory
     settings = get_settings()
