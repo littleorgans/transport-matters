@@ -3,64 +3,81 @@
 from __future__ import annotations
 
 import asyncio
-import contextlib
-import errno
-import fcntl
-import json
-import logging
 import os
-import pty
 import shutil
-import signal
-import struct
-import subprocess
-import termios
-from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
-from urllib.parse import urlsplit
 
-from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect, WebSocketException, status
-from starlette.websockets import WebSocketState
+from fastapi import APIRouter, Query, WebSocket, WebSocketException, status
 
-from transport_matters.config import Settings, get_settings
+from transport_matters.api.v1 import terminal_bridge
+from transport_matters.config import get_settings
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from transport_matters.config import Settings
 
-logger = logging.getLogger(__name__)
+
+CHILD_EXIT_TIMEOUT_S = terminal_bridge.CHILD_EXIT_TIMEOUT_S
+DEFAULT_COLS = terminal_bridge.DEFAULT_COLS
+DEFAULT_ROWS = terminal_bridge.DEFAULT_ROWS
+MAX_COLS = terminal_bridge.MAX_COLS
+MAX_ROWS = terminal_bridge.MAX_ROWS
+PTY_READ_CHUNK_SIZE = terminal_bridge.PTY_READ_CHUNK_SIZE
+TerminalControlError = terminal_bridge.TerminalControlError
+TerminalPty = terminal_bridge.TerminalPty
+_close_fd = terminal_bridge.close_fd
+_close_terminal_master = terminal_bridge.close_terminal_master
+_close_websocket_if_connected = terminal_bridge.close_websocket_if_connected
+_normalized_origin = terminal_bridge.normalize_origin
+_origin_allowed = terminal_bridge.origin_allowed
+_parse_control_frame = terminal_bridge.parse_control_frame
+_prepare_terminal_child = terminal_bridge.prepare_terminal_child
+_receive_websocket_input = terminal_bridge.receive_websocket_input
+_request_origin = terminal_bridge.request_origin_from_websocket
+_send_pty_output = terminal_bridge.send_pty_output
+_set_winsize = terminal_bridge.set_winsize
+_terminate_process_group = terminal_bridge.terminate_process_group
+_terminate_terminal_pty = terminal_bridge.terminate_terminal_pty
+_trusted_loopback_host = terminal_bridge.trusted_loopback_host
+_validated_dimension = terminal_bridge.validated_dimension
+_write_all = terminal_bridge.write_all
+spawn_pty_process = terminal_bridge.spawn_pty_process
+
+__all__ = [
+    "CHILD_EXIT_TIMEOUT_S",
+    "DEFAULT_COLS",
+    "DEFAULT_ROWS",
+    "MAX_COLS",
+    "MAX_ROWS",
+    "PTY_READ_CHUNK_SIZE",
+    "TerminalControlError",
+    "TerminalPty",
+    "_bridge_websocket_to_pty",
+    "_close_fd",
+    "_close_terminal_master",
+    "_close_websocket_if_connected",
+    "_normalized_origin",
+    "_origin_allowed",
+    "_parse_control_frame",
+    "_prepare_terminal_child",
+    "_receive_websocket_input",
+    "_request_origin",
+    "_send_pty_output",
+    "_set_winsize",
+    "_shell_argv",
+    "_spawn_terminal_pty",
+    "_terminate_process_group",
+    "_terminate_terminal_pty",
+    "_trusted_loopback_host",
+    "_validated_dimension",
+    "_workspace_root",
+    "_write_all",
+    "router",
+    "spawn_pty_process",
+    "terminal_socket",
+]
 
 router = APIRouter()
-
-DEFAULT_COLS = 80
-DEFAULT_ROWS = 24
-MAX_COLS = 500
-MAX_ROWS = 200
-PTY_READ_CHUNK_SIZE = 8192
-CHILD_EXIT_TIMEOUT_S = 1.0
-_TERMINAL_LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
-_TERMINAL_CHILD_DEFAULT_SIGNALS = (
-    signal.SIGHUP,
-    signal.SIGINT,
-    signal.SIGQUIT,
-    signal.SIGTERM,
-    signal.SIGTSTP,
-    signal.SIGTTIN,
-    signal.SIGTTOU,
-)
-
-
-class TerminalControlError(ValueError):
-    """Raised when a terminal text control frame is invalid."""
-
-
-@dataclass(slots=True)
-class TerminalPty:
-    """One child shell process attached to one PTY master."""
-
-    master_fd: int
-    process: subprocess.Popen[bytes]
-    closed: bool = False
 
 
 @router.websocket("/terminal")
@@ -89,114 +106,16 @@ def _workspace_root(settings: Settings) -> Path:
     return (settings.cwd or Path.cwd()).resolve()
 
 
-def _origin_allowed(websocket: WebSocket, settings: Settings) -> bool:
-    request_origin = _request_origin(websocket, settings)
-    if request_origin is None:
-        return False
-
-    origin = websocket.headers.get("origin")
-    normalized_origin = _normalized_origin(origin)
-    if normalized_origin is None:
-        return False
-
-    configured_origins = {
-        configured
-        for configured in (_normalized_origin(value) for value in settings.cors_origins)
-        if configured is not None
-    }
-    if normalized_origin in configured_origins:
-        return True
-
-    return normalized_origin == request_origin
-
-
-def _normalized_origin(value: str | None) -> str | None:
-    if not value:
-        return None
-
-    parsed = urlsplit(value)
-    if parsed.scheme.lower() not in {"http", "https"}:
-        return None
-    if not parsed.netloc:
-        return None
-    if parsed.path not in {"", "/"} or parsed.query or parsed.fragment:
-        return None
-    return f"{parsed.scheme.lower()}://{parsed.netloc.lower()}"
-
-
-def _request_origin(websocket: WebSocket, settings: Settings) -> str | None:
-    host = _trusted_loopback_host(
-        websocket.headers.get("host"),
-        allowed_port=settings.web_port,
-    )
-    if not host:
-        return None
-
-    scheme = "https" if websocket.url.scheme == "wss" else "http"
-    return f"{scheme}://{host}"
-
-
-def _trusted_loopback_host(value: str | None, *, allowed_port: int) -> str | None:
-    if not value:
-        return None
-
-    try:
-        parsed = urlsplit(f"//{value}")
-        port = parsed.port
-    except ValueError:
-        return None
-
-    if (
-        parsed.username
-        or parsed.password
-        or parsed.path
-        or parsed.query
-        or parsed.fragment
-        or port != allowed_port
-    ):
-        return None
-
-    hostname = parsed.hostname.lower() if parsed.hostname else None
-    if hostname not in _TERMINAL_LOOPBACK_HOSTS:
-        return None
-
-    return parsed.netloc.lower()
-
-
 def _spawn_terminal_pty(*, cols: int, rows: int, cwd: Path) -> TerminalPty:
-    master_fd, slave_fd = pty.openpty()
-    try:
-        _set_winsize(slave_fd, cols=cols, rows=rows)
-        env = os.environ.copy()
-        env["TERM"] = "xterm-256color"
-        process = subprocess.Popen(
-            _shell_argv(),
-            stdin=slave_fd,
-            stdout=slave_fd,
-            stderr=slave_fd,
-            cwd=cwd,
-            env=env,
-            preexec_fn=_prepare_terminal_child(slave_fd),
-            close_fds=True,
-        )
-    except Exception:
-        _close_fd(slave_fd)
-        _close_fd(master_fd)
-        raise
-
-    _close_fd(slave_fd)
-    return TerminalPty(master_fd=master_fd, process=process)
-
-
-def _prepare_terminal_child(slave_fd: int) -> Callable[[], None]:
-    def prepare() -> None:
-        os.setsid()
-        fcntl.ioctl(slave_fd, termios.TIOCSCTTY, 0)
-        os.tcsetpgrp(slave_fd, os.getpgrp())
-        for child_signal in _TERMINAL_CHILD_DEFAULT_SIGNALS:
-            signal.signal(child_signal, signal.SIG_DFL)
-
-    return prepare
+    env = os.environ.copy()
+    env["TERM"] = "xterm-256color"
+    return spawn_pty_process(
+        argv=_shell_argv(),
+        env=env,
+        cwd=cwd,
+        cols=cols,
+        rows=rows,
+    )
 
 
 def _shell_argv() -> list[str]:
@@ -211,164 +130,9 @@ def _shell_argv() -> list[str]:
     return ["/bin/bash"]
 
 
-def _set_winsize(fd: int, *, cols: int, rows: int) -> None:
-    packed = struct.pack("HHHH", rows, cols, 0, 0)
-    fcntl.ioctl(fd, termios.TIOCSWINSZ, packed)
-
-
 async def _bridge_websocket_to_pty(websocket: WebSocket, session: TerminalPty) -> None:
-    loop = asyncio.get_running_loop()
-    output_queue: asyncio.Queue[bytes | None] = asyncio.Queue()
-
-    def read_ready() -> None:
-        try:
-            data = os.read(session.master_fd, PTY_READ_CHUNK_SIZE)
-        except OSError as exc:
-            if exc.errno not in {errno.EIO, errno.EBADF}:
-                logger.exception("terminal PTY read failed")
-            loop.remove_reader(session.master_fd)
-            output_queue.put_nowait(None)
-            return
-
-        if not data:
-            loop.remove_reader(session.master_fd)
-            output_queue.put_nowait(None)
-            return
-
-        output_queue.put_nowait(data)
-
-    loop.add_reader(session.master_fd, read_ready)
-    output_task = asyncio.create_task(_send_pty_output(websocket, output_queue))
-    input_task = asyncio.create_task(_receive_websocket_input(websocket, session.master_fd))
-    tasks = {output_task, input_task}
-    try:
-        done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
-        for task in done:
-            task.result()
-        for task in pending:
-            task.cancel()
-        await asyncio.gather(*pending, return_exceptions=True)
-    finally:
-        loop.remove_reader(session.master_fd)
-        for task in tasks:
-            task.cancel()
-        await asyncio.gather(*tasks, return_exceptions=True)
-
-
-async def _send_pty_output(websocket: WebSocket, output_queue: asyncio.Queue[bytes | None]) -> None:
-    while True:
-        data = await output_queue.get()
-        if data is None:
-            await _close_websocket_if_connected(websocket)
-            return
-        await websocket.send_bytes(data)
-
-
-async def _receive_websocket_input(websocket: WebSocket, master_fd: int) -> None:
-    while True:
-        message = await websocket.receive()
-        message_type = message["type"]
-        if message_type == "websocket.disconnect":
-            return
-        if message_type != "websocket.receive":
-            continue
-
-        payload = message.get("bytes")
-        if payload is not None:
-            if payload:
-                await asyncio.to_thread(_write_all, master_fd, payload)
-            continue
-
-        text = message.get("text")
-        if text is not None:
-            try:
-                cols, rows = _parse_control_frame(text)
-            except TerminalControlError:
-                await _close_websocket_if_connected(
-                    websocket,
-                    code=status.WS_1008_POLICY_VIOLATION,
-                    reason="invalid terminal control frame",
-                )
-                return
-            _set_winsize(master_fd, cols=cols, rows=rows)
-
-
-def _parse_control_frame(text: str) -> tuple[int, int]:
-    try:
-        frame = json.loads(text)
-    except json.JSONDecodeError as exc:
-        raise TerminalControlError("control frame is not valid JSON") from exc
-
-    if not isinstance(frame, dict) or frame.get("type") != "resize":
-        raise TerminalControlError("control frame type is invalid")
-
-    cols = _validated_dimension(frame.get("cols"), name="cols", maximum=MAX_COLS)
-    rows = _validated_dimension(frame.get("rows"), name="rows", maximum=MAX_ROWS)
-    return cols, rows
-
-
-def _validated_dimension(value: object, *, name: str, maximum: int) -> int:
-    if isinstance(value, bool) or not isinstance(value, int):
-        raise TerminalControlError(f"{name} must be an integer")
-    if value < 1 or value > maximum:
-        raise TerminalControlError(f"{name} is out of range")
-    return value
-
-
-def _write_all(fd: int, data: bytes) -> None:
-    offset = 0
-    while offset < len(data):
-        try:
-            written = os.write(fd, data[offset:])
-        except OSError as exc:
-            if exc.errno in {errno.EIO, errno.EBADF}:
-                return
-            raise
-        if written <= 0:
-            raise RuntimeError("terminal PTY write returned no progress")
-        offset += written
-
-
-async def _close_websocket_if_connected(
-    websocket: WebSocket, *, code: int = status.WS_1000_NORMAL_CLOSURE, reason: str = ""
-) -> None:
-    if (
-        websocket.application_state == WebSocketState.CONNECTED
-        and websocket.client_state == WebSocketState.CONNECTED
-    ):
-        with contextlib.suppress(WebSocketDisconnect, RuntimeError):
-            await websocket.close(code=code, reason=reason)
-
-
-def _terminate_terminal_pty(session: TerminalPty) -> None:
-    process = session.process
-    if process.poll() is None:
-        _terminate_process_group(process)
-    _close_terminal_master(session)
-
-
-def _terminate_process_group(process: subprocess.Popen[bytes]) -> None:
-    with contextlib.suppress(ProcessLookupError):
-        os.killpg(process.pid, signal.SIGTERM)
-    try:
-        process.wait(timeout=CHILD_EXIT_TIMEOUT_S)
-        return
-    except subprocess.TimeoutExpired:
-        pass
-
-    with contextlib.suppress(ProcessLookupError):
-        os.killpg(process.pid, signal.SIGKILL)
-    with contextlib.suppress(subprocess.TimeoutExpired):
-        process.wait(timeout=CHILD_EXIT_TIMEOUT_S)
-
-
-def _close_terminal_master(session: TerminalPty) -> None:
-    if session.closed:
-        return
-    _close_fd(session.master_fd)
-    session.closed = True
-
-
-def _close_fd(fd: int) -> None:
-    with contextlib.suppress(OSError):
-        os.close(fd)
+    await terminal_bridge.bridge_websocket_to_pty(
+        websocket,
+        session,
+        set_winsize_fn=_set_winsize,
+    )
