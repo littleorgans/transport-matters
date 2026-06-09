@@ -10,15 +10,12 @@ import { renderPaneContent, titleForRef, viewerIdForRef } from "../viewers/regis
 import { ControlsPanel } from "./ControlsPanel";
 import { framedPaneId, useCanvasLabStore } from "./canvasLabStore";
 import { cliInstalled, useCapabilitiesStore } from "./capabilitiesStore";
-import { useCapturedRunStore } from "./capturedRunStore";
 // Side-effect import: registers the captured-run lifecycle hook (onClose -> stopRun) lab-side, so
 // capturedRunStore never reaches the prod bundle. Must run before any close dispatches through it.
 import "./labLifecycle";
 import "./canvas-lab.css";
 import { LabCardPane } from "./viewers/LabCardPane";
 import { LabRulerPane } from "./viewers/LabRulerPane";
-
-const SEED_PANES = 4;
 
 export function CanvasLabRoute() {
   const layout = useCanvasLabStore((state) => state.layout);
@@ -33,8 +30,6 @@ export function CanvasLabRoute() {
   const addPane = useCanvasLabStore((state) => state.addPane);
   const addTerminal = useCanvasLabStore((state) => state.addTerminal);
   const addCapturedRun = useCanvasLabStore((state) => state.addCapturedRun);
-  const restoreCapturedPane = useCanvasLabStore((state) => state.restoreCapturedPane);
-  const dockCapturedPane = useCanvasLabStore((state) => state.dockCapturedPane);
   const organize = useCanvasLabStore((state) => state.organize);
   const minimizePane = useCanvasLabStore((state) => state.minimizePane);
   const closePane = useCanvasLabStore((state) => state.closePane);
@@ -70,23 +65,10 @@ export function CanvasLabRoute() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
-  // Seed panes on first mount so expand mode starts with a dense right-column stress case.
-  useEffect(() => {
-    if (Object.keys(useCanvasLabStore.getState().layout.nodes).length > 0) return;
-    for (let index = 0; index < SEED_PANES; index += 1) addPane();
-  }, [addPane]);
-
-  // Reconcile persisted runs on mount: a browser reload drops the in-memory lab store but keeps each
-  // pane's run (and its docked flag). A run flagged minimized comes back DOCKED; the rest reopen as
-  // active panes and re-attach to their own run by id (output continues) instead of leaving the
-  // headless run orphaned. Both paths are idempotent across remounts.
-  useEffect(() => {
-    const { runs } = useCapturedRunStore.getState();
-    for (const [paneId, record] of Object.entries(runs)) {
-      if (record.minimized) dockCapturedPane(paneId, record.provider);
-      else restoreCapturedPane(paneId, record.provider);
-    }
-  }, [restoreCapturedPane, dockCapturedPane]);
+  // Reload restore is owned by the lab store's own persistence: the persisted record set rehydrates the
+  // canvas (open panes) and the dock (every kind) synchronously at store creation, through the one
+  // seedPaneFromRecord path that spawn uses. A captured pane re-attaches to its own run by id when its
+  // viewer mounts (capturedRunStore keeps the runId), so no mount-time reconcile is needed here.
 
   // Probe managed-CLI availability once so the Spawn buttons reflect what's installed.
   useEffect(() => {

@@ -4,6 +4,7 @@ export const FRONTEND_STORAGE_KEYS = {
   uiStore: "transport-matters-ui",
   overlaysStore: "transport-matters-overlays",
   capturedRunStore: "transport-matters-captured-run",
+  canvasLabStore: "transport-matters-canvas-lab",
   dismissedPanelPrefix: "transport-matters.panel.dismissed.",
 } as const;
 
