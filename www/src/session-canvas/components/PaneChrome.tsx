@@ -62,7 +62,15 @@ export function PaneChrome({
             {title}
           </h2>
         </div>
-        <div className="canvas-pane-window__actions">
+        {/* The header carries the double-click-to-frame gesture, and these controls live inside it.
+            Stop double-clicks on the controls from bubbling up, so a rapid close/minimize (two clicks
+            landing on the same button) never registers as a header dblclick that frames the pane as
+            it is being removed. Single clicks are unaffected. */}
+        {/* biome-ignore lint/a11y/noStaticElementInteractions: dblclick guard only; the buttons inside own all real interactions. */}
+        <div
+          className="canvas-pane-window__actions"
+          onDoubleClick={(event) => event.stopPropagation()}
+        >
           {compact ? null : <span className="canvas-pane-window__state">{state}</span>}
           {onFrame ? (
             <button
