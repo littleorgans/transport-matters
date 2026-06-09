@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
-import { openTerminalSocket, type TerminalIO, terminalSocketUrl } from "./terminalSocket";
+import {
+  capturedTerminalSocketUrl,
+  openTerminalSocket,
+  type TerminalIO,
+  terminalSocketUrl,
+} from "./terminalSocket";
 
 const OPEN = 1;
 const CONNECTING = 0;
@@ -74,6 +79,25 @@ describe("terminalSocketUrl", () => {
   });
 });
 
+describe("capturedTerminalSocketUrl", () => {
+  it("targets the captured Claude endpoint with the size query", () => {
+    expect(
+      capturedTerminalSocketUrl(80, 24, undefined, { protocol: "http:", host: "localhost:5173" }),
+    ).toBe("ws://localhost:5173/api/captured-runs/claude/terminal?cols=80&rows=24");
+  });
+
+  it("appends an encoded cwd and upgrades to wss on https pages", () => {
+    expect(
+      capturedTerminalSocketUrl(120, 40, "/work/proj", {
+        protocol: "https:",
+        host: "app.example.com",
+      }),
+    ).toBe(
+      "wss://app.example.com/api/captured-runs/claude/terminal?cols=120&rows=40&cwd=%2Fwork%2Fproj",
+    );
+  });
+});
+
 describe("openTerminalSocket", () => {
   function setup(readyState = OPEN) {
     const term = new FakeTerm();
@@ -118,6 +142,28 @@ describe("openTerminalSocket", () => {
   it("ignores non-binary inbound frames so control echoes never corrupt the screen", () => {
     const { term, socket } = setup();
     socket.emit("not binary");
+    expect(term.written).toHaveLength(0);
+  });
+
+  it("routes inbound text frames to onTextFrame and never to the terminal", () => {
+    const term = new FakeTerm();
+    const frames: string[] = [];
+    const sockets: FakeSocket[] = [];
+    openTerminalSocket(term, {
+      url: "ws://host/api/captured-runs/claude/terminal",
+      socketFactory: (url) => {
+        const socket = new FakeSocket(url);
+        sockets.push(socket);
+        return socket as unknown as WebSocket;
+      },
+      onTextFrame: (text) => frames.push(text),
+    });
+    const socket = sockets[0];
+    if (!socket) throw new Error("expected a socket to be created");
+
+    socket.emit('{"type":"captured-run.ready","runId":"r1"}');
+
+    expect(frames).toEqual(['{"type":"captured-run.ready","runId":"r1"}']);
     expect(term.written).toHaveLength(0);
   });
 

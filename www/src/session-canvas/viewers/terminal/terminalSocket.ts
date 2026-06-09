@@ -24,6 +24,12 @@ interface OpenTerminalSocketOptions {
   socketFactory?: SocketFactory;
   /** Connection lifecycle, so the pane can surface a refused/closed state. */
   onStatus?: (status: "open" | "closed", info?: { code: number; reason: string }) => void;
+  /**
+   * Inbound JSON text frames (e.g. the captured-run ready/error frames). The bare
+   * terminal omits this, so out-of-band control echoes stay ignored rather than
+   * being written to the screen.
+   */
+  onTextFrame?: (text: string) => void;
 }
 
 const WEBSOCKET_OPEN = 1;
@@ -36,14 +42,36 @@ function toBytes(data: ArrayBuffer | ArrayBufferView): Uint8Array {
   return new Uint8Array(data);
 }
 
+type SocketLocation = { protocol: string; host: string };
+
+/** ws(s):// scheme for the current page protocol. */
+function socketScheme(location: SocketLocation): string {
+  return location.protocol === "https:" ? "wss:" : "ws:";
+}
+
 /** Same-origin ws(s):// URL for the backend terminal endpoint, seeded with the PTY size. */
 export function terminalSocketUrl(
   cols: number,
   rows: number,
-  location: { protocol: string; host: string } = window.location,
+  location: SocketLocation = window.location,
 ): string {
-  const scheme = location.protocol === "https:" ? "wss:" : "ws:";
-  return `${scheme}//${location.host}/api/terminal?cols=${cols}&rows=${rows}`;
+  return `${socketScheme(location)}//${location.host}/api/terminal?cols=${cols}&rows=${rows}`;
+}
+
+/**
+ * Same-origin ws(s):// URL for the captured Claude terminal endpoint. An absolute
+ * `cwd` selects the workspace directory; omitting it lets the backend resolve its
+ * launch workspace (see api/v1/captured_terminal.py).
+ */
+export function capturedTerminalSocketUrl(
+  cols: number,
+  rows: number,
+  cwd?: string,
+  location: SocketLocation = window.location,
+): string {
+  const query = new URLSearchParams({ cols: String(cols), rows: String(rows) });
+  if (cwd !== undefined) query.set("cwd", cwd);
+  return `${socketScheme(location)}//${location.host}/api/captured-runs/claude/terminal?${query}`;
 }
 
 export function openTerminalSocket(
@@ -86,11 +114,16 @@ export function openTerminalSocket(
   socket.onerror = () => options.onStatus?.("closed", { code: 1006, reason: "error" });
 
   socket.onmessage = (event) => {
-    // Binary frames are raw PTY output; a string frame would be an out-of-band
-    // control echo we never opt into, so ignore it. `instanceof ArrayBuffer` is
-    // unreliable across realms (jsdom/worker), so detect by exclusion instead.
+    // Binary frames are raw PTY output. A string frame is an out-of-band control
+    // message (e.g. a captured-run ready/error frame): hand it to onTextFrame,
+    // never to the screen. `instanceof ArrayBuffer` is unreliable across realms
+    // (jsdom/worker), so detect strings by exclusion instead.
     const { data } = event;
-    if (typeof data === "string" || data == null) return;
+    if (data == null) return;
+    if (typeof data === "string") {
+      options.onTextFrame?.(data);
+      return;
+    }
     term.write(toBytes(data as ArrayBuffer | ArrayBufferView));
   };
 

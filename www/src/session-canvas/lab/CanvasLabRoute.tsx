@@ -24,6 +24,7 @@ export function CanvasLabRoute() {
   const contentRefs = useCanvasLabStore((state) => state.contentRefs);
   const addPane = useCanvasLabStore((state) => state.addPane);
   const addTerminal = useCanvasLabStore((state) => state.addTerminal);
+  const addCapturedClaude = useCanvasLabStore((state) => state.addCapturedClaude);
   const organize = useCanvasLabStore((state) => state.organize);
   const closePane = useCanvasLabStore((state) => state.closePane);
   const focusPane = useCanvasLabStore((state) => state.focusPane);
@@ -139,6 +140,9 @@ export function CanvasLabRoute() {
                 </button>
                 <button className="canvas-button" onClick={addTerminal} type="button">
                   Add terminal
+                </button>
+                <button className="canvas-button" onClick={addCapturedClaude} type="button">
+                  Spawn Claude (captured)
                 </button>
               </>
             }
