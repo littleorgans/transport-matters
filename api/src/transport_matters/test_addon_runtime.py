@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import httpx
 import pytest
@@ -209,6 +209,30 @@ async def test_close_runtime_shuts_down_server_and_client() -> None:
     assert serve_task.done()
     assert not serve_task.cancelled()
     assert client.is_closed
+
+
+async def test_close_runtime_closes_web_before_capture(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Embedded web shuts down before capture resources are torn down."""
+    order: list[str] = []
+
+    async def fake_close_web(_runtime: WebRuntime | None) -> None:
+        order.append("web")
+
+    async def fake_close_capture(_runtime: CaptureRuntime | None) -> None:
+        order.append("capture")
+
+    monkeypatch.setattr(addon_runtime, "close_web_runtime", fake_close_web)
+    monkeypatch.setattr(addon_runtime, "close_capture_runtime", fake_close_capture)
+    runtime = AddonRuntime(
+        capture=cast("CaptureRuntime", object()),
+        web=cast("WebRuntime", object()),
+    )
+
+    await close_runtime(runtime)
+
+    assert order == ["web", "capture"]
 
 
 async def test_close_runtime_drains_pause_tasks_before_client_close(

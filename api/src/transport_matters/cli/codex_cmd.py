@@ -7,9 +7,11 @@ import tempfile
 from datetime import datetime
 from importlib.resources import as_file
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 import typer
+
+from transport_matters.captured_run import require_web_port
 
 from .home_seed import seed_home_dir
 from .identity import CLI_COMMAND, PRODUCT_LABEL
@@ -50,20 +52,21 @@ def _resolve_codex_ca_certificate_or_exit(
     stack: contextlib.ExitStack,
     print_command: bool,
     resolve_codex_ca_certificate: Callable[..., Path],
+    env: Mapping[str, str] = os.environ,
 ) -> str | None:
     """Resolve the Codex trust bundle or surface a user-facing error."""
     if print_command:
         return None
 
     bundle_dir: Path | None = None
-    if not os.environ.get("CODEX_CA_CERTIFICATE"):
+    if not env.get("CODEX_CA_CERTIFICATE"):
         bundle_dir = Path(
             stack.enter_context(tempfile.TemporaryDirectory(prefix="transport-matters-codex-ca-"))
         )
     try:
         return str(
             resolve_codex_ca_certificate(
-                env=os.environ,
+                env=env,
                 bundle_dir=bundle_dir,
             )
         )
@@ -144,7 +147,7 @@ def _build_proxy_only_codex_hint(
     )
 
 
-def _build_codex_invocation(
+def build_codex_invocation(
     *,
     addon_path: Path,
     force_http_fallback_addon_path: Path | None,
@@ -159,7 +162,8 @@ def _build_codex_invocation(
     profile: LaunchProfile,
     managed_session: ManagedSession | None,
     debug: bool,
-) -> Callable[[int, int], tuple[list[str], dict[str, str], ManagedClient | None]]:
+    web_runtime: str = "embedded",
+) -> Callable[[int, int | None], tuple[list[str], dict[str, str], ManagedClient | None]]:
     """Build the retry-safe invocation factory for `transport-matters codex`.
 
     ``managed_session`` is the §5.2b/§5.2c owned session (minted once, before the retry loop, so every
@@ -169,8 +173,10 @@ def _build_codex_invocation(
 
     def build_invocation(
         proxy_port: int,
-        web_port: int,
+        web_port: int | None,
     ) -> tuple[list[str], dict[str, str], ManagedClient | None]:
+        if web_runtime == "embedded":
+            web_port = require_web_port(web_port)
         native_session_id = (
             managed_session.native_session_id if managed_session is not None else None
         )
@@ -180,6 +186,7 @@ def _build_codex_invocation(
             proxy_port=proxy_port,
             web_port=web_port,
             run_id=run_id,
+            web_runtime=web_runtime,
             cli=CLIENT_NAME_CODEX,
             home_dir=home_dir,
             owned_native_session_id=native_session_id,
@@ -274,7 +281,7 @@ def _run_codex_launch(
     )
 
 
-def _resolve_codex_addons_and_ca(
+def resolve_codex_addons_and_ca(
     *,
     stack: contextlib.ExitStack,
     force_http_fallback: bool,
@@ -282,6 +289,7 @@ def _resolve_codex_addons_and_ca(
     client_path: str | None,
     print_command: bool,
     resolve_codex_ca_certificate: Callable[..., Path],
+    env: Mapping[str, str] = os.environ,
 ) -> tuple[Path | None, str | None]:
     """Resolve the optional force-HTTP-fallback addon path and the Codex CA bundle."""
     force_http_fallback_addon_path: Path | None = None
@@ -295,9 +303,10 @@ def _resolve_codex_addons_and_ca(
             stack=stack,
             print_command=print_command,
             resolve_codex_ca_certificate=resolve_codex_ca_certificate,
+            env=env,
         )
     elif not print_command:
-        codex_ca_certificate = _resolve_proxy_only_codex_ca_hint(env=os.environ)
+        codex_ca_certificate = _resolve_proxy_only_codex_ca_hint(env=env)
     return force_http_fallback_addon_path, codex_ca_certificate
 
 
@@ -362,7 +371,7 @@ def run_codex(
         as_file(prepared.addon_traversable) as addon_path,
         contextlib.ExitStack() as stack,
     ):
-        force_http_fallback_addon_path, codex_ca_certificate = _resolve_codex_addons_and_ca(
+        force_http_fallback_addon_path, codex_ca_certificate = resolve_codex_addons_and_ca(
             stack=stack,
             force_http_fallback=force_http_fallback,
             require_force_http_fallback_addon=require_force_http_fallback_addon,
@@ -386,7 +395,7 @@ def run_codex(
             now=datetime.now().astimezone(),
             write=not print_command,
         )
-        build_invocation = _build_codex_invocation(
+        build_invocation = build_codex_invocation(
             addon_path=addon_path,
             force_http_fallback_addon_path=force_http_fallback_addon_path,
             mitmdump=prepared.mitmdump,
@@ -401,7 +410,7 @@ def run_codex(
             managed_session=managed_session,
             debug=debug,
         )
-        prepared_web_port = cast("int", prepared.web_port)
+        prepared_web_port = require_web_port(prepared.web_port)
 
         if print_command:
             print_invocation(

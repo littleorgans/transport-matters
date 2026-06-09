@@ -29,6 +29,7 @@ if TYPE_CHECKING:
 
 _BIND_RETRY_ATTEMPTS = 3
 CLAUDE_CLIENT_NAME = "claude"
+CODEX_CLIENT_NAME = "codex"
 CLAUDE_UPSTREAM_DEFAULT = "https://api.anthropic.com"
 CapturedRunWebRuntime = Literal["embedded", "external"]
 WEB_RUNTIME_EMBEDDED: CapturedRunWebRuntime = "embedded"
@@ -63,6 +64,7 @@ class CapturedRunSpawnSpec:
     client: ManagedClient | None
     launch_env: dict[str, str]
     managed_session: ManagedSession | None
+    client_name: str = CLAUDE_CLIENT_NAME
 
 
 @dataclass(slots=True)
@@ -325,7 +327,7 @@ def run_captured_run_on_local_tty(
         write=not print_command,
     )
     try:
-        web_port = _require_web_port(ctx.prepared.web_port)
+        web_port = require_web_port(ctx.prepared.web_port)
         if print_command:
             print_invocation(
                 build_invocation=ctx.build_invocation,
@@ -456,6 +458,7 @@ def prepare_captured_run(
                     client=client,
                     launch_env=launch_env,
                     managed_session=ctx.managed_session,
+                    client_name=ctx.request.client_name,
                 )
                 lease = CapturedRunLease(
                     spawn_spec=spawn_spec,
@@ -515,14 +518,15 @@ def _build_captured_run_context(
     now: datetime | None,
     write: bool,
 ) -> _CapturedRunContext:
-    from transport_matters.cli.launch_profile import ClaudeLaunchProfile, prepare_managed_session
-    from transport_matters.cli.launch_runtime import CLIENT_NAME_CLAUDE, prepare_launch
+    from transport_matters.cli.launch_profile import PROFILES, prepare_managed_session
+    from transport_matters.cli.launch_runtime import prepare_launch
 
-    if request.client_name != CLIENT_NAME_CLAUDE:
-        raise ValueError(f"unsupported captured client: {request.client_name!r}")
+    try:
+        launch_profile = profile or PROFILES[request.client_name]
+    except KeyError as exc:
+        raise ValueError(f"unsupported captured client: {request.client_name!r}") from exc
     if request.web_runtime == WEB_RUNTIME_EXTERNAL and request.web_port is not None:
         raise ValueError("external captured run must not include a web port")
-    launch_profile = profile or ClaudeLaunchProfile()
     prepared = prepare_launch(
         passthrough=list(request.passthrough),
         directory=request.directory,
@@ -532,7 +536,7 @@ def _build_captured_run_context(
         client_name=request.client_name,
         bin_override=request.client_bin,
         client_disabled=request.client_disabled,
-        not_found_hint=_claude_not_found_hint(),
+        not_found_hint=_client_not_found_hint(request.client_name),
         require_addon=require_addon,
         resolve_mitmdump=resolve_mitmdump,
         which=which,
@@ -554,25 +558,45 @@ def _build_captured_run_context(
     stack = ExitStack()
     try:
         addon_path = stack.enter_context(as_file(prepared.addon_traversable))
-        build_invocation = build_start_invocation(
-            addon_path=addon_path,
-            mitmdump=prepared.mitmdump,
-            upstream=request.upstream,
-            working_dir=prepared.working_dir,
-            resolved_storage=prepared.resolved_storage,
-            run_id=prepared.run_id,
-            home_dir=request.home_dir,
-            claude_path=prepared.client_path,
-            claude_passthrough_user=prepared.passthrough_user,
-            no_claude=request.client_disabled,
-            no_system_prompt=request.no_system_prompt,
-            debug=request.debug,
-            profile=launch_profile,
-            managed_session=managed_session,
-            inject_system_prompt=inject_system_prompt,
-            user_supplied_system_prompt=user_supplied_system_prompt,
-            web_runtime=request.web_runtime,
-        )
+        if request.client_name == CLAUDE_CLIENT_NAME:
+            build_invocation = build_start_invocation(
+                addon_path=addon_path,
+                mitmdump=prepared.mitmdump,
+                upstream=request.upstream,
+                working_dir=prepared.working_dir,
+                resolved_storage=prepared.resolved_storage,
+                run_id=prepared.run_id,
+                home_dir=request.home_dir,
+                claude_path=prepared.client_path,
+                claude_passthrough_user=prepared.passthrough_user,
+                no_claude=request.client_disabled,
+                no_system_prompt=request.no_system_prompt,
+                debug=request.debug,
+                profile=launch_profile,
+                managed_session=managed_session,
+                inject_system_prompt=inject_system_prompt,
+                user_supplied_system_prompt=user_supplied_system_prompt,
+                web_runtime=request.web_runtime,
+            )
+        else:
+            from transport_matters.captured_codex import build_codex_captured_invocation
+
+            build_invocation = build_codex_captured_invocation(
+                resource_stack=stack,
+                addon_path=addon_path,
+                mitmdump=prepared.mitmdump,
+                working_dir=prepared.working_dir,
+                resolved_storage=prepared.resolved_storage,
+                run_id=prepared.run_id,
+                home_dir=request.home_dir,
+                codex_path=prepared.client_path,
+                codex_passthrough_user=prepared.passthrough_user,
+                debug=request.debug,
+                profile=launch_profile,
+                managed_session=managed_session,
+                env=env,
+                web_runtime=request.web_runtime,
+            )
     except Exception:
         stack.close()
         raise
@@ -600,7 +624,7 @@ def _persist_owned_session_facts(ctx: _CapturedRunContext) -> None:
     )
 
 
-def _require_web_port(web_port: int | None) -> int:
+def require_web_port(web_port: int | None) -> int:
     if web_port is None:
         msg = "standalone CLI captured runs require an embedded web port"
         raise ValueError(msg)
@@ -634,6 +658,17 @@ def _raise_prepare_outcome(outcome: LaunchBindFailureOutcome | LaunchExitOutcome
         raise CapturedRunBindConflict(str(outcome.failure)) from outcome.failure
     message = outcome.error or f"captured run exited during prepare (code {outcome.exit_code})"
     raise RuntimeError(message)
+
+
+def _client_not_found_hint(client_name: str) -> str:
+    if client_name == CODEX_CLIENT_NAME:
+        from transport_matters.cli.identity import CLI_COMMAND
+
+        return (
+            "Install Codex, or point at an existing binary:\n"
+            f"  {CLI_COMMAND} codex --codex-bin /path/to/codex"
+        )
+    return _claude_not_found_hint()
 
 
 def _claude_not_found_hint() -> str:

@@ -6,7 +6,7 @@ import asyncio
 import contextlib
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Literal, cast
 
 import typer
 from fastapi import APIRouter, Query, WebSocket, WebSocketException, status
@@ -16,6 +16,7 @@ from transport_matters.api.v1 import terminal_bridge
 from transport_matters.captured_run import (
     CLAUDE_CLIENT_NAME,
     CLAUDE_UPSTREAM_DEFAULT,
+    CODEX_CLIENT_NAME,
     WEB_RUNTIME_EXTERNAL,
     CapturedRunBindConflict,
     CapturedRunRequest,
@@ -36,8 +37,11 @@ CapturedRunErrorCode = Literal[
     "launch_failed",
     "bind_conflict",
 ]
+CapturedRunCli = Literal["claude", "codex"]
 
 CAPTURED_CLAUDE_TERMINAL_ROUTE = "/captured-runs/claude/terminal"
+CAPTURED_TERMINAL_ROUTE = "/captured-runs/{cli}/terminal"
+_CAPTURED_RUN_CLI_ALLOWLIST = frozenset({CLAUDE_CLIENT_NAME, CODEX_CLIENT_NAME})
 _CLOSE_REASON_LIMIT_BYTES = 123
 _CAPTURED_TERMINAL_INSTALL_SIGNAL_HANDLERS = False
 
@@ -63,6 +67,41 @@ async def captured_claude_terminal_socket(
     cwd: str | None = Query(default=None),
 ) -> None:
     """Bridge one WebSocket to one captured Claude Code PTY run."""
+    await _captured_terminal_socket(
+        websocket,
+        cli=cast("CapturedRunCli", CLAUDE_CLIENT_NAME),
+        cols=cols,
+        rows=rows,
+        cwd=cwd,
+    )
+
+
+@router.websocket(CAPTURED_TERMINAL_ROUTE)
+async def captured_terminal_socket(
+    websocket: WebSocket,
+    cli: str,
+    cols: int = Query(default=terminal_bridge.DEFAULT_COLS, ge=1, le=terminal_bridge.MAX_COLS),
+    rows: int = Query(default=terminal_bridge.DEFAULT_ROWS, ge=1, le=terminal_bridge.MAX_ROWS),
+    cwd: str | None = Query(default=None),
+) -> None:
+    """Bridge one WebSocket to one captured agent PTY run."""
+    await _captured_terminal_socket(
+        websocket,
+        cli=_validate_captured_run_cli(cli),
+        cols=cols,
+        rows=rows,
+        cwd=cwd,
+    )
+
+
+async def _captured_terminal_socket(
+    websocket: WebSocket,
+    *,
+    cli: CapturedRunCli,
+    cols: int,
+    rows: int,
+    cwd: str | None,
+) -> None:
     settings = get_settings()
     if not terminal_bridge.origin_allowed(websocket, settings):
         raise WebSocketException(
@@ -75,15 +114,17 @@ async def captured_claude_terminal_socket(
     terminal_session: TerminalPty | None = None
     try:
         spawn_spec, lease = await asyncio.to_thread(
-            _prepare_captured_claude_run,
+            _prepare_captured_run_for_cli,
+            cli=cli,
             cwd=cwd,
             settings=settings,
         )
         client = spawn_spec.client
         if client is None:
+            display_name = _captured_run_cli_display_name(cli)
             raise CapturedTerminalLaunchError(
                 "launch_failed",
-                "captured Claude launch did not produce a client process",
+                f"captured {display_name} launch did not produce a client process",
             )
 
         if not await _send_json_if_connected(websocket, _ready_frame(spawn_spec)):
@@ -103,13 +144,14 @@ async def captured_claude_terminal_socket(
     except WebSocketDisconnect:
         pass
     except typer.Exit as exc:
+        display_name = _captured_run_cli_display_name(cli)
         await _send_error_and_close(
             websocket,
             code="launch_failed",
-            message=f"captured Claude launch failed with exit code {exc.exit_code}",
+            message=f"captured {display_name} launch failed with exit code {exc.exit_code}",
         )
     except Exception as exc:
-        logger.exception("captured Claude terminal launch failed")
+        logger.exception("captured %s terminal launch failed", cli)
         await _send_error_and_close(websocket, code="launch_failed", message=str(exc))
     finally:
         await _teardown_captured_terminal_run_async(
@@ -119,8 +161,43 @@ async def captured_claude_terminal_socket(
         )
 
 
+def _validate_captured_run_cli(cli: str) -> CapturedRunCli:
+    if cli not in _CAPTURED_RUN_CLI_ALLOWLIST:
+        raise WebSocketException(
+            code=status.WS_1008_POLICY_VIOLATION,
+            reason="unsupported captured run cli",
+        )
+    return cast("CapturedRunCli", cli)
+
+
+def _captured_run_cli_display_name(cli: CapturedRunCli) -> str:
+    return "Codex" if cli == CODEX_CLIENT_NAME else "Claude"
+
+
+def _prepare_captured_run_for_cli(
+    *,
+    cli: CapturedRunCli,
+    cwd: str | None,
+    settings: Settings,
+) -> tuple[CapturedRunSpawnSpec, CapturedRunLease]:
+    if cli == CLAUDE_CLIENT_NAME:
+        return _prepare_captured_claude_run(cwd=cwd, settings=settings)
+    return _prepare_captured_agent_run(cli=cli, cwd=cwd, settings=settings)
+
+
 def _prepare_captured_claude_run(
     *,
+    cwd: str | None,
+    settings: Settings,
+) -> tuple[CapturedRunSpawnSpec, CapturedRunLease]:
+    return _prepare_captured_agent_run(
+        cli=cast("CapturedRunCli", CLAUDE_CLIENT_NAME), cwd=cwd, settings=settings
+    )
+
+
+def _prepare_captured_agent_run(
+    *,
+    cli: CapturedRunCli,
     cwd: str | None,
     settings: Settings,
 ) -> tuple[CapturedRunSpawnSpec, CapturedRunLease]:
@@ -132,12 +209,12 @@ def _prepare_captured_claude_run(
     working_dir = _query_working_dir(cwd, settings)
     return prepare_captured_run(
         CapturedRunRequest(
-            client_name=CLAUDE_CLIENT_NAME,
+            client_name=cli,
             passthrough=(),
             directory=working_dir,
             proxy_port=None,
             web_port=None,
-            upstream=CLAUDE_UPSTREAM_DEFAULT,
+            upstream=CLAUDE_UPSTREAM_DEFAULT if cli == CLAUDE_CLIENT_NAME else "",
             storage_dir=None,
             home_dir=settings.agent_home_dir,
             client_bin=None,
@@ -177,7 +254,7 @@ def _ready_frame(spawn_spec: CapturedRunSpawnSpec) -> dict[str, object]:
         "cwd": str(spawn_spec.working_dir),
         "storageDir": str(spawn_spec.storage_dir),
         "proxyPort": spawn_spec.proxy_port,
-        "cli": CLAUDE_CLIENT_NAME,
+        "cli": spawn_spec.client_name,
     }
     if spawn_spec.web_port is not None:
         frame["webPort"] = spawn_spec.web_port
