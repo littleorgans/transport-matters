@@ -53,6 +53,25 @@ export interface HarnessDescriptor {
   capabilities: HarnessCapabilities;
 }
 
+// ── Managed CLI capabilities (GET /api/capabilities) ──────────────
+// Local install state for each managed CLI the desktop can spawn as a captured
+// run. Distinct from HarnessCapabilities above (which describes a harness's
+// protocol features); this is "is the `claude`/`codex` binary on PATH". Field
+// names and casing mirror api/v1/capabilities.py's CapabilitiesResponse.
+
+/** The managed CLIs that can be spawned as a captured run. Doubles as the captured-pane provider. */
+export type CliName = "claude" | "codex";
+
+export interface CliCapability {
+  installed: boolean;
+  path: string | null;
+  version: string | null;
+}
+
+export interface CapabilitiesResponse {
+  clis: Record<CliName, CliCapability>;
+}
+
 export interface CodexTurnListSummary {
   turn_index: number;
   message_range_start: number;

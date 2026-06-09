@@ -105,6 +105,19 @@ describe("registry pane ids", () => {
     expect(paneIdForRef(ref)).toBe("terminal");
   });
 
+  it("routes captured runs per provider through one captured-run viewer", () => {
+    const claude: CanvasPaneRef = { kind: "captured-run", owner: "local", provider: "claude" };
+    const codex: CanvasPaneRef = { kind: "captured-run", owner: "local", provider: "codex" };
+    expect(viewerIdForRef(claude)).toBe("captured-run");
+    expect(viewerIdForRef(codex)).toBe("captured-run");
+    expect(titleForRef(claude)).toBe("Claude");
+    expect(titleForRef(codex)).toBe("Codex");
+    // Distinct pane ids so a Claude and a Codex captured run coexist rather than dedupe.
+    expect(paneIdForRef(claude)).toBe("captured-run:claude");
+    expect(paneIdForRef(codex)).toBe("captured-run:codex");
+    expect(paneIdForRef(claude)).not.toBe(paneIdForRef(codex));
+  });
+
   it("resolves a viewer whose dedupe key is the registry pane id", () => {
     const ref: PaneContentRef = {
       kind: "resource",

@@ -8,6 +8,7 @@ import type { PaneContentRef, ViewerProps } from "../model/paneRecords";
 import { renderPaneContent, titleForRef, viewerIdForRef } from "../viewers/registry";
 import { ControlsPanel } from "./ControlsPanel";
 import { framedPaneId, useCanvasLabStore } from "./canvasLabStore";
+import { cliInstalled, useCapabilitiesStore } from "./capabilitiesStore";
 import { LabCardPane } from "./viewers/LabCardPane";
 import { LabRulerPane } from "./viewers/LabRulerPane";
 
@@ -24,7 +25,7 @@ export function CanvasLabRoute() {
   const contentRefs = useCanvasLabStore((state) => state.contentRefs);
   const addPane = useCanvasLabStore((state) => state.addPane);
   const addTerminal = useCanvasLabStore((state) => state.addTerminal);
-  const addCapturedClaude = useCanvasLabStore((state) => state.addCapturedClaude);
+  const addCapturedRun = useCanvasLabStore((state) => state.addCapturedRun);
   const organize = useCanvasLabStore((state) => state.organize);
   const closePane = useCanvasLabStore((state) => state.closePane);
   const focusPane = useCanvasLabStore((state) => state.focusPane);
@@ -35,6 +36,11 @@ export function CanvasLabRoute() {
   const setFitToContent = useCanvasLabStore((state) => state.setFitToContent);
   const setBounds = useCanvasLabStore((state) => state.setBounds);
   const setViewport = useCanvasLabStore((state) => state.setViewport);
+
+  // Managed-CLI availability gates the captured-run spawn buttons: a CLI that is
+  // not installed never offers a launch that would fail.
+  const claudeInstalled = useCapabilitiesStore((state) => cliInstalled(state, "claude"));
+  const codexInstalled = useCapabilitiesStore((state) => cliInstalled(state, "codex"));
 
   const stageRef = useRef<HTMLDivElement>(null);
   const strategies = useMemo(() => listLayouts(), []);
@@ -57,6 +63,11 @@ export function CanvasLabRoute() {
     if (Object.keys(useCanvasLabStore.getState().layout.nodes).length > 0) return;
     for (let index = 0; index < SEED_PANES; index += 1) addPane();
   }, [addPane]);
+
+  // Probe managed-CLI availability once so the Spawn buttons reflect what's installed.
+  useEffect(() => {
+    useCapabilitiesStore.getState().ensureLoaded();
+  }, []);
 
   // Plan in world units that match the visible stage; re-plan on resize.
   useEffect(() => {
@@ -84,6 +95,7 @@ export function CanvasLabRoute() {
       return (
         <PaneChrome
           badge={ref ? ref.kind : demoIsRuler ? "ruler" : "card"}
+          compact
           expanded={expandedPane === paneId}
           focused={focusedPaneId === paneId}
           onClose={() => closePane(paneId)}
@@ -91,7 +103,9 @@ export function CanvasLabRoute() {
           onFrame={() => framePane(paneId)}
           onHeaderDoubleClick={(event) => (event.shiftKey ? expandPane(paneId) : framePane(paneId))}
           state={framedPane === paneId ? "framed" : "default"}
-          title={paneId}
+          // Content panes show their viewer title (e.g. "Claude", "Codex", "Terminal"); demo
+          // card/ruler stubs keep the raw pane id. The compact header keeps it to one line.
+          title={ref ? titleForRef(ref) : paneId}
           titleId={titleIdForPane(paneId)}
         >
           {ref ? (
@@ -141,9 +155,24 @@ export function CanvasLabRoute() {
                 <button className="canvas-button" onClick={addTerminal} type="button">
                   Add terminal
                 </button>
-                <button className="canvas-button" onClick={addCapturedClaude} type="button">
-                  Spawn Claude (captured)
-                </button>
+                {claudeInstalled ? (
+                  <button
+                    className="canvas-button"
+                    onClick={() => addCapturedRun("claude")}
+                    type="button"
+                  >
+                    Spawn Claude
+                  </button>
+                ) : null}
+                {codexInstalled ? (
+                  <button
+                    className="canvas-button"
+                    onClick={() => addCapturedRun("codex")}
+                    type="button"
+                  >
+                    Spawn Codex
+                  </button>
+                ) : null}
               </>
             }
             secondary={

@@ -1,13 +1,14 @@
 import { lazy, type ReactNode, Suspense } from "react";
 import type { PaneId, WorldRect } from "../../engine";
-import type {
-  CanvasPaneRef,
-  PaneContentRef,
-  PaneRecord,
-  PickerPaneRef,
-  ViewerId,
-  ViewerProps,
-  ViewerRegistration,
+import {
+  type CanvasPaneRef,
+  cliLabel,
+  type PaneContentRef,
+  type PaneRecord,
+  type PickerPaneRef,
+  type ViewerId,
+  type ViewerProps,
+  type ViewerRegistration,
 } from "../model/paneRecords";
 import { PlaceholderPane, type PlaceholderPaneRef } from "./placeholder/PlaceholderPane";
 import { ProviderExchangeResourceViewer } from "./resource/ProviderExchangeResourceViewer";
@@ -21,9 +22,9 @@ import { TranscriptChatPane } from "./transcript-chat/TranscriptChatPane";
 const TerminalPane = lazy(() =>
   import("./terminal/TerminalPane").then((module) => ({ default: module.TerminalPane })),
 );
-const CapturedClaudePane = lazy(() =>
-  import("./terminal/CapturedClaudePane").then((module) => ({
-    default: module.CapturedClaudePane,
+const CapturedRunPane = lazy(() =>
+  import("./terminal/CapturedRunPane").then((module) => ({
+    default: module.CapturedRunPane,
   })),
 );
 
@@ -32,6 +33,7 @@ const TRANSCRIPT_PANE_PREFIX = "transcript:";
 const SUBAGENT_PANE_PREFIX = "subagent:";
 const RESOURCE_PANE_PREFIX = "resource:";
 const EXCHANGE_PANE_PREFIX = "exchange:";
+const CAPTURED_RUN_PANE_PREFIX = "captured-run:";
 
 const PICKER_RECT: WorldRect = Object.freeze({ x: 48, y: 48, width: 440, height: 640 });
 const TRANSCRIPT_RECT: WorldRect = Object.freeze({ x: 512, y: 48, width: 720, height: 640 });
@@ -65,7 +67,7 @@ function contentStep(paneCount: number): number {
 type ResourceRef = Extract<PaneContentRef, { kind: "resource" }>;
 type ExchangeRef = Extract<PaneContentRef, { kind: "provider-exchange" }>;
 type TerminalRef = Extract<PaneContentRef, { kind: "terminal" }>;
-type CapturedClaudeRef = Extract<PaneContentRef, { kind: "captured-claude" }>;
+type CapturedRunRef = Extract<PaneContentRef, { kind: "captured-run" }>;
 
 const registry: ViewerRegistration[] = [
   defineViewer<PickerPaneRef>({
@@ -122,19 +124,22 @@ const registry: ViewerRegistration[] = [
       </Suspense>
     ),
   }),
-  defineViewer<CapturedClaudeRef>({
-    id: "captured-claude",
-    canRender: (ref): ref is CapturedClaudeRef => ref.kind === "captured-claude",
-    paneId: () => "captured-claude",
-    title: () => "Claude (captured)",
+  defineViewer<CapturedRunRef>({
+    id: "captured-run",
+    canRender: (ref): ref is CapturedRunRef => ref.kind === "captured-run",
+    // One pane per provider: a Claude and a Codex captured run coexist; a second of
+    // the same provider dedupes onto the first.
+    paneId: (ref) => `${CAPTURED_RUN_PANE_PREFIX}${ref.provider}`,
+    title: (ref) => cliLabel(ref.provider),
     defaultRect: (_ref, index) => cascadeRect(TERMINAL_RECT, contentStep(index)),
-    // Self-contained like the bare terminal (its own xterm + captured PTY socket); it ignores viewer
-    // props. Lazy, so a Suspense boundary covers the one-time shared-chunk fetch.
-    render: () => (
+    // Self-contained like the bare terminal (its own xterm + captured PTY socket); the only viewer
+    // prop it reads is the provider on its ref. Lazy, so a Suspense boundary covers the one-time
+    // shared-chunk fetch.
+    render: (props) => (
       <Suspense
         fallback={<div aria-busy="true" className="canvas-transcript canvas-transcript--center" />}
       >
-        <CapturedClaudePane />
+        <CapturedRunPane provider={props.pane.contentRef.provider} />
       </Suspense>
     ),
   }),

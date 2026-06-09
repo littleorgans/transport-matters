@@ -80,15 +80,27 @@ describe("terminalSocketUrl", () => {
 });
 
 describe("capturedTerminalSocketUrl", () => {
-  it("targets the captured Claude endpoint with the size query", () => {
+  it("targets the captured endpoint for the given provider with the size query", () => {
     expect(
-      capturedTerminalSocketUrl(80, 24, undefined, { protocol: "http:", host: "localhost:5173" }),
+      capturedTerminalSocketUrl("claude", 80, 24, undefined, {
+        protocol: "http:",
+        host: "localhost:5173",
+      }),
     ).toBe("ws://localhost:5173/api/captured-runs/claude/terminal?cols=80&rows=24");
+  });
+
+  it("routes codex to its own captured endpoint", () => {
+    expect(
+      capturedTerminalSocketUrl("codex", 80, 24, undefined, {
+        protocol: "http:",
+        host: "localhost:5173",
+      }),
+    ).toBe("ws://localhost:5173/api/captured-runs/codex/terminal?cols=80&rows=24");
   });
 
   it("appends an encoded cwd and upgrades to wss on https pages", () => {
     expect(
-      capturedTerminalSocketUrl(120, 40, "/work/proj", {
+      capturedTerminalSocketUrl("claude", 120, 40, "/work/proj", {
         protocol: "https:",
         host: "app.example.com",
       }),

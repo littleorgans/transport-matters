@@ -1,5 +1,13 @@
 import type { EngineLayoutState, PaneId, WorldRect } from "../../engine";
+import type { CliName } from "../../types";
 import type { CanvasLaunchContext } from "../route";
+
+/** Display label for a managed CLI / captured-run provider (window title, banners). */
+const CLI_LABELS: Record<CliName, string> = { claude: "Claude", codex: "Codex" };
+
+export function cliLabel(provider: CliName): string {
+  return CLI_LABELS[provider];
+}
 
 export type CanvasId = string;
 export type ViewerId =
@@ -9,7 +17,7 @@ export type ViewerId =
   | "resource"
   | "provider-exchange"
   | "terminal"
-  | "captured-claude";
+  | "captured-run";
 export type PaneChromeState = "default" | "loading" | "error" | "empty";
 
 export interface CanvasModel {
@@ -52,7 +60,7 @@ export type PaneContentRef =
       initialView?: string;
     }
   | { kind: "terminal"; owner: "local" }
-  | { kind: "captured-claude"; owner: "local" };
+  | { kind: "captured-run"; owner: "local"; provider: CliName };
 
 /** The built-in session picker is canvas chrome, not transcript content. */
 export type PickerPaneRef = { kind: "session-picker"; owner: "local" };

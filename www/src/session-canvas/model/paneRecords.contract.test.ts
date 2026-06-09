@@ -2,10 +2,10 @@ import { describe, expectTypeOf, it } from "vitest";
 import type { CanvasPaneRef, PaneContentRef, PickerPaneRef } from "./paneRecords";
 
 // The content contract is the four transcript kinds plus the two terminal-backed
-// surfaces (an interactive local PTY and a captured Claude run, both rendered
-// through the same viewer registry). The session picker is canvas chrome and
-// lives on CanvasPaneRef, not PaneContentRef. These assertions are enforced by
-// `pnpm typecheck` (src test files are part of the tsc project).
+// surfaces (an interactive local PTY and a provider-parametric captured run —
+// Claude or Codex — both rendered through the same viewer registry). The session
+// picker is canvas chrome and lives on CanvasPaneRef, not PaneContentRef. These
+// assertions are enforced by `pnpm typecheck` (src test files are part of the tsc project).
 describe("PaneContentRef contract", () => {
   it("exports the transcript content kinds plus the terminal and captured surfaces", () => {
     expectTypeOf<PaneContentRef["kind"]>().toEqualTypeOf<
@@ -14,7 +14,7 @@ describe("PaneContentRef contract", () => {
       | "resource"
       | "provider-exchange"
       | "terminal"
-      | "captured-claude"
+      | "captured-run"
     >();
   });
 
