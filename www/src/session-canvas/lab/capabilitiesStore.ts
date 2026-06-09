@@ -31,12 +31,14 @@ export const useCapabilitiesStore = create<CapabilitiesState>()((set, get) => ({
 }));
 
 /**
- * Whether a managed CLI is installed. False until a successful probe confirms it,
- * so a button gated on this stays hidden while loading or on error rather than
- * offering a launch that would fail.
+ * Whether a managed CLI is available to spawn. Fail-open: only a successful probe
+ * that CONFIRMS `installed === false` hides the button. While the probe is idle,
+ * in-flight, or failed (`clis` null — e.g. a dev server with no backend), default
+ * to available so the control never silently vanishes just because the probe could
+ * not run. `??` only defaults on null/undefined, so a real `false` still hides.
  */
 export function cliInstalled(state: CapabilitiesState, provider: CliName): boolean {
-  return state.clis?.[provider]?.installed ?? false;
+  return state.clis?.[provider]?.installed ?? true;
 }
 
 export function resetCapabilitiesStoreForTests(): void {

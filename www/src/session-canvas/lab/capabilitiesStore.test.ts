@@ -32,10 +32,10 @@ describe("capabilitiesStore", () => {
     resetCapabilitiesStoreForTests();
   });
 
-  it("reports nothing installed until a probe lands", () => {
+  it("treats CLIs as available until a probe confirms otherwise (fail-open)", () => {
     expect(state().status).toBe("idle");
-    expect(cliInstalled(state(), "claude")).toBe(false);
-    expect(cliInstalled(state(), "codex")).toBe(false);
+    expect(cliInstalled(state(), "claude")).toBe(true);
+    expect(cliInstalled(state(), "codex")).toBe(true);
   });
 
   it("loads capabilities once and exposes per-CLI install state", async () => {
@@ -63,13 +63,14 @@ describe("capabilitiesStore", () => {
     expect(fetchCapabilities).toHaveBeenCalledTimes(1);
   });
 
-  it("stays not-installed when the probe fails", async () => {
+  it("stays available when the probe fails (unreachable backend, e.g. dev server)", async () => {
     fetchCapabilities.mockRejectedValue(new Error("network down"));
 
     state().ensureLoaded();
     await vi.waitFor(() => expect(state().status).toBe("error"));
 
-    expect(cliInstalled(state(), "claude")).toBe(false);
-    expect(cliInstalled(state(), "codex")).toBe(false);
+    // Fail-open: a failed probe must not hide the buttons (the dev-server regression).
+    expect(cliInstalled(state(), "claude")).toBe(true);
+    expect(cliInstalled(state(), "codex")).toBe(true);
   });
 });

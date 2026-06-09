@@ -62,4 +62,13 @@ describe("CanvasLabRoute captured-run spawn buttons", () => {
     expect(screen.queryByRole("button", { name: "Spawn Claude" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Spawn Codex" })).not.toBeInTheDocument();
   });
+
+  it("keeps both spawn buttons when the capability probe is unreachable (dev server, no backend)", () => {
+    // Fail-open: a failed/unknown probe must not hide the controls. Seeding "error"
+    // makes the mount-time probe a no-op, reproducing a dev server with no backend.
+    useCapabilitiesStore.setState({ status: "error", clis: null });
+    render(<CanvasLabRoute />);
+    expect(screen.getByRole("button", { name: "Spawn Claude" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Spawn Codex" })).toBeInTheDocument();
+  });
 });
