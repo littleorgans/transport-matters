@@ -51,35 +51,36 @@ export function PaneDock({ docked, onRestore }: PaneDockProps) {
 
   return (
     <div className="canvas-viewport-dock" onPointerDown={swallow} onWheel={swallow} ref={rootRef}>
-      <button
-        aria-expanded={open}
-        aria-haspopup="menu"
-        aria-label={`Minimized panes, ${docked.length}`}
-        className="canvas-dock__chip"
-        onClick={() => setOpen((value) => !value)}
-        type="button"
-      >
-        <span className="canvas-dock__label">Dock</span>
-        <span className="canvas-dock__count">{docked.length}</span>
-      </button>
-      {open ? (
-        <div aria-label="Minimized panes" className="canvas-dock__menu" role="menu">
-          {docked.map((pane) => (
-            <button
-              className="canvas-dock__row"
-              key={pane.paneId}
-              onClick={() => restore(pane.paneId)}
-              role="menuitem"
-              type="button"
-            >
-              <span className="canvas-dock__kind">{pane.ref ? pane.ref.kind : "pane"}</span>
-              <span className="canvas-dock__title">
-                {pane.ref ? titleForRef(pane.ref) : pane.paneId}
-              </span>
-            </button>
-          ))}
-        </div>
-      ) : null}
+      <div className="canvas-dock__anchor">
+        <button
+          aria-expanded={open}
+          aria-haspopup="menu"
+          aria-label={`Minimized panes, ${docked.length}`}
+          className="canvas-dock__chip"
+          onClick={() => setOpen((value) => !value)}
+          type="button"
+        >
+          <span className="canvas-dock__label">Dock</span>
+          <span className="canvas-dock__count">{docked.length}</span>
+        </button>
+        {open ? (
+          <div aria-label="Minimized panes" className="canvas-dock__menu" role="menu">
+            {docked.map((pane) => (
+              <button
+                className="canvas-dock__row"
+                key={pane.paneId}
+                onClick={() => restore(pane.paneId)}
+                role="menuitem"
+                type="button"
+              >
+                <span className="canvas-dock__title">
+                  {pane.ref ? titleForRef(pane.ref) : pane.paneId}
+                </span>
+              </button>
+            ))}
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }
