@@ -11,7 +11,7 @@ import os
 from typing import TYPE_CHECKING
 from urllib.parse import urlsplit
 
-from fastapi import WebSocket, WebSocketDisconnect, status
+from fastapi import Request, WebSocket, WebSocketDisconnect, status
 from starlette.websockets import WebSocketState
 
 from transport_matters.pty_session import (
@@ -29,6 +29,8 @@ from transport_matters.pty_session import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable, Mapping
+
     from transport_matters.config import Settings
 
 logger = logging.getLogger(__name__)
@@ -57,9 +59,13 @@ __all__ = [
     "close_websocket_if_connected",
     "normalize_origin",
     "origin_allowed",
+    "origin_allowed_for_request",
+    "origin_allowed_from_headers",
     "parse_control_frame",
     "prepare_terminal_child",
     "receive_websocket_input",
+    "request_origin_from_headers",
+    "request_origin_from_request",
     "request_origin_from_websocket",
     "send_pty_output",
     "set_winsize",
@@ -78,12 +84,27 @@ class TerminalControlError(ValueError):
 
 
 def origin_allowed(websocket: WebSocket, settings: Settings) -> bool:
-    request_origin = request_origin_from_websocket(websocket, settings)
+    return origin_allowed_from_headers(
+        websocket.headers,
+        scheme="https" if websocket.url.scheme == "wss" else "http",
+        settings=settings,
+    )
+
+
+def origin_allowed_for_request(request: Request, settings: Settings) -> bool:
+    return origin_allowed_from_headers(
+        request.headers, scheme=request.url.scheme, settings=settings
+    )
+
+
+def origin_allowed_from_headers(
+    headers: Mapping[str, str], *, scheme: str, settings: Settings
+) -> bool:
+    request_origin = request_origin_from_headers(headers, scheme=scheme, settings=settings)
     if request_origin is None:
         return False
 
-    origin = websocket.headers.get("origin")
-    normalized_origin = normalize_origin(origin)
+    normalized_origin = normalize_origin(headers.get("origin"))
     if normalized_origin is None:
         return False
 
@@ -113,14 +134,29 @@ def normalize_origin(value: str | None) -> str | None:
 
 
 def request_origin_from_websocket(websocket: WebSocket, settings: Settings) -> str | None:
+    return request_origin_from_headers(
+        websocket.headers,
+        scheme="https" if websocket.url.scheme == "wss" else "http",
+        settings=settings,
+    )
+
+
+def request_origin_from_request(request: Request, settings: Settings) -> str | None:
+    return request_origin_from_headers(
+        request.headers, scheme=request.url.scheme, settings=settings
+    )
+
+
+def request_origin_from_headers(
+    headers: Mapping[str, str], *, scheme: str, settings: Settings
+) -> str | None:
     host = trusted_loopback_host(
-        websocket.headers.get("host"),
+        headers.get("host"),
         allowed_port=settings.web_port,
     )
     if not host:
         return None
 
-    scheme = "https" if websocket.url.scheme == "wss" else "http"
     return f"{scheme}://{host}"
 
 
@@ -215,6 +251,7 @@ async def receive_websocket_input(
     master_fd: int,
     *,
     set_winsize_fn: _WinsizeSetter = set_winsize,
+    on_invalid_control_frame: Callable[[], Awaitable[None]] | None = None,
 ) -> None:
     while True:
         message = await websocket.receive()
@@ -235,6 +272,8 @@ async def receive_websocket_input(
             try:
                 cols, rows = parse_control_frame(text)
             except TerminalControlError:
+                if on_invalid_control_frame is not None:
+                    await on_invalid_control_frame()
                 await close_websocket_if_connected(
                     websocket,
                     code=status.WS_1008_POLICY_VIOLATION,

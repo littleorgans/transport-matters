@@ -132,6 +132,7 @@ class ScrollbackRing:
         self._chunks: deque[PtyChunk] = deque()
         self._total_bytes = 0
         self._next_seq = 0
+        self._truncated = False
 
     @property
     def max_bytes(self) -> int:
@@ -145,15 +146,25 @@ class ScrollbackRing:
     def next_seq(self) -> int:
         return self._next_seq
 
+    @property
+    def truncated(self) -> bool:
+        return self._truncated
+
     def append(self, data: bytes, *, emitted_at: datetime | None = None) -> PtyChunk:
         emitted = emitted_at or self._clock()
         seq = self._next_seq
         self._next_seq += 1
         live_chunk = PtyChunk(seq=seq, data=data, emitted_at=emitted)
         if self._max_bytes == 0:
+            if data:
+                self._truncated = True
             return live_chunk
 
-        stored_data = data[-self._max_bytes :] if len(data) > self._max_bytes else data
+        if len(data) > self._max_bytes:
+            self._truncated = True
+            stored_data = data[-self._max_bytes :]
+        else:
+            stored_data = data
         if stored_data:
             stored_chunk = PtyChunk(seq=seq, data=stored_data, emitted_at=emitted)
             self._chunks.append(stored_chunk)
@@ -168,6 +179,7 @@ class ScrollbackRing:
         while self._total_bytes > self._max_bytes and self._chunks:
             chunk = self._chunks.popleft()
             self._total_bytes -= len(chunk.data)
+            self._truncated = True
 
 
 @dataclass(slots=True)
@@ -210,6 +222,7 @@ class SpawnRun:
 @dataclass(frozen=True, slots=True)
 class RunFilters:
     cli: CapturedRunCli | None = None
+    cwd: Path | None = None
     states: frozenset[RunState] | None = None
 
 
@@ -218,6 +231,10 @@ class ManagedRunView:
     run_id: str
     cli: CapturedRunCli
     cwd: Path
+    storage_dir: Path
+    proxy_port: int
+    web_port: int | None
+    native_session_id: str | None
     state: RunState
     created_at: datetime
     started_at: datetime
@@ -226,6 +243,8 @@ class ManagedRunView:
     viewerless_since: datetime | None
     exit_code: int | None
     stop_reason: str | None
+    scrollback_bytes: int
+    scrollback_limit_bytes: int
 
 
 @dataclass(slots=True)
@@ -252,6 +271,14 @@ class ManagedRun:
             run_id=self.run_id,
             cli=self.cli,
             cwd=self.cwd,
+            storage_dir=self.spawn_spec.storage_dir,
+            proxy_port=self.spawn_spec.proxy_port,
+            web_port=self.spawn_spec.web_port,
+            native_session_id=(
+                self.spawn_spec.managed_session.native_session_id
+                if self.spawn_spec.managed_session is not None
+                else None
+            ),
             state=self.state,
             created_at=self.created_at,
             started_at=self.started_at,
@@ -260,6 +287,8 @@ class ManagedRun:
             viewerless_since=self.viewerless_since,
             exit_code=self.exit_code,
             stop_reason=self.stop_reason,
+            scrollback_bytes=self.scrollback.total_bytes,
+            scrollback_limit_bytes=self.scrollback.max_bytes,
         )
 
 
@@ -365,6 +394,8 @@ class RunManager:
         if filters is not None:
             if filters.cli is not None:
                 runs = tuple(run for run in runs if run.cli == filters.cli)
+            if filters.cwd is not None:
+                runs = tuple(run for run in runs if run.cwd == filters.cwd)
             if filters.states is not None:
                 runs = tuple(run for run in runs if run.state in filters.states)
         return [run.view() for run in runs]
@@ -440,7 +471,7 @@ class RunManager:
 
     def _captured_request(self, request: SpawnRun) -> CapturedRunRequest:
         if request.cli not in _VALID_CAPTURED_RUN_CLIS:
-            raise RunManagerError("launch_failed", f"unsupported captured run cli: {request.cli}")
+            raise RunManagerError("unsupported_cli", f"unsupported captured run cli: {request.cli}")
 
         store_error = self._dependencies.check_session_store()
         if store_error is not None:
@@ -470,11 +501,11 @@ class RunManager:
     def _resolve_cwd(self, cwd: Path | None) -> Path:
         working_dir = Path.cwd() if cwd is None else cwd.expanduser()
         if not working_dir.is_absolute():
-            raise RunManagerError("launch_failed", "cwd must be an absolute path")
+            raise RunManagerError("invalid_cwd", "cwd must be an absolute path")
         if not working_dir.exists():
-            raise RunManagerError("launch_failed", f"cwd does not exist: {working_dir}")
+            raise RunManagerError("invalid_cwd", f"cwd does not exist: {working_dir}")
         if not working_dir.is_dir():
-            raise RunManagerError("launch_failed", f"cwd is not a directory: {working_dir}")
+            raise RunManagerError("invalid_cwd", f"cwd is not a directory: {working_dir}")
         return working_dir.resolve()
 
     async def _drain_run(self, run: ManagedRun) -> None:

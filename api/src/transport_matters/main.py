@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from transport_matters.api.v1 import run_routes
 from transport_matters.api.v1.router import api_router
 from transport_matters.config import MissingDatabaseConfigError, get_settings, resolve_database_url
 from transport_matters.session.listen import SessionEventHub, SessionEventListener
@@ -139,6 +140,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.session_event_hub = SessionEventHub()
     app.state.session_pool = None
     app.state.session_event_listener = None
+    app.state.run_manager = run_routes.create_run_manager()
     try:
         database_url = resolve_database_url(get_settings())
     except MissingDatabaseConfigError as exc:
@@ -153,6 +155,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             await session_listener.aclose()
         if session_pool is not None:
             await session_pool.close()
+        await run_routes.close_run_manager(app)
         logger.info("Shutting down %s", app.title)
 
 
