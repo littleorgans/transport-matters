@@ -29,7 +29,7 @@ import {
 } from "../../engine/layout";
 import type { CliName } from "../../types";
 import { resolvePaneLifecycle } from "../model/paneLifecycle";
-import type { DockedPane, PaneContentRef } from "../model/paneRecords";
+import { cliLabel, type DockedPane, type PaneContentRef } from "../model/paneRecords";
 import { createCapturedRunKey } from "./capturedRunStore";
 import { fitExpandFrameToWidth, planExpandedLayout } from "./expandLayout";
 
@@ -70,6 +70,9 @@ export interface CanvasLabState {
   contentRefs: Record<PaneId, PaneContentRef>;
   /** Locally minimized panes for THIS canvas, most-recent first. The dock's only source. */
   docked: DockedPane[];
+  /** Monotonic per-label-prefix counters so spawned content panes get incremental names
+   *  (Terminal-1, Claude-2, Codex-3) like demo panes get lab-N. Never reused on close. */
+  paneCounters: Record<string, number>;
   addPane(): void;
   addTerminal(): void;
   addCapturedRun(provider: CliName): void;
@@ -233,6 +236,16 @@ function seedContentPane(
   };
 }
 
+// Next incremental label for a prefix ("Terminal" | "Claude" | "Codex"), plus the bumped counter
+// map. Monotonic and never reused on close, mirroring nextPaneIndex's lab-N scheme.
+function labelFor(
+  counters: Record<string, number>,
+  prefix: string,
+): { label: string; counters: Record<string, number> } {
+  const next = (counters[prefix] ?? 0) + 1;
+  return { label: `${prefix}-${next}`, counters: { ...counters, [prefix]: next } };
+}
+
 /** Seed a new lab pane carrying a viewer-registry content ref, advancing the pane index. */
 function spawnContentPane(
   state: CanvasLabState,
@@ -255,6 +268,7 @@ export const useCanvasLabStore = create<CanvasLabState>()((set, get) => ({
   nextPaneIndex: 0,
   contentRefs: {},
   docked: [],
+  paneCounters: {},
 
   addPane() {
     const index = get().nextPaneIndex + 1;
@@ -262,18 +276,35 @@ export const useCanvasLabStore = create<CanvasLabState>()((set, get) => ({
   },
 
   addTerminal() {
-    set((state) => spawnContentPane(state, { kind: "terminal", owner: "local" }));
+    set((state) => {
+      const { label, counters } = labelFor(state.paneCounters, "Terminal");
+      return {
+        paneCounters: counters,
+        ...spawnContentPane(state, { kind: "terminal", owner: "local", label }),
+      };
+    });
   },
 
   addCapturedRun(provider) {
     // Each captured pane owns its own run: a fresh, stable per-pane key is both the
     // pane id and the key the pane spawns + persists its runId under (it rides on the
     // ref so the viewer reads it). Two Spawn Claude clicks are two independent runs
-    // (two PTYs, isolated input), never a shared terminal.
+    // (two PTYs, isolated input), never a shared terminal. The incremental label
+    // (Claude-1, Codex-2) rides on the ref so the chrome + dock show distinct names.
     const runKey = createCapturedRunKey(provider);
-    set((state) =>
-      seedContentPane(state, runKey, { kind: "captured-run", owner: "local", provider, runKey }),
-    );
+    set((state) => {
+      const { label, counters } = labelFor(state.paneCounters, cliLabel(provider));
+      return {
+        paneCounters: counters,
+        ...seedContentPane(state, runKey, {
+          kind: "captured-run",
+          owner: "local",
+          provider,
+          runKey,
+          label,
+        }),
+      };
+    });
   },
 
   restoreCapturedPane(paneId, provider) {
@@ -572,5 +603,6 @@ export function resetCanvasLabStoreForTests(): void {
     nextPaneIndex: 0,
     contentRefs: {},
     docked: [],
+    paneCounters: {},
   });
 }

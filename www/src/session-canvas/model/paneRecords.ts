@@ -59,8 +59,8 @@ export type PaneContentRef =
       exchangeId: string;
       initialView?: string;
     }
-  | { kind: "terminal"; owner: "local" }
-  | { kind: "captured-run"; owner: "local"; provider: CliName; runKey: string };
+  | { kind: "terminal"; owner: "local"; label?: string }
+  | { kind: "captured-run"; owner: "local"; provider: CliName; runKey: string; label?: string };
 
 /**
  * A pane removed from the canvas but retained locally so the dock can restore it (Option A: local

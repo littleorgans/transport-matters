@@ -22,25 +22,27 @@ vi.mock("../../api", () => ({
 const store = useCanvasLabStore.getState;
 
 describe("canvasLabStore terminals", () => {
-  const terminalRef = { kind: "terminal", owner: "local" } as const;
+  // Each spawned terminal gets a monotonic per-type label (Terminal-1, Terminal-2, ...).
+  const terminalRef = (n: number) =>
+    ({ kind: "terminal", owner: "local", label: `Terminal-${n}` }) as const;
 
   it("spawns a pane that carries a terminal content ref", () => {
     resetCanvasLabStoreForTests();
 
     store().addTerminal();
 
-    expect(store().contentRefs["lab-1"]).toEqual(terminalRef);
+    expect(store().contentRefs["lab-1"]).toEqual(terminalRef(1));
     expect(store().layout.nodes["lab-1"]).toBeDefined();
   });
 
   it("spawns multiple independent terminals alongside demo panes", () => {
     resetCanvasLabStoreForTests();
 
-    store().addTerminal(); // lab-1
+    store().addTerminal(); // lab-1 (Terminal-1)
     store().addPane(); // lab-2 (demo card/ruler, no content ref)
-    store().addTerminal(); // lab-3
+    store().addTerminal(); // lab-3 (Terminal-2)
 
-    expect(store().contentRefs).toEqual({ "lab-1": terminalRef, "lab-3": terminalRef });
+    expect(store().contentRefs).toEqual({ "lab-1": terminalRef(1), "lab-3": terminalRef(2) });
     expect(Object.keys(store().layout.nodes).sort()).toEqual(["lab-1", "lab-2", "lab-3"]);
   });
 
@@ -48,14 +50,45 @@ describe("canvasLabStore terminals", () => {
     vi.useFakeTimers();
     try {
       resetCanvasLabStoreForTests();
-      store().addTerminal(); // lab-1
-      store().addTerminal(); // lab-2
+      store().addTerminal(); // lab-1 (Terminal-1)
+      store().addTerminal(); // lab-2 (Terminal-2)
 
       store().closePane("lab-1");
       vi.runAllTimers();
 
-      expect(store().contentRefs).toEqual({ "lab-2": terminalRef });
+      expect(store().contentRefs).toEqual({ "lab-2": terminalRef(2) });
       expect(store().layout.nodes["lab-1"]).toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("labels spawned panes incrementally per type, monotonic and never reused on close", () => {
+    vi.useFakeTimers();
+    try {
+      resetCanvasLabStoreForTests();
+      store().addTerminal(); // lab-1 Terminal-1
+      store().addCapturedRun("claude"); // Claude-1
+      store().addTerminal(); // lab-2 Terminal-2
+      store().addCapturedRun("codex"); // Codex-1
+      store().addCapturedRun("claude"); // Claude-2
+
+      const labels = Object.values(store().contentRefs).map((ref) =>
+        ref.kind === "terminal" || ref.kind === "captured-run" ? ref.label : undefined,
+      );
+      expect(labels).toEqual(
+        expect.arrayContaining(["Terminal-1", "Terminal-2", "Claude-1", "Claude-2", "Codex-1"]),
+      );
+
+      // Closing a pane does not reset the counter: the next terminal is Terminal-3, not Terminal-1.
+      store().closePane("lab-1");
+      vi.runAllTimers();
+      store().addTerminal(); // lab-3 Terminal-3
+      const terminalLabels = Object.values(store().contentRefs)
+        .filter((ref) => ref.kind === "terminal")
+        .map((ref) => (ref.kind === "terminal" ? ref.label : ""));
+      expect(terminalLabels).toContain("Terminal-3");
+      expect(terminalLabels).not.toContain("Terminal-1"); // closed, never reused
     } finally {
       vi.useRealTimers();
     }
@@ -132,6 +165,7 @@ describe("canvasLabStore captured runs", () => {
         owner: "local",
         provider: "claude",
         runKey: paneId,
+        label: "Claude-1",
       });
     } finally {
       vi.useRealTimers();
@@ -159,6 +193,7 @@ describe("canvasLabStore captured runs", () => {
         owner: "local",
         provider: "claude",
         runKey: paneId,
+        label: "Claude-1",
       });
       expect(store().layout.nodes[paneId]).toBeDefined();
       expect(store().docked).toEqual([]);
