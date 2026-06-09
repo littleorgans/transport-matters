@@ -67,6 +67,7 @@ export interface CanvasLabState {
   contentRefs: Record<PaneId, PaneContentRef>;
   addPane(): void;
   addTerminal(): void;
+  addCapturedClaude(): void;
   closePane(paneId: PaneId): void;
   focusPane(paneId: PaneId): void;
   updatePaneRect(paneId: PaneId, rect: WorldRect): void;
@@ -206,6 +207,20 @@ function seedPaneLayout(state: CanvasLabState, paneId: PaneId): EngineLayoutStat
   );
 }
 
+/** Seed a new lab pane carrying a viewer-registry content ref, advancing the pane index. */
+function spawnContentPane(
+  state: CanvasLabState,
+  ref: PaneContentRef,
+): Pick<CanvasLabState, "nextPaneIndex" | "contentRefs" | "layout"> {
+  const index = state.nextPaneIndex + 1;
+  const paneId = `lab-${index}`;
+  return {
+    nextPaneIndex: index,
+    contentRefs: { ...state.contentRefs, [paneId]: ref },
+    layout: seedPaneLayout(state, paneId),
+  };
+}
+
 export const useCanvasLabStore = create<CanvasLabState>()((set, get) => ({
   layout: createInitialEngineLayoutState(),
   bounds: DEFAULT_BOUNDS,
@@ -225,13 +240,11 @@ export const useCanvasLabStore = create<CanvasLabState>()((set, get) => ({
   },
 
   addTerminal() {
-    const index = get().nextPaneIndex + 1;
-    const paneId = `lab-${index}`;
-    set((state) => ({
-      nextPaneIndex: index,
-      contentRefs: { ...state.contentRefs, [paneId]: { kind: "terminal", owner: "local" } },
-      layout: seedPaneLayout(state, paneId),
-    }));
+    set((state) => spawnContentPane(state, { kind: "terminal", owner: "local" }));
+  },
+
+  addCapturedClaude() {
+    set((state) => spawnContentPane(state, { kind: "captured-claude", owner: "local" }));
   },
 
   closePane(paneId) {

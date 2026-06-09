@@ -16,9 +16,15 @@ import { SessionPickerPane } from "./session-picker/SessionPickerPane";
 import { TranscriptChatPane } from "./transcript-chat/TranscriptChatPane";
 
 // xterm is heavy (~50KB gzip) and only needed once a terminal pane is opened, so split it into its
-// own chunk instead of weighing down every canvas load.
+// own chunk instead of weighing down every canvas load. Both terminal-backed panes share the xterm
+// + session core, so the bundler folds it into one shared chunk these two lazy entries pull in.
 const TerminalPane = lazy(() =>
   import("./terminal/TerminalPane").then((module) => ({ default: module.TerminalPane })),
+);
+const CapturedClaudePane = lazy(() =>
+  import("./terminal/CapturedClaudePane").then((module) => ({
+    default: module.CapturedClaudePane,
+  })),
 );
 
 export const PICKER_PANE_ID = "session-picker";
@@ -59,6 +65,7 @@ function contentStep(paneCount: number): number {
 type ResourceRef = Extract<PaneContentRef, { kind: "resource" }>;
 type ExchangeRef = Extract<PaneContentRef, { kind: "provider-exchange" }>;
 type TerminalRef = Extract<PaneContentRef, { kind: "terminal" }>;
+type CapturedClaudeRef = Extract<PaneContentRef, { kind: "captured-claude" }>;
 
 const registry: ViewerRegistration[] = [
   defineViewer<PickerPaneRef>({
@@ -112,6 +119,22 @@ const registry: ViewerRegistration[] = [
         fallback={<div aria-busy="true" className="canvas-transcript canvas-transcript--center" />}
       >
         <TerminalPane />
+      </Suspense>
+    ),
+  }),
+  defineViewer<CapturedClaudeRef>({
+    id: "captured-claude",
+    canRender: (ref): ref is CapturedClaudeRef => ref.kind === "captured-claude",
+    paneId: () => "captured-claude",
+    title: () => "Claude (captured)",
+    defaultRect: (_ref, index) => cascadeRect(TERMINAL_RECT, contentStep(index)),
+    // Self-contained like the bare terminal (its own xterm + captured PTY socket); it ignores viewer
+    // props. Lazy, so a Suspense boundary covers the one-time shared-chunk fetch.
+    render: () => (
+      <Suspense
+        fallback={<div aria-busy="true" className="canvas-transcript canvas-transcript--center" />}
+      >
+        <CapturedClaudePane />
       </Suspense>
     ),
   }),
