@@ -1,6 +1,7 @@
 """Shared launch plumbing for the CLI entrypoints."""
 
 import contextlib
+import json
 import os
 import shutil
 import sysconfig
@@ -496,6 +497,7 @@ def build_launch_env(
     home_dir: Path | None = None,
     owned_native_session_id: str | None = None,
     owned_source_descriptor: str | None = None,
+    default_client_passthrough: Sequence[str] = (),
 ) -> dict[str, str]:
     """Return the shared runtime environment for a launch attempt.
 
@@ -519,6 +521,11 @@ def build_launch_env(
         env[env_keys.CLI] = cli
     if home_dir is not None:
         env[env_keys.AGENT_HOME_DIR] = str(home_dir)
+    if default_client_passthrough:
+        env[env_keys.DEFAULT_CLIENT_PASSTHROUGH] = json.dumps(
+            list(default_client_passthrough),
+            separators=(",", ":"),
+        )
     if owned_native_session_id is not None:
         env[env_keys.OWNED_NATIVE_SESSION_ID] = owned_native_session_id
     if owned_source_descriptor is not None:

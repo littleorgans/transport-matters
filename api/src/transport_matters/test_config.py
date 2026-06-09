@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 from psycopg import Connection
 
-from transport_matters import session
+from transport_matters import env_keys, session
 from transport_matters.config import (
     MissingDatabaseConfigError,
     Settings,
@@ -46,6 +46,21 @@ def test_settings_read_managed_home_dir(tmp_path: Path, monkeypatch: pytest.Monk
     home = tmp_path / "managed-home"
     monkeypatch.setenv("TRANSPORT_MATTERS_AGENT_HOME_DIR", str(home))
     assert get_settings().agent_home_dir == home
+
+
+def test_settings_read_default_client_passthrough_from_env(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(
+        env_keys.DEFAULT_CLIENT_PASSTHROUGH,
+        '["--dangerously-skip-permissions","--model","sonnet"]',
+    )
+
+    assert get_settings().default_client_passthrough == (
+        "--dangerously-skip-permissions",
+        "--model",
+        "sonnet",
+    )
 
 
 def test_settings_home_dir_defaults_none(monkeypatch: pytest.MonkeyPatch) -> None:

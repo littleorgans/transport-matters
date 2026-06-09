@@ -189,7 +189,7 @@ def _prepare_captured_agent_run(
     return prepare_captured_run(
         CapturedRunRequest(
             client_name=cli,
-            passthrough=(),
+            passthrough=settings.default_client_passthrough,
             directory=working_dir,
             proxy_port=None,
             web_port=None,

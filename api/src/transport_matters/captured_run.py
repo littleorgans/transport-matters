@@ -51,6 +51,7 @@ class CapturedRunRequest:
     no_system_prompt: bool
     debug: bool
     web_runtime: CapturedRunWebRuntime = WEB_RUNTIME_EMBEDDED
+    default_client_passthrough: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -209,6 +210,7 @@ def build_start_invocation(
     inject_system_prompt: Callable[..., list[str]],
     user_supplied_system_prompt: Callable[[list[str]], bool],
     web_runtime: CapturedRunWebRuntime = WEB_RUNTIME_EMBEDDED,
+    default_client_passthrough: Sequence[str] = (),
 ) -> Callable[[int, int | None], tuple[list[str], dict[str, str], ManagedClient | None]]:
     """Build the retry-safe invocation factory for a captured Claude launch."""
     from transport_matters.cli.launch_runtime import (
@@ -256,6 +258,7 @@ def build_start_invocation(
             owned_source_descriptor=(
                 managed_session.source_descriptor if managed_session is not None else None
             ),
+            default_client_passthrough=default_client_passthrough,
         )
         argv = build_mitmdump_argv(
             mitmdump=mitmdump,
@@ -577,6 +580,7 @@ def _build_captured_run_context(
                 inject_system_prompt=inject_system_prompt,
                 user_supplied_system_prompt=user_supplied_system_prompt,
                 web_runtime=request.web_runtime,
+                default_client_passthrough=request.default_client_passthrough,
             )
         else:
             from transport_matters.captured_codex import build_codex_captured_invocation
@@ -596,6 +600,7 @@ def _build_captured_run_context(
                 managed_session=managed_session,
                 env=env,
                 web_runtime=request.web_runtime,
+                default_client_passthrough=request.default_client_passthrough,
             )
     except Exception:
         stack.close()

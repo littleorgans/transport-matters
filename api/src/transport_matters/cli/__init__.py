@@ -96,6 +96,7 @@ class _SharedDesktopLaunchKwargs(TypedDict):
     port_in_use: Callable[[int], bool]
     allocate_port_pair: Callable[[], tuple[int, int]]
     run_client_with_retry: Callable[..., None]
+    default_client_passthrough: tuple[str, ...]
 
 
 __all__ = [
@@ -415,6 +416,7 @@ def desktop(
         "port_in_use": dependencies.port_in_use,
         "allocate_port_pair": dependencies.allocate_port_pair,
         "run_client_with_retry": plan.run_client_with_retry,
+        "default_client_passthrough": tuple(passthrough),
     }
     if plan.agent == "claude":
         run_start(

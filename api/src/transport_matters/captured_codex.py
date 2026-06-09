@@ -29,6 +29,7 @@ def build_codex_captured_invocation(
     managed_session: ManagedSession | None,
     env: Mapping[str, str],
     web_runtime: str,
+    default_client_passthrough: Sequence[str] = (),
 ) -> Callable[[int, int | None], tuple[list[str], dict[str, str], ManagedClient | None]]:
     """Build a nested capture only Codex invocation through the existing Codex path."""
     from transport_matters.cli.codex_cmd import (
@@ -61,4 +62,5 @@ def build_codex_captured_invocation(
         managed_session=managed_session,
         debug=debug,
         web_runtime=web_runtime,
+        default_client_passthrough=default_client_passthrough,
     )

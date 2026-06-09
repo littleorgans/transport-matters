@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 from typing import TYPE_CHECKING, Any
 
 import pytest
@@ -11,6 +12,7 @@ from starlette.websockets import WebSocketDisconnect
 
 from transport_matters.api.v1 import captured_terminal
 from transport_matters.captured_run import (
+    CLAUDE_CLIENT_NAME,
     CODEX_CLIENT_NAME,
     WEB_RUNTIME_EXTERNAL,
     CapturedRunDependencies,
@@ -33,6 +35,17 @@ def test_claude_route_contract_is_unchanged_and_specific_first() -> None:
     assert captured_terminal.CAPTURED_CLAUDE_TERMINAL_ROUTE == ("/captured-runs/claude/terminal")
     assert routes.index(captured_terminal.CAPTURED_CLAUDE_TERMINAL_ROUTE) < routes.index(
         captured_terminal.CAPTURED_TERMINAL_ROUTE
+    )
+
+
+def test_captured_terminal_routes_do_not_accept_ws_passthrough() -> None:
+    assert (
+        "passthrough"
+        not in inspect.signature(captured_terminal.captured_claude_terminal_socket).parameters
+    )
+    assert (
+        "passthrough"
+        not in inspect.signature(captured_terminal.captured_terminal_socket).parameters
     )
 
 
@@ -63,6 +76,60 @@ def test_unknown_captured_cli_is_rejected_before_spawn(
 
     assert exc_info.value.code == status.WS_1008_POLICY_VIOLATION
     assert prepare_called is False
+
+
+@pytest.mark.parametrize("cli_name", [CLAUDE_CLIENT_NAME, CODEX_CLIENT_NAME])
+def test_prepare_captured_agent_run_uses_settings_default_passthrough(
+    cli_name: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    settings = Settings(
+        cwd=tmp_path,
+        default_client_passthrough=("--dangerously-skip-permissions", "--model", "sonnet"),
+    )
+    dependencies = CapturedRunDependencies(
+        require_addon=lambda: tmp_path / "addon.py",
+        resolve_mitmdump=lambda: "/usr/bin/mitmdump",
+        which=lambda *_args, **_kwargs: f"/usr/bin/{cli_name}",
+        port_in_use=lambda _port: False,
+        allocate_port_pair=lambda: (39223, 49223),
+        inject_system_prompt=lambda *_args, **_kwargs: [],
+        user_supplied_system_prompt=lambda _args: False,
+        check_session_store=lambda: None,
+    )
+    captured: dict[str, Any] = {}
+
+    def fake_prepare(
+        request: CapturedRunRequest, **_kwargs: object
+    ) -> tuple[CapturedRunSpawnSpec, object]:
+        captured["request"] = request
+        return (
+            CapturedRunSpawnSpec(
+                run_id=f"run-{cli_name}",
+                working_dir=tmp_path,
+                storage_dir=tmp_path / "storage",
+                proxy_port=39223,
+                web_port=None,
+                mitmdump_log=tmp_path / "storage" / "logs" / "mitmdump.log",
+                client=None,
+                launch_env={},
+                managed_session=None,
+                client_name=cli_name,
+            ),
+            object(),
+        )
+
+    monkeypatch.setattr(captured_terminal, "default_claude_run_dependencies", lambda: dependencies)
+    monkeypatch.setattr(captured_terminal, "prepare_captured_run", fake_prepare)
+
+    captured_terminal._prepare_captured_agent_run(
+        cli=captured_terminal._validate_captured_run_cli(cli_name),
+        cwd=None,
+        settings=settings,
+    )
+
+    request = captured["request"]
+    assert request.client_name == cli_name
+    assert request.passthrough == settings.default_client_passthrough
 
 
 def test_prepare_captured_codex_run_requests_nested_capture_only(
