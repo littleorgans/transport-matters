@@ -101,7 +101,7 @@ describe("canvasLabStore captured runs", () => {
     for (const id of ids) expect(id.startsWith("claude:")).toBe(true);
   });
 
-  it("explicitly stops and forgets only that pane's run when its captured pane is closed", () => {
+  it("detaches (does NOT stop) an established run when its captured pane is closed", () => {
     vi.useFakeTimers();
     try {
       deleteRunMock.mockResolvedValue(undefined);
@@ -113,7 +113,10 @@ describe("canvasLabStore captured runs", () => {
       store().closePane(paneId);
       vi.runAllTimers();
 
-      expect(deleteRunMock).toHaveBeenCalledWith("run-1");
+      // Closing a pane detaches: the run is NOT stopped, so it stays alive and listed for
+      // the director to re-attach (the WS close on unmount drops the viewer count).
+      expect(deleteRunMock).not.toHaveBeenCalled();
+      // The pane and its local mapping are gone (so a reload won't auto-restore it).
       expect(useCapturedRunStore.getState().runs[paneId]).toBeUndefined();
       expect(store().contentRefs[paneId]).toBeUndefined();
     } finally {

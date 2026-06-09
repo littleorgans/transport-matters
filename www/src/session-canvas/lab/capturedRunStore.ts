@@ -44,8 +44,16 @@ export interface CapturedRunState {
    * re-attaches it via `ensureRun` (which resolves the stored run id, no POST).
    */
   adoptRun(provider: CliName, runId: string): CapturedRunKey;
-  /** Forget and explicitly stop (DELETE) this pane's run. Used on explicit pane close. */
-  clearRun(runKey: CapturedRunKey): void;
+  /**
+   * Detach this pane from its run on pane close: forget the pane's local run id so a
+   * reload won't auto-restore it. An ESTABLISHED run is NOT stopped — the terminal WS
+   * closes on unmount, so the backend drops this viewer (viewerCount falls) while the
+   * server run stays alive and listed, and the director can re-attach it. The one case
+   * that still stops a run is a close that races an in-flight spawn (no run id yet,
+   * nothing listed): cancel it so the just-born run is DELETEd and never persisted.
+   * Explicit stop (director stop-from-list) is a direct `deleteRun`, not this path.
+   */
+  detachRun(runKey: CapturedRunKey): void;
 }
 
 export function createCapturedRunKey(provider: CliName): CapturedRunKey {
@@ -104,22 +112,25 @@ export const useCapturedRunStore = create<CapturedRunState>()(
         return runKey;
       },
 
-      clearRun(runKey) {
+      detachRun(runKey) {
         const runId = get().runs[runKey]?.runId;
         if (runId !== undefined) {
-          // Resolved run: forget it and stop it. Best-effort stop — the user is closing
-          // the pane, so a failed DELETE must not block the UI; the backend idle-timeout
-          // policy reaps anything that slips by.
+          // Established run: forget only THIS pane's local mapping; do NOT stop the run.
+          // The pane's terminal WS closes on unmount, so the backend drops this viewer
+          // (viewerCount falls) while the server run keeps running and stays in the
+          // director list for re-attach. Dropping the mapping means a reload won't
+          // auto-restore this pane — re-attach is now an explicit director action.
           set((state) => {
             const { [runKey]: _removed, ...runs } = state.runs;
             return { runs };
           });
-          void deleteRun(runId).catch(() => {});
           return;
         }
         // Close raced an in-flight spawn (runs[runKey] not yet written): mark the key
-        // cancelled so the spawn's resolve stops the run and skips persisting it. The
-        // pending promise stays so its handler runs that cleanup.
+        // cancelled so the spawn's resolve stops the just-born run (DELETE) and skips
+        // persisting it. This is the only close path that stops a run — an unviewed,
+        // never-listed run would otherwise orphan. The pending promise stays so its
+        // handler runs that cleanup. Mirrors B1b-1's backend close/spawn rollback.
         if (pendingSpawns.has(runKey)) cancelledKeys.add(runKey);
       },
     }),

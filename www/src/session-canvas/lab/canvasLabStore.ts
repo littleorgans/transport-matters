@@ -307,12 +307,14 @@ export const useCanvasLabStore = create<CanvasLabState>()((set, get) => ({
     set((state) => ({ layout: markNodeClosing(state.layout, paneId) }));
     window.setTimeout(() => {
       const state = get();
-      // Explicit close stops the run (DELETE) and forgets its persisted id. Only this
-      // user-driven path stops a run: a browser reload drops the in-memory lab store
-      // without calling closePane, so the run survives and the pane re-attaches.
+      // Closing a pane DETACHES its run, it does not stop it: forget this pane's persisted
+      // id and let the terminal WS close on unmount (the backend drops the viewer and
+      // viewerCount falls), so the server run keeps running and stays in the director list
+      // for re-attach. A run is only stopped by an explicit director stop, or by the
+      // close-during-spawn cancellation inside detachRun (an unviewed, never-listed run).
       const closingRef = state.contentRefs[paneId];
       if (closingRef?.kind === "captured-run") {
-        useCapturedRunStore.getState().clearRun(closingRef.runKey);
+        useCapturedRunStore.getState().detachRun(closingRef.runKey);
       }
       const collapsing = state.expandedPaneId === paneId;
       const unframing = state.framing.paneId === paneId;

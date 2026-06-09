@@ -105,21 +105,23 @@ describe("capturedRunStore", () => {
     });
   });
 
-  it("stops and forgets only that pane's run on clearRun (explicit close)", async () => {
+  it("detaches without stopping an established run, forgetting only that pane's mapping", async () => {
     createCapturedRunMock.mockResolvedValueOnce("run-1").mockResolvedValueOnce("run-2");
     deleteRunMock.mockResolvedValue(undefined);
     await store().ensureRun("claude:k1", "claude");
     await store().ensureRun("claude:k2", "claude");
 
-    store().clearRun("claude:k1");
+    store().detachRun("claude:k1");
 
-    expect(deleteRunMock).toHaveBeenCalledWith("run-1");
-    expect(deleteRunMock).toHaveBeenCalledTimes(1);
+    // Detach must NOT stop the run: the server run stays alive and listed so the director
+    // can re-attach it (the WS close on unmount is what drops the viewer count).
+    expect(deleteRunMock).not.toHaveBeenCalled();
+    // Only this pane's mapping is forgotten (so a reload won't auto-restore it); siblings stay.
     expect(store().runs["claude:k1"]).toBeUndefined();
     expect(store().runs["claude:k2"]).toEqual({ provider: "claude", runId: "run-2" });
   });
 
-  it("cancels an in-flight spawn on close: stops the run and never persists it", async () => {
+  it("cancels an in-flight spawn on close: stops the just-born run and never persists it", async () => {
     let resolveSpawn!: (id: string) => void;
     createCapturedRunMock.mockReturnValue(
       new Promise<string>((r) => {
@@ -129,18 +131,18 @@ describe("capturedRunStore", () => {
     deleteRunMock.mockResolvedValue(undefined);
 
     const spawn = store().ensureRun("claude:k1", "claude"); // POST in-flight
-    store().clearRun("claude:k1"); // pane closed mid-spawn (runs["claude:k1"] still absent)
+    store().detachRun("claude:k1"); // pane closed mid-spawn (runs["claude:k1"] still absent)
     resolveSpawn("run-1"); // POST resolves AFTER the close
     await spawn;
 
-    // The just-born run must be stopped, so no orphaned server run is left running...
+    // An unviewed, never-listed run with no pane must be stopped, so nothing orphans...
     expect(deleteRunMock).toHaveBeenCalledWith("run-1");
     // ...and it must never be persisted, so a reload cannot restore the closed run (no zombie).
     expect(store().runs["claude:k1"]).toBeUndefined();
   });
 
-  it("clearRun is a no-op when no run exists for the pane", () => {
-    store().clearRun("claude:missing");
+  it("detachRun is a no-op when no run exists for the pane", () => {
+    store().detachRun("claude:missing");
     expect(deleteRunMock).not.toHaveBeenCalled();
   });
 
