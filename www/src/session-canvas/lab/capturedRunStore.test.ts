@@ -142,4 +142,120 @@ describe("capturedRunStore", () => {
     store().stopRun("claude:missing");
     expect(deleteRunMock).not.toHaveBeenCalled();
   });
+
+  it("setMinimized flags an established run, and clears it again, persisting the docked state", () => {
+    useCapturedRunStore.setState({ runs: { "claude:k1": { provider: "claude", runId: "run-1" } } });
+
+    store().setMinimized("claude:k1", true);
+    expect(store().runs["claude:k1"]).toEqual({
+      provider: "claude",
+      runId: "run-1",
+      minimized: true,
+    });
+    // The flag rides on the persisted record, so a reload can dock the run instead of reopening it.
+    expect(
+      JSON.parse(localStorage.getItem(FRONTEND_STORAGE_KEYS.capturedRunStore) as string).state.runs[
+        "claude:k1"
+      ].minimized,
+    ).toBe(true);
+
+    // Restore is the inverse: clearing the flag so a reload after restore reopens the pane as active.
+    store().setMinimized("claude:k1", false);
+    expect(store().runs["claude:k1"]).toEqual({
+      provider: "claude",
+      runId: "run-1",
+      minimized: false,
+    });
+  });
+
+  it("setMinimized does nothing for an unknown key with no run and no in-flight spawn", () => {
+    // No record AND no pending spawn => nothing to flag and nothing to defer to, so it is a genuine
+    // no-op. (The mid-spawn case, where a spawn IS pending, defers the flag — covered separately.)
+    store().setMinimized("claude:pending", true);
+    expect(store().runs["claude:pending"]).toBeUndefined();
+  });
+
+  it("minimize during an in-flight spawn persists minimized on resolve so a reload docks it", async () => {
+    // The blocker fix: a minimize that races the spawn has no record yet, so the flag is DEFERRED as
+    // a minimize-intent and applied when the spawn resolves and persists the record. Without it, the
+    // resolve would persist {provider, runId} with no flag and a reload would REOPEN, not dock.
+    let resolveSpawn!: (id: string) => void;
+    createCapturedRunMock.mockReturnValue(
+      new Promise<string>((r) => {
+        resolveSpawn = r;
+      }),
+    );
+
+    const spawn = store().ensureRun("claude:k1", "claude"); // POST in-flight, no record yet
+    store().setMinimized("claude:k1", true); // minimized mid-spawn -> deferred intent
+    expect(store().runs["claude:k1"]).toBeUndefined(); // nothing persisted while spawning
+
+    resolveSpawn("run-1");
+    await spawn;
+
+    expect(store().runs["claude:k1"]).toEqual({
+      provider: "claude",
+      runId: "run-1",
+      minimized: true,
+    });
+  });
+
+  it("close wins over a mid-spawn minimize for the same key (cancel + DELETE, not dock)", async () => {
+    // A key can be cancelled OR minimize-pending, never both: when a close races the spawn after a
+    // minimize, the cancel (DELETE, do-not-persist) takes precedence and the deferred minimize-intent
+    // is dropped, so the run is stopped rather than persisted-and-docked.
+    let resolveSpawn!: (id: string) => void;
+    createCapturedRunMock.mockReturnValue(
+      new Promise<string>((r) => {
+        resolveSpawn = r;
+      }),
+    );
+    deleteRunMock.mockResolvedValue(undefined);
+
+    const spawn = store().ensureRun("claude:k1", "claude");
+    store().setMinimized("claude:k1", true); // deferred minimize-intent
+    store().stopRun("claude:k1"); // then closed mid-spawn: cancel must win
+    resolveSpawn("run-1");
+    await spawn;
+
+    expect(deleteRunMock).toHaveBeenCalledWith("run-1");
+    expect(store().runs["claude:k1"]).toBeUndefined();
+  });
+
+  it("restore during an in-flight spawn drops the deferred minimize-intent (reopens on resolve)", async () => {
+    // minimize-then-restore before the spawn resolves clears the intent, so the record persists open
+    // and a reload reopens it (not docked).
+    let resolveSpawn!: (id: string) => void;
+    createCapturedRunMock.mockReturnValue(
+      new Promise<string>((r) => {
+        resolveSpawn = r;
+      }),
+    );
+
+    const spawn = store().ensureRun("claude:k1", "claude");
+    store().setMinimized("claude:k1", true); // deferred intent
+    store().setMinimized("claude:k1", false); // restored before resolve -> intent cleared
+    resolveSpawn("run-1");
+    await spawn;
+
+    expect(store().runs["claude:k1"]).toEqual({ provider: "claude", runId: "run-1" });
+  });
+
+  it("migrates a pre-S2 (v2) persisted payload without dropping runs or breaking the dock", async () => {
+    // Old data carries runs but no `minimized` field, stored at the prior version. The version bump
+    // must migrate it cleanly: runs survive and, with no flag, each is treated as open on reload (the
+    // S1 behavior) rather than lost or wrongly docked.
+    localStorage.setItem(
+      FRONTEND_STORAGE_KEYS.capturedRunStore,
+      JSON.stringify({
+        version: 2,
+        state: { runs: { "claude:k1": { provider: "claude", runId: "run-1" } } },
+      }),
+    );
+
+    await useCapturedRunStore.persist.rehydrate();
+
+    expect(store().runs["claude:k1"]).toEqual({ provider: "claude", runId: "run-1" });
+    expect(store().runs["claude:k1"]?.minimized).toBeUndefined();
+  });
 });

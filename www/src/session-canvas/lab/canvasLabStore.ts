@@ -78,6 +78,8 @@ export interface CanvasLabState {
   addCapturedRun(provider: CliName): void;
   /** Recreate a captured pane at its persisted key on reload so it re-attaches by id. */
   restoreCapturedPane(paneId: PaneId, provider: CliName): void;
+  /** Re-dock a captured pane persisted as minimized on reload — the docked counterpart to restoreCapturedPane. */
+  dockCapturedPane(paneId: PaneId, provider: CliName): void;
   /** Minimize ([-]): park the pane in the dock and remove it. Generic — runs the kind's onMinimize hook (captured keeps its run alive). */
   minimizePane(paneId: PaneId): void;
   /** Close ([X]): remove the pane and run the kind's onClose hook (captured-run kills the run via DELETE). */
@@ -224,6 +226,13 @@ function seedPaneLayout(state: CanvasLabState, paneId: PaneId): EngineLayoutStat
   );
 }
 
+/** The captured-run content ref a reload re-creates for a pane. The label is not persisted, so it is
+ *  re-derived by the viewer/registry; shared by the open (restoreCapturedPane) and docked
+ *  (dockCapturedPane) reload paths so the two ref shapes never drift. */
+function capturedRunRef(provider: CliName, runKey: PaneId): PaneContentRef {
+  return { kind: "captured-run", owner: "local", provider, runKey };
+}
+
 /** Seed a lab pane with an explicit id carrying a viewer-registry content ref. */
 function seedContentPane(
   state: CanvasLabState,
@@ -312,14 +321,19 @@ export const useCanvasLabStore = create<CanvasLabState>()((set, get) => ({
     // re-attaches to its own run by id. Idempotent — a remount within a session finds
     // the pane already open and leaves it untouched.
     if (get().contentRefs[paneId]) return;
-    set((state) =>
-      seedContentPane(state, paneId, {
-        kind: "captured-run",
-        owner: "local",
-        provider,
-        runKey: paneId,
-      }),
-    );
+    set((state) => seedContentPane(state, paneId, capturedRunRef(provider, paneId)));
+  },
+
+  dockCapturedPane(paneId, provider) {
+    // Reload counterpart to restoreCapturedPane: a run persisted as minimized comes back parked in the
+    // dock, not reopened as an active pane (the S1 reload caveat fix). Idempotent — skip if the pane is
+    // already open or already docked (StrictMode double-mount safe). The kept runId means a later
+    // restore re-attaches by id (ensureRun resolves it), never a re-spawn.
+    if (get().contentRefs[paneId]) return;
+    if (get().docked.some((docked) => docked.paneId === paneId)) return;
+    set((state) => ({
+      docked: [{ paneId, ref: capturedRunRef(provider, paneId) }, ...state.docked],
+    }));
   },
 
   minimizePane(paneId) {
@@ -340,15 +354,17 @@ export const useCanvasLabStore = create<CanvasLabState>()((set, get) => ({
     // resolves the kept run id (re-attach + PTY replay), a terminal opens a fresh PTY, a null ref
     // re-creates the demo card/ruler node from the id alone. A failed captured re-attach surfaces in
     // the viewer; the dock entry is already cleared here, so we never seek a replacement.
-    set((state) => {
-      const entry = state.docked.find((docked) => docked.paneId === paneId);
-      if (!entry) return {};
-      return {
-        docked: state.docked.filter((docked) => docked.paneId !== paneId),
-        contentRefs: entry.ref ? { ...state.contentRefs, [paneId]: entry.ref } : state.contentRefs,
-        layout: seedPaneLayout(state, paneId),
-      };
-    });
+    const entry = get().docked.find((docked) => docked.paneId === paneId);
+    if (!entry) return;
+    // Re-attach side effect through the seam (the inverse of minimize): a captured-run clears its
+    // persisted `minimized` flag so a reload after restore reopens it as a pane, not docked. Plain
+    // panes declare no onRestore. Mirrors closeDockedPane's dispatch — zero kind=== branches here.
+    if (entry.ref) resolvePaneLifecycle(entry.ref).onRestore?.(entry.ref);
+    set((state) => ({
+      docked: state.docked.filter((docked) => docked.paneId !== paneId),
+      contentRefs: entry.ref ? { ...state.contentRefs, [paneId]: entry.ref } : state.contentRefs,
+      layout: seedPaneLayout(state, paneId),
+    }));
   },
 
   closeDockedPane(paneId) {

@@ -4,11 +4,14 @@ export type PaneLifecycleKind = CanvasPaneRef["kind"];
 
 /**
  * Per-kind lifecycle hooks fed the pane's own content ref. Absent hook = the generic
- * path (dock on minimize, remove on close) with no resource side effect. The store runs
- * the resolved hook inside the close-delay window, replacing the old `kind === ...` branch.
+ * path (dock on minimize, restore on un-dock, remove on close) with no resource side effect. The
+ * store runs the resolved hook at the matching transition, replacing the old `kind === ...` branch.
+ * `onMinimize`/`onClose` run inside the close-delay window; `onRestore` runs as the pane leaves the
+ * dock (captured-run uses the minimize/restore pair to set/clear its persisted dock flag).
  */
 export interface PaneLifecyclePolicy<TRef extends CanvasPaneRef = CanvasPaneRef> {
   onMinimize?(ref: TRef): void;
+  onRestore?(ref: TRef): void;
   onClose?(ref: TRef): void;
 }
 

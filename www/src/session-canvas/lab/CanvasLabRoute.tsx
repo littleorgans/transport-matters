@@ -34,6 +34,7 @@ export function CanvasLabRoute() {
   const addTerminal = useCanvasLabStore((state) => state.addTerminal);
   const addCapturedRun = useCanvasLabStore((state) => state.addCapturedRun);
   const restoreCapturedPane = useCanvasLabStore((state) => state.restoreCapturedPane);
+  const dockCapturedPane = useCanvasLabStore((state) => state.dockCapturedPane);
   const organize = useCanvasLabStore((state) => state.organize);
   const minimizePane = useCanvasLabStore((state) => state.minimizePane);
   const closePane = useCanvasLabStore((state) => state.closePane);
@@ -75,16 +76,17 @@ export function CanvasLabRoute() {
     for (let index = 0; index < SEED_PANES; index += 1) addPane();
   }, [addPane]);
 
-  // Re-attach persisted runs on mount: a browser reload drops the in-memory lab store
-  // but keeps each pane's run, so recreate a captured pane at every persisted key and
-  // the pane re-attaches to its own run by id (output continues) instead of leaving the
-  // headless run orphaned. restoreCapturedPane is idempotent across remounts.
+  // Reconcile persisted runs on mount: a browser reload drops the in-memory lab store but keeps each
+  // pane's run (and its docked flag). A run flagged minimized comes back DOCKED; the rest reopen as
+  // active panes and re-attach to their own run by id (output continues) instead of leaving the
+  // headless run orphaned. Both paths are idempotent across remounts.
   useEffect(() => {
     const { runs } = useCapturedRunStore.getState();
     for (const [paneId, record] of Object.entries(runs)) {
-      restoreCapturedPane(paneId, record.provider);
+      if (record.minimized) dockCapturedPane(paneId, record.provider);
+      else restoreCapturedPane(paneId, record.provider);
     }
-  }, [restoreCapturedPane]);
+  }, [restoreCapturedPane, dockCapturedPane]);
 
   // Probe managed-CLI availability once so the Spawn buttons reflect what's installed.
   useEffect(() => {

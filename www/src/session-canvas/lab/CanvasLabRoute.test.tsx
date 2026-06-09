@@ -100,6 +100,23 @@ describe("CanvasLabRoute captured-run spawn buttons", () => {
     });
   });
 
+  it("docks a persisted minimized run on mount instead of reopening it (reload-persist)", () => {
+    // A run minimized before a browser reload must come back DOCKED, not as an active pane. The kept
+    // runId lets a later restore re-attach by id (no re-spawn); on mount it simply parks in the dock.
+    useCapturedRunStore.setState({
+      runs: { "claude:k1": { provider: "claude", runId: "run-1", minimized: true } },
+    });
+    seedCapabilities({ claude: true, codex: true });
+
+    render(<CanvasLabRoute />);
+
+    // Not reopened as an active pane...
+    expect(useCanvasLabStore.getState().contentRefs["claude:k1"]).toBeUndefined();
+    // ...parked in the dock instead, so the operator restores it deliberately.
+    expect(useCanvasLabStore.getState().docked.map((entry) => entry.paneId)).toEqual(["claude:k1"]);
+    expect(screen.getByRole("button", { name: "Minimized panes, 1" })).toBeInTheDocument();
+  });
+
   it("keeps the dock visible when the lab top bar is TAB-hidden", () => {
     seedCapabilities({ claude: true, codex: true });
     render(<CanvasLabRoute />);

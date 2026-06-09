@@ -150,11 +150,13 @@ describe("canvasLabStore captured runs", () => {
       vi.runAllTimers();
 
       // Minimize is non-destructive: the run is NOT stopped, and its binding is KEPT so restore
-      // re-attaches by id (the WS close on unmount only drops the viewer count).
+      // re-attaches by id (the WS close on unmount only drops the viewer count). The captured-run
+      // onMinimize hook also flags the persisted record minimized so a reload docks it (S2).
       expect(deleteRunMock).not.toHaveBeenCalled();
       expect(useCapturedRunStore.getState().runs[paneId]).toEqual({
         provider: "claude",
         runId: "run-1",
+        minimized: true,
       });
       // The pane leaves the canvas and parks in the dock for local restore.
       expect(store().contentRefs[paneId]).toBeUndefined();
@@ -198,6 +200,28 @@ describe("canvasLabStore captured runs", () => {
       expect(store().layout.nodes[paneId]).toBeDefined();
       expect(store().docked).toEqual([]);
       expect(createCapturedRunMock).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("restorePane clears the persisted minimized flag so a reload after restore reopens it", () => {
+    vi.useFakeTimers();
+    try {
+      store().addCapturedRun("claude");
+      const paneId = capturedPaneIds(store().contentRefs)[0];
+      if (!paneId) throw new Error("expected a captured pane");
+      useCapturedRunStore.setState({ runs: { [paneId]: { provider: "claude", runId: "run-1" } } });
+
+      store().minimizePane(paneId);
+      vi.runAllTimers();
+      expect(useCapturedRunStore.getState().runs[paneId]?.minimized).toBe(true);
+
+      store().restorePane(paneId);
+
+      // Restore runs the captured-run onRestore hook through the seam (no kind=== branch), the inverse
+      // of minimize: the flag clears so a later reload reopens the pane as active, not docked.
+      expect(useCapturedRunStore.getState().runs[paneId]?.minimized).toBe(false);
     } finally {
       vi.useRealTimers();
     }
