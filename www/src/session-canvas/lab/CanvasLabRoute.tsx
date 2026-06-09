@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { LayoutCanvas } from "../../engine";
-import { listLayouts } from "../../engine/layout";
+import { CANVAS_LAYOUT_MARGIN, listLayouts } from "../../engine/layout";
 import { CommandBarSections } from "../components/CommandBarSections";
 import { PaneChrome } from "../components/PaneChrome";
+import { PaneDock } from "../components/PaneDock";
 import { RouteSwitcher } from "../components/RouteSwitcher";
 import type { PaneContentRef, ViewerProps } from "../model/paneRecords";
 import { renderPaneContent, titleForRef, viewerIdForRef } from "../viewers/registry";
@@ -10,7 +11,9 @@ import { ControlsPanel } from "./ControlsPanel";
 import { framedPaneId, useCanvasLabStore } from "./canvasLabStore";
 import { cliInstalled, useCapabilitiesStore } from "./capabilitiesStore";
 import { useCapturedRunStore } from "./capturedRunStore";
-import { DirectorPanel } from "./DirectorPanel";
+// Side-effect import: registers the captured-run lifecycle hook (onClose -> stopRun) lab-side, so
+// capturedRunStore never reaches the prod bundle. Must run before any close dispatches through it.
+import "./labLifecycle";
 import { LabCardPane } from "./viewers/LabCardPane";
 import { LabRulerPane } from "./viewers/LabRulerPane";
 
@@ -25,13 +28,15 @@ export function CanvasLabRoute() {
   const activeStrategyId = useCanvasLabStore((state) => state.activeStrategyId);
   const fitToContent = useCanvasLabStore((state) => state.fitToContent);
   const contentRefs = useCanvasLabStore((state) => state.contentRefs);
+  const docked = useCanvasLabStore((state) => state.docked);
   const addPane = useCanvasLabStore((state) => state.addPane);
   const addTerminal = useCanvasLabStore((state) => state.addTerminal);
   const addCapturedRun = useCanvasLabStore((state) => state.addCapturedRun);
   const restoreCapturedPane = useCanvasLabStore((state) => state.restoreCapturedPane);
   const organize = useCanvasLabStore((state) => state.organize);
-  const hidePane = useCanvasLabStore((state) => state.hidePane);
+  const minimizePane = useCanvasLabStore((state) => state.minimizePane);
   const closePane = useCanvasLabStore((state) => state.closePane);
+  const restorePane = useCanvasLabStore((state) => state.restorePane);
   const focusPane = useCanvasLabStore((state) => state.focusPane);
   const expandPane = useCanvasLabStore((state) => state.expandPane);
   const framePane = useCanvasLabStore((state) => state.framePane);
@@ -114,9 +119,10 @@ export function CanvasLabRoute() {
           expanded={expandedPane === paneId}
           focused={focusedPaneId === paneId}
           onClose={() => closePane(paneId)}
-          // Captured panes can minimize ([-]): detach the run into the director for re-attach.
-          // Other panes carry no run, so they only close.
-          onMinimize={ref?.kind === "captured-run" ? () => hidePane(paneId) : undefined}
+          // Every pane can minimize ([-]) into the dock; only the side effect differs by kind (the
+          // captured-run policy keeps its run alive, plain panes just park their ref). Universal
+          // chrome, no per-kind gate.
+          onMinimize={() => minimizePane(paneId)}
           onExpand={() => expandPane(paneId)}
           onFrame={() => framePane(paneId)}
           onHeaderDoubleClick={(event) => (event.shiftKey ? expandPane(paneId) : framePane(paneId))}
@@ -138,7 +144,7 @@ export function CanvasLabRoute() {
     },
     [
       contentRefs,
-      hidePane,
+      minimizePane,
       closePane,
       focusPane,
       expandPane,
@@ -150,7 +156,12 @@ export function CanvasLabRoute() {
   );
 
   return (
-    <main className="canvas-route-shell">
+    <main
+      className="canvas-route-shell"
+      // Single source for the pane-grid top margin (world units) AND the dock-band height (screen
+      // px): both read --canvas-layout-margin, set once here from the layout const.
+      style={{ "--canvas-layout-margin": `${CANVAS_LAYOUT_MARGIN}px` } as React.CSSProperties}
+    >
       {chromeHidden ? null : (
         <div
           aria-label="Canvas lab controls"
@@ -220,7 +231,6 @@ export function CanvasLabRoute() {
             }
             secondaryLabel="Layout"
           />
-          <DirectorPanel />
         </div>
       )}
       <div className="canvas-lab-stage" ref={stageRef}>
@@ -231,6 +241,8 @@ export function CanvasLabRoute() {
           onFocusPane={focusPane}
           onMovePane={updatePaneRect}
           onResizePane={updatePaneRect}
+          // Canvas-resident dock: top band, screen-space, survives the TAB hide of the command bar.
+          overlay={<PaneDock docked={docked} onRestore={restorePane} />}
           paneMotion={paneMotion}
           renderPane={renderPane}
           setViewport={setViewport}

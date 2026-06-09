@@ -1,19 +1,19 @@
 import { describe, expect, it } from "vitest";
 import { planGridFit } from "./strategies/gridFit";
-import type { PlanInput } from "./types";
+import { CANVAS_LAYOUT_MARGIN, type PlanInput } from "./types";
 
 const DEFAULTS = {
   minW: 320,
   minH: 240,
   gap: 24,
-  margin: 48,
+  margin: CANVAS_LAYOUT_MARGIN, // 64: the single-source prod-wide layout margin this test guards
   targetAspect: 4 / 3,
   packing: "fill" as const,
   lastRow: "left" as const,
 };
 const VIEWPORT = { width: 1600, height: 1000 };
-const VIEWPORT_12 = { width: 1600, height: 1044 }; // 4x3 cellH = (1044-144)/3 = 300 (exact)
-const VIEWPORT_5 = { width: 1602, height: 1000 }; // 3x2 cellW = (1602-144)/3 = 486 (exact)
+const VIEWPORT_12 = { width: 1600, height: 1076 }; // 4x3 cellH = (1076-176)/3 = 300 (exact; 176 = 2*64 + 2*24)
+const VIEWPORT_5 = { width: 1604, height: 1000 }; // 3x2 cellW = (1604-176)/3 = 476 (exact; 176 = 2*64 + 2*24)
 
 function ids(n: number): string[] {
   return Array.from({ length: n }, (_value, index) => `p${index}`);
@@ -30,40 +30,40 @@ describe("planGridFit", () => {
   });
 
   it("fills the work area for N=1", () => {
-    expect(plan(1).rects.p0).toEqual({ x: 48, y: 48, width: 1504, height: 904 });
+    expect(plan(1).rects.p0).toEqual({ x: 64, y: 64, width: 1472, height: 872 });
   });
 
   it("places two panes side by side", () => {
     const { rects } = plan(2);
-    expect(rects.p0).toEqual({ x: 48, y: 48, width: 740, height: 904 });
-    expect(rects.p1).toEqual({ x: 812, y: 48, width: 740, height: 904 });
+    expect(rects.p0).toEqual({ x: 64, y: 64, width: 724, height: 872 });
+    expect(rects.p1).toEqual({ x: 812, y: 64, width: 724, height: 872 });
   });
 
   it("uses a 2x2 grid for four panes", () => {
     const { rects, reason } = plan(4);
     expect(reason).toBe("grid-fit 2x2");
-    expect(rects.p0).toEqual({ x: 48, y: 48, width: 740, height: 440 });
-    expect(rects.p3).toEqual({ x: 812, y: 512, width: 740, height: 440 });
+    expect(rects.p0).toEqual({ x: 64, y: 64, width: 724, height: 424 });
+    expect(rects.p3).toEqual({ x: 812, y: 512, width: 724, height: 424 });
   });
 
   // The zoom-aware selector picks WIDER panes (3x2) over the old 2x3 because they fill the width.
   it("produces the exact 3x2 table for N=5 (last row left-aligned)", () => {
     const { rects, reason } = planGridFit({ paneIds: ids(5), viewport: VIEWPORT_5 }, DEFAULTS);
     expect(reason).toBe("grid-fit 3x2");
-    expect(rects.p0).toEqual({ x: 48, y: 48, width: 486, height: 440 });
-    expect(rects.p1).toEqual({ x: 558, y: 48, width: 486, height: 440 });
-    expect(rects.p2).toEqual({ x: 1068, y: 48, width: 486, height: 440 });
-    expect(rects.p3).toEqual({ x: 48, y: 512, width: 486, height: 440 });
-    expect(rects.p4).toEqual({ x: 558, y: 512, width: 486, height: 440 }); // partial row, left
+    expect(rects.p0).toEqual({ x: 64, y: 64, width: 476, height: 424 });
+    expect(rects.p1).toEqual({ x: 564, y: 64, width: 476, height: 424 });
+    expect(rects.p2).toEqual({ x: 1064, y: 64, width: 476, height: 424 });
+    expect(rects.p3).toEqual({ x: 64, y: 512, width: 476, height: 424 });
+    expect(rects.p4).toEqual({ x: 564, y: 512, width: 476, height: 424 }); // partial row, left
   });
 
   it("produces the exact 4x3 table for N=12", () => {
     const { rects, reason } = planGridFit({ paneIds: ids(12), viewport: VIEWPORT_12 }, DEFAULTS);
     expect(reason).toBe("grid-fit 4x3");
-    expect(rects.p0).toEqual({ x: 48, y: 48, width: 358, height: 300 });
-    expect(rects.p3).toEqual({ x: 1194, y: 48, width: 358, height: 300 });
-    expect(rects.p4).toEqual({ x: 48, y: 372, width: 358, height: 300 });
-    expect(rects.p11).toEqual({ x: 1194, y: 696, width: 358, height: 300 });
+    expect(rects.p0).toEqual({ x: 64, y: 64, width: 350, height: 300 });
+    expect(rects.p3).toEqual({ x: 1186, y: 64, width: 350, height: 300 });
+    expect(rects.p4).toEqual({ x: 64, y: 388, width: 350, height: 300 });
+    expect(rects.p11).toEqual({ x: 1186, y: 712, width: 350, height: 300 });
   });
 
   // Backs the §2.3 spec table at its 1600x1000 design space (the exact-table tests above use
@@ -71,12 +71,12 @@ describe("planGridFit", () => {
   it("matches the §2.3 spec table at the 1600x1000 design space", () => {
     const five = plan(5);
     expect(five.reason).toBe("grid-fit 3x2");
-    expect(five.rects.p0?.width).toBeCloseTo(485.33, 1); // (1600-48-96)/3
-    expect(five.rects.p0?.height).toBe(440);
+    expect(five.rects.p0?.width).toBeCloseTo(474.67, 1); // (1600-48-128)/3
+    expect(five.rects.p0?.height).toBe(424);
     const twelve = plan(12);
     expect(twelve.reason).toBe("grid-fit 4x3");
-    expect(twelve.rects.p0?.width).toBe(358);
-    expect(twelve.rects.p0?.height).toBeCloseTo(285.33, 1); // (1000-48-96)/3
+    expect(twelve.rects.p0?.width).toBe(350);
+    expect(twelve.rects.p0?.height).toBeCloseTo(274.67, 1); // (1000-48-128)/3
   });
 
   // Regression for the horizontal-slack bug: 13 panes that used to land 4x4 @ zoom ~0.78 (empty band
@@ -131,9 +131,10 @@ describe("planGridFit", () => {
       { paneIds: ids(5), viewport: VIEWPORT_5 },
       { ...DEFAULTS, lastRow: "center" },
     );
-    // 3x2: row 2 has 2 of 3 panes, centred. rowWidth = 2*486 + 24 = 996; startX = (1506-996)/2 = 255.
-    expect(rects.p3?.x).toBe(303);
-    expect(rects.p4?.x).toBe(813);
+    // 3x2: row 2 has 2 of 3 panes, centred. rowWidth = 2*476 + 24 = 976; usableW = 1604-128 = 1476;
+    // startX = 64 + (1476-976)/2 = 314.
+    expect(rects.p3?.x).toBe(314);
+    expect(rects.p4?.x).toBe(814);
   });
 
   it("floors the binding axis at min and fills the cross axis on overflow (camera fit is lab-side)", () => {
@@ -145,7 +146,7 @@ describe("planGridFit", () => {
     // Width-bound: width sits on the 320 min floor; height fills the vertical slack (> 240 base) so
     // there is no top/bottom negative space once the camera zooms to fit.
     expect(Object.values(rects).every((rect) => rect.width === 320)).toBe(true);
-    expect(rects.p0?.height).toBeCloseTo(264.67, 1);
+    expect(rects.p0?.height).toBeCloseTo(265.56, 1);
     expect(rects.p0?.height ?? 0).toBeGreaterThan(240);
     const distinctRows = new Set(Object.values(rects).map((rect) => rect.y)).size;
     expect(distinctRows).toBe(4);
@@ -168,8 +169,8 @@ describe("planGridFit packing=aspect", () => {
       { ...ASPECT, minW: 380 },
     );
     expect(reason).toBe("grid-fit 5x3");
-    expect(rects.p0?.x).toBe(48);
-    expect(rects.p0?.y).toBe(48);
+    expect(rects.p0?.x).toBe(64);
+    expect(rects.p0?.y).toBe(64);
     expect(rects.p0?.width).toBe(380); // 5 columns (width floored), not a wide 4x3
   });
 });

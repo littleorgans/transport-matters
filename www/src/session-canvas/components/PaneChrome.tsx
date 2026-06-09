@@ -6,8 +6,8 @@
 // and the visible state label — the lab opts in so small tiled panes stay legible; production does
 // not, so its header is unchanged. The dropped text stays in `data-state` and the aria-label.
 // Optional onMinimize adds a [-] button left of Close, so Close stays the rightmost control. Only
-// callers that have somewhere to minimize to (the lab's captured panes detach into the director)
-// pass it; production passes neither it nor onFrame, so its header is unchanged.
+// callers with somewhere to minimize to pass it (the lab parks every pane in its canvas dock);
+// production passes neither it nor onFrame, so its header is unchanged.
 export interface PaneChromeProps {
   title: string;
   badge: string;

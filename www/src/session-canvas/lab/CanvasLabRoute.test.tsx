@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CliCapability, CliName } from "../../types";
 import { CanvasLabRoute } from "./CanvasLabRoute";
@@ -9,9 +9,6 @@ import { resetCapturedRunStoreForTests, useCapturedRunStore } from "./capturedRu
 vi.mock("../../api", () => ({
   createCapturedRun: vi.fn(),
   deleteRun: vi.fn(),
-  // The lab command bar mounts the director surface, which GETs /api/runs on mount.
-  // An empty roster keeps these spawn-button tests free of network and director noise.
-  listRuns: vi.fn(() => Promise.resolve([])),
 }));
 
 // The lab gates its captured-run spawn buttons on managed-CLI availability. Seeding
@@ -101,5 +98,28 @@ describe("CanvasLabRoute captured-run spawn buttons", () => {
       provider: "claude",
       runKey: "claude:k1",
     });
+  });
+
+  it("keeps the dock visible when the lab top bar is TAB-hidden", () => {
+    seedCapabilities({ claude: true, codex: true });
+    render(<CanvasLabRoute />);
+    // Park a pane in the dock (its only source) directly, skipping the close-delay timer.
+    act(() => {
+      useCanvasLabStore.setState({
+        docked: [{ paneId: "lab-1", ref: { kind: "terminal", owner: "local" } }],
+      });
+    });
+
+    expect(screen.getByRole("toolbar", { name: "Canvas lab controls" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Minimized panes, 1" })).toBeInTheDocument();
+
+    // TAB hides the command bar; the dock lives in the canvas viewport overlay (not the bar), so it
+    // persists — the operator can still restore a minimized pane in cockpit mode.
+    act(() => {
+      fireEvent.keyDown(window, { key: "Tab" });
+    });
+
+    expect(screen.queryByRole("toolbar", { name: "Canvas lab controls" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Minimized panes, 1" })).toBeInTheDocument();
   });
 });

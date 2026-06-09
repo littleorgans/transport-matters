@@ -1,7 +1,13 @@
 import type { ViewportBounds, WorldRect } from "../../types";
 import { fitScale } from "../fit";
 import { registerLayout } from "../registry";
-import type { Control, LayoutParams, PlanInput, PlanResult } from "../types";
+import {
+  CANVAS_LAYOUT_MARGIN,
+  type Control,
+  type LayoutParams,
+  type PlanInput,
+  type PlanResult,
+} from "../types";
 
 // Width-filling grid. The column count is chosen by SIMULATING the final on-screen result
 // including the lab's zoom-to-fit, so a layout never leaves horizontal slack after zooming out.
@@ -19,7 +25,7 @@ const DEFAULTS: GridFitParams = {
   minW: 320,
   minH: 240,
   gap: 24,
-  margin: 48,
+  margin: CANVAS_LAYOUT_MARGIN,
   targetAspect: 4 / 3,
   packing: "fill",
   lastRow: "left",

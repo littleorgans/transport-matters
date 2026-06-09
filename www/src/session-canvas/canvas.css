@@ -489,6 +489,15 @@
 /* Canvas lab (experimental /canvas-lab route) */
 .canvas-command-bar--lab {
   flex-wrap: wrap;
+  /* Continuous with the canvas: drop the panel fill, blur, border, and shadow so the lab bar reads
+     as part of the background. The .canvas-button controls carry their own border + fill, so they
+     are unaffected; the dim identity labels (#949494) stay legible on the near-black
+     #040404 -> #080808 gradient (~6:1, above WCAG AA). Dropping backdrop-filter also sheds one
+     compositor layer (aligns with the canvas-render audit). */
+  background: transparent;
+  backdrop-filter: none;
+  border-color: transparent;
+  box-shadow: none;
 }
 .canvas-lab-stage {
   position: absolute;
@@ -518,91 +527,101 @@
   min-width: 2.5rem;
   color: var(--color-txt);
 }
-/* Director surface: a live roster of managed captured runs, dropped onto its own
-   full-width row under a hairline so the run list never crowds the spawn buttons. */
-.canvas-lab-director {
-  flex-basis: 100%;
-  display: flex;
-  flex-direction: column;
-  gap: calc(var(--canvas-pane-gap) * 0.6);
-  padding-block-start: var(--canvas-pane-gap);
-  margin: 0;
-  border-block-start: 1px solid var(--color-edge);
-  min-inline-size: 0;
-}
-.canvas-lab-director__head {
+/* Pane dock: a canvas-resident chip in the viewport top band (the pane-grid top margin). Screen-
+   space, z-1900 — above panes, below the transient command bar (z-2000), whose trailing end is now
+   free — so it reads in the band whether the lab bar is shown or TAB-hidden. */
+.canvas-viewport-dock {
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline-end: var(--canvas-command-inset);
+  z-index: 1900;
   display: flex;
   align-items: center;
-  gap: var(--canvas-command-gap);
+  /* Occupy the top band: the same number as the pane-grid top margin, so at rest (scale 1) the chip
+     sits in the gap above the first pane row. */
+  block-size: var(--canvas-layout-margin);
 }
-.canvas-lab-director__title {
-  color: var(--color-txt-2);
-  font-size: 0.72rem;
+.canvas-dock__chip {
+  display: flex;
+  align-items: center;
+  gap: var(--canvas-pane-gap);
+  border: var(--canvas-pane-border);
+  background: rgb(var(--shadow-rgb) / 0.6);
+  box-shadow: var(--canvas-pane-shadow);
+  backdrop-filter: blur(16px);
+  padding: calc(var(--canvas-pane-gap) * 0.75) var(--canvas-pane-padding);
+  color: var(--color-txt);
+}
+.canvas-dock__chip:hover {
+  background: rgb(var(--shadow-rgb) / 0.74);
+}
+.canvas-dock__chip:focus-visible {
+  outline: none;
+  box-shadow: var(--canvas-pane-shadow), var(--canvas-focus-ring);
+}
+.canvas-dock__label {
+  font-size: 0.75rem;
   text-transform: uppercase;
   letter-spacing: 0.08em;
 }
-.canvas-lab-director__count {
-  color: var(--color-txt-3);
+.canvas-dock__count {
+  min-inline-size: 1.25rem;
+  border: 1px solid rgb(var(--accent-rgb) / 0.5);
+  color: var(--color-accent);
+  padding: 0 calc(var(--canvas-pane-gap) * 0.5);
   font-size: 0.72rem;
   font-variant-numeric: tabular-nums;
+  text-align: center;
 }
-.canvas-lab-director__status {
-  margin: 0;
-  color: var(--color-txt-3);
-  font-size: 0.72rem;
-}
-.canvas-lab-director__list {
+.canvas-dock__menu {
+  position: absolute;
+  inset-block-start: 100%;
+  inset-inline-end: 0;
+  z-index: 1;
   display: flex;
   flex-direction: column;
   gap: calc(var(--canvas-pane-gap) * 0.5);
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  max-block-size: 9rem;
+  min-inline-size: 14rem;
+  max-block-size: 60vh;
+  margin: calc(var(--canvas-pane-gap) * 0.5) 0 0;
+  padding: var(--canvas-pane-gap);
+  border: var(--canvas-pane-border);
+  background: rgb(var(--shadow-rgb) / 0.92);
+  box-shadow: var(--canvas-pane-shadow);
+  backdrop-filter: blur(16px);
   overflow-y: auto;
 }
-.canvas-lab-director__row {
+.canvas-dock__row {
   display: flex;
   align-items: center;
   gap: var(--canvas-command-gap);
-  min-inline-size: 0;
-  color: var(--color-txt-2);
-  font-size: 0.72rem;
-}
-.canvas-lab-director__cli {
+  inline-size: 100%;
+  border: 1px solid var(--color-edge);
+  background: var(--color-surface);
   color: var(--color-txt);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+  padding: var(--canvas-row-padding);
+  text-align: start;
 }
-.canvas-lab-director__state {
+.canvas-dock__row:hover {
+  border-color: rgb(var(--accent-rgb) / 0.58);
+  background: var(--color-hover);
+}
+.canvas-dock__row:focus-visible {
+  outline: none;
+  box-shadow: var(--canvas-focus-ring);
+}
+.canvas-dock__kind {
+  flex-shrink: 0;
   color: var(--color-txt-3);
+  font-size: 0.7rem;
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }
-.canvas-lab-director__state[data-state="running"] {
-  color: var(--color-sage);
-}
-.canvas-lab-director__state[data-state="starting"],
-.canvas-lab-director__state[data-state="stopping"] {
-  color: var(--color-amber);
-}
-.canvas-lab-director__cwd {
-  flex: 1;
-  min-inline-size: 0;
+.canvas-dock__title {
   overflow: hidden;
+  font-size: 0.82rem;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--color-txt-2);
-  font-family: var(--font-mono);
-}
-.canvas-lab-director__viewers {
-  color: var(--color-txt-3);
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-.canvas-lab-director__actions {
-  display: flex;
-  gap: calc(var(--canvas-pane-gap) * 0.6);
 }
 .canvas-world--framing {
   transition: transform 320ms cubic-bezier(0.22, 1, 0.36, 1);
