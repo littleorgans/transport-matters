@@ -11,9 +11,18 @@ import uvicorn
 
 from transport_matters import addon_runtime, pause_session
 from transport_matters import breakpoint as bp
-from transport_matters.addon_runtime import AddonRuntime, close_runtime
+from transport_matters.addon_runtime import (
+    AddonRuntime,
+    CaptureRuntime,
+    WebRuntime,
+    close_capture_runtime,
+    close_runtime,
+    close_web_runtime,
+    load_capture_runtime,
+    start_web_runtime,
+)
 from transport_matters.config import Settings
-from transport_matters.counting import TokenCounter, set_counter, set_recent_auth
+from transport_matters.counting import TokenCounter, get_counter, set_counter, set_recent_auth
 from transport_matters.index.adapters.base import (
     FileTailSource,
     SessionBinding,
@@ -35,6 +44,21 @@ def _make_server() -> uvicorn.Server:
     """Build an unstarted uvicorn.Server backed by the real FastAPI app."""
     config = uvicorn.Config(create_app(), host="127.0.0.1", port=0, log_config=None)
     return uvicorn.Server(config)
+
+
+def _make_runtime(
+    *, client: httpx.AsyncClient, counter: TokenCounter, server: uvicorn.Server
+) -> tuple[AddonRuntime, asyncio.Task[None]]:
+    serve_task: asyncio.Task[None] = asyncio.create_task(
+        _serve_until_exit(server), name="web-ui-serve"
+    )
+    return (
+        AddonRuntime(
+            capture=CaptureRuntime(http_client=client, token_counter=counter),
+            web=WebRuntime(server=server, serve_task=serve_task),
+        ),
+        serve_task,
+    )
 
 
 async def _serve_until_exit(server: uvicorn.Server) -> None:
@@ -66,6 +90,100 @@ def _reset_state() -> None:
 # ---------------------------------------------------------------------------
 
 
+async def test_load_capture_runtime_starts_capture_resources_without_uvicorn(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Capture startup creates counter, writer, tailer, and never instantiates uvicorn.Server."""
+    pool = object()
+
+    class ServerShouldNotExist:
+        def __init__(self, *_args: object, **_kwargs: object) -> None:
+            raise AssertionError("load_capture_runtime must not create uvicorn.Server")
+
+    class FakeWriter:
+        def __init__(self, seen_pool: object, *, loop: asyncio.AbstractEventLoop) -> None:
+            self.pool = seen_pool
+            self.loop = loop
+            self.closed = False
+            writers.append(self)
+
+        def submit_blocking(self, _batch: object) -> object:
+            return type("CommitResult", (), {"ok": True})()
+
+        async def aclose(self) -> None:
+            self.closed = True
+
+    class FakeTailer:
+        def __init__(self, **_kwargs: object) -> None:
+            self.started = False
+            self.stopped_with_drain: bool | None = None
+            tailers.append(self)
+
+        def start(self) -> None:
+            self.started = True
+
+        def stop(self, *, drain: bool) -> None:
+            self.stopped_with_drain = drain
+
+    writers: list[FakeWriter] = []
+    tailers: list[FakeTailer] = []
+
+    monkeypatch.setattr(uvicorn, "Server", ServerShouldNotExist)
+    monkeypatch.setattr(addon_runtime, "init_storage", lambda *, root: object())
+    monkeypatch.setattr(addon_runtime, "create_async_pool", lambda: pool)
+    monkeypatch.setattr(addon_runtime, "SessionWriter", FakeWriter)
+    monkeypatch.setattr(addon_runtime, "TranscriptTailer", FakeTailer)
+
+    runtime = load_capture_runtime(Settings(storage_dir=tmp_path, web_runtime="external"))
+    try:
+        assert isinstance(runtime.token_counter, TokenCounter)
+        assert get_counter() is runtime.token_counter
+        assert len(writers) == 1
+        assert id(runtime.session_writer) == id(writers[0])
+        assert len(tailers) == 1
+        assert id(runtime.index_tailer) == id(tailers[0])
+        assert tailers[0].started is True
+    finally:
+        await close_capture_runtime(runtime)
+
+    assert writers[0].closed is True
+    assert tailers[0].stopped_with_drain is True
+
+
+async def test_start_and_close_web_runtime_use_requested_port(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Web startup remains explicit and close_web_runtime owns only the serve task."""
+
+    class FakeServer:
+        def __init__(self, config: uvicorn.Config) -> None:
+            self.config = config
+            self._should_exit = False
+            self._exit_event = asyncio.Event()
+
+        @property
+        def should_exit(self) -> bool:
+            return self._should_exit
+
+        @should_exit.setter
+        def should_exit(self, value: bool) -> None:
+            self._should_exit = value
+            if value:
+                self._exit_event.set()
+
+        async def serve(self) -> None:
+            await self._exit_event.wait()
+
+    monkeypatch.setattr(uvicorn, "Server", FakeServer)
+
+    runtime = start_web_runtime(Settings(web_port=9242))
+    assert runtime.server.config.port == 9242
+
+    await close_web_runtime(runtime)
+    assert runtime.server.should_exit is True
+    assert runtime.serve_task.done()
+
+
 async def test_close_runtime_none_calls_clear_all() -> None:
     """close_runtime(None) runs bp.clear_all without crashing."""
     await close_runtime(None)
@@ -80,19 +198,10 @@ async def test_close_runtime_none_calls_clear_all() -> None:
 async def test_close_runtime_shuts_down_server_and_client() -> None:
     """close_runtime signals exit, awaits the serve task, and closes the client."""
     server = _make_server()
-    serve_task: asyncio.Task[None] = asyncio.create_task(
-        _serve_until_exit(server), name="web-ui-serve"
-    )
     client = httpx.AsyncClient()
     counter = TokenCounter(client)
     set_counter(counter)
-
-    runtime = AddonRuntime(
-        http_client=client,
-        token_counter=counter,
-        server=server,
-        serve_task=serve_task,
-    )
+    runtime, serve_task = _make_runtime(client=client, counter=counter, server=server)
 
     await close_runtime(runtime)
 
@@ -122,10 +231,6 @@ async def test_close_runtime_drains_pause_tasks_before_client_close(
     task.add_done_callback(pause_session._retire_pause_count_task)
 
     # Wrap aclose to record its call order.
-    server = _make_server()
-    serve_task: asyncio.Task[None] = asyncio.create_task(
-        _serve_until_exit(server), name="web-ui-serve"
-    )
     client = httpx.AsyncClient()
 
     original_aclose = client.aclose
@@ -140,10 +245,8 @@ async def test_close_runtime_drains_pause_tasks_before_client_close(
     set_counter(counter)
 
     runtime = AddonRuntime(
-        http_client=client,
-        token_counter=counter,
-        server=server,
-        serve_task=serve_task,
+        capture=CaptureRuntime(http_client=client, token_counter=counter),
+        web=None,
     )
 
     await close_runtime(runtime)
@@ -187,10 +290,8 @@ async def test_close_runtime_cancels_stubborn_serve_task(
     set_counter(counter)
 
     runtime = AddonRuntime(
-        http_client=client,
-        token_counter=counter,
-        server=server,
-        serve_task=serve_task,
+        capture=CaptureRuntime(http_client=client, token_counter=counter),
+        web=WebRuntime(server=server, serve_task=serve_task),
     )
 
     await close_runtime(runtime)
@@ -243,19 +344,12 @@ async def test_close_runtime_clears_counter_and_auth() -> None:
     """set_counter(None) and set_recent_auth(None) are called on close."""
     from transport_matters.counting import _counter, _recent_auth
 
-    server = _make_server()
-    serve_task: asyncio.Task[None] = asyncio.create_task(
-        _serve_until_exit(server), name="web-ui-serve"
-    )
     client = httpx.AsyncClient()
     counter = TokenCounter(client)
     set_counter(counter)
-
     runtime = AddonRuntime(
-        http_client=client,
-        token_counter=counter,
-        server=server,
-        serve_task=serve_task,
+        capture=CaptureRuntime(http_client=client, token_counter=counter),
+        web=None,
     )
 
     await close_runtime(runtime)

@@ -51,7 +51,7 @@ class LaunchPreparation:
     client_path: str | None
     working_dir: Path
     proxy_port: int
-    web_port: int
+    web_port: int | None
     proxy_user_supplied: bool
     web_user_supplied: bool
     run_id: str
@@ -255,10 +255,35 @@ def resolve_launch_ports(
     web_port: int | None,
     port_in_use: Callable[[int], bool],
     allocate_port_pair: Callable[[], tuple[int, int]],
-) -> tuple[int, int, bool, bool]:
+    web_required: bool = True,
+) -> tuple[int, int | None, bool, bool]:
     """Resolve the proxy and web ports, preserving which ones were pinned."""
     proxy_user_supplied = proxy_port is not None
     web_user_supplied = web_port is not None
+
+    if not web_required:
+        if web_port is not None:
+            raise ValueError("capture-only launches must not include a web port")
+        if proxy_port is None:
+            try:
+                proxy_port, _unused_web = allocate_port_pair()
+            except PortAllocationError as exc:
+                typer.secho(f"error: {exc}", fg=typer.colors.RED, err=True)
+                raise typer.Exit(2) from exc
+        assert proxy_port is not None
+        if proxy_user_supplied and port_in_use(proxy_port):
+            typer.secho(
+                f"error: proxy port {proxy_port} is already in use.",
+                fg=typer.colors.RED,
+                err=True,
+            )
+            typer.echo(
+                "Another process is already bound to this port. Either stop it, or pick "
+                f"a different port (omit --proxy-port to let {PRODUCT_LABEL} allocate one).",
+                err=True,
+            )
+            raise typer.Exit(2)
+        return proxy_port, None, proxy_user_supplied, False
 
     if proxy_port is None or web_port is None:
         try:
@@ -270,6 +295,8 @@ def resolve_launch_ports(
             proxy_port = allocated_proxy
         if web_port is None:
             web_port = allocated_web
+    assert proxy_port is not None
+    assert web_port is not None
 
     for label, flag, port, pinned in (
         ("proxy", "--proxy-port", proxy_port, proxy_user_supplied),
@@ -411,6 +438,7 @@ def prepare_launch(
     port_in_use: Callable[[int], bool],
     allocate_port_pair: Callable[[], tuple[int, int]],
     validate_after_client_resolution: Callable[[], None] | None = None,
+    web_required: bool = True,
 ) -> LaunchPreparation:
     """Resolve the shared launch state in the legacy command order."""
     addon_traversable = require_addon()
@@ -436,6 +464,7 @@ def prepare_launch(
         web_port=web_port,
         port_in_use=port_in_use,
         allocate_port_pair=allocate_port_pair,
+        web_required=web_required,
     )
     run_id = new_run_id()
     resolved_storage = resolve_storage_dir(
@@ -509,8 +538,9 @@ def build_launch_env(
     working_dir: Path,
     storage_dir: Path,
     proxy_port: int,
-    web_port: int,
+    web_port: int | None,
     run_id: str,
+    web_runtime: str = "embedded",
     cli: str | None = None,
     home_dir: Path | None = None,
     owned_native_session_id: str | None = None,
@@ -528,7 +558,9 @@ def build_launch_env(
     distinct from the child's CLAUDE_CONFIG_DIR/CODEX_HOME (``build_managed_child_env``). Unset = native."""
     env = os.environ.copy()
     env[env_keys.STORAGE_DIR] = str(storage_dir)
-    env[env_keys.WEB_PORT] = str(web_port)
+    if web_port is not None:
+        env[env_keys.WEB_PORT] = str(web_port)
+    env[env_keys.WEB_RUNTIME] = web_runtime
     env[env_keys.PROXY_PORT] = str(proxy_port)
     env[env_keys.RUN_ID] = run_id
     env[env_keys.CWD] = str(working_dir)
@@ -641,7 +673,7 @@ def write_workspace_manifest(
     run_id: str,
     home_dir: Path | None,
     proxy_port: int,
-    web_port: int,
+    web_port: int | None,
     workspace_slug: str | None = None,
     workspace_hash: str | None = None,
 ) -> None:
