@@ -266,5 +266,5 @@ async def close_runtime(runtime: AddonRuntime | None) -> None:
     if runtime is None:
         await close_capture_runtime(None)
         return
-    await close_capture_runtime(runtime.capture)
     await close_web_runtime(runtime.web)
+    await close_capture_runtime(runtime.capture)
