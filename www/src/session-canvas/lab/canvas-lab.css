@@ -1,0 +1,54 @@
+/* Colocated styles for the experimental /canvas-lab route (CanvasLabRoute.tsx, ControlsPanel.tsx),
+   imported by CanvasLabRoute as a side effect. The base .canvas-command-bar and .canvas-button this
+   lab variant overrides live in the shared canvas.css, which main.tsx loads first — so this sheet
+   always cascades after them. */
+.canvas-command-bar--lab {
+  flex-wrap: wrap;
+  /* Continuous with the canvas: drop the panel fill, blur, border, and shadow so the lab bar reads
+     as part of the background. The .canvas-button controls carry their own border + fill, so they
+     are unaffected; the dim identity labels (#949494) stay legible on the near-black
+     #040404 -> #080808 gradient (~6:1, above WCAG AA). Dropping backdrop-filter also sheds one
+     compositor layer (aligns with the canvas-render audit). */
+  background: transparent;
+  backdrop-filter: none;
+  border-color: transparent;
+  box-shadow: none;
+  /* The lab bar shares the top band with the dock (a permanent canvas primitive). Its stretched
+     section containers (.canvas-command-bar__sections, flex:1) would otherwise capture pointer
+     events across the full width and occlude the dock chip beneath them (bar z2000 > dock z1900),
+     so the chip can't be opened while the bar is shown. Make the bar itself click-through and
+     re-enable only its real controls — which are leading (left), leaving the trailing end free for
+     the dock — so the chip + menu stay hittable whether the bar is shown or TAB-hidden. */
+  pointer-events: none;
+}
+.canvas-command-bar--lab :is(button, a, select, input, label) {
+  pointer-events: auto;
+}
+.canvas-lab-stage {
+  position: absolute;
+  inset: 0;
+}
+.canvas-lab-controls {
+  flex-basis: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--canvas-command-gap);
+  padding: var(--canvas-pane-gap) 0 0;
+  margin: 0;
+  border: 0;
+  min-inline-size: 0;
+}
+.canvas-lab-controls__field,
+.canvas-lab-toggle {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--canvas-pane-gap) * 0.6);
+  color: var(--color-txt-2);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.canvas-lab-controls__field output {
+  min-width: 2.5rem;
+  color: var(--color-txt);
+}

@@ -14,6 +14,7 @@ import { useCapturedRunStore } from "./capturedRunStore";
 // Side-effect import: registers the captured-run lifecycle hook (onClose -> stopRun) lab-side, so
 // capturedRunStore never reaches the prod bundle. Must run before any close dispatches through it.
 import "./labLifecycle";
+import "./canvas-lab.css";
 import { LabCardPane } from "./viewers/LabCardPane";
 import { LabRulerPane } from "./viewers/LabRulerPane";
 
@@ -37,6 +38,7 @@ export function CanvasLabRoute() {
   const minimizePane = useCanvasLabStore((state) => state.minimizePane);
   const closePane = useCanvasLabStore((state) => state.closePane);
   const restorePane = useCanvasLabStore((state) => state.restorePane);
+  const closeDockedPane = useCanvasLabStore((state) => state.closeDockedPane);
   const focusPane = useCanvasLabStore((state) => state.focusPane);
   const expandPane = useCanvasLabStore((state) => state.expandPane);
   const framePane = useCanvasLabStore((state) => state.framePane);
@@ -242,7 +244,7 @@ export function CanvasLabRoute() {
           onMovePane={updatePaneRect}
           onResizePane={updatePaneRect}
           // Canvas-resident dock: top band, screen-space, survives the TAB hide of the command bar.
-          overlay={<PaneDock docked={docked} onRestore={restorePane} />}
+          overlay={<PaneDock docked={docked} onClose={closeDockedPane} onRestore={restorePane} />}
           paneMotion={paneMotion}
           renderPane={renderPane}
           setViewport={setViewport}

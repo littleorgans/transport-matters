@@ -81,6 +81,8 @@ export interface CanvasLabState {
   closePane(paneId: PaneId): void;
   /** Restore a docked pane: re-seed it at its original id so its viewer re-mounts (captured re-attaches by run id). */
   restorePane(paneId: PaneId): void;
+  /** Close/kill a docked pane WITHOUT restoring it: run its onClose hook (captured-run kills the run) and drop the dock entry. */
+  closeDockedPane(paneId: PaneId): void;
   focusPane(paneId: PaneId): void;
   updatePaneRect(paneId: PaneId, rect: WorldRect): void;
   setStrategy(strategyId: string): void;
@@ -316,6 +318,16 @@ export const useCanvasLabStore = create<CanvasLabState>()((set, get) => ({
         layout: seedPaneLayout(state, paneId),
       };
     });
+  },
+
+  closeDockedPane(paneId) {
+    // Close/kill a docked pane in place — no restore. It is already off the canvas, so there is no
+    // node teardown: just run its onClose hook (captured-run -> stopRun, DELETE; plain panes have
+    // none, same seam as an on-canvas close) and drop the dock entry.
+    const entry = get().docked.find((docked) => docked.paneId === paneId);
+    if (!entry) return;
+    if (entry.ref) resolvePaneLifecycle(entry.ref).onClose?.(entry.ref);
+    set((state) => ({ docked: state.docked.filter((docked) => docked.paneId !== paneId) }));
   },
 
   focusPane(paneId) {

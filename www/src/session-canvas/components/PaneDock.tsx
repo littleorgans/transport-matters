@@ -2,6 +2,7 @@ import { type SyntheticEvent, useCallback, useEffect, useRef, useState } from "r
 import type { PaneId } from "../../engine";
 import type { DockedPane } from "../model/paneRecords";
 import { titleForRef } from "../viewers/registry";
+import "./pane-dock.css";
 
 // Canvas-resident dock: a count-badged chip in the viewport's top band whose menu lists the locally
 // minimized panes; selecting one restores it. Sourced ONLY from local minimized state (Option A) —
@@ -11,9 +12,11 @@ import { titleForRef } from "../viewers/registry";
 export interface PaneDockProps {
   docked: DockedPane[];
   onRestore(paneId: PaneId): void;
+  /** Close/kill a docked pane without restoring it (captured-run -> kills the run). */
+  onClose(paneId: PaneId): void;
 }
 
-export function PaneDock({ docked, onRestore }: PaneDockProps) {
+export function PaneDock({ docked, onRestore, onClose }: PaneDockProps) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -42,6 +45,10 @@ export function PaneDock({ docked, onRestore }: PaneDockProps) {
     [onRestore],
   );
 
+  // Close/kill a docked entry in place; keep the menu open so several can be cleared in one pass
+  // (PaneDock unmounts itself once the dock empties).
+  const close = useCallback((paneId: PaneId) => onClose(paneId), [onClose]);
+
   // Empty dock = no chip. Hooks above run unconditionally so this early return is rule-of-hooks safe.
   if (docked.length === 0) return null;
 
@@ -65,19 +72,30 @@ export function PaneDock({ docked, onRestore }: PaneDockProps) {
         </button>
         {open ? (
           <div aria-label="Minimized panes" className="canvas-dock__menu" role="menu">
-            {docked.map((pane) => (
-              <button
-                className="canvas-dock__row"
-                key={pane.paneId}
-                onClick={() => restore(pane.paneId)}
-                role="menuitem"
-                type="button"
-              >
-                <span className="canvas-dock__title">
-                  {pane.ref ? titleForRef(pane.ref) : pane.paneId}
-                </span>
-              </button>
-            ))}
+            {docked.map((pane) => {
+              const title = pane.ref ? titleForRef(pane.ref) : pane.paneId;
+              return (
+                <div className="canvas-dock__row" key={pane.paneId}>
+                  <button
+                    className="canvas-dock__restore"
+                    onClick={() => restore(pane.paneId)}
+                    role="menuitem"
+                    type="button"
+                  >
+                    <span className="canvas-dock__title">{title}</span>
+                  </button>
+                  <button
+                    aria-label={`Close ${title}`}
+                    className="canvas-dock__kill"
+                    onClick={() => close(pane.paneId)}
+                    role="menuitem"
+                    type="button"
+                  >
+                    {"×"}
+                  </button>
+                </div>
+              );
+            })}
           </div>
         ) : null}
       </div>

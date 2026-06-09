@@ -168,6 +168,49 @@ describe("canvasLabStore captured runs", () => {
     }
   });
 
+  it("closeDockedPane kills a docked captured run (DELETE) and drops the dock entry", () => {
+    vi.useFakeTimers();
+    try {
+      deleteRunMock.mockResolvedValue(undefined);
+      store().addCapturedRun("claude");
+      const paneId = capturedPaneIds(store().contentRefs)[0];
+      if (!paneId) throw new Error("expected a captured pane");
+      useCapturedRunStore.setState({ runs: { [paneId]: { provider: "claude", runId: "run-1" } } });
+      store().minimizePane(paneId);
+      vi.runAllTimers();
+      expect(store().docked.map((docked) => docked.paneId)).toEqual([paneId]);
+
+      store().closeDockedPane(paneId);
+
+      // Close from the dock runs the captured-run onClose hook: the run is stopped (DELETE) and the
+      // entry leaves the dock. The pane never returns to the canvas.
+      expect(deleteRunMock).toHaveBeenCalledWith("run-1");
+      expect(useCapturedRunStore.getState().runs[paneId]).toBeUndefined();
+      expect(store().docked).toEqual([]);
+      expect(store().contentRefs[paneId]).toBeUndefined();
+      expect(store().layout.nodes[paneId]).toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("closeDockedPane drops a non-captured docked entry with no run side effect", () => {
+    vi.useFakeTimers();
+    try {
+      store().addTerminal(); // lab-1 (terminal ref, no run)
+      store().minimizePane("lab-1");
+      vi.runAllTimers();
+      expect(store().docked.map((docked) => docked.paneId)).toEqual(["lab-1"]);
+
+      store().closeDockedPane("lab-1");
+
+      expect(deleteRunMock).not.toHaveBeenCalled();
+      expect(store().docked).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("minimizes and restores a non-captured pane (null ref) through the generic dock path", () => {
     vi.useFakeTimers();
     try {

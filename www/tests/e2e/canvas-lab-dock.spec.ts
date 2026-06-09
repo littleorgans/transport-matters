@@ -53,10 +53,12 @@ async function minimizeLabOne(page: Page) {
 }
 
 // Open the dock menu, restore lab-1, and assert it is back on the canvas and the dock is empty.
+// Each row has two menuitems (restore title + [×] kill "Close lab-1"), so target the restore by its
+// exact title to avoid matching the kill button's substring.
 async function openAndRestore(page: Page) {
   await dockChip(page).click();
   await expect(page.getByRole("menu", { name: "Minimized panes" })).toBeVisible();
-  await page.getByRole("menuitem", { name: "lab-1" }).click();
+  await page.getByRole("menuitem", { name: "lab-1", exact: true }).click();
   await expect(page.getByRole("button", { name: "Close lab-1" })).toBeVisible();
   await expect(dockChip(page)).toHaveCount(0);
 }
@@ -77,7 +79,9 @@ test("dock chip is hittable + restores a pane while the lab bar is SHOWN", async
   await openAndRestore(page);
 });
 
-test("dock chip is hittable + restores a pane while the lab bar is TAB-HIDDEN", async ({ page }) => {
+test("dock chip is hittable + restores a pane while the lab bar is TAB-HIDDEN", async ({
+  page,
+}) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto("/canvas-lab");
 

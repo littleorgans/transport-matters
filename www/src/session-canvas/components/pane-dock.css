@@ -1,0 +1,121 @@
+/* Colocated styles for PaneDock.tsx (imported there as a side effect, matching the viewer-CSS
+   convention: terminal-pane.css, resource/*-viewer.css). Uses the global canvas tokens from
+   index.css; --canvas-layout-margin is set on the route shell from CANVAS_LAYOUT_MARGIN. */
+
+/* Pane dock: a canvas-resident chip in the viewport top band (the pane-grid top margin). Screen-
+   space, z-1900 — above panes, below the transient command bar (z-2000), whose trailing end is now
+   free — so it reads in the band whether the lab bar is shown or TAB-hidden. */
+.canvas-viewport-dock {
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline-end: var(--canvas-command-inset);
+  z-index: 1900;
+  display: flex;
+  align-items: center;
+  /* Occupy the top band: the same number as the pane-grid top margin, so at rest (scale 1) the chip
+     sits in the gap above the first pane row. */
+  block-size: var(--canvas-layout-margin);
+}
+/* Hugs the chip so the menu anchors to the chip (not the full band height) — keeps the dropdown
+   tight under the chip instead of dangling at the band's bottom edge. */
+.canvas-dock__anchor {
+  position: relative;
+  display: flex;
+}
+.canvas-dock__chip {
+  display: flex;
+  align-items: center;
+  gap: var(--canvas-pane-gap);
+  border: var(--canvas-pane-border);
+  background: rgb(var(--shadow-rgb) / 0.6);
+  box-shadow: var(--canvas-pane-shadow);
+  backdrop-filter: blur(16px);
+  padding: calc(var(--canvas-pane-gap) * 0.75) var(--canvas-pane-padding);
+  color: var(--color-txt);
+}
+.canvas-dock__chip:hover {
+  background: rgb(var(--shadow-rgb) / 0.74);
+}
+.canvas-dock__chip:focus-visible {
+  outline: none;
+  box-shadow: var(--canvas-pane-shadow), var(--canvas-focus-ring);
+}
+.canvas-dock__label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.canvas-dock__count {
+  min-inline-size: 1.25rem;
+  border: 1px solid rgb(var(--accent-rgb) / 0.5);
+  color: var(--color-accent);
+  padding: 0 calc(var(--canvas-pane-gap) * 0.5);
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+.canvas-dock__menu {
+  position: absolute;
+  inset-block-start: 100%;
+  inset-inline-end: 0;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--canvas-pane-gap) * 0.5);
+  min-inline-size: 14rem;
+  max-block-size: 60vh;
+  margin: calc(var(--canvas-pane-gap) * 0.5) 0 0;
+  padding: var(--canvas-pane-gap);
+  border: var(--canvas-pane-border);
+  background: rgb(var(--shadow-rgb) / 0.92);
+  box-shadow: var(--canvas-pane-shadow);
+  backdrop-filter: blur(16px);
+  overflow-y: auto;
+}
+.canvas-dock__row {
+  display: flex;
+  align-items: stretch;
+  inline-size: 100%;
+  border: 1px solid var(--color-edge);
+  background: var(--color-surface);
+}
+.canvas-dock__row:hover {
+  border-color: rgb(var(--accent-rgb) / 0.58);
+  background: var(--color-hover);
+}
+/* Primary action: restore. Fills the row; the [×] kill button sits at the trailing end. */
+.canvas-dock__restore {
+  flex: 1;
+  min-inline-size: 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-txt);
+  padding: var(--canvas-row-padding);
+  text-align: start;
+}
+.canvas-dock__restore:focus-visible,
+.canvas-dock__kill:focus-visible {
+  outline: none;
+  box-shadow: var(--canvas-focus-ring);
+}
+.canvas-dock__kill {
+  flex-shrink: 0;
+  border: 0;
+  border-inline-start: 1px solid var(--color-edge);
+  background: transparent;
+  color: var(--color-txt-3);
+  padding: 0 calc(var(--canvas-pane-padding) * 0.85);
+  font-size: 1rem;
+  line-height: 1;
+}
+.canvas-dock__kill:hover {
+  color: var(--color-amber); /* destructive affordance: closing a captured row kills its run */
+  background: var(--color-hover);
+}
+.canvas-dock__title {
+  display: block;
+  overflow: hidden;
+  font-size: 0.82rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
