@@ -63,7 +63,7 @@ def test_prepare_captured_run_external_web_starts_capture_only_proxy(
     spawn_spec, lease = prepare_captured_run(
         CapturedRunRequest(
             client_name=CLAUDE_CLIENT_NAME,
-            passthrough=(),
+            passthrough=("--dangerously-skip-permissions",),
             directory=workspace,
             proxy_port=None,
             web_port=None,
@@ -75,6 +75,7 @@ def test_prepare_captured_run_external_web_starts_capture_only_proxy(
             no_system_prompt=False,
             debug=False,
             web_runtime=WEB_RUNTIME_EXTERNAL,
+            default_client_passthrough=("--dangerously-skip-permissions",),
         ),
         require_addon=lambda: addon_path,
         resolve_mitmdump=lambda: "/usr/bin/mitmdump",
@@ -93,7 +94,12 @@ def test_prepare_captured_run_external_web_starts_capture_only_proxy(
         assert spawn_spec.launch_env[env_keys.PROXY_PORT] == "39123"
         assert env_keys.WEB_PORT not in spawn_spec.launch_env
         assert spawn_spec.launch_env[env_keys.WEB_RUNTIME] == WEB_RUNTIME_EXTERNAL
+        assert (
+            spawn_spec.launch_env[env_keys.DEFAULT_CLIENT_PASSTHROUGH]
+            == '["--dangerously-skip-permissions"]'
+        )
         assert spawn_spec.client is not None
+        assert "--dangerously-skip-permissions" in spawn_spec.client.argv
         assert spawn_spec.client.env["ANTHROPIC_BASE_URL"] == loopback_http_url(
             spawn_spec.proxy_port
         )
@@ -138,7 +144,7 @@ def test_prepare_captured_run_codex_external_web_uses_explicit_proxy_env(
     spawn_spec, lease = prepare_captured_run(
         CapturedRunRequest(
             client_name=CODEX_CLIENT_NAME,
-            passthrough=(),
+            passthrough=("--dangerously-skip-permissions",),
             directory=workspace,
             proxy_port=None,
             web_port=None,
@@ -150,6 +156,7 @@ def test_prepare_captured_run_codex_external_web_uses_explicit_proxy_env(
             no_system_prompt=False,
             debug=False,
             web_runtime=WEB_RUNTIME_EXTERNAL,
+            default_client_passthrough=("--dangerously-skip-permissions",),
         ),
         require_addon=lambda: addon_path,
         resolve_mitmdump=lambda: "/usr/bin/mitmdump",
@@ -169,8 +176,13 @@ def test_prepare_captured_run_codex_external_web_uses_explicit_proxy_env(
         assert spawn_spec.launch_env[env_keys.PROXY_PORT] == "39223"
         assert env_keys.WEB_PORT not in spawn_spec.launch_env
         assert spawn_spec.launch_env[env_keys.WEB_RUNTIME] == WEB_RUNTIME_EXTERNAL
+        assert (
+            spawn_spec.launch_env[env_keys.DEFAULT_CLIENT_PASSTHROUGH]
+            == '["--dangerously-skip-permissions"]'
+        )
         assert spawn_spec.client is not None
         assert spawn_spec.client.name == CODEX_CLIENT_NAME
+        assert "--dangerously-skip-permissions" in spawn_spec.client.argv
         assert spawn_spec.client.env["HTTPS_PROXY"] == loopback_http_url(spawn_spec.proxy_port)
         assert spawn_spec.client.env["HTTP_PROXY"] == loopback_http_url(spawn_spec.proxy_port)
         assert spawn_spec.client.env["CODEX_CA_CERTIFICATE"] == str(ca_path)

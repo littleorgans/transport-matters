@@ -57,6 +57,7 @@ def run_start(
     user_supplied_system_prompt: Callable[[list[str]], bool],
     print_banner: Callable[..., None],
     run_client_with_retry: Callable[..., None],
+    default_client_passthrough: tuple[str, ...] = (),
 ) -> None:
     """Execute the `claude` launch lifecycle."""
     from transport_matters.captured_run import CapturedRunRequest, run_captured_run_on_local_tty
@@ -86,6 +87,7 @@ def run_start(
             client_disabled=no_claude,
             no_system_prompt=no_system_prompt,
             debug=debug,
+            default_client_passthrough=default_client_passthrough,
         ),
         print_command=print_command,
         require_addon=require_addon,

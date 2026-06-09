@@ -163,6 +163,7 @@ def build_codex_invocation(
     managed_session: ManagedSession | None,
     debug: bool,
     web_runtime: str = "embedded",
+    default_client_passthrough: Sequence[str] = (),
 ) -> Callable[[int, int | None], tuple[list[str], dict[str, str], ManagedClient | None]]:
     """Build the retry-safe invocation factory for `transport-matters codex`.
 
@@ -193,6 +194,7 @@ def build_codex_invocation(
             owned_source_descriptor=(
                 managed_session.source_descriptor if managed_session is not None else None
             ),
+            default_client_passthrough=default_client_passthrough,
         )
 
         proxy_url = loopback_http_url(proxy_port)
@@ -332,6 +334,7 @@ def run_codex(
     resolve_codex_ca_certificate: Callable[..., Path],
     print_client_banner: Callable[..., None],
     run_client_with_retry: Callable[..., None],
+    default_client_passthrough: tuple[str, ...] = (),
 ) -> None:
     """Execute the `codex` launch lifecycle."""
     reject_passthrough_without_client(
@@ -409,6 +412,7 @@ def run_codex(
             profile=profile,
             managed_session=managed_session,
             debug=debug,
+            default_client_passthrough=default_client_passthrough,
         )
         prepared_web_port = require_web_port(prepared.web_port)
 

@@ -110,8 +110,53 @@ def test_desktop_command_forwards_to_codex_without_preallocating_ports(
     assert result.exit_code == 0
     assert calls["directory"] == tmp_path
     assert calls["codex_passthrough"] == ["exec", "hello"]
+    assert calls["default_client_passthrough"] == ("exec", "hello")
     assert calls["proxy_port"] is None
     assert calls["web_port"] is None
+
+
+def test_desktop_command_forwards_default_passthrough_to_claude_launch(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    calls: dict[str, Any] = {}
+
+    def fake_prepare_desktop_launch(**kwargs: Any) -> DesktopLaunchPlan:
+        return DesktopLaunchPlan(
+            agent=kwargs["agent"],
+            run_client_with_retry=kwargs["base_run_client_with_retry"],
+        )
+
+    def fake_run_start(**kwargs: Any) -> None:
+        calls.update(kwargs)
+
+    monkeypatch.setattr(cli, "prepare_desktop_launch", fake_prepare_desktop_launch)
+    monkeypatch.setattr(cli, "run_start", fake_run_start)
+
+    result = runner.invoke(
+        main,
+        [
+            "desktop",
+            "--work-dir",
+            str(tmp_path),
+            "--",
+            "--dangerously-skip-permissions",
+            "--model",
+            "sonnet",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert calls["claude_passthrough"] == [
+        "--dangerously-skip-permissions",
+        "--model",
+        "sonnet",
+    ]
+    assert calls["default_client_passthrough"] == (
+        "--dangerously-skip-permissions",
+        "--model",
+        "sonnet",
+    )
 
 
 def test_desktop_startup_hook_emits_json_and_spawns_electron(
