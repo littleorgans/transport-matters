@@ -30,6 +30,7 @@ export function CanvasLabRoute() {
   const addCapturedRun = useCanvasLabStore((state) => state.addCapturedRun);
   const restoreCapturedPane = useCanvasLabStore((state) => state.restoreCapturedPane);
   const organize = useCanvasLabStore((state) => state.organize);
+  const hidePane = useCanvasLabStore((state) => state.hidePane);
   const closePane = useCanvasLabStore((state) => state.closePane);
   const focusPane = useCanvasLabStore((state) => state.focusPane);
   const expandPane = useCanvasLabStore((state) => state.expandPane);
@@ -113,6 +114,9 @@ export function CanvasLabRoute() {
           expanded={expandedPane === paneId}
           focused={focusedPaneId === paneId}
           onClose={() => closePane(paneId)}
+          // Captured panes can minimize ([-]): detach the run into the director for re-attach.
+          // Other panes carry no run, so they only close.
+          onMinimize={ref?.kind === "captured-run" ? () => hidePane(paneId) : undefined}
           onExpand={() => expandPane(paneId)}
           onFrame={() => framePane(paneId)}
           onHeaderDoubleClick={(event) => (event.shiftKey ? expandPane(paneId) : framePane(paneId))}
@@ -134,6 +138,7 @@ export function CanvasLabRoute() {
     },
     [
       contentRefs,
+      hidePane,
       closePane,
       focusPane,
       expandPane,

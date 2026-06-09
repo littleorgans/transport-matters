@@ -45,15 +45,21 @@ export interface CapturedRunState {
    */
   adoptRun(provider: CliName, runId: string): CapturedRunKey;
   /**
-   * Detach this pane from its run on pane close: forget the pane's local run id so a
-   * reload won't auto-restore it. An ESTABLISHED run is NOT stopped — the terminal WS
-   * closes on unmount, so the backend drops this viewer (viewerCount falls) while the
-   * server run stays alive and listed, and the director can re-attach it. The one case
-   * that still stops a run is a close that races an in-flight spawn (no run id yet,
-   * nothing listed): cancel it so the just-born run is DELETEd and never persisted.
-   * Explicit stop (director stop-from-list) is a direct `deleteRun`, not this path.
+   * Detach this pane from its run on MINIMIZE: forget the pane's local run id so a reload
+   * won't auto-restore it. An ESTABLISHED run is NOT stopped — the terminal WS closes on
+   * unmount, so the backend drops this viewer (viewerCount falls) while the server run
+   * stays alive and listed, and the director can re-attach it. The one case that still
+   * stops a run is a close that races an in-flight spawn (no run id yet, nothing listed):
+   * cancel it so the just-born run is DELETEd and never persisted. The non-destructive
+   * counterpart to `stopRun`.
    */
   detachRun(runKey: CapturedRunKey): void;
+  /**
+   * Stop this pane's run on an explicit KILL ([X] close): forget the mapping AND DELETE the
+   * run, so it also leaves the director roster. An in-flight spawn is cancelled + deleted,
+   * same as `detachRun`. The destructive counterpart to `detachRun`.
+   */
+  stopRun(runKey: CapturedRunKey): void;
 }
 
 export function createCapturedRunKey(provider: CliName): CapturedRunKey {
@@ -128,9 +134,29 @@ export const useCapturedRunStore = create<CapturedRunState>()(
         }
         // Close raced an in-flight spawn (runs[runKey] not yet written): mark the key
         // cancelled so the spawn's resolve stops the just-born run (DELETE) and skips
-        // persisting it. This is the only close path that stops a run — an unviewed,
+        // persisting it. This is the only minimize path that stops a run — an unviewed,
         // never-listed run would otherwise orphan. The pending promise stays so its
         // handler runs that cleanup. Mirrors B1b-1's backend close/spawn rollback.
+        if (pendingSpawns.has(runKey)) cancelledKeys.add(runKey);
+      },
+
+      stopRun(runKey) {
+        const runId = get().runs[runKey]?.runId;
+        if (runId !== undefined) {
+          // Established run: forget this pane's mapping and STOP the run (DELETE). Best-effort
+          // stop — the user is killing the pane, so a failed DELETE must not block the UI; the
+          // backend idle policy reaps anything that slips by. The stopped run also leaves the
+          // director roster (it is no longer a live run).
+          set((state) => {
+            const { [runKey]: _removed, ...runs } = state.runs;
+            return { runs };
+          });
+          void deleteRun(runId).catch(() => {});
+          return;
+        }
+        // Kill raced an in-flight spawn (no run id yet): cancel so the spawn's resolve stops
+        // the just-born run and skips persisting it — same cleanup as detachRun's in-flight
+        // branch (either intent kills a run that was never viewed or listed).
         if (pendingSpawns.has(runKey)) cancelledKeys.add(runKey);
       },
     }),

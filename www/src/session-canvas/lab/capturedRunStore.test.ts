@@ -146,6 +146,44 @@ describe("capturedRunStore", () => {
     expect(deleteRunMock).not.toHaveBeenCalled();
   });
 
+  it("stopRun stops (DELETE) and forgets only that pane's established run", async () => {
+    createCapturedRunMock.mockResolvedValueOnce("run-1").mockResolvedValueOnce("run-2");
+    deleteRunMock.mockResolvedValue(undefined);
+    await store().ensureRun("claude:k1", "claude");
+    await store().ensureRun("claude:k2", "claude");
+
+    store().stopRun("claude:k1");
+
+    // Kill stops the run on the server so it leaves the director roster too.
+    expect(deleteRunMock).toHaveBeenCalledWith("run-1");
+    expect(deleteRunMock).toHaveBeenCalledTimes(1);
+    expect(store().runs["claude:k1"]).toBeUndefined();
+    expect(store().runs["claude:k2"]).toEqual({ provider: "claude", runId: "run-2" });
+  });
+
+  it("stopRun cancels an in-flight spawn: stops the just-born run and never persists it", async () => {
+    let resolveSpawn!: (id: string) => void;
+    createCapturedRunMock.mockReturnValue(
+      new Promise<string>((r) => {
+        resolveSpawn = r;
+      }),
+    );
+    deleteRunMock.mockResolvedValue(undefined);
+
+    const spawn = store().ensureRun("claude:k1", "claude"); // POST in-flight
+    store().stopRun("claude:k1"); // killed mid-spawn (runs["claude:k1"] still absent)
+    resolveSpawn("run-1"); // POST resolves AFTER the kill
+    await spawn;
+
+    expect(deleteRunMock).toHaveBeenCalledWith("run-1");
+    expect(store().runs["claude:k1"]).toBeUndefined();
+  });
+
+  it("stopRun is a no-op when no run exists for the pane", () => {
+    store().stopRun("claude:missing");
+    expect(deleteRunMock).not.toHaveBeenCalled();
+  });
+
   it("adopts an existing run id under a fresh key without spawning", async () => {
     const runKey = store().adoptRun("claude", "run-existing");
 

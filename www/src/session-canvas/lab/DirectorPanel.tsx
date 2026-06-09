@@ -24,7 +24,9 @@ export function DirectorPanel(): ReactElement {
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      setRuns(await listRuns());
+      // "Live runs" means live: drop terminal runs, so a killed/exited run leaves the roster
+      // (STOP from the list and [X]-close on a pane both make a run disappear here on refresh).
+      setRuns((await listRuns()).filter((run) => run.state !== "exited" && run.state !== "failed"));
       setError(null);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
@@ -96,6 +98,7 @@ export function DirectorPanel(): ReactElement {
               <span className="canvas-lab-director__actions">
                 <button
                   className="canvas-button"
+                  disabled={run.state !== "running"}
                   onClick={() => attachCapturedRun(run.cli, run.runId)}
                   type="button"
                 >

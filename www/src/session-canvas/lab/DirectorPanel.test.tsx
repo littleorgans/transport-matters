@@ -119,4 +119,34 @@ describe("DirectorPanel", () => {
     await waitFor(() => expect(deleteRunMock).toHaveBeenCalledWith("run-1"));
     expect(await screen.findByText("No live runs.")).toBeInTheDocument();
   });
+
+  it("hides terminal (exited/failed) runs from the live roster", async () => {
+    listRunsMock.mockResolvedValue([
+      runView("run-live", "claude", { cwd: "/live", state: "running" }),
+      runView("run-dead", "claude", { cwd: "/dead", state: "exited" }),
+      runView("run-bad", "codex", { cwd: "/bad", state: "failed" }),
+    ]);
+
+    render(<DirectorPanel />);
+
+    expect(await screen.findByText("/live")).toBeInTheDocument();
+    // A killed/exited run has left the roster, so the tray only shows live runs.
+    expect(screen.queryByText("/dead")).not.toBeInTheDocument();
+    expect(screen.queryByText("/bad")).not.toBeInTheDocument();
+  });
+
+  it("enables Attach only for running runs (backend attach requires RUNNING)", async () => {
+    listRunsMock.mockResolvedValue([
+      runView("run-1", "claude", { cwd: "/starting", state: "starting" }),
+      runView("run-2", "codex", { cwd: "/running", state: "running" }),
+    ]);
+
+    render(<DirectorPanel />);
+    const startingRow = (await screen.findByText("/starting")).closest("li");
+    const runningRow = (await screen.findByText("/running")).closest("li");
+    if (!startingRow || !runningRow) throw new Error("expected both run rows");
+
+    expect(within(startingRow).getByRole("button", { name: "Attach" })).toBeDisabled();
+    expect(within(runningRow).getByRole("button", { name: "Attach" })).toBeEnabled();
+  });
 });
