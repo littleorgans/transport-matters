@@ -143,4 +143,41 @@ describe("capturedRunStore", () => {
     store().clearRun("claude:missing");
     expect(deleteRunMock).not.toHaveBeenCalled();
   });
+
+  it("adopts an existing run id under a fresh key without spawning", async () => {
+    const runKey = store().adoptRun("claude", "run-existing");
+
+    expect(runKey.startsWith("claude:")).toBe(true);
+    expect(store().runs[runKey]).toEqual({ provider: "claude", runId: "run-existing" });
+    // Attach-from-list never spawns: the run already exists on the server.
+    expect(createCapturedRunMock).not.toHaveBeenCalled();
+    // ensureRun resolves the adopted run id immediately, with no POST.
+    await expect(store().ensureRun(runKey, "claude")).resolves.toBe("run-existing");
+    expect(createCapturedRunMock).not.toHaveBeenCalled();
+  });
+
+  it("returns the same key when adopting a run already bound here (no duplicate viewer)", () => {
+    const first = store().adoptRun("codex", "run-1");
+    const second = store().adoptRun("codex", "run-1");
+
+    expect(second).toBe(first);
+    expect(Object.keys(store().runs)).toEqual([first]);
+  });
+
+  it("reuses the spawning pane's key when adopting a run we spawned ourselves", async () => {
+    createCapturedRunMock.mockResolvedValue("run-1");
+    await store().ensureRun("claude:k1", "claude");
+
+    expect(store().adoptRun("claude", "run-1")).toBe("claude:k1");
+    expect(Object.keys(store().runs)).toEqual(["claude:k1"]);
+  });
+
+  it("persists an adopted run so a reload re-attaches it", () => {
+    const runKey = store().adoptRun("claude", "run-existing");
+
+    const raw = localStorage.getItem(FRONTEND_STORAGE_KEYS.capturedRunStore);
+    expect(JSON.parse(raw as string).state.runs).toEqual({
+      [runKey]: { provider: "claude", runId: "run-existing" },
+    });
+  });
 });

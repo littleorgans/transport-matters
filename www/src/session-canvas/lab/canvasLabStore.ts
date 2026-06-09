@@ -70,6 +70,8 @@ export interface CanvasLabState {
   addPane(): void;
   addTerminal(): void;
   addCapturedRun(provider: CliName): void;
+  /** Open (or focus) a pane bound to an EXISTING managed run id — attach-from-list, never spawns. */
+  attachCapturedRun(provider: CliName, runId: string): void;
   /** Recreate a captured pane at its persisted key on reload so it re-attaches by id. */
   restoreCapturedPane(paneId: PaneId, provider: CliName): void;
   closePane(paneId: PaneId): void;
@@ -260,6 +262,24 @@ export const useCanvasLabStore = create<CanvasLabState>()((set, get) => ({
     // ref so the viewer reads it). Two Spawn Claude clicks are two independent runs
     // (two PTYs, isolated input), never a shared terminal.
     const runKey = createCapturedRunKey(provider);
+    set((state) =>
+      seedContentPane(state, runKey, { kind: "captured-run", owner: "local", provider, runKey }),
+    );
+  },
+
+  attachCapturedRun(provider, runId) {
+    // Director attach-from-list: bind a pane to an existing server run instead of
+    // spawning. adoptRun returns the stable key for this run (a fresh one, or the key a
+    // sibling pane already owns), and the pane's ensureRun resolves the stored run id
+    // with no POST — so the operator attaches to the running agent (viewer count ticks
+    // up) rather than starting a second run.
+    const runKey = useCapturedRunStore.getState().adoptRun(provider, runId);
+    // Already showing this run (re-click, or we spawned it): focus the open pane rather
+    // than stacking a duplicate viewer onto the same PTY.
+    if (get().contentRefs[runKey]) {
+      set((state) => ({ layout: focusNode(state.layout, runKey) }));
+      return;
+    }
     set((state) =>
       seedContentPane(state, runKey, { kind: "captured-run", owner: "local", provider, runKey }),
     );

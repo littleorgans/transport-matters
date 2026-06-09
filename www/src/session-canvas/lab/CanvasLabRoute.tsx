@@ -10,6 +10,7 @@ import { ControlsPanel } from "./ControlsPanel";
 import { framedPaneId, useCanvasLabStore } from "./canvasLabStore";
 import { cliInstalled, useCapabilitiesStore } from "./capabilitiesStore";
 import { useCapturedRunStore } from "./capturedRunStore";
+import { DirectorPanel } from "./DirectorPanel";
 import { LabCardPane } from "./viewers/LabCardPane";
 import { LabRulerPane } from "./viewers/LabRulerPane";
 
@@ -214,6 +215,7 @@ export function CanvasLabRoute() {
             }
             secondaryLabel="Layout"
           />
+          <DirectorPanel />
         </div>
       )}
       <div className="canvas-lab-stage" ref={stageRef}>

@@ -5,6 +5,7 @@ import {
   deleteRun,
   fetchMeta,
   fetchTurnContent,
+  listRuns,
   resetApiTransport,
   setApiTransport,
 } from "./api";
@@ -164,5 +165,47 @@ describe("deleteRun", () => {
     await deleteRun("run/1");
 
     expect(fetchMock).toHaveBeenCalledWith("/api/runs/run%2F1", { method: "DELETE" });
+  });
+});
+
+describe("listRuns", () => {
+  afterEach(() => {
+    resetApiTransport();
+    vi.unstubAllGlobals();
+  });
+
+  it("lists managed runs via GET /api/runs and unwraps the runs array", async () => {
+    const run = {
+      runId: "run-1",
+      cli: "claude",
+      cwd: "/work/proj",
+      storageDir: "/store/run-1",
+      proxyPort: 4010,
+      state: "running",
+      viewerCount: 0,
+      createdAt: "2026-06-09T00:00:00+00:00",
+      startedAt: "2026-06-09T00:00:01+00:00",
+      updatedAt: "2026-06-09T00:00:02+00:00",
+      scrollbackBytes: 0,
+      scrollbackLimitBytes: 1048576,
+    };
+    const fetchMock = stubFetch({ runs: [run] });
+
+    await expect(listRuns()).resolves.toEqual([run]);
+    expect(fetchMock).toHaveBeenCalledWith("/api/runs");
+  });
+
+  it("forwards cli, cwd, and state as query params when filtering", async () => {
+    const fetchMock = stubFetch({ runs: [] });
+
+    await listRuns({ cli: "codex", cwd: "/work/proj", state: "running" });
+
+    expect(fetchMock).toHaveBeenCalledWith("/api/runs?cli=codex&cwd=%2Fwork%2Fproj&state=running");
+  });
+
+  it("throws on a non-OK list response", async () => {
+    stubFetch({ detail: "boom" }, 500);
+
+    await expect(listRuns()).rejects.toThrow("Failed to list captured runs: 500");
   });
 });

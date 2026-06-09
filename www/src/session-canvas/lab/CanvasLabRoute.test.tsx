@@ -9,6 +9,9 @@ import { resetCapturedRunStoreForTests, useCapturedRunStore } from "./capturedRu
 vi.mock("../../api", () => ({
   createCapturedRun: vi.fn(),
   deleteRun: vi.fn(),
+  // The lab command bar mounts the director surface, which GETs /api/runs on mount.
+  // An empty roster keeps these spawn-button tests free of network and director noise.
+  listRuns: vi.fn(() => Promise.resolve([])),
 }));
 
 // The lab gates its captured-run spawn buttons on managed-CLI availability. Seeding

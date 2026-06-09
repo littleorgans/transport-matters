@@ -36,6 +36,14 @@ export interface CapturedRunState {
   runs: Record<CapturedRunKey, CapturedRunRecord>;
   /** Resolve this pane's run id: reuse a persisted/in-flight run, else spawn one. */
   ensureRun(runKey: CapturedRunKey, provider: CliName, cwd?: string): Promise<string>;
+  /**
+   * Bind a pane to an EXISTING run id without spawning (attach-from-list). Returns the
+   * key the pane should own: a fresh key for an unknown run, or the existing key if this
+   * run is already adopted/spawned here, so re-attaching reuses one pane instead of
+   * opening a duplicate viewer. The key persists like a spawned one, so a reload
+   * re-attaches it via `ensureRun` (which resolves the stored run id, no POST).
+   */
+  adoptRun(provider: CliName, runId: string): CapturedRunKey;
   /** Forget and explicitly stop (DELETE) this pane's run. Used on explicit pane close. */
   clearRun(runKey: CapturedRunKey): void;
 }
@@ -80,6 +88,20 @@ export const useCapturedRunStore = create<CapturedRunState>()(
           });
         pendingSpawns.set(runKey, spawn);
         return spawn;
+      },
+
+      adoptRun(provider, runId) {
+        // Already bound here (adopted earlier, or spawned by one of our own panes): reuse
+        // that key so attaching a run we already show focuses the open pane rather than
+        // opening a second viewer onto the same PTY.
+        const existing = Object.entries(get().runs).find(([, record]) => record.runId === runId);
+        if (existing) return existing[0];
+        // First time we see this run: mint a stable key and persist the binding. ensureRun
+        // then resolves the stored run id immediately — no spawn — so the pane attaches to
+        // the existing run and the viewer count increments, not a second run.
+        const runKey = createCapturedRunKey(provider);
+        set((state) => ({ runs: { ...state.runs, [runKey]: { provider, runId } } }));
+        return runKey;
       },
 
       clearRun(runKey) {

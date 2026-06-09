@@ -7,9 +7,12 @@ import {
 } from "./canvasLabStore";
 import { resetCapturedRunStoreForTests, useCapturedRunStore } from "./capturedRunStore";
 
-const { deleteRunMock } = vi.hoisted(() => ({ deleteRunMock: vi.fn() }));
+const { createCapturedRunMock, deleteRunMock } = vi.hoisted(() => ({
+  createCapturedRunMock: vi.fn(),
+  deleteRunMock: vi.fn(),
+}));
 vi.mock("../../api", () => ({
-  createCapturedRun: vi.fn(),
+  createCapturedRun: createCapturedRunMock,
   deleteRun: deleteRunMock,
 }));
 
@@ -83,6 +86,7 @@ describe("canvasLabStore captured runs", () => {
     localStorage.clear();
     resetCanvasLabStoreForTests();
     resetCapturedRunStoreForTests();
+    createCapturedRunMock.mockReset();
     deleteRunMock.mockReset();
   });
 
@@ -149,6 +153,39 @@ describe("canvasLabStore captured runs", () => {
       runKey: "claude:k1",
     });
     expect(capturedPaneIds(store().contentRefs)).toEqual(["claude:k1"]);
+  });
+
+  it("attachCapturedRun opens a pane bound to an existing run id without spawning", () => {
+    store().attachCapturedRun("claude", "run-existing");
+
+    const ids = capturedPaneIds(store().contentRefs);
+    expect(ids).toHaveLength(1);
+    const runKey = ids[0];
+    if (!runKey) throw new Error("expected a captured pane");
+    // The pane owns the existing run id (adopted, not spawned).
+    expect(store().contentRefs[runKey]).toEqual({
+      kind: "captured-run",
+      owner: "local",
+      provider: "claude",
+      runKey,
+    });
+    expect(useCapturedRunStore.getState().runs[runKey]).toEqual({
+      provider: "claude",
+      runId: "run-existing",
+    });
+    // Attach-from-list attaches to the real CLI run; it must never POST a new spawn.
+    expect(createCapturedRunMock).not.toHaveBeenCalled();
+  });
+
+  it("focuses the open pane instead of duplicating it when the same run is attached twice", () => {
+    store().attachCapturedRun("codex", "run-1");
+    const runKey = capturedPaneIds(store().contentRefs)[0];
+    if (!runKey) throw new Error("expected a captured pane");
+
+    store().attachCapturedRun("codex", "run-1");
+
+    expect(capturedPaneIds(store().contentRefs)).toEqual([runKey]);
+    expect(store().layout.focusedPaneId).toBe(runKey);
   });
 });
 

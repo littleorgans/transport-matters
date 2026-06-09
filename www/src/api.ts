@@ -411,3 +411,57 @@ export async function deleteRun(runId: string): Promise<void> {
     true,
   );
 }
+
+/** Lifecycle of a managed captured run. Mirrors the backend `RunState` enum. */
+export type RunState = "starting" | "running" | "stopping" | "exited" | "failed";
+
+/**
+ * A managed run as the director surface sees it: enough to list, attach, and stop a
+ * run without the raw bytes. Optional fields are omitted by the backend when unset
+ * (`exclude_none`), so they are optional here too. Mirrors the backend `RunViewModel`.
+ */
+export interface RunView {
+  runId: string;
+  cli: CliName;
+  cwd: string;
+  storageDir: string;
+  proxyPort: number;
+  webPort?: number;
+  nativeSessionId?: string;
+  state: RunState;
+  viewerCount: number;
+  createdAt: string;
+  startedAt: string;
+  updatedAt: string;
+  viewerlessSince?: string;
+  exitCode?: number;
+  stopReason?: string;
+  scrollbackBytes: number;
+  scrollbackLimitBytes: number;
+}
+
+/** Optional server-side filters for `listRuns` (`GET /api/runs?cli&cwd&state`). */
+export interface RunFilters {
+  cli?: CliName;
+  cwd?: string;
+  state?: RunState;
+}
+
+/**
+ * List managed runs via `GET /api/runs`, optionally filtered by cli, cwd, or state.
+ * Read-only: this never spawns a run. The director surface uses it to show live runs
+ * an operator can attach to or stop.
+ */
+export async function listRuns(filters?: RunFilters): Promise<RunView[]> {
+  const query = new URLSearchParams();
+  if (filters?.cli !== undefined) query.set("cli", filters.cli);
+  if (filters?.cwd !== undefined) query.set("cwd", filters.cwd);
+  if (filters?.state !== undefined) query.set("state", filters.state);
+  const suffix = query.toString();
+  const response = await requestJson<{ runs: RunView[] }>(
+    suffix ? `/api/runs?${suffix}` : "/api/runs",
+    undefined,
+    "Failed to list captured runs",
+  );
+  return response.runs;
+}
