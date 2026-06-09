@@ -2,6 +2,7 @@ from fastapi import APIRouter
 
 from transport_matters.api.v1 import (
     breakpoint_routes,
+    captured_terminal,
     exchanges,
     meta,
     overrides,
@@ -20,3 +21,4 @@ api_router.include_router(meta.router, prefix="/meta", tags=["meta"])
 api_router.include_router(session_routes.router, tags=["sessions"])
 api_router.include_router(stream.router, tags=["stream"])
 api_router.include_router(terminal.router, tags=["terminal"])
+api_router.include_router(captured_terminal.router, tags=["captured-terminal"])

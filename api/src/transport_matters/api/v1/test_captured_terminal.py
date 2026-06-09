@@ -1,0 +1,349 @@
+from __future__ import annotations
+
+import os
+import sys
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, cast
+from urllib.parse import quote
+
+import pytest
+from fastapi import status
+from fastapi.testclient import TestClient
+from starlette.websockets import WebSocketDisconnect
+
+from transport_matters.api.v1 import captured_terminal
+from transport_matters.api.v1.terminal_bridge import spawn_pty_process as _spawn_pty_process
+from transport_matters.api.v1.test_terminal import (
+    BACKEND_ORIGIN,
+    _receive_until_disconnect,
+    _wait_until,
+    _websocket_headers,
+)
+from transport_matters.captured_run import CapturedRunRequest, CapturedRunSpawnSpec
+from transport_matters.cli.launch_profile import ManagedSession
+from transport_matters.cli.runner import ManagedClient
+from transport_matters.config import get_settings
+from transport_matters.main import create_app
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping, Sequence
+    from pathlib import Path
+
+    from pytest import MonkeyPatch
+
+    from transport_matters.api.v1.terminal_bridge import TerminalPty
+
+
+CAPTURED_TERMINAL_ROUTE = "/api/captured-runs/claude/terminal"
+
+
+@dataclass(slots=True)
+class FakeLease:
+    manifest_path: Path
+    sessions: list[TerminalPty]
+    closed: bool = False
+    lock_released: bool = False
+    child_poll_at_close: int | None = None
+
+    def close(self) -> None:
+        self.closed = True
+        self.lock_released = True
+        if self.sessions:
+            self.child_poll_at_close = self.sessions[0].process.poll()
+        self.manifest_path.unlink(missing_ok=True)
+
+
+def test_captured_terminal_rejects_origin_before_spawn(
+    monkeypatch: MonkeyPatch, tmp_path: Path
+) -> None:
+    prepare_called = False
+
+    def fail_if_called(*_args: object, **_kwargs: object) -> object:
+        nonlocal prepare_called
+        prepare_called = True
+        raise AssertionError("prepare should not run before origin gate")
+
+    monkeypatch.setattr(captured_terminal, "prepare_captured_run", fail_if_called)
+    client = _client(monkeypatch, tmp_path)
+
+    with (
+        client,
+        pytest.raises(WebSocketDisconnect) as exc_info,
+        client.websocket_connect(
+            CAPTURED_TERMINAL_ROUTE,
+            headers=_websocket_headers("http://evil.test"),
+        ),
+    ):
+        pass
+
+    assert exc_info.value.code == status.WS_1008_POLICY_VIOLATION
+    assert prepare_called is False
+
+
+def test_captured_terminal_sends_ready_before_terminal_bytes(
+    monkeypatch: MonkeyPatch, tmp_path: Path
+) -> None:
+    _install_fake_prepare(
+        monkeypatch,
+        tmp_path,
+        argv=_python_client_argv("print('TM_CLIENT_BYTES', flush=True)\n"),
+    )
+    client = _client(monkeypatch, tmp_path)
+
+    with (
+        client,
+        client.websocket_connect(
+            f"{CAPTURED_TERMINAL_ROUTE}?cwd={quote(str(tmp_path))}",
+            headers=_websocket_headers(BACKEND_ORIGIN),
+        ) as websocket,
+    ):
+        ready = websocket.receive_json()
+        output = _receive_until_disconnect(websocket, needle=b"TM_CLIENT_BYTES")
+        _receive_until_disconnect(websocket, needle=b"__never__")
+
+    assert ready == {
+        "type": "captured-run.ready",
+        "runId": "run-test",
+        "cwd": str(tmp_path),
+        "storageDir": str(tmp_path / "storage"),
+        "proxyPort": 9900,
+        "webPort": 8788,
+        "cli": "claude",
+        "nativeSessionId": "native-test",
+    }
+    assert b"TM_CLIENT_BYTES" in output
+
+
+def test_captured_terminal_binary_input_reaches_child(
+    monkeypatch: MonkeyPatch, tmp_path: Path
+) -> None:
+    _install_fake_prepare(
+        monkeypatch,
+        tmp_path,
+        argv=_python_client_argv(
+            "import sys\n"
+            "data = sys.stdin.buffer.readline()\n"
+            "sys.stdout.buffer.write(b'ECHO:' + data)\n"
+            "sys.stdout.flush()\n"
+        ),
+    )
+    client = _client(monkeypatch, tmp_path)
+
+    with (
+        client,
+        client.websocket_connect(
+            CAPTURED_TERMINAL_ROUTE,
+            headers=_websocket_headers(BACKEND_ORIGIN),
+        ) as websocket,
+    ):
+        assert websocket.receive_json()["type"] == "captured-run.ready"
+        websocket.send_bytes(b"ping\n")
+        output = _receive_until_disconnect(websocket, needle=b"ECHO:ping")
+        _receive_until_disconnect(websocket, needle=b"__never__")
+
+    assert b"ECHO:ping" in output
+
+
+def test_captured_terminal_resize_control_applies_winsize(
+    monkeypatch: MonkeyPatch, tmp_path: Path
+) -> None:
+    calls: list[tuple[int, int]] = []
+    from transport_matters.api.v1 import terminal_bridge
+
+    original_set_winsize = terminal_bridge._set_winsize
+
+    def tracking_set_winsize(fd: int, *, cols: int, rows: int) -> None:
+        original_set_winsize(fd, cols=cols, rows=rows)
+        calls.append((cols, rows))
+
+    monkeypatch.setattr(terminal_bridge, "_set_winsize", tracking_set_winsize)
+    _install_fake_prepare(
+        monkeypatch,
+        tmp_path,
+        argv=_python_client_argv("import sys\nsys.stdin.buffer.readline()\n"),
+    )
+    client = _client(monkeypatch, tmp_path)
+
+    with (
+        client,
+        client.websocket_connect(
+            CAPTURED_TERMINAL_ROUTE,
+            headers=_websocket_headers(BACKEND_ORIGIN),
+        ) as websocket,
+    ):
+        assert websocket.receive_json()["type"] == "captured-run.ready"
+        websocket.send_text('{"type":"resize","cols":120,"rows":33}')
+        _wait_until(lambda: (120, 33) in calls)
+        websocket.send_bytes(b"\n")
+        _receive_until_disconnect(websocket, needle=b"__never__")
+
+    assert (120, 33) in calls
+
+
+def test_captured_terminal_ctrl_c_interrupts_foreground_child(
+    monkeypatch: MonkeyPatch, tmp_path: Path
+) -> None:
+    _install_fake_prepare(
+        monkeypatch,
+        tmp_path,
+        argv=_python_client_argv(
+            "import time\n"
+            "print('TM_READY', flush=True)\n"
+            "try:\n"
+            "    time.sleep(30)\n"
+            "except KeyboardInterrupt:\n"
+            "    print('TM_INTERRUPTED', flush=True)\n"
+        ),
+    )
+    client = _client(monkeypatch, tmp_path)
+
+    with (
+        client,
+        client.websocket_connect(
+            CAPTURED_TERMINAL_ROUTE,
+            headers=_websocket_headers(BACKEND_ORIGIN),
+        ) as websocket,
+    ):
+        assert websocket.receive_json()["type"] == "captured-run.ready"
+        ready_output = _receive_until_disconnect(websocket, needle=b"TM_READY")
+        assert b"TM_READY" in ready_output
+
+        websocket.send_bytes(b"\x03")
+        interrupted = _receive_until_disconnect(websocket, needle=b"TM_INTERRUPTED")
+        _receive_until_disconnect(websocket, needle=b"__never__")
+
+    assert b"TM_INTERRUPTED" in interrupted
+
+
+def test_captured_terminal_disconnect_kills_child_then_closes_lease(
+    monkeypatch: MonkeyPatch, tmp_path: Path
+) -> None:
+    sessions: list[TerminalPty] = []
+    manifest_path = tmp_path / "manifest.json"
+    manifest_path.write_text("{}")
+    lease = FakeLease(manifest_path=manifest_path, sessions=sessions)
+
+    def tracking_spawn(
+        *,
+        argv: Sequence[str],
+        env: Mapping[str, str],
+        cwd: Path,
+        cols: int,
+        rows: int,
+    ) -> TerminalPty:
+        session = _spawn_pty_process(argv=argv, env=env, cwd=cwd, cols=cols, rows=rows)
+        sessions.append(session)
+        return session
+
+    async def disconnect_bridge(*_args: object, **_kwargs: object) -> None:
+        raise WebSocketDisconnect(status.WS_1000_NORMAL_CLOSURE)
+
+    monkeypatch.setattr(captured_terminal, "spawn_pty_process", tracking_spawn)
+    monkeypatch.setattr(captured_terminal, "_bridge_websocket_to_pty", disconnect_bridge)
+    _install_fake_prepare(
+        monkeypatch,
+        tmp_path,
+        argv=_python_client_argv("import time\ntime.sleep(30)\n"),
+        lease=lease,
+    )
+    client = _client(monkeypatch, tmp_path)
+
+    with (
+        client,
+        client.websocket_connect(
+            CAPTURED_TERMINAL_ROUTE,
+            headers=_websocket_headers(BACKEND_ORIGIN),
+        ) as websocket,
+    ):
+        assert websocket.receive_json()["type"] == "captured-run.ready"
+        _wait_until(lambda: bool(sessions))
+
+    _wait_until(lambda: sessions[0].process.poll() is not None and lease.closed)
+
+    assert sessions[0].process.poll() is not None
+    assert lease.child_poll_at_close is not None
+    assert lease.closed is True
+    assert lease.lock_released is True
+    assert not manifest_path.exists()
+
+
+def test_captured_terminal_launch_failure_sends_error_and_no_manifest(
+    monkeypatch: MonkeyPatch, tmp_path: Path
+) -> None:
+    manifest_path = tmp_path / "manifest.json"
+    monkeypatch.setattr(captured_terminal, "check_session_store", lambda: None)
+
+    def fail_prepare(*_args: object, **_kwargs: object) -> object:
+        raise RuntimeError("launch exploded")
+
+    monkeypatch.setattr(captured_terminal, "prepare_captured_run", fail_prepare)
+    client = _client(monkeypatch, tmp_path)
+
+    with (
+        client,
+        client.websocket_connect(
+            CAPTURED_TERMINAL_ROUTE,
+            headers=_websocket_headers(BACKEND_ORIGIN),
+        ) as websocket,
+    ):
+        frame = websocket.receive_json()
+        with pytest.raises(WebSocketDisconnect) as exc_info:
+            websocket.receive_text()
+
+    assert frame == {
+        "type": "captured-run.error",
+        "code": "launch_failed",
+        "message": "launch exploded",
+    }
+    assert exc_info.value.code == status.WS_1011_INTERNAL_ERROR
+    assert not manifest_path.exists()
+
+
+def _client(monkeypatch: MonkeyPatch, tmp_path: Path) -> TestClient:
+    monkeypatch.setenv("TRANSPORT_MATTERS_CWD", str(tmp_path))
+    get_settings.cache_clear()
+    return TestClient(create_app())
+
+
+def _install_fake_prepare(
+    monkeypatch: MonkeyPatch,
+    tmp_path: Path,
+    *,
+    argv: list[str],
+    lease: FakeLease | None = None,
+) -> FakeLease:
+    monkeypatch.setattr(captured_terminal, "check_session_store", lambda: None)
+    fake_lease = lease or FakeLease(manifest_path=tmp_path / "manifest.json", sessions=[])
+
+    def fake_prepare(
+        request: CapturedRunRequest,
+        **_kwargs: object,
+    ) -> tuple[CapturedRunSpawnSpec, object]:
+        spawn_spec = CapturedRunSpawnSpec(
+            run_id="run-test",
+            working_dir=cast("Path", request.directory),
+            storage_dir=tmp_path / "storage",
+            proxy_port=9900,
+            web_port=8788,
+            mitmdump_log=tmp_path / "storage" / "mitmdump.log",
+            client=ManagedClient(
+                name="claude",
+                display_name="Claude",
+                argv=argv,
+                env={**os.environ, "PYTHONUNBUFFERED": "1", "TERM": "xterm-256color"},
+                cwd=cast("Path", request.directory),
+            ),
+            launch_env={},
+            managed_session=ManagedSession(
+                native_session_id="native-test",
+                source_descriptor='{"kind":"claude"}',
+            ),
+        )
+        return spawn_spec, fake_lease
+
+    monkeypatch.setattr(captured_terminal, "prepare_captured_run", fake_prepare)
+    return fake_lease
+
+
+def _python_client_argv(script: str) -> list[str]:
+    return [sys.executable, "-u", "-c", script]

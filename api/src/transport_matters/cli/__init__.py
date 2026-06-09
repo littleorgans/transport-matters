@@ -52,7 +52,8 @@ from .diagnose import run_doctor
 from .help import PlainCommand, PlainGroup
 from .identity import CLI_COMMAND
 from .instances import list_instances as list_instances_impl
-from .launch_options import (  # noqa: TC001
+from .launch_options import (
+    CLAUDE_UPSTREAM_DEFAULT,
     AgentHomeDirOption,
     AgentOption,
     ClaudeBinOption,
@@ -111,6 +112,7 @@ __all__ = [
     "manifest_write",
     "port_in_use",
     "print_banner",
+    "require_addon",
     "run_children",
     "run_client_with_retry",
     "run_root",
@@ -140,7 +142,7 @@ def _split_passthrough(ctx: typer.Context) -> list[str]:
     return passthrough
 
 
-def _require_addon() -> Traversable:
+def require_addon() -> Traversable:
     """Locate the packaged mitmproxy addon or exit with a repair hint."""
     addon_traversable = files("transport_matters") / "addon.py"
     if not addon_traversable.is_file():
@@ -156,6 +158,9 @@ def _require_addon() -> Traversable:
         )
         raise typer.Exit(2)
     return addon_traversable
+
+
+_require_addon = require_addon
 
 
 def _require_force_http_fallback_addon() -> Traversable:
@@ -246,7 +251,7 @@ def claude(
     work_dir: WorkDirOption = None,
     proxy_port: ProxyPortOption = None,
     web_port: WebPortOption = None,
-    upstream: ClaudeUpstreamOption = "https://api.anthropic.com",
+    upstream: ClaudeUpstreamOption = CLAUDE_UPSTREAM_DEFAULT,
     storage_dir: StorageDirOption = None,
     home_dir: AgentHomeDirOption = None,
     claude_bin: ClaudeBinOption = None,
@@ -367,7 +372,7 @@ def desktop(
     home_dir: AgentHomeDirOption = None,
     debug: DebugOption = False,
     print_command: PrintCommandOption = False,
-    upstream: ClaudeUpstreamOption = "https://api.anthropic.com",
+    upstream: ClaudeUpstreamOption = CLAUDE_UPSTREAM_DEFAULT,
     claude_bin: ClaudeBinOption = None,
     no_claude: NoClaudeOption = False,
     no_system_prompt: NoSystemPromptOption = False,

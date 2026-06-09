@@ -13,6 +13,7 @@ from .net import validate_port_option
 
 AgentName: TypeAlias = Literal["claude", "codex"]
 RouteName: TypeAlias = Literal["canvas", "canvas-lab"]
+CLAUDE_UPSTREAM_DEFAULT = "https://api.anthropic.com"
 
 AgentOption: TypeAlias = Annotated[
     AgentName,
