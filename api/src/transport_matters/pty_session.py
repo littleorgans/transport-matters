@@ -119,16 +119,28 @@ def terminate_terminal_pty(session: TerminalPty) -> None:
 
 
 def terminate_process_group(process: subprocess.Popen[bytes]) -> None:
-    with contextlib.suppress(ProcessLookupError):
+    if process.poll() is not None:
+        return
+    try:
         os.killpg(process.pid, signal.SIGTERM)
+    except ProcessLookupError:
+        pass
+    except PermissionError:
+        with contextlib.suppress(ProcessLookupError):
+            process.terminate()
     try:
         process.wait(timeout=CHILD_EXIT_TIMEOUT_S)
         return
     except subprocess.TimeoutExpired:
         pass
 
-    with contextlib.suppress(ProcessLookupError):
+    try:
         os.killpg(process.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+    except PermissionError:
+        with contextlib.suppress(ProcessLookupError):
+            process.kill()
     with contextlib.suppress(subprocess.TimeoutExpired):
         process.wait(timeout=CHILD_EXIT_TIMEOUT_S)
 
