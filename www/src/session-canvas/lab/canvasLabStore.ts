@@ -70,8 +70,13 @@ export interface CanvasLabState {
   addPane(): void;
   addTerminal(): void;
   addCapturedRun(provider: CliName): void;
+  /** Open (or focus) a pane bound to an EXISTING managed run id — attach-from-list, never spawns. */
+  attachCapturedRun(provider: CliName, runId: string): void;
   /** Recreate a captured pane at its persisted key on reload so it re-attaches by id. */
   restoreCapturedPane(paneId: PaneId, provider: CliName): void;
+  /** Minimize ([-]): detach a captured pane's run (it keeps running, re-attach via director) and remove the pane. */
+  hidePane(paneId: PaneId): void;
+  /** Close ([X]): kill a captured pane's run (DELETE) and remove the pane. Plain remove for non-captured panes. */
   closePane(paneId: PaneId): void;
   focusPane(paneId: PaneId): void;
   updatePaneRect(paneId: PaneId, rect: WorldRect): void;
@@ -265,6 +270,24 @@ export const useCanvasLabStore = create<CanvasLabState>()((set, get) => ({
     );
   },
 
+  attachCapturedRun(provider, runId) {
+    // Director attach-from-list: bind a pane to an existing server run instead of
+    // spawning. adoptRun returns the stable key for this run (a fresh one, or the key a
+    // sibling pane already owns), and the pane's ensureRun resolves the stored run id
+    // with no POST — so the operator attaches to the running agent (viewer count ticks
+    // up) rather than starting a second run.
+    const runKey = useCapturedRunStore.getState().adoptRun(provider, runId);
+    // Already showing this run (re-click, or we spawned it): focus the open pane rather
+    // than stacking a duplicate viewer onto the same PTY.
+    if (get().contentRefs[runKey]) {
+      set((state) => ({ layout: focusNode(state.layout, runKey) }));
+      return;
+    }
+    set((state) =>
+      seedContentPane(state, runKey, { kind: "captured-run", owner: "local", provider, runKey }),
+    );
+  },
+
   restoreCapturedPane(paneId, provider) {
     // Reload re-attach: recreate the captured pane at its persisted key so the pane
     // re-attaches to its own run by id. Idempotent — a remount within a session finds
@@ -280,62 +303,16 @@ export const useCanvasLabStore = create<CanvasLabState>()((set, get) => ({
     );
   },
 
+  hidePane(paneId) {
+    // Minimize: detach the captured run (it keeps running and stays in the director for
+    // re-attach), then remove the pane. The non-destructive counterpart to closePane.
+    dismissPane(paneId, "detach");
+  },
+
   closePane(paneId) {
-    // Two-phase close so the exit reads cleanly: mark the pane closing (PaneFrame fades + scales it
-    // out in place, neighbours hold their slots), then after the exit window remove it and re-plan so
-    // the survivors flow in to fill the gap. Mirrors the production canvasStore close protocol.
-    set((state) => ({ layout: markNodeClosing(state.layout, paneId) }));
-    window.setTimeout(() => {
-      const state = get();
-      // Explicit close stops the run (DELETE) and forgets its persisted id. Only this
-      // user-driven path stops a run: a browser reload drops the in-memory lab store
-      // without calling closePane, so the run survives and the pane re-attaches.
-      const closingRef = state.contentRefs[paneId];
-      if (closingRef?.kind === "captured-run") {
-        useCapturedRunStore.getState().clearRun(closingRef.runKey);
-      }
-      const collapsing = state.expandedPaneId === paneId;
-      const unframing = state.framing.paneId === paneId;
-      const expandedPaneId = collapsing ? null : state.expandedPaneId;
-      const framing = collapsing || unframing ? { paneId: null, overview: null } : state.framing;
-      const removed = removeNode(state.layout, paneId);
-      let layout = planLayout(
-        removed,
-        state.bounds,
-        state.activeStrategyId,
-        state.params,
-        collapsing,
-        expandedPaneId,
-      );
-      if (collapsing) {
-        startFly({ paneMotion: true });
-      } else if (unframing) {
-        startFly();
-        layout = setEngineViewport(layout, state.framing.overview ?? DEFAULT_CANVAS_VIEWPORT);
-      } else {
-        const overviewLayout = planLayout(
-          removed,
-          state.bounds,
-          state.activeStrategyId,
-          state.params,
-          true,
-          expandedPaneId,
-        );
-        if (isZoomedInPastOverview(state.layout.viewport, overviewLayout.viewport)) {
-          if (openPaneIds(layout).length <= UNFRAME_FLY_PANE_LIMIT) startFly();
-          layout = overviewLayout;
-        }
-      }
-      const { [paneId]: _closed, ...contentRefs } = state.contentRefs;
-      set({
-        expandedPaneId,
-        framing,
-        contentRefs,
-        // Reflow survivors into the gap. A fitted close is reserved for exiting expand mode, leaving a
-        // frame, or undoing manual zoom-in; normal overview and zoomed-out closes keep the camera stable.
-        layout,
-      });
-    }, CLOSE_DELAY_MS);
+    // Close ([X]): kill the captured run (DELETE) and remove the pane — destructive and
+    // terminal. A non-captured pane carries no run, so this is a plain remove.
+    dismissPane(paneId, "stop");
   },
 
   focusPane(paneId) {
@@ -490,6 +467,65 @@ function startFly(options: FlyOptions = {}): void {
     flyTimer = null;
     useCanvasLabStore.setState({ flying: false, paneMotion: false });
   }, FRAME_MS);
+}
+
+// Whether dismissing a captured pane detaches its run (minimize: keep it running and listed
+// for re-attach) or stops it (close/[X]: DELETE). Non-captured panes carry no run.
+type CapturedRunAction = "detach" | "stop";
+
+// Shared two-phase pane teardown for both minimize and close. The exit animation and reflow
+// are identical; only the captured-run side effect differs. Mark the pane closing (it fades +
+// scales out in place, neighbours hold their slots), then after the exit window run the
+// captured side effect, remove the node, and re-plan so survivors flow into the gap. Mirrors
+// the production canvasStore close protocol.
+function dismissPane(paneId: PaneId, runAction: CapturedRunAction): void {
+  useCanvasLabStore.setState((state) => ({ layout: markNodeClosing(state.layout, paneId) }));
+  window.setTimeout(() => {
+    const state = useCanvasLabStore.getState();
+    const closingRef = state.contentRefs[paneId];
+    if (closingRef?.kind === "captured-run") {
+      const runs = useCapturedRunStore.getState();
+      // detach leaves the server run alive and listed (re-attach via director); stop kills it.
+      if (runAction === "stop") runs.stopRun(closingRef.runKey);
+      else runs.detachRun(closingRef.runKey);
+    }
+    const collapsing = state.expandedPaneId === paneId;
+    const unframing = state.framing.paneId === paneId;
+    const expandedPaneId = collapsing ? null : state.expandedPaneId;
+    const framing = collapsing || unframing ? { paneId: null, overview: null } : state.framing;
+    const removed = removeNode(state.layout, paneId);
+    let layout = planLayout(
+      removed,
+      state.bounds,
+      state.activeStrategyId,
+      state.params,
+      collapsing,
+      expandedPaneId,
+    );
+    if (collapsing) {
+      startFly({ paneMotion: true });
+    } else if (unframing) {
+      startFly();
+      layout = setEngineViewport(layout, state.framing.overview ?? DEFAULT_CANVAS_VIEWPORT);
+    } else {
+      const overviewLayout = planLayout(
+        removed,
+        state.bounds,
+        state.activeStrategyId,
+        state.params,
+        true,
+        expandedPaneId,
+      );
+      if (isZoomedInPastOverview(state.layout.viewport, overviewLayout.viewport)) {
+        if (openPaneIds(layout).length <= UNFRAME_FLY_PANE_LIMIT) startFly();
+        layout = overviewLayout;
+      }
+    }
+    const { [paneId]: _closed, ...contentRefs } = state.contentRefs;
+    // Reflow survivors into the gap. A fitted close is reserved for exiting expand mode, leaving
+    // a frame, or undoing manual zoom-in; normal overview and zoomed-out closes keep the camera.
+    useCanvasLabStore.setState({ expandedPaneId, framing, contentRefs, layout });
+  }, CLOSE_DELAY_MS);
 }
 
 export function resetCanvasLabStoreForTests(): void {

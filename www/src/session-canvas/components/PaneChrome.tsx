@@ -5,6 +5,9 @@
 // Optional `compact` keeps the header to a single line (title + controls) by dropping the kicker
 // and the visible state label — the lab opts in so small tiled panes stay legible; production does
 // not, so its header is unchanged. The dropped text stays in `data-state` and the aria-label.
+// Optional onMinimize adds a [-] button left of Close, so Close stays the rightmost control. Only
+// callers that have somewhere to minimize to (the lab's captured panes detach into the director)
+// pass it; production passes neither it nor onFrame, so its header is unchanged.
 export interface PaneChromeProps {
   title: string;
   badge: string;
@@ -15,6 +18,7 @@ export interface PaneChromeProps {
   expanded?: boolean;
   compact?: boolean;
   onClose?: () => void;
+  onMinimize?: () => void;
   onExpand?: () => void;
   onFrame?: () => void;
   onHeaderDoubleClick?: (event: React.MouseEvent) => void;
@@ -31,6 +35,7 @@ export function PaneChrome({
   expanded = false,
   compact = false,
   onClose,
+  onMinimize,
   onExpand,
   onFrame,
   onHeaderDoubleClick,
@@ -77,6 +82,16 @@ export function PaneChrome({
               type="button"
             >
               {expanded ? "uE" : "E"}
+            </button>
+          ) : null}
+          {onMinimize ? (
+            <button
+              aria-label={`Minimize ${title}`}
+              className="canvas-button"
+              onClick={onMinimize}
+              type="button"
+            >
+              {"−"}
             </button>
           ) : null}
           {onClose ? (
