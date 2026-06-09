@@ -10,7 +10,12 @@ if TYPE_CHECKING:
 
     import pytest
 
-from transport_matters.capabilities import detect_cli, detect_clis, resolve_cli_binary
+from transport_matters.capabilities import (
+    detect_cli,
+    detect_clis,
+    is_runnable_candidate,
+    resolve_cli_binary,
+)
 
 
 def _write_version_cli(path: Path, output: str) -> Path:
@@ -52,17 +57,26 @@ def test_detect_clis_reports_absent_without_version_probe(
     assert result["codex"].version is None
 
 
-def test_detect_cli_timeout_reports_unavailable(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_detect_cli_timeout_keeps_installed_without_version(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    claude = _write_version_cli(tmp_path / "claude", "claude 1.2.3")
+
     def timeout_run(*_args: object, **_kwargs: object) -> subprocess.CompletedProcess[str]:
         raise subprocess.TimeoutExpired(cmd=["claude", "--version"], timeout=0.01)
 
     monkeypatch.setattr(subprocess, "run", timeout_run)
 
-    result = detect_cli("claude", which=lambda _name: "/tmp/fake-claude")
+    result = detect_cli("claude", which=lambda _name: str(claude))
 
-    assert result.installed is False
-    assert result.path is None
+    assert result.installed is True
+    assert result.path == str(claude)
     assert result.version is None
+
+
+def test_is_runnable_candidate_rejects_nonexistent_path(tmp_path: Path) -> None:
+    assert is_runnable_candidate(str(tmp_path / "missing-cli")) is False
 
 
 def test_resolve_cli_binary_preserves_launch_override_behavior(tmp_path: Path) -> None:

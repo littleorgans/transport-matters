@@ -34,12 +34,6 @@ class CliCapability:
     version: str | None
 
 
-@dataclass(frozen=True)
-class _VersionProbe:
-    available: bool
-    version: str | None
-
-
 def candidate_has_missing_shebang_interpreter(candidate: Path) -> bool:
     try:
         first_line = candidate.open("rb").readline(4096)
@@ -63,14 +57,21 @@ def candidate_has_missing_shebang_interpreter(candidate: Path) -> bool:
 def is_runnable_candidate(candidate: str) -> bool:
     path = Path(candidate)
     if not path.exists():
-        # Real shutil.which only returns existing executables; tests inject
-        # synthetic paths through the same resolver hook.
-        return True
+        return False
     if not path.is_file():
         return False
     if not os.access(path, os.X_OK):
         return False
     return not candidate_has_missing_shebang_interpreter(path)
+
+
+def _resolved_which_candidate_is_runnable(candidate: str) -> bool:
+    path = Path(candidate)
+    if not path.exists():
+        # Real shutil.which only returns existing executables; tests inject
+        # synthetic paths through the same resolver hook.
+        return True
+    return is_runnable_candidate(candidate)
 
 
 def resolve_runnable_binary(
@@ -87,7 +88,7 @@ def resolve_runnable_binary(
         if resolved is None or resolved in seen:
             continue
         seen.add(resolved)
-        if is_runnable_candidate(resolved):
+        if _resolved_which_candidate_is_runnable(resolved):
             return resolved
     return None
 
@@ -116,7 +117,7 @@ def _first_output_line(*values: str | None) -> str | None:
     return None
 
 
-def _probe_cli_version(path: str, *, timeout_s: float) -> _VersionProbe:
+def _probe_cli_version(path: str, *, timeout_s: float) -> str | None:
     try:
         completed = subprocess.run(
             [path, "--version"],
@@ -125,15 +126,17 @@ def _probe_cli_version(path: str, *, timeout_s: float) -> _VersionProbe:
             text=True,
             timeout=timeout_s,
         )
-    except FileNotFoundError, PermissionError, OSError, subprocess.TimeoutExpired:
-        return _VersionProbe(available=False, version=None)
+    except (
+        FileNotFoundError,
+        PermissionError,
+        OSError,
+        subprocess.TimeoutExpired,
+    ):
+        return None
 
     if completed.returncode != 0:
-        return _VersionProbe(available=True, version=None)
-    return _VersionProbe(
-        available=True,
-        version=_first_output_line(completed.stdout, completed.stderr),
-    )
+        return None
+    return _first_output_line(completed.stdout, completed.stderr)
 
 
 def detect_cli(
@@ -147,11 +150,8 @@ def detect_cli(
     if path is None or not is_runnable_candidate(path):
         return CliCapability(installed=False, path=None, version=None)
 
-    probe = _probe_cli_version(path, timeout_s=version_timeout_s)
-    if not probe.available:
-        return CliCapability(installed=False, path=None, version=None)
-
-    return CliCapability(installed=True, path=path, version=probe.version)
+    version = _probe_cli_version(path, timeout_s=version_timeout_s)
+    return CliCapability(installed=True, path=path, version=version)
 
 
 def detect_clis(

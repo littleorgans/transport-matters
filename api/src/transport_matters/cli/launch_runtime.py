@@ -143,7 +143,6 @@ def resolve_client_binary(
     client_path = resolve_cli_binary(
         name=name,
         bin_override=bin_override,
-        disabled=disabled,
         which=which,
     )
     if client_path is not None:
