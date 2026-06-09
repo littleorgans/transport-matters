@@ -614,21 +614,16 @@ def run_with_workspace_manifest(
     with WorkspaceLock(run_dir) as wslock:
 
         def write_manifest_for(proxy_port: int, web_port: int) -> None:
-            manifest_write(
-                wslock.manifest_path,
-                Manifest(
-                    cwd=str(working_dir),
-                    pid=os.getpid(),
-                    proxy_port=proxy_port,
-                    web_port=web_port,
-                    storage_dir=str(storage_dir),
-                    run_id=run_id,
-                    started_at=datetime.now(UTC).isoformat(),
-                    transport_matters_version=__version__,
-                    slug=wid.slug,
-                    hash=wid.hash,
-                    home_dir=str(home_dir) if home_dir is not None else None,
-                ),
+            write_workspace_manifest(
+                manifest_path=wslock.manifest_path,
+                working_dir=working_dir,
+                storage_dir=storage_dir,
+                run_id=run_id,
+                home_dir=home_dir,
+                proxy_port=proxy_port,
+                web_port=web_port,
+                workspace_slug=wid.slug,
+                workspace_hash=wid.hash,
             )
 
         try:
@@ -636,3 +631,38 @@ def run_with_workspace_manifest(
         finally:
             with contextlib.suppress(FileNotFoundError):
                 wslock.manifest_path.unlink()
+
+
+def write_workspace_manifest(
+    *,
+    manifest_path: Path,
+    working_dir: Path,
+    storage_dir: Path,
+    run_id: str,
+    home_dir: Path | None,
+    proxy_port: int,
+    web_port: int,
+    workspace_slug: str | None = None,
+    workspace_hash: str | None = None,
+) -> None:
+    """Write the launch manifest with the existing CLI field contract."""
+    if workspace_slug is None or workspace_hash is None:
+        wid = workspace_id(working_dir)
+        workspace_slug = wid.slug
+        workspace_hash = wid.hash
+    manifest_write(
+        manifest_path,
+        Manifest(
+            cwd=str(working_dir),
+            pid=os.getpid(),
+            proxy_port=proxy_port,
+            web_port=web_port,
+            storage_dir=str(storage_dir),
+            run_id=run_id,
+            started_at=datetime.now(UTC).isoformat(),
+            transport_matters_version=__version__,
+            slug=workspace_slug,
+            hash=workspace_hash,
+            home_dir=str(home_dir) if home_dir is not None else None,
+        ),
+    )
