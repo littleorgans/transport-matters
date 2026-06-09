@@ -16,6 +16,7 @@ from transport_matters.api.v1 import terminal_bridge
 from transport_matters.captured_run import (
     CLAUDE_CLIENT_NAME,
     CLAUDE_UPSTREAM_DEFAULT,
+    WEB_RUNTIME_EXTERNAL,
     CapturedRunBindConflict,
     CapturedRunRequest,
     default_claude_run_dependencies,
@@ -24,8 +25,6 @@ from transport_matters.captured_run import (
 from transport_matters.config import get_settings
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
-
     from transport_matters.api.v1.terminal_bridge import TerminalPty
     from transport_matters.captured_run import CapturedRunLease, CapturedRunSpawnSpec
     from transport_matters.config import Settings
@@ -137,7 +136,7 @@ def _prepare_captured_claude_run(
             passthrough=(),
             directory=working_dir,
             proxy_port=None,
-            web_port=settings.web_port,
+            web_port=None,
             upstream=CLAUDE_UPSTREAM_DEFAULT,
             storage_dir=None,
             home_dir=settings.agent_home_dir,
@@ -145,11 +144,15 @@ def _prepare_captured_claude_run(
             client_disabled=False,
             no_system_prompt=False,
             debug=settings.debug,
+            # Nested desktop panes are read-only capture v1. They reuse the host API for
+            # presentation and do not expose breakpoint or override control until the
+            # planned run manager owns cross-process control.
+            web_runtime=WEB_RUNTIME_EXTERNAL,
         ),
         require_addon=dependencies.require_addon,
         resolve_mitmdump=dependencies.resolve_mitmdump,
         which=dependencies.which,
-        port_in_use=_port_in_use_except_current_web(settings, dependencies.port_in_use),
+        port_in_use=dependencies.port_in_use,
         allocate_port_pair=dependencies.allocate_port_pair,
         inject_system_prompt=dependencies.inject_system_prompt,
         user_supplied_system_prompt=dependencies.user_supplied_system_prompt,
@@ -167,18 +170,6 @@ def _query_working_dir(cwd: str | None, settings: Settings) -> Path:
     return working_dir
 
 
-def _port_in_use_except_current_web(
-    settings: Settings,
-    port_in_use: Callable[[int], bool],
-) -> Callable[[int], bool]:
-    def current_web_port_aware_check(port: int) -> bool:
-        if port == settings.web_port:
-            return False
-        return port_in_use(port)
-
-    return current_web_port_aware_check
-
-
 def _ready_frame(spawn_spec: CapturedRunSpawnSpec) -> dict[str, object]:
     frame: dict[str, object] = {
         "type": "captured-run.ready",
@@ -186,9 +177,10 @@ def _ready_frame(spawn_spec: CapturedRunSpawnSpec) -> dict[str, object]:
         "cwd": str(spawn_spec.working_dir),
         "storageDir": str(spawn_spec.storage_dir),
         "proxyPort": spawn_spec.proxy_port,
-        "webPort": spawn_spec.web_port,
         "cli": CLAUDE_CLIENT_NAME,
     }
+    if spawn_spec.web_port is not None:
+        frame["webPort"] = spawn_spec.web_port
     if spawn_spec.managed_session is not None:
         frame["nativeSessionId"] = spawn_spec.managed_session.native_session_id
     return frame

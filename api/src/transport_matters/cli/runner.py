@@ -108,7 +108,7 @@ class BindFailure(RuntimeError):
         self,
         *,
         proxy_port: int,
-        web_port: int,
+        web_port: int | None,
         failing_ports: tuple[int, ...],
         log_path: Path,
     ) -> None:
@@ -147,7 +147,7 @@ class LaunchRetryExhaustedOutcome:
 
     attempted: tuple[tuple[int, int], ...]
     proxy_port: int
-    web_port: int
+    web_port: int | None
     proxy_user_supplied: bool
     web_user_supplied: bool
 
@@ -213,10 +213,11 @@ def _proxy_not_ready_outcome(
     *,
     sup: ProcessSupervisor,
     proxy_port: int,
-    web_port: int,
+    web_port: int | None,
     log_path: Path,
 ) -> LaunchOutcome:
-    failing = failing_ports_from_log(log_path, (proxy_port, web_port))
+    attempted_ports = (proxy_port,) if web_port is None else (proxy_port, web_port)
+    failing = failing_ports_from_log(log_path, attempted_ports)
     if failing is not None:
         sup.terminate_all()
         return LaunchBindFailureOutcome(
@@ -309,10 +310,10 @@ def handle_bind_failure(
     exc: BindFailure,
     *,
     proxy_port: int,
-    web_port: int,
+    web_port: int | None,
     proxy_user_supplied: bool,
     web_user_supplied: bool,
-) -> tuple[int, int]:
+) -> tuple[int, int | None]:
     """Decide retry vs. fail-fast for a :class:`BindFailure`, return new ports.
 
     Returns the (proxy, web) tuple to try on the next iteration. Raises
@@ -338,14 +339,15 @@ def handle_bind_failure(
     if failing:
         if proxy_user_supplied and proxy_port in failing:
             pinned_failing.append(("--proxy-port", proxy_port))
-        if web_user_supplied and web_port in failing:
+        if web_port is not None and web_user_supplied and web_port in failing:
             pinned_failing.append(("--web-port", web_port))
-    elif proxy_user_supplied and web_user_supplied:
+    elif proxy_user_supplied and (web_port is None or web_user_supplied):
         # Log said EADDRINUSE but couldn't pin the port. Both slots are
         # pinned, so we have nothing unpinned to re-allocate; treat
         # both as suspect and surface them in the error.
         pinned_failing.append(("--proxy-port", proxy_port))
-        pinned_failing.append(("--web-port", web_port))
+        if web_port is not None:
+            pinned_failing.append(("--web-port", web_port))
     if pinned_failing:
         msg = " and ".join(f"{flag} {p}" for flag, p in pinned_failing)
         typer.secho(
@@ -367,7 +369,7 @@ def handle_bind_failure(
 
     if not proxy_user_supplied and (not failing or proxy_port in failing):
         proxy_port = new_proxy
-    if not web_user_supplied and (not failing or web_port in failing):
+    if web_port is not None and not web_user_supplied and (not failing or web_port in failing):
         web_port = new_web
     return proxy_port, web_port
 
@@ -430,19 +432,18 @@ def run_client_with_retry(
             )
             return
         except BindFailure as exc:
-            # On the final attempt the loop is about to exit anyway —
-            # don't burn another allocator call (which could itself
-            # raise PortAllocationError and hide the exhaustion message
-            # the spec mandates).
             if attempt + 1 >= _BIND_RETRY_ATTEMPTS:
                 break
-            proxy_port, web_port = handle_bind_failure(
+            next_proxy_port, next_web_port = handle_bind_failure(
                 exc,
                 proxy_port=proxy_port,
                 web_port=web_port,
                 proxy_user_supplied=proxy_user_supplied,
                 web_user_supplied=web_user_supplied,
             )
+            if next_web_port is None:
+                raise RuntimeError("CLI launch retry lost web port") from exc
+            proxy_port, web_port = next_proxy_port, next_web_port
 
     _raise_retry_exhausted(
         LaunchRetryExhaustedOutcome(
@@ -524,7 +525,7 @@ def start_prepared_proxy(
     mitmdump_env: dict[str, str],
     mitmdump_log: Path,
     proxy_port: int,
-    web_port: int,
+    web_port: int | None,
     on_backend_ready: Callable[[], None] | None = None,
 ) -> LaunchOutcome | None:
     """Start background mitmdump and wait until the captured backend is ready."""
@@ -544,13 +545,13 @@ def start_prepared_proxy(
             log_path=mitmdump_log,
         )
 
-    # Ctrl+C during the readiness wait lands as a flag on the supervisor. Bail
-    # out before spawning the client.
     if sup.received_signal is not None:
         sup.terminate_all()
         return LaunchExitOutcome(0)
 
     if on_backend_ready is not None:
+        if web_port is None:
+            raise ValueError("backend ready hook requires a web port")
         outcome = _wait_web_ui_ready_for_hook(
             sup=sup,
             proxy_port=proxy_port,

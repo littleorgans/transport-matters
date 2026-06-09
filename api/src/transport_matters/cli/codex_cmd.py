@@ -7,7 +7,7 @@ import tempfile
 from datetime import datetime
 from importlib.resources import as_file
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import typer
 
@@ -401,12 +401,13 @@ def run_codex(
             managed_session=managed_session,
             debug=debug,
         )
+        prepared_web_port = cast("int", prepared.web_port)
 
         if print_command:
             print_invocation(
                 build_invocation=build_invocation,
                 proxy_port=prepared.proxy_port,
-                web_port=prepared.web_port,
+                web_port=prepared_web_port,
             )
         if not print_command and home_dir is not None and prepared.client_path is not None:
             seed_home_dir(
@@ -429,7 +430,7 @@ def run_codex(
                 )
             _run_codex_launch(
                 proxy_port=prepared.proxy_port,
-                web_port=prepared.web_port,
+                web_port=prepared_web_port,
                 proxy_user_supplied=prepared.proxy_user_supplied,
                 web_user_supplied=prepared.web_user_supplied,
                 no_codex=no_codex,

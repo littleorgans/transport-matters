@@ -42,7 +42,7 @@ class Manifest:
     cwd: str
     pid: int
     proxy_port: int
-    web_port: int
+    web_port: int | None
     storage_dir: str
     run_id: str
     started_at: str

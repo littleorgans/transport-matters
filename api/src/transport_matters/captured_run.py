@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from functools import partial
 from importlib.resources import as_file, files
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 from transport_matters.lock import WorkspaceLock
 from transport_matters.workspace import run_root
@@ -30,6 +30,9 @@ if TYPE_CHECKING:
 _BIND_RETRY_ATTEMPTS = 3
 CLAUDE_CLIENT_NAME = "claude"
 CLAUDE_UPSTREAM_DEFAULT = "https://api.anthropic.com"
+CapturedRunWebRuntime = Literal["embedded", "external"]
+WEB_RUNTIME_EMBEDDED: CapturedRunWebRuntime = "embedded"
+WEB_RUNTIME_EXTERNAL: CapturedRunWebRuntime = "external"
 
 
 @dataclass(frozen=True, slots=True)
@@ -46,6 +49,7 @@ class CapturedRunRequest:
     client_disabled: bool
     no_system_prompt: bool
     debug: bool
+    web_runtime: CapturedRunWebRuntime = WEB_RUNTIME_EMBEDDED
 
 
 @dataclass(frozen=True, slots=True)
@@ -54,7 +58,7 @@ class CapturedRunSpawnSpec:
     working_dir: Path
     storage_dir: Path
     proxy_port: int
-    web_port: int
+    web_port: int | None
     mitmdump_log: Path
     client: ManagedClient | None
     launch_env: dict[str, str]
@@ -180,7 +184,7 @@ class _CapturedRunContext:
     profile: Any
     prepared: Any
     managed_session: Any | None
-    build_invocation: Callable[[int, int], tuple[list[str], dict[str, str], Any | None]]
+    build_invocation: Callable[[int, int | None], tuple[list[str], dict[str, str], Any | None]]
     resource_stack: ExitStack
 
 
@@ -202,7 +206,8 @@ def build_start_invocation(
     managed_session: ManagedSession | None,
     inject_system_prompt: Callable[..., list[str]],
     user_supplied_system_prompt: Callable[[list[str]], bool],
-) -> Callable[[int, int], tuple[list[str], dict[str, str], ManagedClient | None]]:
+    web_runtime: CapturedRunWebRuntime = WEB_RUNTIME_EMBEDDED,
+) -> Callable[[int, int | None], tuple[list[str], dict[str, str], ManagedClient | None]]:
     """Build the retry-safe invocation factory for a captured Claude launch."""
     from transport_matters.cli.launch_runtime import (
         CLIENT_NAME_CLAUDE,
@@ -215,10 +220,18 @@ def build_start_invocation(
 
     def build_invocation(
         proxy_port: int,
-        web_port: int,
+        web_port: int | None,
     ) -> tuple[list[str], dict[str, str], ManagedClient | None]:
+        if web_runtime == WEB_RUNTIME_EMBEDDED and web_port is None:
+            raise ValueError("embedded web runtime requires a web port")
         passthrough = list(claude_passthrough_user)
-        if not no_claude and not no_system_prompt and not user_supplied_system_prompt(passthrough):
+        should_inject_prompt = (
+            not no_claude
+            and not no_system_prompt
+            and web_port is not None
+            and not user_supplied_system_prompt(passthrough)
+        )
+        if should_inject_prompt:
             passthrough = inject_system_prompt(
                 passthrough,
                 proxy_port=proxy_port,
@@ -234,6 +247,7 @@ def build_start_invocation(
             proxy_port=proxy_port,
             web_port=web_port,
             run_id=run_id,
+            web_runtime=web_runtime,
             cli=CLIENT_NAME_CLAUDE,
             home_dir=home_dir,
             owned_native_session_id=native_session_id,
@@ -311,11 +325,12 @@ def run_captured_run_on_local_tty(
         write=not print_command,
     )
     try:
+        web_port = _require_web_port(ctx.prepared.web_port)
         if print_command:
             print_invocation(
                 build_invocation=ctx.build_invocation,
                 proxy_port=ctx.prepared.proxy_port,
-                web_port=ctx.prepared.web_port,
+                web_port=web_port,
             )
             return
 
@@ -344,7 +359,7 @@ def run_captured_run_on_local_tty(
 
             run_client_with_retry(
                 proxy_port=ctx.prepared.proxy_port,
-                web_port=ctx.prepared.web_port,
+                web_port=web_port,
                 proxy_user_supplied=ctx.prepared.proxy_user_supplied,
                 web_user_supplied=ctx.prepared.web_user_supplied,
                 build_invocation=ctx.build_invocation,
@@ -505,6 +520,8 @@ def _build_captured_run_context(
 
     if request.client_name != CLIENT_NAME_CLAUDE:
         raise ValueError(f"unsupported captured client: {request.client_name!r}")
+    if request.web_runtime == WEB_RUNTIME_EXTERNAL and request.web_port is not None:
+        raise ValueError("external captured run must not include a web port")
     launch_profile = profile or ClaudeLaunchProfile()
     prepared = prepare_launch(
         passthrough=list(request.passthrough),
@@ -522,6 +539,7 @@ def _build_captured_run_context(
         port_in_use=port_in_use,
         allocate_port_pair=allocate_port_pair,
         validate_after_client_resolution=validate_after_client_resolution,
+        web_required=request.web_runtime == WEB_RUNTIME_EMBEDDED,
     )
     managed_session = prepare_managed_session(
         launch_profile,
@@ -553,6 +571,7 @@ def _build_captured_run_context(
             managed_session=managed_session,
             inject_system_prompt=inject_system_prompt,
             user_supplied_system_prompt=user_supplied_system_prompt,
+            web_runtime=request.web_runtime,
         )
     except Exception:
         stack.close()
@@ -581,12 +600,19 @@ def _persist_owned_session_facts(ctx: _CapturedRunContext) -> None:
     )
 
 
+def _require_web_port(web_port: int | None) -> int:
+    if web_port is None:
+        msg = "standalone CLI captured runs require an embedded web port"
+        raise ValueError(msg)
+    return web_port
+
+
 def _write_workspace_manifest(
     ctx: _CapturedRunContext,
     wslock: WorkspaceLock,
     *,
     proxy_port: int,
-    web_port: int,
+    web_port: int | None,
 ) -> None:
     from transport_matters.cli.launch_runtime import write_workspace_manifest
 

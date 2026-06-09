@@ -4,6 +4,7 @@ import tomllib
 from functools import lru_cache
 from importlib.resources import files
 from pathlib import Path
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -68,6 +69,7 @@ class Settings(BaseSettings):
 
     proxy_port: int = 8787
     web_port: int = 8788
+    web_runtime: Literal["embedded", "external"] = "embedded"
     storage_dir: Path = Field(default_factory=default_storage_root)
     # Per-launch session boundary created by ``transport-matters claude``.
     # This is Transport Matters run identity, distinct from any provider

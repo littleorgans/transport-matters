@@ -105,17 +105,43 @@ async def _register_owned_cursor(
 
 
 @dataclass(slots=True)
-class AddonRuntime:
+class CaptureRuntime:
     http_client: httpx.AsyncClient
     token_counter: TokenCounter
-    server: uvicorn.Server
-    serve_task: asyncio.Task[None]
     session_writer: SessionWriter | None = None
     index_tailer: TranscriptTailer | None = None
 
 
-def load_runtime() -> AddonRuntime:
-    settings = get_settings()
+@dataclass(slots=True)
+class WebRuntime:
+    server: uvicorn.Server
+    serve_task: asyncio.Task[None]
+
+
+@dataclass(slots=True)
+class AddonRuntime:
+    capture: CaptureRuntime
+    web: WebRuntime | None
+
+    @property
+    def http_client(self) -> httpx.AsyncClient:
+        return self.capture.http_client
+
+    @property
+    def token_counter(self) -> TokenCounter:
+        return self.capture.token_counter
+
+    @property
+    def session_writer(self) -> SessionWriter | None:
+        return self.capture.session_writer
+
+    @property
+    def index_tailer(self) -> TranscriptTailer | None:
+        return self.capture.index_tailer
+
+
+def load_capture_runtime(settings: Settings | None = None) -> CaptureRuntime:
+    settings = settings or get_settings()
     storage = init_storage(root=settings.storage_dir)
     from transport_matters.storage.disk import DiskStorageBackend
 
@@ -173,6 +199,15 @@ def load_runtime() -> AddonRuntime:
         logger.exception("session capture failed to start; transcript capture disabled this run")
         session_writer = index_tailer = None
 
+    return CaptureRuntime(
+        http_client=http_client,
+        token_counter=token_counter,
+        session_writer=session_writer,
+        index_tailer=index_tailer,
+    )
+
+
+def start_web_runtime(settings: Settings) -> WebRuntime:
     app = create_app()
     config = uvicorn.Config(
         app,
@@ -183,17 +218,17 @@ def load_runtime() -> AddonRuntime:
     server = uvicorn.Server(config)
     serve_task = asyncio.create_task(server.serve(), name="web-ui-serve")
     logger.info("Web UI: http://127.0.0.1:%d", settings.web_port)
-    return AddonRuntime(
-        http_client=http_client,
-        token_counter=token_counter,
-        server=server,
-        serve_task=serve_task,
-        session_writer=session_writer,
-        index_tailer=index_tailer,
-    )
+    return WebRuntime(server=server, serve_task=serve_task)
 
 
-async def close_runtime(runtime: AddonRuntime | None) -> None:
+def load_runtime() -> AddonRuntime:
+    settings = get_settings()
+    capture = load_capture_runtime(settings)
+    web = start_web_runtime(settings) if settings.web_runtime == "embedded" else None
+    return AddonRuntime(capture=capture, web=web)
+
+
+async def close_capture_runtime(runtime: CaptureRuntime | None) -> None:
     await bp.clear_all()
     if runtime is None:
         return
@@ -210,6 +245,14 @@ async def close_runtime(runtime: AddonRuntime | None) -> None:
     from transport_matters.pause_session import drain_pause_count_tasks
 
     await drain_pause_count_tasks()
+    await runtime.http_client.aclose()
+    set_counter(None)
+    set_recent_auth(None)
+
+
+async def close_web_runtime(runtime: WebRuntime | None) -> None:
+    if runtime is None:
+        return
     runtime.server.should_exit = True
     try:
         await asyncio.wait_for(runtime.serve_task, timeout=5.0)
@@ -217,6 +260,11 @@ async def close_runtime(runtime: AddonRuntime | None) -> None:
         runtime.serve_task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await runtime.serve_task
-    await runtime.http_client.aclose()
-    set_counter(None)
-    set_recent_auth(None)
+
+
+async def close_runtime(runtime: AddonRuntime | None) -> None:
+    if runtime is None:
+        await close_capture_runtime(None)
+        return
+    await close_capture_runtime(runtime.capture)
+    await close_web_runtime(runtime.web)
