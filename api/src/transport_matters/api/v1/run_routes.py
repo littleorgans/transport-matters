@@ -174,7 +174,6 @@ def _validated_state(state: str) -> RunState:
             "invalid_state",
             f"unsupported run state: {state}",
         )
-    raise AssertionError("unreachable")
 
 
 def _validated_existing_dir(cwd: str) -> Path:
