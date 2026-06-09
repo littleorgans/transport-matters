@@ -12,6 +12,7 @@ import typer
 from fastapi import APIRouter, Query, WebSocket, WebSocketException, status
 from starlette.websockets import WebSocketDisconnect
 
+from transport_matters import pty_session
 from transport_matters.api.v1 import terminal_bridge
 from transport_matters.captured_run import (
     CLAUDE_CLIENT_NAME,
@@ -26,9 +27,9 @@ from transport_matters.captured_run import (
 from transport_matters.config import get_settings
 
 if TYPE_CHECKING:
-    from transport_matters.api.v1.terminal_bridge import TerminalPty
     from transport_matters.captured_run import CapturedRunLease, CapturedRunSpawnSpec
     from transport_matters.config import Settings
+    from transport_matters.pty_session import TerminalPty
 
 CapturedRunErrorCode = Literal[
     "origin_not_allowed",
@@ -49,7 +50,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 _bridge_websocket_to_pty = terminal_bridge.bridge_websocket_to_pty
-spawn_pty_process = terminal_bridge.spawn_pty_process
+spawn_pty_process = pty_session.spawn_pty_process
 
 
 class CapturedTerminalLaunchError(RuntimeError):
@@ -289,7 +290,7 @@ def _teardown_captured_terminal_run(
     lease: CapturedRunLease | None,
 ) -> None:
     if terminal_session is not None:
-        terminal_bridge.terminate_terminal_pty(terminal_session)
+        pty_session.terminate_terminal_pty(terminal_session)
     if lease is not None:
         lease.close()
 

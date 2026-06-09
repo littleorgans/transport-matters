@@ -5,26 +5,30 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import errno
-import fcntl
 import json
 import logging
 import os
-import pty
-import signal
-import struct
-import subprocess
-import termios
-from dataclasses import dataclass
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING
 from urllib.parse import urlsplit
 
 from fastapi import WebSocket, WebSocketDisconnect, status
 from starlette.websockets import WebSocketState
 
-if TYPE_CHECKING:
-    from collections.abc import Callable, Mapping, Sequence
-    from pathlib import Path
+from transport_matters.pty_session import (
+    CHILD_EXIT_TIMEOUT_S,
+    TerminalPty,
+    WinsizeSetter,
+    close_fd,
+    close_terminal_master,
+    prepare_terminal_child,
+    set_winsize,
+    spawn_pty_process,
+    terminate_process_group,
+    terminate_terminal_pty,
+    write_all,
+)
 
+if TYPE_CHECKING:
     from transport_matters.config import Settings
 
 logger = logging.getLogger(__name__)
@@ -34,35 +38,43 @@ DEFAULT_ROWS = 24
 MAX_COLS = 500
 MAX_ROWS = 200
 PTY_READ_CHUNK_SIZE = 8192
-CHILD_EXIT_TIMEOUT_S = 1.0
 _TERMINAL_LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
-_TERMINAL_CHILD_DEFAULT_SIGNALS = (
-    signal.SIGHUP,
-    signal.SIGINT,
-    signal.SIGQUIT,
-    signal.SIGTERM,
-    signal.SIGTSTP,
-    signal.SIGTTIN,
-    signal.SIGTTOU,
-)
+_WinsizeSetter = WinsizeSetter
 
-
-class _WinsizeSetter(Protocol):
-    def __call__(self, fd: int, *, cols: int, rows: int) -> None:
-        pass
+__all__ = [
+    "CHILD_EXIT_TIMEOUT_S",
+    "DEFAULT_COLS",
+    "DEFAULT_ROWS",
+    "MAX_COLS",
+    "MAX_ROWS",
+    "PTY_READ_CHUNK_SIZE",
+    "TerminalControlError",
+    "TerminalPty",
+    "_WinsizeSetter",
+    "bridge_websocket_to_pty",
+    "close_fd",
+    "close_terminal_master",
+    "close_websocket_if_connected",
+    "normalize_origin",
+    "origin_allowed",
+    "parse_control_frame",
+    "prepare_terminal_child",
+    "receive_websocket_input",
+    "request_origin_from_websocket",
+    "send_pty_output",
+    "set_winsize",
+    "spawn_pty_process",
+    "terminate_process_group",
+    "terminate_terminal_pty",
+    "trusted_loopback_host",
+    "validated_dimension",
+    "websocket_connected",
+    "write_all",
+]
 
 
 class TerminalControlError(ValueError):
     """Raised when a terminal text control frame is invalid."""
-
-
-@dataclass(slots=True)
-class TerminalPty:
-    """One child process attached to one PTY master."""
-
-    master_fd: int
-    process: subprocess.Popen[bytes]
-    closed: bool = False
 
 
 def origin_allowed(websocket: WebSocket, settings: Settings) -> bool:
@@ -137,56 +149,6 @@ def trusted_loopback_host(value: str | None, *, allowed_port: int) -> str | None
         return None
 
     return parsed.netloc.lower()
-
-
-def spawn_pty_process(
-    *,
-    argv: Sequence[str],
-    env: Mapping[str, str],
-    cwd: Path,
-    cols: int,
-    rows: int,
-) -> TerminalPty:
-    """Spawn one process attached to a PTY with browser terminal job control."""
-    if not argv:
-        raise ValueError("PTY process argv must not be empty")
-
-    master_fd, slave_fd = pty.openpty()
-    try:
-        set_winsize(slave_fd, cols=cols, rows=rows)
-        process = subprocess.Popen(
-            list(argv),
-            stdin=slave_fd,
-            stdout=slave_fd,
-            stderr=slave_fd,
-            cwd=cwd,
-            env=dict(env),
-            preexec_fn=prepare_terminal_child(slave_fd),
-            close_fds=True,
-        )
-    except Exception:
-        close_fd(slave_fd)
-        close_fd(master_fd)
-        raise
-
-    close_fd(slave_fd)
-    return TerminalPty(master_fd=master_fd, process=process)
-
-
-def prepare_terminal_child(slave_fd: int) -> Callable[[], None]:
-    def prepare() -> None:
-        os.setsid()
-        fcntl.ioctl(slave_fd, termios.TIOCSCTTY, 0)
-        os.tcsetpgrp(slave_fd, os.getpgrp())
-        for child_signal in _TERMINAL_CHILD_DEFAULT_SIGNALS:
-            signal.signal(child_signal, signal.SIG_DFL)
-
-    return prepare
-
-
-def set_winsize(fd: int, *, cols: int, rows: int) -> None:
-    packed = struct.pack("HHHH", rows, cols, 0, 0)
-    fcntl.ioctl(fd, termios.TIOCSWINSZ, packed)
 
 
 async def bridge_websocket_to_pty(
@@ -304,20 +266,6 @@ def validated_dimension(value: object, *, name: str, maximum: int) -> int:
     return value
 
 
-def write_all(fd: int, data: bytes) -> None:
-    offset = 0
-    while offset < len(data):
-        try:
-            written = os.write(fd, data[offset:])
-        except OSError as exc:
-            if exc.errno in {errno.EIO, errno.EBADF}:
-                return
-            raise
-        if written <= 0:
-            raise RuntimeError("terminal PTY write returned no progress")
-        offset += written
-
-
 async def close_websocket_if_connected(
     websocket: WebSocket, *, code: int = status.WS_1000_NORMAL_CLOSURE, reason: str = ""
 ) -> None:
@@ -331,37 +279,3 @@ def websocket_connected(websocket: WebSocket) -> bool:
         websocket.application_state == WebSocketState.CONNECTED
         and websocket.client_state == WebSocketState.CONNECTED
     )
-
-
-def terminate_terminal_pty(session: TerminalPty) -> None:
-    process = session.process
-    if process.poll() is None:
-        terminate_process_group(process)
-    close_terminal_master(session)
-
-
-def terminate_process_group(process: subprocess.Popen[bytes]) -> None:
-    with contextlib.suppress(ProcessLookupError):
-        os.killpg(process.pid, signal.SIGTERM)
-    try:
-        process.wait(timeout=CHILD_EXIT_TIMEOUT_S)
-        return
-    except subprocess.TimeoutExpired:
-        pass
-
-    with contextlib.suppress(ProcessLookupError):
-        os.killpg(process.pid, signal.SIGKILL)
-    with contextlib.suppress(subprocess.TimeoutExpired):
-        process.wait(timeout=CHILD_EXIT_TIMEOUT_S)
-
-
-def close_terminal_master(session: TerminalPty) -> None:
-    if session.closed:
-        return
-    close_fd(session.master_fd)
-    session.closed = True
-
-
-def close_fd(fd: int) -> None:
-    with contextlib.suppress(OSError):
-        os.close(fd)
