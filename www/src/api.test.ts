@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createApiTransport,
+  createCapturedRun,
+  deleteRun,
   fetchMeta,
   fetchTurnContent,
   resetApiTransport,
@@ -110,5 +112,57 @@ describe("fetchMeta", () => {
       workspaceId: "workspace/hash",
     });
     expect(fetchMock).toHaveBeenCalledWith("/api/meta");
+  });
+});
+
+describe("createCapturedRun", () => {
+  afterEach(() => {
+    resetApiTransport();
+    vi.unstubAllGlobals();
+  });
+
+  it("spawns a managed run via POST /api/runs and returns the run id", async () => {
+    const fetchMock = stubFetch({ run: { runId: "run-abc123" } }, 201);
+
+    await expect(createCapturedRun("claude")).resolves.toBe("run-abc123");
+
+    expect(fetchMock).toHaveBeenCalledWith("/api/runs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ cli: "claude" }),
+    });
+  });
+
+  it("forwards an absolute cwd when supplied", async () => {
+    const fetchMock = stubFetch({ run: { runId: "run-xyz" } }, 201);
+
+    await expect(createCapturedRun("codex", "/work/proj")).resolves.toBe("run-xyz");
+
+    expect(fetchMock).toHaveBeenCalledWith("/api/runs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ cli: "codex", cwd: "/work/proj" }),
+    });
+  });
+
+  it("throws on a non-OK spawn response", async () => {
+    stubFetch({ detail: { code: "unsupported_cli", message: "no" } }, 400);
+
+    await expect(createCapturedRun("claude")).rejects.toThrow("Failed to spawn captured run: 400");
+  });
+});
+
+describe("deleteRun", () => {
+  afterEach(() => {
+    resetApiTransport();
+    vi.unstubAllGlobals();
+  });
+
+  it("stops a managed run via DELETE /api/runs/{id} with an encoded id", async () => {
+    const fetchMock = stubFetch({ runId: "run/1", state: "exited", stopReason: "explicit-stop" });
+
+    await deleteRun("run/1");
+
+    expect(fetchMock).toHaveBeenCalledWith("/api/runs/run%2F1", { method: "DELETE" });
   });
 });

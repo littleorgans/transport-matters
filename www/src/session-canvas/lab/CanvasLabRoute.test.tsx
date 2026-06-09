@@ -1,9 +1,15 @@
 import { render, screen } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CliCapability, CliName } from "../../types";
 import { CanvasLabRoute } from "./CanvasLabRoute";
-import { resetCanvasLabStoreForTests } from "./canvasLabStore";
+import { resetCanvasLabStoreForTests, useCanvasLabStore } from "./canvasLabStore";
 import { resetCapabilitiesStoreForTests, useCapabilitiesStore } from "./capabilitiesStore";
+import { resetCapturedRunStoreForTests, useCapturedRunStore } from "./capturedRunStore";
+
+vi.mock("../../api", () => ({
+  createCapturedRun: vi.fn(),
+  deleteRun: vi.fn(),
+}));
 
 // The lab gates its captured-run spawn buttons on managed-CLI availability. Seeding
 // the capabilities store to "ready" makes CanvasLabRoute's mount-time probe a no-op,
@@ -26,13 +32,16 @@ function seedCapabilities(installed: Record<CliName, boolean>): void {
 
 describe("CanvasLabRoute captured-run spawn buttons", () => {
   beforeEach(() => {
+    localStorage.clear();
     resetCanvasLabStoreForTests();
     resetCapabilitiesStoreForTests();
+    resetCapturedRunStoreForTests();
   });
 
   afterEach(() => {
     resetCanvasLabStoreForTests();
     resetCapabilitiesStoreForTests();
+    resetCapturedRunStoreForTests();
   });
 
   it("shows both spawn buttons when both CLIs are installed", () => {
@@ -70,5 +79,24 @@ describe("CanvasLabRoute captured-run spawn buttons", () => {
     render(<CanvasLabRoute />);
     expect(screen.getByRole("button", { name: "Spawn Claude" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Spawn Codex" })).toBeInTheDocument();
+  });
+
+  it("re-adds a captured-run pane on mount for each persisted run (reload re-attach)", () => {
+    // A browser reload drops the in-memory lab store but keeps each pane's run. The lab
+    // reconciles on mount so every captured pane reappears at its key and re-attaches by
+    // id instead of leaving the headless run orphaned.
+    useCapturedRunStore.setState({
+      runs: { "claude:k1": { provider: "claude", runId: "run-1" } },
+    });
+    seedCapabilities({ claude: true, codex: true });
+
+    render(<CanvasLabRoute />);
+
+    expect(useCanvasLabStore.getState().contentRefs["claude:k1"]).toEqual({
+      kind: "captured-run",
+      owner: "local",
+      provider: "claude",
+      runKey: "claude:k1",
+    });
   });
 });

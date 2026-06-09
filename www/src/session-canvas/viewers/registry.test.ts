@@ -105,17 +105,45 @@ describe("registry pane ids", () => {
     expect(paneIdForRef(ref)).toBe("terminal");
   });
 
-  it("routes captured runs per provider through one captured-run viewer", () => {
-    const claude: CanvasPaneRef = { kind: "captured-run", owner: "local", provider: "claude" };
-    const codex: CanvasPaneRef = { kind: "captured-run", owner: "local", provider: "codex" };
+  it("routes captured runs through the captured-run viewer, keyed by the per-pane run key", () => {
+    const claude: CanvasPaneRef = {
+      kind: "captured-run",
+      owner: "local",
+      provider: "claude",
+      runKey: "claude:k1",
+    };
+    const codex: CanvasPaneRef = {
+      kind: "captured-run",
+      owner: "local",
+      provider: "codex",
+      runKey: "codex:k1",
+    };
     expect(viewerIdForRef(claude)).toBe("captured-run");
     expect(viewerIdForRef(codex)).toBe("captured-run");
     expect(titleForRef(claude)).toBe("Claude");
     expect(titleForRef(codex)).toBe("Codex");
-    // Distinct pane ids so a Claude and a Codex captured run coexist rather than dedupe.
-    expect(paneIdForRef(claude)).toBe("captured-run:claude");
-    expect(paneIdForRef(codex)).toBe("captured-run:codex");
-    expect(paneIdForRef(claude)).not.toBe(paneIdForRef(codex));
+    // The pane id IS the per-pane run key (not the provider), so each captured pane owns its run.
+    expect(paneIdForRef(claude)).toBe("claude:k1");
+    expect(paneIdForRef(codex)).toBe("codex:k1");
+  });
+
+  it("gives two same-provider captured runs distinct pane ids (no provider dedupe)", () => {
+    const first: CanvasPaneRef = {
+      kind: "captured-run",
+      owner: "local",
+      provider: "claude",
+      runKey: "claude:k1",
+    };
+    const second: CanvasPaneRef = {
+      kind: "captured-run",
+      owner: "local",
+      provider: "claude",
+      runKey: "claude:k2",
+    };
+    // Distinct run keys => distinct pane ids => two independent runs, never collapsed onto one.
+    expect(paneIdForRef(first)).toBe("claude:k1");
+    expect(paneIdForRef(second)).toBe("claude:k2");
+    expect(paneIdForRef(first)).not.toBe(paneIdForRef(second));
   });
 
   it("resolves a viewer whose dedupe key is the registry pane id", () => {

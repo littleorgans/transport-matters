@@ -1,6 +1,7 @@
 import type {
   BreakpointStatusDetail,
   CapabilitiesResponse,
+  CliName,
   ExchangeDetail,
   HarnessDescriptor,
   IndexEntry,
@@ -374,5 +375,39 @@ export async function fetchCapabilities(): Promise<CapabilitiesResponse> {
     "/api/capabilities",
     undefined,
     "Failed to fetch capabilities",
+  );
+}
+
+// ── Managed captured run endpoints ────────────────────────────────
+
+/**
+ * Spawn a captured managed-CLI run (real CLI in a PTY, traffic through the TM
+ * reverse proxy) via `POST /api/runs` and return its `runId`. Create is separate
+ * from attach: the pane attaches to the returned run over a WebSocket, so the run
+ * survives a detach. `cwd` is an absolute workspace dir; omitting it lets the
+ * backend resolve its launch workspace.
+ */
+export async function createCapturedRun(cli: CliName, cwd?: string): Promise<string> {
+  const body = cwd === undefined ? { cli } : { cli, cwd };
+  const response = await requestJson<{ run: { runId: string } }>(
+    "/api/runs",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+    "Failed to spawn captured run",
+    true,
+  );
+  return response.run.runId;
+}
+
+/** Explicitly stop a managed run via `DELETE /api/runs/{runId}`. */
+export async function deleteRun(runId: string): Promise<void> {
+  await requestVoid(
+    `/api/runs/${encodeURIComponent(runId)}`,
+    { method: "DELETE" },
+    `Failed to stop run ${runId}`,
+    true,
   );
 }

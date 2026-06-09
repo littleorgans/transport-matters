@@ -4,8 +4,6 @@
 // the socket constructor are both injected so the protocol is unit-testable
 // without a real terminal or a live server (the component wires the real ones).
 
-import type { CliName } from "../../../types";
-
 /** The slice of xterm's Terminal this module touches. */
 export interface TerminalIO {
   onData(handler: (data: string) => void): { dispose(): void };
@@ -61,22 +59,19 @@ export function terminalSocketUrl(
 }
 
 /**
- * Same-origin ws(s):// URL for a captured run's terminal endpoint. `provider`
- * selects the managed CLI route (`/api/captured-runs/{provider}/terminal`, with
- * provider ∈ claude|codex). An absolute `cwd` selects the workspace directory;
- * omitting it lets the backend resolve its launch workspace (see
- * api/v1/captured_terminal.py).
+ * Same-origin ws(s):// URL that attaches to an already-spawned managed run's PTY
+ * (`/api/runs/{runId}/terminal`, see api/v1/run_routes.py). The run is created
+ * out of band via `POST /api/runs`; this socket only attaches, so closing it
+ * detaches the viewer and leaves the run running headless.
  */
-export function capturedTerminalSocketUrl(
-  provider: CliName,
+export function runTerminalSocketUrl(
+  runId: string,
   cols: number,
   rows: number,
-  cwd?: string,
   location: SocketLocation = window.location,
 ): string {
-  const query = new URLSearchParams({ cols: String(cols), rows: String(rows) });
-  if (cwd !== undefined) query.set("cwd", cwd);
-  return `${socketScheme(location)}//${location.host}/api/captured-runs/${provider}/terminal?${query}`;
+  const runSegment = encodeURIComponent(runId);
+  return `${socketScheme(location)}//${location.host}/api/runs/${runSegment}/terminal?cols=${cols}&rows=${rows}`;
 }
 
 export function openTerminalSocket(

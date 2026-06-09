@@ -33,7 +33,6 @@ const TRANSCRIPT_PANE_PREFIX = "transcript:";
 const SUBAGENT_PANE_PREFIX = "subagent:";
 const RESOURCE_PANE_PREFIX = "resource:";
 const EXCHANGE_PANE_PREFIX = "exchange:";
-const CAPTURED_RUN_PANE_PREFIX = "captured-run:";
 
 const PICKER_RECT: WorldRect = Object.freeze({ x: 48, y: 48, width: 440, height: 640 });
 const TRANSCRIPT_RECT: WorldRect = Object.freeze({ x: 512, y: 48, width: 720, height: 640 });
@@ -127,19 +126,23 @@ const registry: ViewerRegistration[] = [
   defineViewer<CapturedRunRef>({
     id: "captured-run",
     canRender: (ref): ref is CapturedRunRef => ref.kind === "captured-run",
-    // One pane per provider: a Claude and a Codex captured run coexist; a second of
-    // the same provider dedupes onto the first.
-    paneId: (ref) => `${CAPTURED_RUN_PANE_PREFIX}${ref.provider}`,
+    // Each captured pane owns its own run, so the pane id IS the per-pane run key
+    // (provider:uuid). Two same-provider captured runs carry distinct keys => distinct
+    // pane ids; they never dedupe onto one shared terminal.
+    paneId: (ref) => ref.runKey,
     title: (ref) => cliLabel(ref.provider),
     defaultRect: (_ref, index) => cascadeRect(TERMINAL_RECT, contentStep(index)),
-    // Self-contained like the bare terminal (its own xterm + captured PTY socket); the only viewer
-    // prop it reads is the provider on its ref. Lazy, so a Suspense boundary covers the one-time
-    // shared-chunk fetch.
+    // Self-contained like the bare terminal (its own xterm + captured PTY socket). The pane id is
+    // the per-pane run key, so each captured pane owns its own run. Lazy, so a Suspense boundary
+    // covers the one-time shared-chunk fetch.
     render: (props) => (
       <Suspense
         fallback={<div aria-busy="true" className="canvas-transcript canvas-transcript--center" />}
       >
-        <CapturedRunPane provider={props.pane.contentRef.provider} />
+        <CapturedRunPane
+          runKey={props.pane.contentRef.runKey}
+          provider={props.pane.contentRef.provider}
+        />
       </Suspense>
     ),
   }),

@@ -9,6 +9,7 @@ import { renderPaneContent, titleForRef, viewerIdForRef } from "../viewers/regis
 import { ControlsPanel } from "./ControlsPanel";
 import { framedPaneId, useCanvasLabStore } from "./canvasLabStore";
 import { cliInstalled, useCapabilitiesStore } from "./capabilitiesStore";
+import { useCapturedRunStore } from "./capturedRunStore";
 import { LabCardPane } from "./viewers/LabCardPane";
 import { LabRulerPane } from "./viewers/LabRulerPane";
 
@@ -26,6 +27,7 @@ export function CanvasLabRoute() {
   const addPane = useCanvasLabStore((state) => state.addPane);
   const addTerminal = useCanvasLabStore((state) => state.addTerminal);
   const addCapturedRun = useCanvasLabStore((state) => state.addCapturedRun);
+  const restoreCapturedPane = useCanvasLabStore((state) => state.restoreCapturedPane);
   const organize = useCanvasLabStore((state) => state.organize);
   const closePane = useCanvasLabStore((state) => state.closePane);
   const focusPane = useCanvasLabStore((state) => state.focusPane);
@@ -63,6 +65,17 @@ export function CanvasLabRoute() {
     if (Object.keys(useCanvasLabStore.getState().layout.nodes).length > 0) return;
     for (let index = 0; index < SEED_PANES; index += 1) addPane();
   }, [addPane]);
+
+  // Re-attach persisted runs on mount: a browser reload drops the in-memory lab store
+  // but keeps each pane's run, so recreate a captured pane at every persisted key and
+  // the pane re-attaches to its own run by id (output continues) instead of leaving the
+  // headless run orphaned. restoreCapturedPane is idempotent across remounts.
+  useEffect(() => {
+    const { runs } = useCapturedRunStore.getState();
+    for (const [paneId, record] of Object.entries(runs)) {
+      restoreCapturedPane(paneId, record.provider);
+    }
+  }, [restoreCapturedPane]);
 
   // Probe managed-CLI availability once so the Spawn buttons reflect what's installed.
   useEffect(() => {
