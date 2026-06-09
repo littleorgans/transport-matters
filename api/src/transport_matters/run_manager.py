@@ -10,7 +10,6 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
-from threading import RLock
 from typing import TYPE_CHECKING, Any, Literal, Protocol
 from uuid import uuid4
 
@@ -286,7 +285,6 @@ class RunManager:
         self._read_chunk_size = read_chunk_size
         self._install_signal_handlers = install_signal_handlers
         self._runs: dict[str, ManagedRun] = {}
-        self._lock = RLock()
         self._teardown_lock = asyncio.Lock()
         self._closed = False
 
@@ -332,20 +330,21 @@ class RunManager:
                 exit_code=None,
                 stop_reason=None,
             )
-            with self._lock:
-                self._runs[run.run_id] = run
-                registered_run_id = run.run_id
-                drain_task = asyncio.create_task(
-                    self._drain_run(run), name=f"transport-run-drain:{run.run_id}"
-                )
-                run.drain_task = drain_task
-                run.state = RunState.RUNNING
-                run.updated_at = self._clock()
+            if self._closed:
+                raise RunManagerError("run_manager_closed", "run manager is closed")
+
+            self._runs[run.run_id] = run
+            registered_run_id = run.run_id
+            drain_task = asyncio.create_task(
+                self._drain_run(run), name=f"transport-run-drain:{run.run_id}"
+            )
+            run.drain_task = drain_task
+            run.state = RunState.RUNNING
+            run.updated_at = self._clock()
             return run
         except Exception as exc:
             if registered_run_id is not None:
-                with self._lock:
-                    self._runs.pop(registered_run_id, None)
+                self._runs.pop(registered_run_id, None)
             await self._rollback_post_prepare(
                 terminal=terminal,
                 drain_task=drain_task,
@@ -356,21 +355,19 @@ class RunManager:
             raise RunManagerError("launch_failed", str(exc)) from exc
 
     def get(self, run_id: str) -> ManagedRun:
-        with self._lock:
-            run = self._runs.get(run_id)
-            if run is None:
-                raise RunNotFoundError(run_id)
-            return run
+        run = self._runs.get(run_id)
+        if run is None:
+            raise RunNotFoundError(run_id)
+        return run
 
     def list(self, filters: RunFilters | None = None) -> list[ManagedRunView]:
-        with self._lock:
-            runs = tuple(self._runs.values())
-            if filters is not None:
-                if filters.cli is not None:
-                    runs = tuple(run for run in runs if run.cli == filters.cli)
-                if filters.states is not None:
-                    runs = tuple(run for run in runs if run.state in filters.states)
-            return [run.view() for run in runs]
+        runs = tuple(self._runs.values())
+        if filters is not None:
+            if filters.cli is not None:
+                runs = tuple(run for run in runs if run.cli == filters.cli)
+            if filters.states is not None:
+                runs = tuple(run for run in runs if run.state in filters.states)
+        return [run.view() for run in runs]
 
     def attach(
         self,
@@ -381,32 +378,30 @@ class RunManager:
         attachment_id: str | None = None,
         queue_maxsize: int | None = None,
     ) -> AttachedTerminal:
-        with self._lock:
-            run = self.get(run_id)
-            if run.state is not RunState.RUNNING:
-                raise RunManagerError("run_not_attachable", f"run {run_id} is {run.state}")
-            scrollback = run.scrollback.snapshot()
-            start_seq = run.scrollback.next_seq
-            attachment = TerminalAttachment(
-                attachment_id=attachment_id or uuid4().hex,
-                queue=asyncio.Queue(maxsize=queue_maxsize or self._attachment_queue_size),
-                cols=cols,
-                rows=rows,
-                connected_at=self._clock(),
-            )
-            run.attachments[attachment.attachment_id] = attachment
-            run.viewerless_since = None
-            run.updated_at = self._clock()
-            return AttachedTerminal(
-                attachment=attachment,
-                scrollback=scrollback,
-                start_seq=start_seq,
-            )
+        run = self.get(run_id)
+        if run.state is not RunState.RUNNING:
+            raise RunManagerError("run_not_attachable", f"run {run_id} is {run.state}")
+        scrollback = run.scrollback.snapshot()
+        start_seq = run.scrollback.next_seq
+        attachment = TerminalAttachment(
+            attachment_id=attachment_id or uuid4().hex,
+            queue=asyncio.Queue(maxsize=queue_maxsize or self._attachment_queue_size),
+            cols=cols,
+            rows=rows,
+            connected_at=self._clock(),
+        )
+        run.attachments[attachment.attachment_id] = attachment
+        run.viewerless_since = None
+        run.updated_at = self._clock()
+        return AttachedTerminal(
+            attachment=attachment,
+            scrollback=scrollback,
+            start_seq=start_seq,
+        )
 
     def detach(self, run_id: str, attachment_id: str) -> None:
-        with self._lock:
-            run = self.get(run_id)
-            self._detach_locked(run, attachment_id)
+        run = self.get(run_id)
+        self._detach(run, attachment_id)
 
     async def stop(self, run_id: str, *, reason: StopReason = "explicit-stop") -> ManagedRunView:
         run = self.get(run_id)
@@ -523,25 +518,24 @@ class RunManager:
             return
 
         now = self._clock()
-        with self._lock:
-            if run.state not in {RunState.RUNNING, RunState.STOPPING}:
-                return
-            chunk = run.scrollback.append(data, emitted_at=now)
-            run.updated_at = now
-            overloaded: list[str] = []
-            for attachment in tuple(run.attachments.values()):
-                try:
-                    attachment.queue.put_nowait(chunk)
-                except asyncio.QueueFull:
-                    overloaded.append(attachment.attachment_id)
-            for attachment_id in overloaded:
-                self._close_attachment_locked(
-                    run,
-                    attachment_id,
-                    code=SLOW_VIEWER_CLOSE_CODE,
-                    retryable=True,
-                    message="terminal output queue overloaded; reconnect to resume",
-                )
+        if run.state not in {RunState.RUNNING, RunState.STOPPING}:
+            return
+        chunk = run.scrollback.append(data, emitted_at=now)
+        run.updated_at = now
+        overloaded: list[str] = []
+        for attachment in tuple(run.attachments.values()):
+            try:
+                attachment.queue.put_nowait(chunk)
+            except asyncio.QueueFull:
+                overloaded.append(attachment.attachment_id)
+        for attachment_id in overloaded:
+            self._close_attachment(
+                run,
+                attachment_id,
+                code=SLOW_VIEWER_CLOSE_CODE,
+                retryable=True,
+                message="terminal output queue overloaded; reconnect to resume",
+            )
 
     async def _teardown_run(
         self,
@@ -555,18 +549,17 @@ class RunManager:
             if run.state in _TERMINAL_STATES and run.terminal.closed:
                 return
 
-            with self._lock:
-                run.state = RunState.STOPPING if terminate else RunState.EXITED
-                if reason == "failed":
-                    run.state = RunState.FAILED
-                run.stop_reason = str(failure) if failure is not None else reason
-                run.updated_at = self._clock()
-                self._close_all_attachments_locked(
-                    run,
-                    code="run-ended",
-                    retryable=False,
-                    message=f"run ended: {run.stop_reason}",
-                )
+            run.state = RunState.STOPPING if terminate else RunState.EXITED
+            if reason == "failed":
+                run.state = RunState.FAILED
+            run.stop_reason = str(failure) if failure is not None else reason
+            run.updated_at = self._clock()
+            self._close_all_attachments(
+                run,
+                code="run-ended",
+                retryable=False,
+                message=f"run ended: {run.stop_reason}",
+            )
 
             current_task = asyncio.current_task()
             if run.drain_task is not current_task and not run.drain_task.done():
@@ -582,11 +575,10 @@ class RunManager:
                 await asyncio.to_thread(close_terminal_master, run.terminal)
             await asyncio.to_thread(run.lease.close)
 
-            with self._lock:
-                run.exit_code = run.terminal.process.poll()
-                if run.state is RunState.STOPPING:
-                    run.state = RunState.EXITED
-                run.updated_at = self._clock()
+            run.exit_code = run.terminal.process.poll()
+            if run.state is RunState.STOPPING:
+                run.state = RunState.EXITED
+            run.updated_at = self._clock()
 
     async def _rollback_post_prepare(
         self,
@@ -606,7 +598,7 @@ class RunManager:
             await asyncio.to_thread(terminate_terminal_pty, terminal)
         await asyncio.to_thread(lease.close)
 
-    def _close_all_attachments_locked(
+    def _close_all_attachments(
         self,
         run: ManagedRun,
         *,
@@ -615,7 +607,7 @@ class RunManager:
         message: str,
     ) -> None:
         for attachment_id in tuple(run.attachments):
-            self._close_attachment_locked(
+            self._close_attachment(
                 run,
                 attachment_id,
                 code=code,
@@ -623,7 +615,7 @@ class RunManager:
                 message=message,
             )
 
-    def _close_attachment_locked(
+    def _close_attachment(
         self,
         run: ManagedRun,
         attachment_id: str,
@@ -642,7 +634,7 @@ class RunManager:
         if not run.attachments and run.state is RunState.RUNNING:
             run.viewerless_since = self._clock()
 
-    def _detach_locked(self, run: ManagedRun, attachment_id: str) -> None:
+    def _detach(self, run: ManagedRun, attachment_id: str) -> None:
         run.attachments.pop(attachment_id, None)
         if not run.attachments and run.state is RunState.RUNNING:
             run.viewerless_since = self._clock()

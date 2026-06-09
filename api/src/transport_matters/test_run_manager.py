@@ -4,8 +4,9 @@ import ast
 import asyncio
 import contextlib
 import os
+import threading
 from pathlib import Path
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 from uuid import uuid4
 
 import pytest
@@ -28,6 +29,9 @@ from transport_matters.run_manager import (
     RunState,
     SpawnRun,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping, Sequence
 
 
 class FakeLease:
@@ -58,8 +62,8 @@ class PtyHarness:
     def spawn(
         self,
         *,
-        argv: list[str],
-        env: dict[str, str],
+        argv: Sequence[str],
+        env: Mapping[str, str],
         cwd: Path,
         cols: int,
         rows: int,
@@ -69,7 +73,7 @@ class PtyHarness:
         process = FakeProcess()
         self.write_fds[read_fd] = write_fd
         self.processes[read_fd] = process
-        return TerminalPty(master_fd=read_fd, process=cast(Any, process))
+        return TerminalPty(master_fd=read_fd, process=cast("Any", process))
 
     def write(self, terminal: TerminalPty, data: bytes) -> None:
         os.write(self.write_fds[terminal.master_fd], data)
@@ -129,7 +133,24 @@ class PreparedRunHarness:
             managed_session=None,
             client_name=request.client_name,
         )
-        return spawn_spec, cast(CapturedRunLease, lease)
+        return spawn_spec, cast("CapturedRunLease", lease)
+
+
+class BlockingPreparedRunHarness(PreparedRunHarness):
+    def __init__(self, tmp_path: Path, *, events: list[str] | None = None) -> None:
+        super().__init__(tmp_path, events=events)
+        self.entered = threading.Event()
+        self.release = threading.Event()
+
+    def prepare(
+        self,
+        request: CapturedRunRequest,
+        **kwargs: object,
+    ) -> tuple[CapturedRunSpawnSpec, CapturedRunLease]:
+        self.entered.set()
+        if not self.release.wait(timeout=1.0):
+            raise AssertionError("blocked prepare was not released")
+        return super().prepare(request, **kwargs)
 
 
 class RecordingRunManager(RunManager):
@@ -174,8 +195,8 @@ def make_manager(
     )
 
 
-async def wait_until(predicate: Any, *, timeout: float = 1.0) -> None:
-    deadline = asyncio.get_running_loop().time() + timeout
+async def wait_until(predicate: Any, *, seconds: float = 1.0) -> None:
+    deadline = asyncio.get_running_loop().time() + seconds
     while asyncio.get_running_loop().time() < deadline:
         if predicate():
             return
@@ -193,7 +214,7 @@ async def spawn_run(manager: RunManager, tmp_path: Path) -> ManagedRun:
 
 
 def test_package_root_seams_do_not_import_api() -> None:
-    api_root = Path(__file__).resolve().parents[1]
+    api_root = Path(__file__).resolve().parents[2]
     for relative in (
         Path("src/transport_matters/run_manager.py"),
         Path("src/transport_matters/pty_session.py"),
@@ -239,7 +260,9 @@ async def test_headless_run_drains_pty_output_into_scrollback(
     run = await spawn_run(manager, tmp_path)
     pty.write(run.terminal, b"headless-output")
 
-    await wait_until(lambda: b"headless-output" in b"".join(c.data for c in run.scrollback.snapshot()))
+    await wait_until(
+        lambda: b"headless-output" in b"".join(c.data for c in run.scrollback.snapshot())
+    )
     assert run.attachments == {}
     assert run.state is RunState.RUNNING
 
@@ -261,6 +284,29 @@ async def test_post_prepare_spawn_failure_closes_lease(tmp_path: Path) -> None:
     with pytest.raises(RunManagerError, match="pty spawn failed"):
         await manager.spawn(SpawnRun(cli="claude", cwd=tmp_path))
 
+    assert prepared.leases[0].close_count == 1
+
+
+async def test_close_during_in_flight_spawn_rolls_back_prepared_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    pty = PtyHarness()
+    patch_pty_teardown(monkeypatch, pty)
+    prepared = BlockingPreparedRunHarness(tmp_path)
+    manager = make_manager(tmp_path, pty, prepared)
+
+    spawn_task = asyncio.create_task(manager.spawn(SpawnRun(cli="claude", cwd=tmp_path)))
+    assert await asyncio.to_thread(prepared.entered.wait, 1.0)
+
+    await manager.close()
+    prepared.release.set()
+
+    with pytest.raises(RunManagerError) as exc_info:
+        await spawn_task
+
+    assert exc_info.value.code == "run_manager_closed"
+    assert manager.list() == []
+    assert len(prepared.leases) == 1
     assert prepared.leases[0].close_count == 1
 
 
