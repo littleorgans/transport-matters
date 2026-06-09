@@ -23,6 +23,12 @@ export interface CapturedRunRecord {
 // single spawn for that pane while same-provider sibling panes stay independent.
 const pendingSpawns = new Map<CapturedRunKey, Promise<string>>();
 
+// Keys whose pane was closed while their spawn POST was still in flight. The spawn's
+// resolve handler honours this: it stops the just-born run (DELETE) and skips persisting
+// it, so a close that races a spawn leaves neither an orphaned server run nor a zombie
+// run that a reload would restore.
+const cancelledKeys = new Set<CapturedRunKey>();
+
 const CAPTURED_RUN_STORAGE_VERSION = 2;
 
 export interface CapturedRunState {
@@ -53,14 +59,23 @@ export const useCapturedRunStore = create<CapturedRunState>()(
         if (existing !== undefined) return Promise.resolve(existing);
         const inFlight = pendingSpawns.get(runKey);
         if (inFlight) return inFlight;
+        // A fresh spawn intent for this key supersedes any stale cancellation.
+        cancelledKeys.delete(runKey);
         const spawn = createCapturedRun(provider, cwd)
           .then((runId) => {
             pendingSpawns.delete(runKey);
+            // Closed mid-spawn: stop the just-born run and do NOT persist it. .delete
+            // returns true only if the key was marked cancelled (atomic check + clear).
+            if (cancelledKeys.delete(runKey)) {
+              void deleteRun(runId).catch(() => {});
+              return runId;
+            }
             set((state) => ({ runs: { ...state.runs, [runKey]: { provider, runId } } }));
             return runId;
           })
           .catch((error: unknown) => {
             pendingSpawns.delete(runKey);
+            cancelledKeys.delete(runKey);
             throw error;
           });
         pendingSpawns.set(runKey, spawn);
@@ -68,16 +83,22 @@ export const useCapturedRunStore = create<CapturedRunState>()(
       },
 
       clearRun(runKey) {
-        pendingSpawns.delete(runKey);
         const runId = get().runs[runKey]?.runId;
-        if (runId === undefined) return;
-        set((state) => {
-          const { [runKey]: _removed, ...runs } = state.runs;
-          return { runs };
-        });
-        // Best-effort stop: the user is closing the pane, so a failed DELETE must not
-        // block the UI. The backend's idle-timeout policy reaps anything that slips by.
-        void deleteRun(runId).catch(() => {});
+        if (runId !== undefined) {
+          // Resolved run: forget it and stop it. Best-effort stop — the user is closing
+          // the pane, so a failed DELETE must not block the UI; the backend idle-timeout
+          // policy reaps anything that slips by.
+          set((state) => {
+            const { [runKey]: _removed, ...runs } = state.runs;
+            return { runs };
+          });
+          void deleteRun(runId).catch(() => {});
+          return;
+        }
+        // Close raced an in-flight spawn (runs[runKey] not yet written): mark the key
+        // cancelled so the spawn's resolve stops the run and skips persisting it. The
+        // pending promise stays so its handler runs that cleanup.
+        if (pendingSpawns.has(runKey)) cancelledKeys.add(runKey);
       },
     }),
     {
@@ -95,5 +116,6 @@ export const useCapturedRunStore = create<CapturedRunState>()(
 
 export function resetCapturedRunStoreForTests(): void {
   pendingSpawns.clear();
+  cancelledKeys.clear();
   useCapturedRunStore.setState({ runs: {} });
 }

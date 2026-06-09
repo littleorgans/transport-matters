@@ -119,6 +119,26 @@ describe("capturedRunStore", () => {
     expect(store().runs["claude:k2"]).toEqual({ provider: "claude", runId: "run-2" });
   });
 
+  it("cancels an in-flight spawn on close: stops the run and never persists it", async () => {
+    let resolveSpawn!: (id: string) => void;
+    createCapturedRunMock.mockReturnValue(
+      new Promise<string>((r) => {
+        resolveSpawn = r;
+      }),
+    );
+    deleteRunMock.mockResolvedValue(undefined);
+
+    const spawn = store().ensureRun("claude:k1", "claude"); // POST in-flight
+    store().clearRun("claude:k1"); // pane closed mid-spawn (runs["claude:k1"] still absent)
+    resolveSpawn("run-1"); // POST resolves AFTER the close
+    await spawn;
+
+    // The just-born run must be stopped, so no orphaned server run is left running...
+    expect(deleteRunMock).toHaveBeenCalledWith("run-1");
+    // ...and it must never be persisted, so a reload cannot restore the closed run (no zombie).
+    expect(store().runs["claude:k1"]).toBeUndefined();
+  });
+
   it("clearRun is a no-op when no run exists for the pane", () => {
     store().clearRun("claude:missing");
     expect(deleteRunMock).not.toHaveBeenCalled();
