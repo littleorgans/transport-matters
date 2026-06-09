@@ -8,12 +8,19 @@ import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING
 
 import psycopg
 import typer
 
 from transport_matters import __version__, env_keys
+from transport_matters.capabilities import (
+    CLI_NAME_CLAUDE,
+    CLI_NAME_CODEX,
+    WhichFunction,
+    resolve_cli_binary,
+    resolve_runnable_binary,
+)
 from transport_matters.config import (
     MissingDatabaseConfigError,
     ensure_settings_scaffold,
@@ -33,15 +40,6 @@ if TYPE_CHECKING:
     from importlib.resources.abc import Traversable
 
     from .runner import ManagedClient
-
-
-class WhichFunction(Protocol):
-    def __call__(
-        self,
-        cmd: str,
-        mode: int = ...,
-        path: str | None = ...,
-    ) -> str | None: ...
 
 
 @dataclass(frozen=True)
@@ -121,64 +119,13 @@ _MANAGED_CHILD_TRUST_ENV_KEYS = frozenset(
 
 _LOOPBACK_NO_PROXY = "127.0.0.1,localhost"
 
-CLIENT_NAME_CLAUDE = "claude"
-CLIENT_NAME_CODEX = "codex"
+CLIENT_NAME_CLAUDE: str = CLI_NAME_CLAUDE
+CLIENT_NAME_CODEX: str = CLI_NAME_CODEX
 
-_HOME_DIR_ENV_BY_CLIENT = {
+_HOME_DIR_ENV_BY_CLIENT: dict[str, str] = {
     CLIENT_NAME_CLAUDE: "CLAUDE_CONFIG_DIR",
     CLIENT_NAME_CODEX: "CODEX_HOME",
 }
-
-
-def _candidate_has_missing_shebang_interpreter(candidate: Path) -> bool:
-    try:
-        first_line = candidate.open("rb").readline(4096)
-    except OSError:
-        return True
-    if not first_line.startswith(b"#!"):
-        return False
-
-    shebang = first_line[2:].decode("utf-8", "ignore").strip()
-    if not shebang:
-        return True
-
-    interpreter = shebang.split(maxsplit=1)[0]
-    if interpreter == "/usr/bin/env":
-        return False
-    if interpreter.startswith("/"):
-        return not Path(interpreter).exists()
-    return False
-
-
-def _candidate_is_runnable(candidate: str) -> bool:
-    path = Path(candidate)
-    if not path.exists():
-        # Real shutil.which only returns existing executables; tests inject
-        # synthetic paths through the same resolver hook.
-        return True
-    if not path.is_file():
-        return False
-    if not os.access(path, os.X_OK):
-        return False
-    return not _candidate_has_missing_shebang_interpreter(path)
-
-
-def _which_runnable(
-    name: str,
-    *,
-    which: WhichFunction,
-    path: str | None = None,
-) -> str | None:
-    search_dirs = path.split(os.pathsep) if path is not None else os.get_exec_path()
-    seen: set[str] = set()
-    for directory in search_dirs:
-        resolved = which(name, path=directory)
-        if resolved is None or resolved in seen:
-            continue
-        seen.add(resolved)
-        if _candidate_is_runnable(resolved):
-            return resolved
-    return None
 
 
 def resolve_client_binary(
@@ -193,7 +140,12 @@ def resolve_client_binary(
     if disabled:
         return None
 
-    client_path = str(bin_override) if bin_override is not None else which(name)
+    client_path = resolve_cli_binary(
+        name=name,
+        bin_override=bin_override,
+        disabled=disabled,
+        which=which,
+    )
     if client_path is not None:
         return client_path
 
@@ -214,10 +166,10 @@ def resolve_mitmdump_executable(
     """Resolve a mitmdump executable that the kernel can actually run."""
     scripts_dir = get_scripts_dir("scripts")
     if scripts_dir:
-        resolved = _which_runnable("mitmdump", which=which, path=scripts_dir)
+        resolved = resolve_runnable_binary("mitmdump", which=which, path=scripts_dir)
         if resolved is not None:
             return resolved
-    return _which_runnable("mitmdump", which=which)
+    return resolve_runnable_binary("mitmdump", which=which)
 
 
 def reject_passthrough_without_client(
