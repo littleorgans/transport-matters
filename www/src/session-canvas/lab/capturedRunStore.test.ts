@@ -142,4 +142,55 @@ describe("capturedRunStore", () => {
     store().stopRun("claude:missing");
     expect(deleteRunMock).not.toHaveBeenCalled();
   });
+
+  it("setMinimized flags an established run, and clears it again, persisting the docked state", () => {
+    useCapturedRunStore.setState({ runs: { "claude:k1": { provider: "claude", runId: "run-1" } } });
+
+    store().setMinimized("claude:k1", true);
+    expect(store().runs["claude:k1"]).toEqual({
+      provider: "claude",
+      runId: "run-1",
+      minimized: true,
+    });
+    // The flag rides on the persisted record, so a reload can dock the run instead of reopening it.
+    expect(
+      JSON.parse(localStorage.getItem(FRONTEND_STORAGE_KEYS.capturedRunStore) as string).state.runs[
+        "claude:k1"
+      ].minimized,
+    ).toBe(true);
+
+    // Restore is the inverse: clearing the flag so a reload after restore reopens the pane as active.
+    store().setMinimized("claude:k1", false);
+    expect(store().runs["claude:k1"]).toEqual({
+      provider: "claude",
+      runId: "run-1",
+      minimized: false,
+    });
+  });
+
+  it("setMinimized is a no-op for a run with no resolved id (mid-spawn): nothing persists", () => {
+    // Guardrail: only ESTABLISHED runs (runId resolved) carry the flag. A minimize that races an
+    // in-flight spawn has no record yet, so there is nothing to flag — the S1 cancellation model
+    // stays intact and a half-born run never persists a docked flag.
+    store().setMinimized("claude:pending", true);
+    expect(store().runs["claude:pending"]).toBeUndefined();
+  });
+
+  it("migrates a pre-S2 (v2) persisted payload without dropping runs or breaking the dock", async () => {
+    // Old data carries runs but no `minimized` field, stored at the prior version. The version bump
+    // must migrate it cleanly: runs survive and, with no flag, each is treated as open on reload (the
+    // S1 behavior) rather than lost or wrongly docked.
+    localStorage.setItem(
+      FRONTEND_STORAGE_KEYS.capturedRunStore,
+      JSON.stringify({
+        version: 2,
+        state: { runs: { "claude:k1": { provider: "claude", runId: "run-1" } } },
+      }),
+    );
+
+    await useCapturedRunStore.persist.rehydrate();
+
+    expect(store().runs["claude:k1"]).toEqual({ provider: "claude", runId: "run-1" });
+    expect(store().runs["claude:k1"]?.minimized).toBeUndefined();
+  });
 });

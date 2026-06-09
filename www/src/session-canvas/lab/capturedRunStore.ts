@@ -9,6 +9,12 @@ export type CapturedRunKey = string;
 export interface CapturedRunRecord {
   provider: CliName;
   runId: string;
+  /**
+   * True while this run's pane is parked in the dock. Persisted so a browser reload re-docks the run
+   * instead of reopening it as an active pane (S2). Absent/false = open. Only ever set on an
+   * ESTABLISHED run (runId resolved); a minimize that races an in-flight spawn has no record to flag.
+   */
+  minimized?: boolean;
 }
 
 // Identity of the captured runs lab panes own, keyed by pane instance. Multiple
@@ -29,7 +35,9 @@ const pendingSpawns = new Map<CapturedRunKey, Promise<string>>();
 // run that a reload would restore.
 const cancelledKeys = new Set<CapturedRunKey>();
 
-const CAPTURED_RUN_STORAGE_VERSION = 2;
+// Bumped 2 -> 3 in S2: records gained the optional `minimized` dock flag. The migrate below is shape
+// tolerant, so pre-S2 records (no flag) load clean and reopen as active panes, exactly as in S1.
+const CAPTURED_RUN_STORAGE_VERSION = 3;
 
 export interface CapturedRunState {
   /** Live run id per captured pane. Persisted so a reload re-attaches instead of re-spawning. */
@@ -44,6 +52,12 @@ export interface CapturedRunState {
    * dock can restore it locally — only close calls this.
    */
   stopRun(runKey: CapturedRunKey): void;
+  /**
+   * Set/clear this pane's persisted dock flag so a reload re-docks a minimized run (true) or reopens a
+   * restored one (false). A no-op when no run id is resolved yet (a minimize racing an in-flight
+   * spawn): there is no established record to flag, which keeps the S1 cancellation model intact.
+   */
+  setMinimized(runKey: CapturedRunKey, minimized: boolean): void;
 }
 
 export function createCapturedRunKey(provider: CliName): CapturedRunKey {
@@ -106,6 +120,16 @@ export const useCapturedRunStore = create<CapturedRunState>()(
         // just-born run (DELETE) and skips persisting it, so a run that was never viewed or listed
         // can never orphan. The pending promise stays so its handler runs that cleanup.
         if (pendingSpawns.has(runKey)) cancelledKeys.add(runKey);
+      },
+
+      setMinimized(runKey, minimized) {
+        set((state) => {
+          const record = state.runs[runKey];
+          // Mid-spawn: no established run to flag. Skipping it keeps a half-born run out of the dock
+          // and preserves the in-flight cancellation model (see stopRun) — close still wins the race.
+          if (!record) return {};
+          return { runs: { ...state.runs, [runKey]: { ...record, minimized } } };
+        });
       },
     }),
     {
