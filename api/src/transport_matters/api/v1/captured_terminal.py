@@ -114,7 +114,7 @@ async def _captured_terminal_socket(
     terminal_session: TerminalPty | None = None
     try:
         spawn_spec, lease = await asyncio.to_thread(
-            _prepare_captured_run_for_cli,
+            _prepare_captured_agent_run,
             cli=cli,
             cwd=cwd,
             settings=settings,
@@ -172,27 +172,6 @@ def _validate_captured_run_cli(cli: str) -> CapturedRunCli:
 
 def _captured_run_cli_display_name(cli: CapturedRunCli) -> str:
     return "Codex" if cli == CODEX_CLIENT_NAME else "Claude"
-
-
-def _prepare_captured_run_for_cli(
-    *,
-    cli: CapturedRunCli,
-    cwd: str | None,
-    settings: Settings,
-) -> tuple[CapturedRunSpawnSpec, CapturedRunLease]:
-    if cli == CLAUDE_CLIENT_NAME:
-        return _prepare_captured_claude_run(cwd=cwd, settings=settings)
-    return _prepare_captured_agent_run(cli=cli, cwd=cwd, settings=settings)
-
-
-def _prepare_captured_claude_run(
-    *,
-    cwd: str | None,
-    settings: Settings,
-) -> tuple[CapturedRunSpawnSpec, CapturedRunLease]:
-    return _prepare_captured_agent_run(
-        cli=cast("CapturedRunCli", CLAUDE_CLIENT_NAME), cwd=cwd, settings=settings
-    )
 
 
 def _prepare_captured_agent_run(

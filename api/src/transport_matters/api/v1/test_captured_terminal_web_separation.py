@@ -6,6 +6,8 @@ from typing import TYPE_CHECKING, Any
 
 from transport_matters.api.v1 import captured_terminal
 from transport_matters.captured_run import (
+    CLAUDE_CLIENT_NAME,
+    CLAUDE_UPSTREAM_DEFAULT,
     CapturedRunDependencies,
     CapturedRunRequest,
     CapturedRunSpawnSpec,
@@ -32,7 +34,7 @@ def _spawn_spec(tmp_path: Path) -> CapturedRunSpawnSpec:
     )
 
 
-def test_prepare_captured_claude_run_requests_nested_capture_only(
+def test_prepare_captured_agent_run_requests_claude_nested_capture_only(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     settings = Settings(
@@ -67,14 +69,17 @@ def test_prepare_captured_claude_run_requests_nested_capture_only(
     monkeypatch.setattr(captured_terminal, "default_claude_run_dependencies", lambda: dependencies)
     monkeypatch.setattr(captured_terminal, "prepare_captured_run", fake_prepare)
 
-    _spawn_spec_result, _lease = captured_terminal._prepare_captured_claude_run(
+    _spawn_spec_result, _lease = captured_terminal._prepare_captured_agent_run(
+        cli=captured_terminal._validate_captured_run_cli(CLAUDE_CLIENT_NAME),
         cwd=None,
         settings=settings,
     )
 
     request = captured["request"]
+    assert request.client_name == CLAUDE_CLIENT_NAME
     assert request.web_port is None
     assert request.web_runtime == "external"
+    assert request.upstream == CLAUDE_UPSTREAM_DEFAULT
     assert request.directory == tmp_path.resolve()
     assert request.home_dir == settings.agent_home_dir
     assert captured["kwargs"]["port_in_use"] is dependencies.port_in_use

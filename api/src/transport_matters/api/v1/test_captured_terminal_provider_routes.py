@@ -48,7 +48,7 @@ def test_unknown_captured_cli_is_rejected_before_spawn(
 
     monkeypatch.setenv("TRANSPORT_MATTERS_CWD", str(tmp_path))
     get_settings.cache_clear()
-    monkeypatch.setattr(captured_terminal, "_prepare_captured_run_for_cli", fail_if_called)
+    monkeypatch.setattr(captured_terminal, "_prepare_captured_agent_run", fail_if_called)
     client = TestClient(create_app())
 
     with (
@@ -109,7 +109,7 @@ def test_prepare_captured_codex_run_requests_nested_capture_only(
     monkeypatch.setattr(captured_terminal, "default_claude_run_dependencies", lambda: dependencies)
     monkeypatch.setattr(captured_terminal, "prepare_captured_run", fake_prepare)
 
-    captured_terminal._prepare_captured_run_for_cli(
+    captured_terminal._prepare_captured_agent_run(
         cli=captured_terminal._validate_captured_run_cli(CODEX_CLIENT_NAME),
         cwd=None,
         settings=settings,
