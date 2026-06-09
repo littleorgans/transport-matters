@@ -6,6 +6,9 @@ import {
   useCanvasLabStore,
 } from "./canvasLabStore";
 import { resetCapturedRunStoreForTests, useCapturedRunStore } from "./capturedRunStore";
+// Register the captured-run lifecycle hook (onClose -> stopRun) the same way production does (via
+// CanvasLabRoute's side-effect import), so close-kills-run is exercised through the real wiring.
+import "./labLifecycle";
 
 const { createCapturedRunMock, deleteRunMock } = vi.hoisted(() => ({
   createCapturedRunMock: vi.fn(),
@@ -19,25 +22,27 @@ vi.mock("../../api", () => ({
 const store = useCanvasLabStore.getState;
 
 describe("canvasLabStore terminals", () => {
-  const terminalRef = { kind: "terminal", owner: "local" } as const;
+  // Each spawned terminal gets a monotonic per-type label (Terminal-1, Terminal-2, ...).
+  const terminalRef = (n: number) =>
+    ({ kind: "terminal", owner: "local", label: `Terminal-${n}` }) as const;
 
   it("spawns a pane that carries a terminal content ref", () => {
     resetCanvasLabStoreForTests();
 
     store().addTerminal();
 
-    expect(store().contentRefs["lab-1"]).toEqual(terminalRef);
+    expect(store().contentRefs["lab-1"]).toEqual(terminalRef(1));
     expect(store().layout.nodes["lab-1"]).toBeDefined();
   });
 
   it("spawns multiple independent terminals alongside demo panes", () => {
     resetCanvasLabStoreForTests();
 
-    store().addTerminal(); // lab-1
+    store().addTerminal(); // lab-1 (Terminal-1)
     store().addPane(); // lab-2 (demo card/ruler, no content ref)
-    store().addTerminal(); // lab-3
+    store().addTerminal(); // lab-3 (Terminal-2)
 
-    expect(store().contentRefs).toEqual({ "lab-1": terminalRef, "lab-3": terminalRef });
+    expect(store().contentRefs).toEqual({ "lab-1": terminalRef(1), "lab-3": terminalRef(2) });
     expect(Object.keys(store().layout.nodes).sort()).toEqual(["lab-1", "lab-2", "lab-3"]);
   });
 
@@ -45,14 +50,45 @@ describe("canvasLabStore terminals", () => {
     vi.useFakeTimers();
     try {
       resetCanvasLabStoreForTests();
-      store().addTerminal(); // lab-1
-      store().addTerminal(); // lab-2
+      store().addTerminal(); // lab-1 (Terminal-1)
+      store().addTerminal(); // lab-2 (Terminal-2)
 
       store().closePane("lab-1");
       vi.runAllTimers();
 
-      expect(store().contentRefs).toEqual({ "lab-2": terminalRef });
+      expect(store().contentRefs).toEqual({ "lab-2": terminalRef(2) });
       expect(store().layout.nodes["lab-1"]).toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("labels spawned panes incrementally per type, monotonic and never reused on close", () => {
+    vi.useFakeTimers();
+    try {
+      resetCanvasLabStoreForTests();
+      store().addTerminal(); // lab-1 Terminal-1
+      store().addCapturedRun("claude"); // Claude-1
+      store().addTerminal(); // lab-2 Terminal-2
+      store().addCapturedRun("codex"); // Codex-1
+      store().addCapturedRun("claude"); // Claude-2
+
+      const labels = Object.values(store().contentRefs).map((ref) =>
+        ref.kind === "terminal" || ref.kind === "captured-run" ? ref.label : undefined,
+      );
+      expect(labels).toEqual(
+        expect.arrayContaining(["Terminal-1", "Terminal-2", "Claude-1", "Claude-2", "Codex-1"]),
+      );
+
+      // Closing a pane does not reset the counter: the next terminal is Terminal-3, not Terminal-1.
+      store().closePane("lab-1");
+      vi.runAllTimers();
+      store().addTerminal(); // lab-3 Terminal-3
+      const terminalLabels = Object.values(store().contentRefs)
+        .filter((ref) => ref.kind === "terminal")
+        .map((ref) => (ref.kind === "terminal" ? ref.label : ""));
+      expect(terminalLabels).toContain("Terminal-3");
+      expect(terminalLabels).not.toContain("Terminal-1"); // closed, never reused
     } finally {
       vi.useRealTimers();
     }
@@ -101,7 +137,7 @@ describe("canvasLabStore captured runs", () => {
     for (const id of ids) expect(id.startsWith("claude:")).toBe(true);
   });
 
-  it("hidePane (minimize) detaches without stopping an established run", () => {
+  it("minimizePane docks a captured pane and keeps its run alive (no stop)", () => {
     vi.useFakeTimers();
     try {
       deleteRunMock.mockResolvedValue(undefined);
@@ -110,15 +146,124 @@ describe("canvasLabStore captured runs", () => {
       if (!paneId) throw new Error("expected a captured pane");
       useCapturedRunStore.setState({ runs: { [paneId]: { provider: "claude", runId: "run-1" } } });
 
-      store().hidePane(paneId);
+      store().minimizePane(paneId);
       vi.runAllTimers();
 
-      // Minimize detaches: the run is NOT stopped, so it stays alive and listed for the
-      // director to re-attach (the WS close on unmount drops the viewer count).
+      // Minimize is non-destructive: the run is NOT stopped, and its binding is KEPT so restore
+      // re-attaches by id (the WS close on unmount only drops the viewer count).
       expect(deleteRunMock).not.toHaveBeenCalled();
-      // The pane and its local mapping are gone (so a reload won't auto-restore it).
-      expect(useCapturedRunStore.getState().runs[paneId]).toBeUndefined();
+      expect(useCapturedRunStore.getState().runs[paneId]).toEqual({
+        provider: "claude",
+        runId: "run-1",
+      });
+      // The pane leaves the canvas and parks in the dock for local restore.
       expect(store().contentRefs[paneId]).toBeUndefined();
+      expect(store().layout.nodes[paneId]).toBeUndefined();
+      expect(store().docked.map((docked) => docked.paneId)).toEqual([paneId]);
+      expect(store().docked[0]?.ref).toEqual({
+        kind: "captured-run",
+        owner: "local",
+        provider: "claude",
+        runKey: paneId,
+        label: "Claude-1",
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("restorePane re-seeds a docked captured pane without spawning a new run", () => {
+    vi.useFakeTimers();
+    try {
+      deleteRunMock.mockResolvedValue(undefined);
+      store().addCapturedRun("claude");
+      const paneId = capturedPaneIds(store().contentRefs)[0];
+      if (!paneId) throw new Error("expected a captured pane");
+      useCapturedRunStore.setState({ runs: { [paneId]: { provider: "claude", runId: "run-1" } } });
+      store().minimizePane(paneId);
+      vi.runAllTimers();
+      createCapturedRunMock.mockClear();
+
+      store().restorePane(paneId);
+
+      // The pane is back on the canvas at its original id, off the dock; the kept binding lets the
+      // viewer's ensureRun re-attach by id. restorePane itself never POSTs a new spawn.
+      expect(store().contentRefs[paneId]).toEqual({
+        kind: "captured-run",
+        owner: "local",
+        provider: "claude",
+        runKey: paneId,
+        label: "Claude-1",
+      });
+      expect(store().layout.nodes[paneId]).toBeDefined();
+      expect(store().docked).toEqual([]);
+      expect(createCapturedRunMock).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("closeDockedPane kills a docked captured run (DELETE) and drops the dock entry", () => {
+    vi.useFakeTimers();
+    try {
+      deleteRunMock.mockResolvedValue(undefined);
+      store().addCapturedRun("claude");
+      const paneId = capturedPaneIds(store().contentRefs)[0];
+      if (!paneId) throw new Error("expected a captured pane");
+      useCapturedRunStore.setState({ runs: { [paneId]: { provider: "claude", runId: "run-1" } } });
+      store().minimizePane(paneId);
+      vi.runAllTimers();
+      expect(store().docked.map((docked) => docked.paneId)).toEqual([paneId]);
+
+      store().closeDockedPane(paneId);
+
+      // Close from the dock runs the captured-run onClose hook: the run is stopped (DELETE) and the
+      // entry leaves the dock. The pane never returns to the canvas.
+      expect(deleteRunMock).toHaveBeenCalledWith("run-1");
+      expect(useCapturedRunStore.getState().runs[paneId]).toBeUndefined();
+      expect(store().docked).toEqual([]);
+      expect(store().contentRefs[paneId]).toBeUndefined();
+      expect(store().layout.nodes[paneId]).toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("closeDockedPane drops a non-captured docked entry with no run side effect", () => {
+    vi.useFakeTimers();
+    try {
+      store().addTerminal(); // lab-1 (terminal ref, no run)
+      store().minimizePane("lab-1");
+      vi.runAllTimers();
+      expect(store().docked.map((docked) => docked.paneId)).toEqual(["lab-1"]);
+
+      store().closeDockedPane("lab-1");
+
+      expect(deleteRunMock).not.toHaveBeenCalled();
+      expect(store().docked).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("minimizes and restores a non-captured pane (null ref) through the generic dock path", () => {
+    vi.useFakeTimers();
+    try {
+      store().addTerminal(); // lab-1 (terminal ref)
+      store().addPane(); // lab-2 (demo card/ruler, no content ref)
+
+      store().minimizePane("lab-2");
+      vi.runAllTimers();
+
+      // A demo pane carries no ref: it docks by paneId with a null ref and re-creates on restore.
+      expect(store().layout.nodes["lab-2"]).toBeUndefined();
+      expect(store().docked.map((docked) => docked.paneId)).toEqual(["lab-2"]);
+      expect(store().docked[0]?.ref).toBeNull();
+
+      store().restorePane("lab-2");
+
+      expect(store().layout.nodes["lab-2"]).toBeDefined();
+      expect(store().docked).toEqual([]);
     } finally {
       vi.useRealTimers();
     }
@@ -177,39 +322,6 @@ describe("canvasLabStore captured runs", () => {
       runKey: "claude:k1",
     });
     expect(capturedPaneIds(store().contentRefs)).toEqual(["claude:k1"]);
-  });
-
-  it("attachCapturedRun opens a pane bound to an existing run id without spawning", () => {
-    store().attachCapturedRun("claude", "run-existing");
-
-    const ids = capturedPaneIds(store().contentRefs);
-    expect(ids).toHaveLength(1);
-    const runKey = ids[0];
-    if (!runKey) throw new Error("expected a captured pane");
-    // The pane owns the existing run id (adopted, not spawned).
-    expect(store().contentRefs[runKey]).toEqual({
-      kind: "captured-run",
-      owner: "local",
-      provider: "claude",
-      runKey,
-    });
-    expect(useCapturedRunStore.getState().runs[runKey]).toEqual({
-      provider: "claude",
-      runId: "run-existing",
-    });
-    // Attach-from-list attaches to the real CLI run; it must never POST a new spawn.
-    expect(createCapturedRunMock).not.toHaveBeenCalled();
-  });
-
-  it("focuses the open pane instead of duplicating it when the same run is attached twice", () => {
-    store().attachCapturedRun("codex", "run-1");
-    const runKey = capturedPaneIds(store().contentRefs)[0];
-    if (!runKey) throw new Error("expected a captured pane");
-
-    store().attachCapturedRun("codex", "run-1");
-
-    expect(capturedPaneIds(store().contentRefs)).toEqual([runKey]);
-    expect(store().layout.focusedPaneId).toBe(runKey);
   });
 });
 
@@ -438,10 +550,10 @@ describe("canvasLabStore fit to content", () => {
     resetCanvasLabStoreForTests();
     for (let index = 0; index < 12; index += 1) store().addPane();
     store().setBounds({ width: 900, height: 1000 });
-    // The selector picks 3x4 (gridW 1008 x gridH 1032). The lab fits the frame — the grid padded by
-    // margin (48) on every side, 1104 x 1128 — so that margin survives as on-screen breathing room:
-    // min(1, 900/1104, 1000/1128) = 900/1104 ≈ 0.815.
-    expect(store().layout.viewport.scale).toBeCloseTo(0.815, 2);
+    // The selector picks 3x4 (gridW 1008 x gridH ~1134). The lab fits the frame — the grid padded by
+    // margin (64) on every side, 1136 x ~1262 — so that margin survives as on-screen breathing room:
+    // min(1, 900/1136, 1000/1262) ≈ 0.792.
+    expect(store().layout.viewport.scale).toBeCloseTo(0.792, 2);
   });
 
   it("resets a stale zoom-out once the content fits again (no lingering slack)", () => {

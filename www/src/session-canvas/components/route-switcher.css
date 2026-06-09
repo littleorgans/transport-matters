@@ -1,0 +1,13 @@
+/* Colocated styles for RouteSwitcher.tsx (the in-app route switcher shared by both canvas command
+   bars), imported there as a side effect. The .canvas-button base its links sit on lives in the
+   shared canvas.css (loaded first via main.tsx), so this override always cascades after it. */
+.canvas-route-switcher {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--canvas-pane-gap) * 0.5);
+}
+.canvas-route-switcher__link[data-active="true"] {
+  background: var(--color-hover);
+  border-color: var(--color-edge-strong);
+  color: var(--color-txt);
+}

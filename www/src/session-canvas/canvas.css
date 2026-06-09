@@ -486,124 +486,9 @@
   text-transform: uppercase;
 }
 
-/* Canvas lab (experimental /canvas-lab route) */
-.canvas-command-bar--lab {
-  flex-wrap: wrap;
-}
-.canvas-lab-stage {
-  position: absolute;
-  inset: 0;
-}
-.canvas-lab-controls {
-  flex-basis: 100%;
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--canvas-command-gap);
-  padding: var(--canvas-pane-gap) 0 0;
-  margin: 0;
-  border: 0;
-  min-inline-size: 0;
-}
-.canvas-lab-controls__field,
-.canvas-lab-toggle {
-  display: flex;
-  align-items: center;
-  gap: calc(var(--canvas-pane-gap) * 0.6);
-  color: var(--color-txt-2);
-  font-size: 0.72rem;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-}
-.canvas-lab-controls__field output {
-  min-width: 2.5rem;
-  color: var(--color-txt);
-}
-/* Director surface: a live roster of managed captured runs, dropped onto its own
-   full-width row under a hairline so the run list never crowds the spawn buttons. */
-.canvas-lab-director {
-  flex-basis: 100%;
-  display: flex;
-  flex-direction: column;
-  gap: calc(var(--canvas-pane-gap) * 0.6);
-  padding-block-start: var(--canvas-pane-gap);
-  margin: 0;
-  border-block-start: 1px solid var(--color-edge);
-  min-inline-size: 0;
-}
-.canvas-lab-director__head {
-  display: flex;
-  align-items: center;
-  gap: var(--canvas-command-gap);
-}
-.canvas-lab-director__title {
-  color: var(--color-txt-2);
-  font-size: 0.72rem;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-}
-.canvas-lab-director__count {
-  color: var(--color-txt-3);
-  font-size: 0.72rem;
-  font-variant-numeric: tabular-nums;
-}
-.canvas-lab-director__status {
-  margin: 0;
-  color: var(--color-txt-3);
-  font-size: 0.72rem;
-}
-.canvas-lab-director__list {
-  display: flex;
-  flex-direction: column;
-  gap: calc(var(--canvas-pane-gap) * 0.5);
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  max-block-size: 9rem;
-  overflow-y: auto;
-}
-.canvas-lab-director__row {
-  display: flex;
-  align-items: center;
-  gap: var(--canvas-command-gap);
-  min-inline-size: 0;
-  color: var(--color-txt-2);
-  font-size: 0.72rem;
-}
-.canvas-lab-director__cli {
-  color: var(--color-txt);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-}
-.canvas-lab-director__state {
-  color: var(--color-txt-3);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-}
-.canvas-lab-director__state[data-state="running"] {
-  color: var(--color-sage);
-}
-.canvas-lab-director__state[data-state="starting"],
-.canvas-lab-director__state[data-state="stopping"] {
-  color: var(--color-amber);
-}
-.canvas-lab-director__cwd {
-  flex: 1;
-  min-inline-size: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--color-txt-2);
-  font-family: var(--font-mono);
-}
-.canvas-lab-director__viewers {
-  color: var(--color-txt-3);
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-.canvas-lab-director__actions {
-  display: flex;
-  gap: calc(var(--canvas-pane-gap) * 0.6);
-}
+/* Canvas lab chrome (--lab command bar variant, stage, controls, toggle) is colocated in
+   lab/canvas-lab.css (imported by CanvasLabRoute.tsx). Pane dock styles are colocated in
+   components/pane-dock.css (imported by PaneDock.tsx). */
 .canvas-world--framing {
   transition: transform 320ms cubic-bezier(0.22, 1, 0.36, 1);
 }
@@ -613,14 +498,5 @@
   }
 }
 
-/* In-app route switcher (shared by both canvas command bars) */
-.canvas-route-switcher {
-  display: flex;
-  align-items: center;
-  gap: calc(var(--canvas-pane-gap) * 0.5);
-}
-.canvas-route-switcher__link[data-active="true"] {
-  background: var(--color-hover);
-  border-color: var(--color-edge-strong);
-  color: var(--color-txt);
-}
+/* In-app route switcher styles are colocated in components/route-switcher.css (imported by
+   RouteSwitcher.tsx). */

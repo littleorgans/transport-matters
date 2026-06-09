@@ -59,8 +59,18 @@ export type PaneContentRef =
       exchangeId: string;
       initialView?: string;
     }
-  | { kind: "terminal"; owner: "local" }
-  | { kind: "captured-run"; owner: "local"; provider: CliName; runKey: string };
+  | { kind: "terminal"; owner: "local"; label?: string }
+  | { kind: "captured-run"; owner: "local"; provider: CliName; runKey: string; label?: string };
+
+/**
+ * A pane removed from the canvas but retained locally so the dock can restore it (Option A: local
+ * minimized state only, no `/api/runs`). `ref` is the viewer ref to re-seed on restore; `null` for
+ * demo card/ruler stubs that carry no ref (the node is re-created from the pane id alone).
+ */
+export interface DockedPane {
+  paneId: PaneId;
+  ref: PaneContentRef | null;
+}
 
 /** The built-in session picker is canvas chrome, not transcript content. */
 export type PickerPaneRef = { kind: "session-picker"; owner: "local" };

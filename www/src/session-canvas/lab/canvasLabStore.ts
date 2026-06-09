@@ -28,8 +28,9 @@ import {
   resolveLayout,
 } from "../../engine/layout";
 import type { CliName } from "../../types";
-import type { PaneContentRef } from "../model/paneRecords";
-import { createCapturedRunKey, useCapturedRunStore } from "./capturedRunStore";
+import { resolvePaneLifecycle } from "../model/paneLifecycle";
+import { cliLabel, type DockedPane, type PaneContentRef } from "../model/paneRecords";
+import { createCapturedRunKey } from "./capturedRunStore";
 import { fitExpandFrameToWidth, planExpandedLayout } from "./expandLayout";
 
 const DEFAULT_BOUNDS: ViewportBounds = { width: 1600, height: 1000 };
@@ -67,17 +68,24 @@ export interface CanvasLabState {
   nextPaneIndex: number;
   /** Real content per pane (a viewer-registry ref). Demo card/ruler panes carry none. */
   contentRefs: Record<PaneId, PaneContentRef>;
+  /** Locally minimized panes for THIS canvas, most-recent first. The dock's only source. */
+  docked: DockedPane[];
+  /** Monotonic per-label-prefix counters so spawned content panes get incremental names
+   *  (Terminal-1, Claude-2, Codex-3) like demo panes get lab-N. Never reused on close. */
+  paneCounters: Record<string, number>;
   addPane(): void;
   addTerminal(): void;
   addCapturedRun(provider: CliName): void;
-  /** Open (or focus) a pane bound to an EXISTING managed run id — attach-from-list, never spawns. */
-  attachCapturedRun(provider: CliName, runId: string): void;
   /** Recreate a captured pane at its persisted key on reload so it re-attaches by id. */
   restoreCapturedPane(paneId: PaneId, provider: CliName): void;
-  /** Minimize ([-]): detach a captured pane's run (it keeps running, re-attach via director) and remove the pane. */
-  hidePane(paneId: PaneId): void;
-  /** Close ([X]): kill a captured pane's run (DELETE) and remove the pane. Plain remove for non-captured panes. */
+  /** Minimize ([-]): park the pane in the dock and remove it. Generic — runs the kind's onMinimize hook (captured keeps its run alive). */
+  minimizePane(paneId: PaneId): void;
+  /** Close ([X]): remove the pane and run the kind's onClose hook (captured-run kills the run via DELETE). */
   closePane(paneId: PaneId): void;
+  /** Restore a docked pane: re-seed it at its original id so its viewer re-mounts (captured re-attaches by run id). */
+  restorePane(paneId: PaneId): void;
+  /** Close/kill a docked pane WITHOUT restoring it: run its onClose hook (captured-run kills the run) and drop the dock entry. */
+  closeDockedPane(paneId: PaneId): void;
   focusPane(paneId: PaneId): void;
   updatePaneRect(paneId: PaneId, rect: WorldRect): void;
   setStrategy(strategyId: string): void;
@@ -228,6 +236,16 @@ function seedContentPane(
   };
 }
 
+// Next incremental label for a prefix ("Terminal" | "Claude" | "Codex"), plus the bumped counter
+// map. Monotonic and never reused on close, mirroring nextPaneIndex's lab-N scheme.
+function labelFor(
+  counters: Record<string, number>,
+  prefix: string,
+): { label: string; counters: Record<string, number> } {
+  const next = (counters[prefix] ?? 0) + 1;
+  return { label: `${prefix}-${next}`, counters: { ...counters, [prefix]: next } };
+}
+
 /** Seed a new lab pane carrying a viewer-registry content ref, advancing the pane index. */
 function spawnContentPane(
   state: CanvasLabState,
@@ -249,6 +267,8 @@ export const useCanvasLabStore = create<CanvasLabState>()((set, get) => ({
   paneMotion: false,
   nextPaneIndex: 0,
   contentRefs: {},
+  docked: [],
+  paneCounters: {},
 
   addPane() {
     const index = get().nextPaneIndex + 1;
@@ -256,36 +276,35 @@ export const useCanvasLabStore = create<CanvasLabState>()((set, get) => ({
   },
 
   addTerminal() {
-    set((state) => spawnContentPane(state, { kind: "terminal", owner: "local" }));
+    set((state) => {
+      const { label, counters } = labelFor(state.paneCounters, "Terminal");
+      return {
+        paneCounters: counters,
+        ...spawnContentPane(state, { kind: "terminal", owner: "local", label }),
+      };
+    });
   },
 
   addCapturedRun(provider) {
     // Each captured pane owns its own run: a fresh, stable per-pane key is both the
     // pane id and the key the pane spawns + persists its runId under (it rides on the
     // ref so the viewer reads it). Two Spawn Claude clicks are two independent runs
-    // (two PTYs, isolated input), never a shared terminal.
+    // (two PTYs, isolated input), never a shared terminal. The incremental label
+    // (Claude-1, Codex-2) rides on the ref so the chrome + dock show distinct names.
     const runKey = createCapturedRunKey(provider);
-    set((state) =>
-      seedContentPane(state, runKey, { kind: "captured-run", owner: "local", provider, runKey }),
-    );
-  },
-
-  attachCapturedRun(provider, runId) {
-    // Director attach-from-list: bind a pane to an existing server run instead of
-    // spawning. adoptRun returns the stable key for this run (a fresh one, or the key a
-    // sibling pane already owns), and the pane's ensureRun resolves the stored run id
-    // with no POST — so the operator attaches to the running agent (viewer count ticks
-    // up) rather than starting a second run.
-    const runKey = useCapturedRunStore.getState().adoptRun(provider, runId);
-    // Already showing this run (re-click, or we spawned it): focus the open pane rather
-    // than stacking a duplicate viewer onto the same PTY.
-    if (get().contentRefs[runKey]) {
-      set((state) => ({ layout: focusNode(state.layout, runKey) }));
-      return;
-    }
-    set((state) =>
-      seedContentPane(state, runKey, { kind: "captured-run", owner: "local", provider, runKey }),
-    );
+    set((state) => {
+      const { label, counters } = labelFor(state.paneCounters, cliLabel(provider));
+      return {
+        paneCounters: counters,
+        ...seedContentPane(state, runKey, {
+          kind: "captured-run",
+          owner: "local",
+          provider,
+          runKey,
+          label,
+        }),
+      };
+    });
   },
 
   restoreCapturedPane(paneId, provider) {
@@ -303,16 +322,43 @@ export const useCanvasLabStore = create<CanvasLabState>()((set, get) => ({
     );
   },
 
-  hidePane(paneId) {
-    // Minimize: detach the captured run (it keeps running and stays in the director for
-    // re-attach), then remove the pane. The non-destructive counterpart to closePane.
-    dismissPane(paneId, "detach");
+  minimizePane(paneId) {
+    // Minimize ([-]): park the pane in the dock and remove it. Generic across kinds — the resolved
+    // onMinimize hook runs inside the close window (captured-run has none: its run keeps running and
+    // the binding is kept, so restore re-attaches by id). The non-destructive counterpart to close.
+    dismissPane(paneId, "minimize");
   },
 
   closePane(paneId) {
-    // Close ([X]): kill the captured run (DELETE) and remove the pane — destructive and
-    // terminal. A non-captured pane carries no run, so this is a plain remove.
-    dismissPane(paneId, "stop");
+    // Close ([X]): remove the pane and run its onClose hook — destructive and terminal. The
+    // captured-run hook kills the run (DELETE); panes with no hook are a plain remove.
+    dismissPane(paneId, "close");
+  },
+
+  restorePane(paneId) {
+    // Re-seed a docked pane at its original id so its viewer re-mounts: a captured ref's ensureRun
+    // resolves the kept run id (re-attach + PTY replay), a terminal opens a fresh PTY, a null ref
+    // re-creates the demo card/ruler node from the id alone. A failed captured re-attach surfaces in
+    // the viewer; the dock entry is already cleared here, so we never seek a replacement.
+    set((state) => {
+      const entry = state.docked.find((docked) => docked.paneId === paneId);
+      if (!entry) return {};
+      return {
+        docked: state.docked.filter((docked) => docked.paneId !== paneId),
+        contentRefs: entry.ref ? { ...state.contentRefs, [paneId]: entry.ref } : state.contentRefs,
+        layout: seedPaneLayout(state, paneId),
+      };
+    });
+  },
+
+  closeDockedPane(paneId) {
+    // Close/kill a docked pane in place — no restore. It is already off the canvas, so there is no
+    // node teardown: just run its onClose hook (captured-run -> stopRun, DELETE; plain panes have
+    // none, same seam as an on-canvas close) and drop the dock entry.
+    const entry = get().docked.find((docked) => docked.paneId === paneId);
+    if (!entry) return;
+    if (entry.ref) resolvePaneLifecycle(entry.ref).onClose?.(entry.ref);
+    set((state) => ({ docked: state.docked.filter((docked) => docked.paneId !== paneId) }));
   },
 
   focusPane(paneId) {
@@ -469,62 +515,75 @@ function startFly(options: FlyOptions = {}): void {
   }, FRAME_MS);
 }
 
-// Whether dismissing a captured pane detaches its run (minimize: keep it running and listed
-// for re-attach) or stops it (close/[X]: DELETE). Non-captured panes carry no run.
-type CapturedRunAction = "detach" | "stop";
+// Minimize parks the pane in the dock for local restore; close discards it. The per-kind resource
+// side effect (e.g. captured-run kill on close) is resolved through the lifecycle policy, not here.
+type PaneDismissMode = "minimize" | "close";
 
-// Shared two-phase pane teardown for both minimize and close. The exit animation and reflow
-// are identical; only the captured-run side effect differs. Mark the pane closing (it fades +
-// scales out in place, neighbours hold their slots), then after the exit window run the
-// captured side effect, remove the node, and re-plan so survivors flow into the gap. Mirrors
-// the production canvasStore close protocol.
-function dismissPane(paneId: PaneId, runAction: CapturedRunAction): void {
-  useCanvasLabStore.setState((state) => ({ layout: markNodeClosing(state.layout, paneId) }));
-  window.setTimeout(() => {
-    const state = useCanvasLabStore.getState();
-    const closingRef = state.contentRefs[paneId];
-    if (closingRef?.kind === "captured-run") {
-      const runs = useCapturedRunStore.getState();
-      // detach leaves the server run alive and listed (re-attach via director); stop kills it.
-      if (runAction === "stop") runs.stopRun(closingRef.runKey);
-      else runs.detachRun(closingRef.runKey);
-    }
-    const collapsing = state.expandedPaneId === paneId;
-    const unframing = state.framing.paneId === paneId;
-    const expandedPaneId = collapsing ? null : state.expandedPaneId;
-    const framing = collapsing || unframing ? { paneId: null, overview: null } : state.framing;
-    const removed = removeNode(state.layout, paneId);
-    let layout = planLayout(
+// Node + camera teardown shared by minimize and close. Remove the node, re-plan so survivors flow
+// into the gap, and reflow the camera (collapse expand, leave a frame, or undo a manual zoom-in)
+// exactly as before. Returns the layout/expanded/framing patch and triggers the fly side effects
+// itself. A fitted close is reserved for those three cases; normal overview / zoomed-out closes keep
+// the camera. Mirrors the production canvasStore close protocol.
+function finalizePaneRemoval(
+  state: CanvasLabState,
+  paneId: PaneId,
+): Pick<CanvasLabState, "expandedPaneId" | "framing" | "layout"> {
+  const collapsing = state.expandedPaneId === paneId;
+  const unframing = state.framing.paneId === paneId;
+  const expandedPaneId = collapsing ? null : state.expandedPaneId;
+  const framing = collapsing || unframing ? { paneId: null, overview: null } : state.framing;
+  const removed = removeNode(state.layout, paneId);
+  let layout = planLayout(
+    removed,
+    state.bounds,
+    state.activeStrategyId,
+    state.params,
+    collapsing,
+    expandedPaneId,
+  );
+  if (collapsing) {
+    startFly({ paneMotion: true });
+  } else if (unframing) {
+    startFly();
+    layout = setEngineViewport(layout, state.framing.overview ?? DEFAULT_CANVAS_VIEWPORT);
+  } else {
+    const overviewLayout = planLayout(
       removed,
       state.bounds,
       state.activeStrategyId,
       state.params,
-      collapsing,
+      true,
       expandedPaneId,
     );
-    if (collapsing) {
-      startFly({ paneMotion: true });
-    } else if (unframing) {
-      startFly();
-      layout = setEngineViewport(layout, state.framing.overview ?? DEFAULT_CANVAS_VIEWPORT);
-    } else {
-      const overviewLayout = planLayout(
-        removed,
-        state.bounds,
-        state.activeStrategyId,
-        state.params,
-        true,
-        expandedPaneId,
-      );
-      if (isZoomedInPastOverview(state.layout.viewport, overviewLayout.viewport)) {
-        if (openPaneIds(layout).length <= UNFRAME_FLY_PANE_LIMIT) startFly();
-        layout = overviewLayout;
-      }
+    if (isZoomedInPastOverview(state.layout.viewport, overviewLayout.viewport)) {
+      if (openPaneIds(layout).length <= UNFRAME_FLY_PANE_LIMIT) startFly();
+      layout = overviewLayout;
     }
+  }
+  return { expandedPaneId, framing, layout };
+}
+
+// Shared two-phase teardown for both minimize and close. The exit animation and reflow are identical
+// across kinds and modes; only the lifecycle hook (and whether the pane docks) differs. Mark the pane
+// closing (it fades + scales out in place, neighbours hold their slots), then after the exit window
+// run the resolved hook (close -> captured-run stopRun; minimize -> none today), dock it on minimize,
+// drop the node, and reflow survivors into the gap.
+function dismissPane(paneId: PaneId, mode: PaneDismissMode): void {
+  useCanvasLabStore.setState((state) => ({ layout: markNodeClosing(state.layout, paneId) }));
+  window.setTimeout(() => {
+    const state = useCanvasLabStore.getState();
+    const closingRef = state.contentRefs[paneId] ?? null;
+    if (closingRef) {
+      const policy = resolvePaneLifecycle(closingRef);
+      if (mode === "close") policy.onClose?.(closingRef);
+      else policy.onMinimize?.(closingRef);
+    }
+    const removal = finalizePaneRemoval(state, paneId);
     const { [paneId]: _closed, ...contentRefs } = state.contentRefs;
-    // Reflow survivors into the gap. A fitted close is reserved for exiting expand mode, leaving
-    // a frame, or undoing manual zoom-in; normal overview and zoomed-out closes keep the camera.
-    useCanvasLabStore.setState({ expandedPaneId, framing, contentRefs, layout });
+    // Minimize parks the pane in the dock (most-recent first) for local restore; close discards it.
+    const docked: DockedPane[] =
+      mode === "minimize" ? [{ paneId, ref: closingRef }, ...state.docked] : state.docked;
+    useCanvasLabStore.setState({ ...removal, contentRefs, docked });
   }, CLOSE_DELAY_MS);
 }
 
@@ -543,5 +602,7 @@ export function resetCanvasLabStoreForTests(): void {
     paneMotion: false,
     nextPaneIndex: 0,
     contentRefs: {},
+    docked: [],
+    paneCounters: {},
   });
 }

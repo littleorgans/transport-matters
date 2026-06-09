@@ -1,6 +1,7 @@
 // Shared in-app navigation between canvas surfaces. Mounted in BOTH command bars
 // (CanvasCommandBar for /canvas and CanvasLabRoute for /canvas-lab) — one component, two sites.
 // Routes are data so adding a surface later is a one-line edit (registry ethos).
+import "./route-switcher.css";
 
 export interface CanvasRoute {
   id: string;

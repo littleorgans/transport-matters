@@ -6,8 +6,8 @@
 // and the visible state label — the lab opts in so small tiled panes stay legible; production does
 // not, so its header is unchanged. The dropped text stays in `data-state` and the aria-label.
 // Optional onMinimize adds a [-] button left of Close, so Close stays the rightmost control. Only
-// callers that have somewhere to minimize to (the lab's captured panes detach into the director)
-// pass it; production passes neither it nor onFrame, so its header is unchanged.
+// callers with somewhere to minimize to pass it (the lab parks every pane in its canvas dock);
+// production passes neither it nor onFrame, so its header is unchanged.
 export interface PaneChromeProps {
   title: string;
   badge: string;
@@ -62,7 +62,15 @@ export function PaneChrome({
             {title}
           </h2>
         </div>
-        <div className="canvas-pane-window__actions">
+        {/* The header carries the double-click-to-frame gesture, and these controls live inside it.
+            Stop double-clicks on the controls from bubbling up, so a rapid close/minimize (two clicks
+            landing on the same button) never registers as a header dblclick that frames the pane as
+            it is being removed. Single clicks are unaffected. */}
+        {/* biome-ignore lint/a11y/noStaticElementInteractions: dblclick guard only; the buttons inside own all real interactions. */}
+        <div
+          className="canvas-pane-window__actions"
+          onDoubleClick={(event) => event.stopPropagation()}
+        >
           {compact ? null : <span className="canvas-pane-window__state">{state}</span>}
           {onFrame ? (
             <button

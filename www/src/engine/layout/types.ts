@@ -1,5 +1,11 @@
 import type { PaneId, ViewportBounds, WorldRect } from "../types";
 
+// Single source of truth for the pane-grid top/edge margin in world units. Shared by every layout
+// strategy (grid-fit, single-row) and the production planner so the three never drift, and surfaced
+// to CSS as --canvas-layout-margin so the dock band height reads the same number. The lab strategies
+// expose it as a tunable `margin` slider default; this is that default, not a hard floor.
+export const CANVAS_LAYOUT_MARGIN = 64;
+
 // Declarative param values are intentionally narrow (right-sizing: no nested objects, no DSL).
 export type ParamValue = number | boolean | string;
 export type LayoutParams = Record<string, ParamValue>;

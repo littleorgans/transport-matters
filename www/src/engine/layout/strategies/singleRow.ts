@@ -1,6 +1,12 @@
 import type { WorldRect } from "../../types";
 import { registerLayout } from "../registry";
-import type { Control, LayoutParams, PlanInput, PlanResult } from "../types";
+import {
+  CANVAS_LAYOUT_MARGIN,
+  type Control,
+  type LayoutParams,
+  type PlanInput,
+  type PlanResult,
+} from "../types";
 
 // Extensibility proof (spec §6): this whole file is the ONLY edit needed to add a layout. The
 // import.meta.glob auto-loader discovers it, registerLayout publishes it, and the lab picker +
@@ -11,7 +17,7 @@ interface SingleRowParams extends LayoutParams {
   margin: number;
 }
 
-const DEFAULTS: SingleRowParams = { minW: 320, gap: 24, margin: 48 };
+const DEFAULTS: SingleRowParams = { minW: 320, gap: 24, margin: CANVAS_LAYOUT_MARGIN };
 
 const CONTROLS: readonly Control[] = [
   { kind: "number", key: "minW", label: "Min width", min: 120, max: 640, step: 20 },

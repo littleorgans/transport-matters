@@ -1,3 +1,4 @@
+import { CANVAS_LAYOUT_MARGIN } from "../layout/types";
 import type { LayoutMode, PaneId, ViewportBounds, WorldRect } from "../types";
 
 export interface EfficientLayoutInput {
@@ -14,7 +15,7 @@ export interface EfficientLayoutPlan {
   reason: string;
 }
 
-const WORLD_MARGIN = 48;
+const WORLD_MARGIN = CANVAS_LAYOUT_MARGIN;
 const PANE_GAP = 24;
 const MIN_PANE_WIDTH = 320;
 const MIN_PANE_HEIGHT = 240;

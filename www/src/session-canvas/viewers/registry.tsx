@@ -111,7 +111,7 @@ const registry: ViewerRegistration[] = [
     id: "terminal",
     canRender: (ref): ref is TerminalRef => ref.kind === "terminal",
     paneId: () => "terminal",
-    title: () => "Terminal",
+    title: (ref) => ref.label ?? "Terminal",
     defaultRect: (_ref, index) => cascadeRect(TERMINAL_RECT, contentStep(index)),
     // The terminal is self-contained (its own xterm + PTY socket); it ignores viewer props. It is
     // lazy, so a Suspense boundary covers the one-time chunk fetch.
@@ -130,7 +130,7 @@ const registry: ViewerRegistration[] = [
     // (provider:uuid). Two same-provider captured runs carry distinct keys => distinct
     // pane ids; they never dedupe onto one shared terminal.
     paneId: (ref) => ref.runKey,
-    title: (ref) => cliLabel(ref.provider),
+    title: (ref) => ref.label ?? cliLabel(ref.provider),
     defaultRect: (_ref, index) => cascadeRect(TERMINAL_RECT, contentStep(index)),
     // Self-contained like the bare terminal (its own xterm + captured PTY socket). The pane id is
     // the per-pane run key, so each captured pane owns its own run. Lazy, so a Suspense boundary

@@ -40,3 +40,34 @@ describe("PaneChrome minimize affordance", () => {
     expect(onClose).not.toHaveBeenCalled();
   });
 });
+
+describe("PaneChrome header frame gesture", () => {
+  // The action controls sit inside the header, which carries the double-click-to-frame gesture. A
+  // rapid close/minimize can land two clicks on the same button → a header dblclick → framePane,
+  // which frames the pane right as it is being removed (the "frame zoom" flicker). Controls must NOT
+  // bubble a double-click to the header.
+  it("does not fire the header double-click when a control button is double-clicked", () => {
+    const onHeaderDoubleClick = vi.fn();
+    setup({
+      onClose: vi.fn(),
+      onMinimize: vi.fn(),
+      onExpand: vi.fn(),
+      onFrame: vi.fn(),
+      onHeaderDoubleClick,
+    });
+
+    fireEvent.doubleClick(screen.getByRole("button", { name: "Close Claude" }));
+    fireEvent.doubleClick(screen.getByRole("button", { name: "Minimize Claude" }));
+
+    expect(onHeaderDoubleClick).not.toHaveBeenCalled();
+  });
+
+  it("still fires the header double-click (frame gesture) on the title region", () => {
+    const onHeaderDoubleClick = vi.fn();
+    setup({ onClose: vi.fn(), onHeaderDoubleClick });
+
+    fireEvent.doubleClick(screen.getByText("Claude"));
+
+    expect(onHeaderDoubleClick).toHaveBeenCalledTimes(1);
+  });
+});
