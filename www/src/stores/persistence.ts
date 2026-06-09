@@ -3,6 +3,7 @@ import { createJSONStorage, type PersistStorage, type StateStorage } from "zusta
 export const FRONTEND_STORAGE_KEYS = {
   uiStore: "transport-matters-ui",
   overlaysStore: "transport-matters-overlays",
+  capturedRunStore: "transport-matters-captured-run",
   dismissedPanelPrefix: "transport-matters.panel.dismissed.",
 } as const;
 

@@ -1,13 +1,14 @@
-import { act, render, screen } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { resetCapturedRunStoreForTests, useCapturedRunStore } from "../../lab/capturedRunStore";
 import { CapturedRunPane } from "./CapturedRunPane";
 
 // xterm renders to a real canvas/WebGL surface that jsdom cannot host, so the
 // terminal is mocked (as in TerminalPane.test). The point under test is the
-// captured-run wiring: the pane connects to the captured endpoint for its
-// provider and turns a launch-error frame into a banner. The raw socket protocol
-// is proven separately in terminalSocket.test.ts; the pane has no chrome of its
-// own (its captured identity is the window title), so there is nothing else to assert.
+// managed-run lifecycle: the pane spawns a run via POST /api/runs (or re-attaches
+// a persisted run id), attaches its terminal WebSocket to /api/runs/{id}/terminal,
+// and turns a spawn failure or run.error frame into a banner. The raw socket
+// protocol is proven separately in terminalSocket.test.ts.
 const { terminals, MockTerminal, MockFitAddon } = vi.hoisted(() => {
   class MockTerminal {
     cols = 80;
@@ -31,8 +32,17 @@ const { terminals, MockTerminal, MockFitAddon } = vi.hoisted(() => {
   return { terminals, MockTerminal, MockFitAddon };
 });
 
+const { createCapturedRunMock, deleteRunMock } = vi.hoisted(() => ({
+  createCapturedRunMock: vi.fn(),
+  deleteRunMock: vi.fn(),
+}));
+
 vi.mock("@xterm/xterm", () => ({ Terminal: MockTerminal }));
 vi.mock("@xterm/addon-fit", () => ({ FitAddon: MockFitAddon }));
+vi.mock("../../../api", () => ({
+  createCapturedRun: createCapturedRunMock,
+  deleteRun: deleteRunMock,
+}));
 
 const sockets: MockWebSocket[] = [];
 class MockWebSocket {
@@ -52,20 +62,14 @@ class MockWebSocket {
   }
 }
 
-const READY = JSON.stringify({
-  type: "captured-run.ready",
-  runId: "run-abc123def",
-  cwd: "/work/proj",
-  storageDir: "/store",
-  proxyPort: 51234,
-  webPort: 7999,
-  cli: "claude",
-});
-
 describe("CapturedRunPane", () => {
   beforeEach(() => {
     terminals.length = 0;
     sockets.length = 0;
+    localStorage.clear();
+    resetCapturedRunStoreForTests();
+    createCapturedRunMock.mockReset();
+    deleteRunMock.mockReset();
     vi.stubGlobal("WebSocket", MockWebSocket);
   });
 
@@ -74,49 +78,78 @@ describe("CapturedRunPane", () => {
     vi.clearAllMocks();
   });
 
-  it("connects to the claude captured endpoint for the claude provider", () => {
-    render(<CapturedRunPane provider="claude" />);
-    expect(only(sockets).url).toMatch(/\/api\/captured-runs\/claude\/terminal\?cols=80&rows=24$/);
+  it("spawns a run via POST then attaches its terminal socket", async () => {
+    createCapturedRunMock.mockResolvedValue("run-abc123");
+
+    render(<CapturedRunPane runKey="claude:k1" provider="claude" />);
+
+    await waitFor(() => expect(sockets).toHaveLength(1));
+    expect(createCapturedRunMock).toHaveBeenCalledWith("claude", undefined);
+    expect(only(sockets).url).toMatch(/\/api\/runs\/run-abc123\/terminal\?cols=80&rows=24$/);
   });
 
-  it("connects to the codex captured endpoint for the codex provider", () => {
-    render(<CapturedRunPane provider="codex" />);
-    expect(only(sockets).url).toMatch(/\/api\/captured-runs\/codex\/terminal\?cols=80&rows=24$/);
+  it("re-attaches a persisted run id without spawning a new run", async () => {
+    useCapturedRunStore.setState({
+      runs: { "codex:k1": { provider: "codex", runId: "run-persisted" } },
+    });
+
+    render(<CapturedRunPane runKey="codex:k1" provider="codex" />);
+
+    await waitFor(() => expect(sockets).toHaveLength(1));
+    expect(createCapturedRunMock).not.toHaveBeenCalled();
+    expect(only(sockets).url).toMatch(/\/api\/runs\/run-persisted\/terminal\?cols=80&rows=24$/);
   });
 
-  it("turns a captured-run error frame into an alert banner", () => {
-    render(<CapturedRunPane provider="claude" />);
+  it("turns a run.error frame into an alert banner", async () => {
+    createCapturedRunMock.mockResolvedValue("run-abc123");
+    render(<CapturedRunPane runKey="claude:k1" provider="claude" />);
+    await waitFor(() => expect(sockets).toHaveLength(1));
+
     act(() =>
       only(sockets).emitText(
-        JSON.stringify({ type: "captured-run.error", code: "launch_failed", message: "boom" }),
+        JSON.stringify({ type: "run.error", code: "run_not_attachable", message: "gone" }),
       ),
     );
+
     const alert = screen.getByRole("alert");
-    expect(alert).toHaveTextContent(/launch_failed/);
-    expect(alert).toHaveTextContent(/boom/);
+    expect(alert).toHaveTextContent(/run_not_attachable/);
+    expect(alert).toHaveTextContent(/gone/);
   });
 
-  it("surfaces a refused state naming the provider when the socket is rejected (close 1008)", () => {
-    render(<CapturedRunPane provider="codex" />);
+  it("surfaces a refused state naming the provider when the socket is rejected (close 1008)", async () => {
+    createCapturedRunMock.mockResolvedValue("run-abc123");
+    render(<CapturedRunPane runKey="codex:k1" provider="codex" />);
+    await waitFor(() => expect(sockets).toHaveLength(1));
+
     act(() => {
       only(sockets).onclose?.({ code: 1008, reason: "origin not allowed" });
     });
+
     const alert = screen.getByRole("alert");
     expect(alert).toHaveTextContent(/refused/i);
     expect(alert).toHaveTextContent(/Codex/);
   });
 
-  it("does not write inbound control frames to the terminal screen", () => {
-    render(<CapturedRunPane provider="claude" />);
-    act(() => only(sockets).emitText(READY));
-    expect(only(terminals).write).not.toHaveBeenCalled();
+  it("shows a spawn-failure banner when POST /api/runs fails", async () => {
+    createCapturedRunMock.mockRejectedValue(new Error("no claude on PATH"));
+
+    render(<CapturedRunPane runKey="claude:k1" provider="claude" />);
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(/Claude/);
+    expect(alert).toHaveTextContent(/no claude on PATH/);
+    expect(sockets).toHaveLength(0);
   });
 
-  it("closes the socket and disposes the terminal on unmount", () => {
-    const { unmount } = render(<CapturedRunPane provider="claude" />);
+  it("closes the socket and disposes the terminal on unmount", async () => {
+    createCapturedRunMock.mockResolvedValue("run-abc123");
+    const { unmount } = render(<CapturedRunPane runKey="claude:k1" provider="claude" />);
+    await waitFor(() => expect(sockets).toHaveLength(1));
+
     const terminal = only(terminals);
     const socket = only(sockets);
     unmount();
+
     expect(socket.close).toHaveBeenCalledTimes(1);
     expect(terminal.dispose).toHaveBeenCalledTimes(1);
   });

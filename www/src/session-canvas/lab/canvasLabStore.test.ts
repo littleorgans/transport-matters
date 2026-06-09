@@ -1,10 +1,17 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   framedPaneId,
   resetCanvasLabStoreForTests,
   UNFRAME_FLY_PANE_LIMIT,
   useCanvasLabStore,
 } from "./canvasLabStore";
+import { resetCapturedRunStoreForTests, useCapturedRunStore } from "./capturedRunStore";
+
+const { deleteRunMock } = vi.hoisted(() => ({ deleteRunMock: vi.fn() }));
+vi.mock("../../api", () => ({
+  createCapturedRun: vi.fn(),
+  deleteRun: deleteRunMock,
+}));
 
 const store = useCanvasLabStore.getState;
 
@@ -51,21 +58,105 @@ describe("canvasLabStore terminals", () => {
   it("spawns captured-run panes carrying the chosen provider on their content ref", () => {
     resetCanvasLabStoreForTests();
 
-    store().addCapturedRun("claude"); // lab-1
-    store().addCapturedRun("codex"); // lab-2
+    store().addCapturedRun("claude");
+    store().addCapturedRun("codex");
 
-    expect(store().contentRefs["lab-1"]).toEqual({
+    const captured = Object.values(store().contentRefs).filter(
+      (ref) => ref.kind === "captured-run",
+    );
+    expect(captured).toHaveLength(2);
+    expect(captured).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: "captured-run", owner: "local", provider: "claude" }),
+        expect.objectContaining({ kind: "captured-run", owner: "local", provider: "codex" }),
+      ]),
+    );
+    // The run key rides on the ref and matches the pane id.
+    for (const [paneId, ref] of Object.entries(store().contentRefs)) {
+      if (ref.kind === "captured-run") expect(ref.runKey).toBe(paneId);
+    }
+  });
+});
+
+describe("canvasLabStore captured runs", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    resetCanvasLabStoreForTests();
+    resetCapturedRunStoreForTests();
+    deleteRunMock.mockReset();
+  });
+
+  it("spawns an independent pane and key per Spawn, even for the same provider", () => {
+    store().addCapturedRun("claude");
+    store().addCapturedRun("claude");
+
+    const ids = capturedPaneIds(store().contentRefs);
+    expect(ids).toHaveLength(2);
+    // Distinct pane ids => distinct run keys => the two panes own independent runs.
+    expect(ids[0]).not.toBe(ids[1]);
+    for (const id of ids) expect(id.startsWith("claude:")).toBe(true);
+  });
+
+  it("explicitly stops and forgets only that pane's run when its captured pane is closed", () => {
+    vi.useFakeTimers();
+    try {
+      deleteRunMock.mockResolvedValue(undefined);
+      store().addCapturedRun("claude");
+      const paneId = capturedPaneIds(store().contentRefs)[0];
+      if (!paneId) throw new Error("expected a captured pane");
+      useCapturedRunStore.setState({ runs: { [paneId]: { provider: "claude", runId: "run-1" } } });
+
+      store().closePane(paneId);
+      vi.runAllTimers();
+
+      expect(deleteRunMock).toHaveBeenCalledWith("run-1");
+      expect(useCapturedRunStore.getState().runs[paneId]).toBeUndefined();
+      expect(store().contentRefs[paneId]).toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("leaves captured runs untouched when a non-captured pane is closed", () => {
+    vi.useFakeTimers();
+    try {
+      useCapturedRunStore.setState({
+        runs: { "claude:k1": { provider: "claude", runId: "run-1" } },
+      });
+      store().addTerminal(); // lab-1 (bare terminal, not a captured run)
+
+      store().closePane("lab-1");
+      vi.runAllTimers();
+
+      expect(deleteRunMock).not.toHaveBeenCalled();
+      expect(useCapturedRunStore.getState().runs["claude:k1"]).toEqual({
+        provider: "claude",
+        runId: "run-1",
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("restoreCapturedPane recreates a pane at its key and is idempotent", () => {
+    store().restoreCapturedPane("claude:k1", "claude");
+    store().restoreCapturedPane("claude:k1", "claude"); // remount within a session: no duplicate
+
+    expect(store().contentRefs["claude:k1"]).toEqual({
       kind: "captured-run",
       owner: "local",
       provider: "claude",
+      runKey: "claude:k1",
     });
-    expect(store().contentRefs["lab-2"]).toEqual({
-      kind: "captured-run",
-      owner: "local",
-      provider: "codex",
-    });
+    expect(capturedPaneIds(store().contentRefs)).toEqual(["claude:k1"]);
   });
 });
+
+function capturedPaneIds(contentRefs: Record<string, { kind: string }>): string[] {
+  return Object.entries(contentRefs)
+    .filter(([, ref]) => ref.kind === "captured-run")
+    .map(([id]) => id);
+}
 
 describe("canvasLabStore framing", () => {
   it("frames a pane (capturing the overview) and toggles back on a second call", () => {

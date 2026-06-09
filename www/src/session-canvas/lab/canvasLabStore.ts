@@ -29,6 +29,7 @@ import {
 } from "../../engine/layout";
 import type { CliName } from "../../types";
 import type { PaneContentRef } from "../model/paneRecords";
+import { createCapturedRunKey, useCapturedRunStore } from "./capturedRunStore";
 import { fitExpandFrameToWidth, planExpandedLayout } from "./expandLayout";
 
 const DEFAULT_BOUNDS: ViewportBounds = { width: 1600, height: 1000 };
@@ -69,6 +70,8 @@ export interface CanvasLabState {
   addPane(): void;
   addTerminal(): void;
   addCapturedRun(provider: CliName): void;
+  /** Recreate a captured pane at its persisted key on reload so it re-attaches by id. */
+  restoreCapturedPane(paneId: PaneId, provider: CliName): void;
   closePane(paneId: PaneId): void;
   focusPane(paneId: PaneId): void;
   updatePaneRect(paneId: PaneId, rect: WorldRect): void;
@@ -208,18 +211,25 @@ function seedPaneLayout(state: CanvasLabState, paneId: PaneId): EngineLayoutStat
   );
 }
 
+/** Seed a lab pane with an explicit id carrying a viewer-registry content ref. */
+function seedContentPane(
+  state: CanvasLabState,
+  paneId: PaneId,
+  ref: PaneContentRef,
+): Pick<CanvasLabState, "contentRefs" | "layout"> {
+  return {
+    contentRefs: { ...state.contentRefs, [paneId]: ref },
+    layout: seedPaneLayout(state, paneId),
+  };
+}
+
 /** Seed a new lab pane carrying a viewer-registry content ref, advancing the pane index. */
 function spawnContentPane(
   state: CanvasLabState,
   ref: PaneContentRef,
 ): Pick<CanvasLabState, "nextPaneIndex" | "contentRefs" | "layout"> {
   const index = state.nextPaneIndex + 1;
-  const paneId = `lab-${index}`;
-  return {
-    nextPaneIndex: index,
-    contentRefs: { ...state.contentRefs, [paneId]: ref },
-    layout: seedPaneLayout(state, paneId),
-  };
+  return { nextPaneIndex: index, ...seedContentPane(state, `lab-${index}`, ref) };
 }
 
 export const useCanvasLabStore = create<CanvasLabState>()((set, get) => ({
@@ -245,7 +255,29 @@ export const useCanvasLabStore = create<CanvasLabState>()((set, get) => ({
   },
 
   addCapturedRun(provider) {
-    set((state) => spawnContentPane(state, { kind: "captured-run", owner: "local", provider }));
+    // Each captured pane owns its own run: a fresh, stable per-pane key is both the
+    // pane id and the key the pane spawns + persists its runId under (it rides on the
+    // ref so the viewer reads it). Two Spawn Claude clicks are two independent runs
+    // (two PTYs, isolated input), never a shared terminal.
+    const runKey = createCapturedRunKey(provider);
+    set((state) =>
+      seedContentPane(state, runKey, { kind: "captured-run", owner: "local", provider, runKey }),
+    );
+  },
+
+  restoreCapturedPane(paneId, provider) {
+    // Reload re-attach: recreate the captured pane at its persisted key so the pane
+    // re-attaches to its own run by id. Idempotent — a remount within a session finds
+    // the pane already open and leaves it untouched.
+    if (get().contentRefs[paneId]) return;
+    set((state) =>
+      seedContentPane(state, paneId, {
+        kind: "captured-run",
+        owner: "local",
+        provider,
+        runKey: paneId,
+      }),
+    );
   },
 
   closePane(paneId) {
@@ -255,6 +287,13 @@ export const useCanvasLabStore = create<CanvasLabState>()((set, get) => ({
     set((state) => ({ layout: markNodeClosing(state.layout, paneId) }));
     window.setTimeout(() => {
       const state = get();
+      // Explicit close stops the run (DELETE) and forgets its persisted id. Only this
+      // user-driven path stops a run: a browser reload drops the in-memory lab store
+      // without calling closePane, so the run survives and the pane re-attaches.
+      const closingRef = state.contentRefs[paneId];
+      if (closingRef?.kind === "captured-run") {
+        useCapturedRunStore.getState().clearRun(closingRef.runKey);
+      }
       const collapsing = state.expandedPaneId === paneId;
       const unframing = state.framing.paneId === paneId;
       const expandedPaneId = collapsing ? null : state.expandedPaneId;

@@ -132,14 +132,17 @@ const registry: ViewerRegistration[] = [
     paneId: (ref) => `${CAPTURED_RUN_PANE_PREFIX}${ref.provider}`,
     title: (ref) => cliLabel(ref.provider),
     defaultRect: (_ref, index) => cascadeRect(TERMINAL_RECT, contentStep(index)),
-    // Self-contained like the bare terminal (its own xterm + captured PTY socket); the only viewer
-    // prop it reads is the provider on its ref. Lazy, so a Suspense boundary covers the one-time
-    // shared-chunk fetch.
+    // Self-contained like the bare terminal (its own xterm + captured PTY socket). The pane id is
+    // the per-pane run key, so each captured pane owns its own run. Lazy, so a Suspense boundary
+    // covers the one-time shared-chunk fetch.
     render: (props) => (
       <Suspense
         fallback={<div aria-busy="true" className="canvas-transcript canvas-transcript--center" />}
       >
-        <CapturedRunPane provider={props.pane.contentRef.provider} />
+        <CapturedRunPane
+          runKey={props.pane.contentRef.runKey}
+          provider={props.pane.contentRef.provider}
+        />
       </Suspense>
     ),
   }),

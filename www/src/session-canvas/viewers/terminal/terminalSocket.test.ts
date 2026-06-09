@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
-  capturedTerminalSocketUrl,
   openTerminalSocket,
+  runTerminalSocketUrl,
   type TerminalIO,
   terminalSocketUrl,
 } from "./terminalSocket";
@@ -79,34 +79,23 @@ describe("terminalSocketUrl", () => {
   });
 });
 
-describe("capturedTerminalSocketUrl", () => {
-  it("targets the captured endpoint for the given provider with the size query", () => {
+describe("runTerminalSocketUrl", () => {
+  it("derives a same-origin ws:// attach url for the run id with the size query", () => {
     expect(
-      capturedTerminalSocketUrl("claude", 80, 24, undefined, {
+      runTerminalSocketUrl("run-abc123def", 80, 24, {
         protocol: "http:",
         host: "localhost:5173",
       }),
-    ).toBe("ws://localhost:5173/api/captured-runs/claude/terminal?cols=80&rows=24");
+    ).toBe("ws://localhost:5173/api/runs/run-abc123def/terminal?cols=80&rows=24");
   });
 
-  it("routes codex to its own captured endpoint", () => {
+  it("upgrades to wss on https pages and encodes the run id segment", () => {
     expect(
-      capturedTerminalSocketUrl("codex", 80, 24, undefined, {
-        protocol: "http:",
-        host: "localhost:5173",
-      }),
-    ).toBe("ws://localhost:5173/api/captured-runs/codex/terminal?cols=80&rows=24");
-  });
-
-  it("appends an encoded cwd and upgrades to wss on https pages", () => {
-    expect(
-      capturedTerminalSocketUrl("claude", 120, 40, "/work/proj", {
+      runTerminalSocketUrl("run/abc", 120, 40, {
         protocol: "https:",
         host: "app.example.com",
       }),
-    ).toBe(
-      "wss://app.example.com/api/captured-runs/claude/terminal?cols=120&rows=40&cwd=%2Fwork%2Fproj",
-    );
+    ).toBe("wss://app.example.com/api/runs/run%2Fabc/terminal?cols=120&rows=40");
   });
 });
 
@@ -162,7 +151,7 @@ describe("openTerminalSocket", () => {
     const frames: string[] = [];
     const sockets: FakeSocket[] = [];
     openTerminalSocket(term, {
-      url: "ws://host/api/captured-runs/claude/terminal",
+      url: "ws://host/api/runs/run-1/terminal",
       socketFactory: (url) => {
         const socket = new FakeSocket(url);
         sockets.push(socket);
@@ -173,9 +162,9 @@ describe("openTerminalSocket", () => {
     const socket = sockets[0];
     if (!socket) throw new Error("expected a socket to be created");
 
-    socket.emit('{"type":"captured-run.ready","runId":"r1"}');
+    socket.emit('{"type":"run.terminal.ready","run":{"runId":"run-1"}}');
 
-    expect(frames).toEqual(['{"type":"captured-run.ready","runId":"r1"}']);
+    expect(frames).toEqual(['{"type":"run.terminal.ready","run":{"runId":"run-1"}}']);
     expect(term.written).toHaveLength(0);
   });
 

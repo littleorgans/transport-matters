@@ -106,8 +106,18 @@ describe("registry pane ids", () => {
   });
 
   it("routes captured runs per provider through one captured-run viewer", () => {
-    const claude: CanvasPaneRef = { kind: "captured-run", owner: "local", provider: "claude" };
-    const codex: CanvasPaneRef = { kind: "captured-run", owner: "local", provider: "codex" };
+    const claude: CanvasPaneRef = {
+      kind: "captured-run",
+      owner: "local",
+      provider: "claude",
+      runKey: "claude:k1",
+    };
+    const codex: CanvasPaneRef = {
+      kind: "captured-run",
+      owner: "local",
+      provider: "codex",
+      runKey: "codex:k1",
+    };
     expect(viewerIdForRef(claude)).toBe("captured-run");
     expect(viewerIdForRef(codex)).toBe("captured-run");
     expect(titleForRef(claude)).toBe("Claude");

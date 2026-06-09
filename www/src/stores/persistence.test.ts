@@ -15,6 +15,7 @@ describe("frontend persistence", () => {
   it("keeps the Transport Matters storage keys stable", () => {
     expect(FRONTEND_STORAGE_KEYS.uiStore).toBe("transport-matters-ui");
     expect(FRONTEND_STORAGE_KEYS.overlaysStore).toBe("transport-matters-overlays");
+    expect(FRONTEND_STORAGE_KEYS.capturedRunStore).toBe("transport-matters-captured-run");
     expect(FRONTEND_STORAGE_KEYS.dismissedPanelPrefix).toBe("transport-matters.panel.dismissed.");
     expect(dismissedPanelKey("intro")).toBe("transport-matters.panel.dismissed.intro");
   });

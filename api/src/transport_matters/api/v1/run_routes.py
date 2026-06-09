@@ -216,20 +216,6 @@ def _spawn_request(body: CreateRunRequest, settings: Settings) -> SpawnRun:
     )
 
 
-def captured_spawn_request(
-    *, cli: CapturedRunCli, cwd: str | None, cols: int, rows: int, settings: Settings
-) -> SpawnRun:
-    return SpawnRun(
-        cli=cli,
-        cwd=_request_cwd(cwd, settings),
-        cols=cols,
-        rows=rows,
-        passthrough=settings.default_client_passthrough,
-        home_dir=settings.agent_home_dir,
-        debug=settings.debug,
-    )
-
-
 def run_view_model(view: ManagedRunView) -> RunViewModel:
     return RunViewModel(
         run_id=view.run_id,

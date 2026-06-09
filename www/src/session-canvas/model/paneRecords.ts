@@ -60,7 +60,7 @@ export type PaneContentRef =
       initialView?: string;
     }
   | { kind: "terminal"; owner: "local" }
-  | { kind: "captured-run"; owner: "local"; provider: CliName };
+  | { kind: "captured-run"; owner: "local"; provider: CliName; runKey: string };
 
 /** The built-in session picker is canvas chrome, not transcript content. */
 export type PickerPaneRef = { kind: "session-picker"; owner: "local" };
