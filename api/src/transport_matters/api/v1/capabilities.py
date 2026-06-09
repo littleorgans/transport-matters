@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+
 from fastapi import APIRouter
 from pydantic import BaseModel
 
@@ -30,9 +32,9 @@ class CapabilitiesResponse(BaseModel):
 
 @router.get("/capabilities")
 async def get_capabilities() -> CapabilitiesResponse:
+    clis = await asyncio.to_thread(detect_clis)
     return CapabilitiesResponse(
         clis={
-            name: CliCapabilityResponse.from_core(capability)
-            for name, capability in detect_clis().items()
+            name: CliCapabilityResponse.from_core(capability) for name, capability in clis.items()
         }
     )
