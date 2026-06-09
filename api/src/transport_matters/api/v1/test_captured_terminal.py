@@ -30,7 +30,7 @@ from transport_matters.config import get_settings
 from transport_matters.main import create_app
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping, Sequence
+    from collections.abc import Callable, Mapping, Sequence
     from pathlib import Path
 
     from pytest import MonkeyPatch
@@ -161,6 +161,50 @@ def test_captured_terminal_sends_ready_before_terminal_bytes(
         "nativeSessionId": "native-test",
     }
     assert b"TM_CLIENT_BYTES" in output
+
+
+def test_prepare_captured_claude_run_allocates_nested_web_backend(
+    monkeypatch: MonkeyPatch, tmp_path: Path
+) -> None:
+    _install_fake_dependencies(monkeypatch, tmp_path, port_in_use=lambda port: port == 8788)
+    monkeypatch.setenv("TRANSPORT_MATTERS_CWD", str(tmp_path))
+    monkeypatch.setenv("TRANSPORT_MATTERS_WEB_PORT", "8788")
+    get_settings.cache_clear()
+    calls: dict[str, object] = {}
+
+    def fake_prepare(
+        request: CapturedRunRequest,
+        **kwargs: object,
+    ) -> tuple[CapturedRunSpawnSpec, FakeLease]:
+        port_in_use = cast("Any", kwargs["port_in_use"])
+        calls["request"] = request
+        calls["current_web_port_in_use"] = port_in_use(8788)
+        fake_lease = FakeLease(manifest_path=tmp_path / "manifest.json", sessions=[])
+        return (
+            CapturedRunSpawnSpec(
+                run_id="run-test",
+                working_dir=cast("Path", request.directory),
+                storage_dir=tmp_path / "storage",
+                proxy_port=9900,
+                web_port=9901,
+                mitmdump_log=tmp_path / "storage" / "mitmdump.log",
+                client=None,
+                launch_env={},
+                managed_session=None,
+            ),
+            fake_lease,
+        )
+
+    monkeypatch.setattr(captured_terminal, "prepare_captured_run", fake_prepare)
+
+    captured_terminal._prepare_captured_claude_run(
+        cwd=str(tmp_path),
+        settings=get_settings(),
+    )
+
+    request = cast("CapturedRunRequest", calls["request"])
+    assert request.web_port is None
+    assert calls["current_web_port_in_use"] is True
 
 
 def test_captured_terminal_binary_input_reaches_child(
@@ -459,12 +503,17 @@ def _install_fake_prepare(
     return fake_lease
 
 
-def _install_fake_dependencies(monkeypatch: MonkeyPatch, tmp_path: Path) -> None:
+def _install_fake_dependencies(
+    monkeypatch: MonkeyPatch,
+    tmp_path: Path,
+    *,
+    port_in_use: Callable[[int], bool] | None = None,
+) -> None:
     dependencies = CapturedRunDependencies(
         require_addon=lambda: cast("Any", tmp_path / "addon.py"),
         resolve_mitmdump=lambda: "/bin/mitmdump",
         which=lambda name: f"/bin/{name}",
-        port_in_use=lambda _port: False,
+        port_in_use=port_in_use or (lambda _port: False),
         allocate_port_pair=lambda: (9900, 9901),
         inject_system_prompt=lambda passthrough, **_kwargs: list(passthrough),
         user_supplied_system_prompt=lambda _passthrough: False,
