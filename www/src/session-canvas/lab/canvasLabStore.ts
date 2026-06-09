@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { persist } from "zustand/middleware";
 import {
   type CanvasViewport,
   CLOSE_DELAY_MS,
@@ -27,6 +28,7 @@ import {
   type ParamValue,
   resolveLayout,
 } from "../../engine/layout";
+import { createFrontendPersistStorage, FRONTEND_STORAGE_KEYS } from "../../stores/persistence";
 import type { CliName } from "../../types";
 import { resolvePaneLifecycle } from "../model/paneLifecycle";
 import { cliLabel, type DockedPane, type PaneContentRef } from "../model/paneRecords";
@@ -76,10 +78,6 @@ export interface CanvasLabState {
   addPane(): void;
   addTerminal(): void;
   addCapturedRun(provider: CliName): void;
-  /** Recreate a captured pane at its persisted key on reload so it re-attaches by id. */
-  restoreCapturedPane(paneId: PaneId, provider: CliName): void;
-  /** Re-dock a captured pane persisted as minimized on reload — the docked counterpart to restoreCapturedPane. */
-  dockCapturedPane(paneId: PaneId, provider: CliName): void;
   /** Minimize ([-]): park the pane in the dock and remove it. Generic — runs the kind's onMinimize hook (captured keeps its run alive). */
   minimizePane(paneId: PaneId): void;
   /** Close ([X]): remove the pane and run the kind's onClose hook (captured-run kills the run via DELETE). */
@@ -208,40 +206,42 @@ function isZoomedInPastOverview(current: CanvasViewport, overview: CanvasViewpor
   return current.scale > overview.scale + CLOSE_ZOOM_RESET_EPSILON;
 }
 
-// Born at its planned slot in a single commit: seed the node, then plan over the seeded layout in the
-// SAME set. Two separate sets (seed then organize) would render the pane at SEED_RECT's top-left corner
-// for one frame before springing to its slot (the "fly in from top-left"). Shared by addPane/addTerminal.
-function seedPaneLayout(state: CanvasLabState, paneId: PaneId): EngineLayoutState {
-  const seeded = focusNode(
-    upsertNode(state.layout, createPaneNode(paneId, SEED_RECT, nextPaneZ(state.layout.nodes))),
-    paneId,
-  );
-  return planLayout(
-    seeded,
-    state.bounds,
-    state.activeStrategyId,
-    state.params,
-    state.fitToContent,
-    state.expandedPaneId,
-  );
-}
-
-/** The captured-run content ref a reload re-creates for a pane. The label is not persisted, so it is
- *  re-derived by the viewer/registry; shared by the open (restoreCapturedPane) and docked
- *  (dockCapturedPane) reload paths so the two ref shapes never drift. */
-function capturedRunRef(provider: CliName, runKey: PaneId): PaneContentRef {
-  return { kind: "captured-run", owner: "local", provider, runKey };
-}
-
-/** Seed a lab pane with an explicit id carrying a viewer-registry content ref. */
-function seedContentPane(
+// The single node+ref seed: place a pane node at `rect` carrying an optional content ref (null is a demo
+// card/ruler stub). The ONE pane-creation primitive both paths funnel through — spawn mints a fresh
+// record, reload replays a persisted one — so create and restore can never drift. No planning or focus
+// here: spawn layers those on top (spawnPaneLayout); reload places each pane at its persisted rect.
+function seedPaneFromRecord(
   state: CanvasLabState,
   paneId: PaneId,
-  ref: PaneContentRef,
+  ref: PaneContentRef | null,
+  rect: WorldRect,
 ): Pick<CanvasLabState, "contentRefs" | "layout"> {
   return {
-    contentRefs: { ...state.contentRefs, [paneId]: ref },
-    layout: seedPaneLayout(state, paneId),
+    contentRefs: ref ? { ...state.contentRefs, [paneId]: ref } : state.contentRefs,
+    layout: upsertNode(state.layout, createPaneNode(paneId, rect, nextPaneZ(state.layout.nodes))),
+  };
+}
+
+// Spawn a NEW pane: seed it at SEED_RECT through seedPaneFromRecord, focus it, then plan over the seeded
+// layout in the SAME commit so it flies into its slot. Two separate sets (seed then organize) would flash
+// the pane at SEED_RECT's corner for a frame first. Shared by addPane/addTerminal/addCapturedRun and the
+// in-session restorePane — the one create path, distinct from reload only in that reload skips replanning.
+function spawnPaneLayout(
+  state: CanvasLabState,
+  paneId: PaneId,
+  ref: PaneContentRef | null,
+): Pick<CanvasLabState, "contentRefs" | "layout"> {
+  const seeded = seedPaneFromRecord(state, paneId, ref, SEED_RECT);
+  return {
+    contentRefs: seeded.contentRefs,
+    layout: planLayout(
+      focusNode(seeded.layout, paneId),
+      state.bounds,
+      state.activeStrategyId,
+      state.params,
+      state.fitToContent,
+      state.expandedPaneId,
+    ),
   };
 }
 
@@ -255,262 +255,316 @@ function labelFor(
   return { label: `${prefix}-${next}`, counters: { ...counters, [prefix]: next } };
 }
 
-/** Seed a new lab pane carrying a viewer-registry content ref, advancing the pane index. */
-function spawnContentPane(
-  state: CanvasLabState,
-  ref: PaneContentRef,
-): Pick<CanvasLabState, "nextPaneIndex" | "contentRefs" | "layout"> {
-  const index = state.nextPaneIndex + 1;
-  return { nextPaneIndex: index, ...seedContentPane(state, `lab-${index}`, ref) };
+const CANVAS_LAB_STORAGE_VERSION = 1;
+
+/** The persisted lab record set: enough to rebuild the canvas (open panes from contentRefs + paneRects,
+ *  docked panes from `docked`) and continue the spawn counters, with no transient camera/animation state.
+ *  Captured panes compose their live runId/minimized from capturedRunStore, keyed by the same runKey. */
+interface PersistedLabState {
+  contentRefs: Record<PaneId, PaneContentRef>;
+  paneRects: Record<PaneId, WorldRect>;
+  docked: DockedPane[];
+  paneCounters: Record<string, number>;
+  nextPaneIndex: number;
 }
 
-export const useCanvasLabStore = create<CanvasLabState>()((set, get) => ({
-  layout: createInitialEngineLayoutState(),
-  bounds: DEFAULT_BOUNDS,
-  activeStrategyId: INITIAL_STRATEGY_ID,
-  params: seedParams(INITIAL_STRATEGY_ID),
-  fitToContent: true,
-  framing: { paneId: null, overview: null },
-  expandedPaneId: null,
-  flying: false,
-  paneMotion: false,
-  nextPaneIndex: 0,
-  contentRefs: {},
-  docked: [],
-  paneCounters: {},
+// Rects of the OPEN canvas panes only. Docked panes ride back in `docked`; a pane mid-close-animation
+// (closing) must not resurrect on reload, so it is excluded too.
+function collectOpenPaneRects(layout: EngineLayoutState): Record<PaneId, WorldRect> {
+  const rects: Record<PaneId, WorldRect> = {};
+  for (const node of Object.values(layout.nodes)) {
+    if (node.lifecycle === "open") rects[node.paneId] = node.rect;
+  }
+  return rects;
+}
 
-  addPane() {
-    const index = get().nextPaneIndex + 1;
-    set((state) => ({ nextPaneIndex: index, layout: seedPaneLayout(state, `lab-${index}`) }));
-  },
+// Reload hydration: rebuild the canvas from the persisted record set through the SAME seedPaneFromRecord
+// primitive the spawn path uses, so create and restore can never diverge. Each open record seeds a node at
+// its persisted rect carrying its persisted ref (label included → titles survive); docked records ride
+// back in `docked`; captured panes re-attach by runId when their viewer mounts (capturedRunStore). Fully
+// defensive against a missing/partial payload (the first load after upgrade has no lab-store key), so
+// hydration never crashes or wipes the run bindings.
+function mergeLabState(persisted: unknown, current: CanvasLabState): CanvasLabState {
+  const saved = (persisted ?? {}) as Partial<PersistedLabState>;
+  const contentRefs = saved.contentRefs ?? {};
+  const paneRects = saved.paneRects ?? {};
+  let seeded: Pick<CanvasLabState, "contentRefs" | "layout"> = {
+    contentRefs: {},
+    layout: createInitialEngineLayoutState(),
+  };
+  for (const [paneId, rect] of Object.entries(paneRects)) {
+    const next = seedPaneFromRecord(
+      { ...current, ...seeded },
+      paneId,
+      contentRefs[paneId] ?? null,
+      rect,
+    );
+    seeded = { contentRefs: next.contentRefs, layout: next.layout };
+  }
+  return {
+    ...current,
+    contentRefs: seeded.contentRefs,
+    layout: seeded.layout,
+    docked: saved.docked ?? [],
+    paneCounters: saved.paneCounters ?? {},
+    nextPaneIndex: saved.nextPaneIndex ?? 0,
+  };
+}
 
-  addTerminal() {
-    set((state) => {
-      const { label, counters } = labelFor(state.paneCounters, "Terminal");
-      return {
-        paneCounters: counters,
-        ...spawnContentPane(state, { kind: "terminal", owner: "local", label }),
-      };
-    });
-  },
-
-  addCapturedRun(provider) {
-    // Each captured pane owns its own run: a fresh, stable per-pane key is both the
-    // pane id and the key the pane spawns + persists its runId under (it rides on the
-    // ref so the viewer reads it). Two Spawn Claude clicks are two independent runs
-    // (two PTYs, isolated input), never a shared terminal. The incremental label
-    // (Claude-1, Codex-2) rides on the ref so the chrome + dock show distinct names.
-    const runKey = createCapturedRunKey(provider);
-    set((state) => {
-      const { label, counters } = labelFor(state.paneCounters, cliLabel(provider));
-      return {
-        paneCounters: counters,
-        ...seedContentPane(state, runKey, {
-          kind: "captured-run",
-          owner: "local",
-          provider,
-          runKey,
-          label,
-        }),
-      };
-    });
-  },
-
-  restoreCapturedPane(paneId, provider) {
-    // Reload re-attach: recreate the captured pane at its persisted key so the pane
-    // re-attaches to its own run by id. Idempotent — a remount within a session finds
-    // the pane already open and leaves it untouched.
-    if (get().contentRefs[paneId]) return;
-    set((state) => seedContentPane(state, paneId, capturedRunRef(provider, paneId)));
-  },
-
-  dockCapturedPane(paneId, provider) {
-    // Reload counterpart to restoreCapturedPane: a run persisted as minimized comes back parked in the
-    // dock, not reopened as an active pane (the S1 reload caveat fix). Idempotent — skip if the pane is
-    // already open or already docked (StrictMode double-mount safe). The kept runId means a later
-    // restore re-attaches by id (ensureRun resolves it), never a re-spawn.
-    if (get().contentRefs[paneId]) return;
-    if (get().docked.some((docked) => docked.paneId === paneId)) return;
-    set((state) => ({
-      docked: [{ paneId, ref: capturedRunRef(provider, paneId) }, ...state.docked],
-    }));
-  },
-
-  minimizePane(paneId) {
-    // Minimize ([-]): park the pane in the dock and remove it. Generic across kinds — the resolved
-    // onMinimize hook runs inside the close window (captured-run has none: its run keeps running and
-    // the binding is kept, so restore re-attaches by id). The non-destructive counterpart to close.
-    dismissPane(paneId, "minimize");
-  },
-
-  closePane(paneId) {
-    // Close ([X]): remove the pane and run its onClose hook — destructive and terminal. The
-    // captured-run hook kills the run (DELETE); panes with no hook are a plain remove.
-    dismissPane(paneId, "close");
-  },
-
-  restorePane(paneId) {
-    // Re-seed a docked pane at its original id so its viewer re-mounts: a captured ref's ensureRun
-    // resolves the kept run id (re-attach + PTY replay), a terminal opens a fresh PTY, a null ref
-    // re-creates the demo card/ruler node from the id alone. A failed captured re-attach surfaces in
-    // the viewer; the dock entry is already cleared here, so we never seek a replacement.
-    const entry = get().docked.find((docked) => docked.paneId === paneId);
-    if (!entry) return;
-    // Re-attach side effect through the seam (the inverse of minimize): a captured-run clears its
-    // persisted `minimized` flag so a reload after restore reopens it as a pane, not docked. Plain
-    // panes declare no onRestore. Mirrors closeDockedPane's dispatch — zero kind=== branches here.
-    if (entry.ref) resolvePaneLifecycle(entry.ref).onRestore?.(entry.ref);
-    set((state) => ({
-      docked: state.docked.filter((docked) => docked.paneId !== paneId),
-      contentRefs: entry.ref ? { ...state.contentRefs, [paneId]: entry.ref } : state.contentRefs,
-      layout: seedPaneLayout(state, paneId),
-    }));
-  },
-
-  closeDockedPane(paneId) {
-    // Close/kill a docked pane in place — no restore. It is already off the canvas, so there is no
-    // node teardown: just run its onClose hook (captured-run -> stopRun, DELETE; plain panes have
-    // none, same seam as an on-canvas close) and drop the dock entry.
-    const entry = get().docked.find((docked) => docked.paneId === paneId);
-    if (!entry) return;
-    if (entry.ref) resolvePaneLifecycle(entry.ref).onClose?.(entry.ref);
-    set((state) => ({ docked: state.docked.filter((docked) => docked.paneId !== paneId) }));
-  },
-
-  focusPane(paneId) {
-    set((state) => ({ layout: focusNode(state.layout, paneId) }));
-  },
-
-  updatePaneRect(paneId, rect) {
-    set((state) => ({ layout: updateNodeRect(state.layout, paneId, rect) }));
-  },
-
-  setStrategy(strategyId) {
-    set({ activeStrategyId: strategyId, params: seedParams(strategyId) });
-    get().organize();
-  },
-
-  setParam(key, value) {
-    const sanitized = sanitizeParam(get().activeStrategyId, key, value);
-    if (sanitized === undefined) return; // ignore unknown keys / wrong types / bad enum values
-    set((state) => ({ params: { ...state.params, [key]: sanitized } }));
-    get().organize();
-  },
-
-  setFitToContent(on) {
-    set({ fitToContent: on });
-    get().organize();
-  },
-
-  organize() {
-    set((state) => ({
-      layout: planLayout(
-        state.layout,
-        state.bounds,
-        state.activeStrategyId,
-        state.params,
-        state.fitToContent,
-        state.expandedPaneId,
-      ),
-    }));
-  },
-
-  setBounds(bounds) {
-    set({ bounds });
-    get().organize();
-  },
-
-  expandPane(paneId) {
-    const { layout, expandedPaneId } = get();
-    if (expandedPaneId === paneId) {
-      get().unexpand();
-      return;
-    }
-    if (!layout.nodes[paneId]) return;
-    if (openPaneIds(layout).length <= 1) return;
-    startFly({ paneMotion: true });
-    set((state) => ({
-      expandedPaneId: paneId,
+export const useCanvasLabStore = create<CanvasLabState>()(
+  persist(
+    (set, get) => ({
+      layout: createInitialEngineLayoutState(),
+      bounds: DEFAULT_BOUNDS,
+      activeStrategyId: INITIAL_STRATEGY_ID,
+      params: seedParams(INITIAL_STRATEGY_ID),
+      fitToContent: true,
       framing: { paneId: null, overview: null },
-      layout: planLayout(
-        focusNode(state.layout, paneId),
-        state.bounds,
-        state.activeStrategyId,
-        state.params,
-        true,
-        paneId,
-      ),
-    }));
-  },
-
-  unexpand() {
-    if (get().expandedPaneId === null) return;
-    startFly({ paneMotion: true });
-    set((state) => ({
       expandedPaneId: null,
-      framing: { paneId: null, overview: null },
-      layout: planLayout(
-        state.layout,
-        state.bounds,
-        state.activeStrategyId,
-        state.params,
-        true,
-        null,
-      ),
-    }));
-  },
+      flying: false,
+      paneMotion: false,
+      nextPaneIndex: 0,
+      contentRefs: {},
+      docked: [],
+      paneCounters: {},
 
-  framePane(paneId) {
-    const { layout, bounds, framing } = get();
-    // Re-framing the current pane toggles it off.
-    if (framing.paneId === paneId) {
-      get().unframe();
-      return;
-    }
-    if (openPaneIds(layout).length <= 1) return;
-    const node = layout.nodes[paneId];
-    if (!node) return;
-    startFly();
-    set((state) => ({
-      framing: {
-        paneId,
-        // Snapshot the pre-framing camera only when entering from the overview; switching frames keeps
-        // it so unframe still pans back out to where the user started, not to the previous frame.
-        overview: state.framing.overview ?? state.layout.viewport,
+      addPane() {
+        set((state) => {
+          const index = state.nextPaneIndex + 1;
+          return { nextPaneIndex: index, ...spawnPaneLayout(state, `lab-${index}`, null) };
+        });
       },
-      // Frame the pane and select it (white border).
-      layout: focusNode(
-        setEngineViewport(state.layout, frameRectViewport(node.rect, bounds)),
-        paneId,
-      ),
-    }));
-  },
 
-  unframe() {
-    const { framing, layout } = get();
-    if (framing.paneId === null) return;
-    // Pan back out to the overview captured when framing began. Above the pane limit the camera snaps
-    // instead of flying, since animating the scaled world back out re-rasterizes every pane per frame.
-    if (openPaneIds(layout).length <= UNFRAME_FLY_PANE_LIMIT) startFly();
-    set((state) => ({
-      framing: { paneId: null, overview: null },
-      layout: setEngineViewport(state.layout, state.framing.overview ?? state.layout.viewport),
-    }));
-  },
+      addTerminal() {
+        set((state) => {
+          const index = state.nextPaneIndex + 1;
+          const { label, counters } = labelFor(state.paneCounters, "Terminal");
+          return {
+            nextPaneIndex: index,
+            paneCounters: counters,
+            ...spawnPaneLayout(state, `lab-${index}`, { kind: "terminal", owner: "local", label }),
+          };
+        });
+      },
 
-  resetView() {
-    startFly();
-    set((state) => ({
-      framing: { paneId: null, overview: null },
-      expandedPaneId: null,
-      layout: setEngineViewport(state.layout, { panX: 0, panY: 0, scale: 1 }),
-    }));
-  },
+      addCapturedRun(provider) {
+        // Each captured pane owns its own run: a fresh, stable per-pane key is both the
+        // pane id and the key the pane spawns + persists its runId under (it rides on the
+        // ref so the viewer reads it). Two Spawn Claude clicks are two independent runs
+        // (two PTYs, isolated input), never a shared terminal. The incremental label
+        // (Claude-1, Codex-2) rides on the ref so the chrome + dock show distinct names,
+        // and persists with the record so a reload keeps the exact title (no fallback).
+        const runKey = createCapturedRunKey(provider);
+        set((state) => {
+          const { label, counters } = labelFor(state.paneCounters, cliLabel(provider));
+          return {
+            paneCounters: counters,
+            ...spawnPaneLayout(state, runKey, {
+              kind: "captured-run",
+              owner: "local",
+              provider,
+              runKey,
+              label,
+            }),
+          };
+        });
+      },
 
-  setViewport(viewport) {
-    set((state) => ({ layout: setEngineViewport(state.layout, viewport) }));
-  },
-}));
+      minimizePane(paneId) {
+        // Minimize ([-]): park the pane in the dock and remove it. Generic across kinds — the resolved
+        // onMinimize hook runs inside the close window (captured-run has none: its run keeps running and
+        // the binding is kept, so restore re-attaches by id). The non-destructive counterpart to close.
+        dismissPane(paneId, "minimize");
+      },
+
+      closePane(paneId) {
+        // Close ([X]): remove the pane and run its onClose hook — destructive and terminal. The
+        // captured-run hook kills the run (DELETE); panes with no hook are a plain remove.
+        dismissPane(paneId, "close");
+      },
+
+      restorePane(paneId) {
+        // Re-seed a docked pane at its original id so its viewer re-mounts: a captured ref's ensureRun
+        // resolves the kept run id (re-attach + PTY replay), a terminal opens a fresh PTY, a null ref
+        // re-creates the demo card/ruler node from the id alone. A failed captured re-attach surfaces in
+        // the viewer; the dock entry is already cleared here, so we never seek a replacement.
+        const entry = get().docked.find((docked) => docked.paneId === paneId);
+        if (!entry) return;
+        // Re-attach side effect through the seam (the inverse of minimize): a captured-run clears its
+        // persisted `minimized` flag so a reload after restore reopens it as a pane, not docked. Plain
+        // panes declare no onRestore. Mirrors closeDockedPane's dispatch — zero kind=== branches here.
+        if (entry.ref) resolvePaneLifecycle(entry.ref).onRestore?.(entry.ref);
+        set((state) => ({
+          docked: state.docked.filter((docked) => docked.paneId !== paneId),
+          ...spawnPaneLayout(state, paneId, entry.ref),
+        }));
+      },
+
+      closeDockedPane(paneId) {
+        // Close/kill a docked pane in place — no restore. It is already off the canvas, so there is no
+        // node teardown: just run its onClose hook (captured-run -> stopRun, DELETE; plain panes have
+        // none, same seam as an on-canvas close) and drop the dock entry.
+        const entry = get().docked.find((docked) => docked.paneId === paneId);
+        if (!entry) return;
+        if (entry.ref) resolvePaneLifecycle(entry.ref).onClose?.(entry.ref);
+        set((state) => ({ docked: state.docked.filter((docked) => docked.paneId !== paneId) }));
+      },
+
+      focusPane(paneId) {
+        set((state) => ({ layout: focusNode(state.layout, paneId) }));
+      },
+
+      updatePaneRect(paneId, rect) {
+        set((state) => ({ layout: updateNodeRect(state.layout, paneId, rect) }));
+      },
+
+      setStrategy(strategyId) {
+        set({ activeStrategyId: strategyId, params: seedParams(strategyId) });
+        get().organize();
+      },
+
+      setParam(key, value) {
+        const sanitized = sanitizeParam(get().activeStrategyId, key, value);
+        if (sanitized === undefined) return; // ignore unknown keys / wrong types / bad enum values
+        set((state) => ({ params: { ...state.params, [key]: sanitized } }));
+        get().organize();
+      },
+
+      setFitToContent(on) {
+        set({ fitToContent: on });
+        get().organize();
+      },
+
+      organize() {
+        set((state) => ({
+          layout: planLayout(
+            state.layout,
+            state.bounds,
+            state.activeStrategyId,
+            state.params,
+            state.fitToContent,
+            state.expandedPaneId,
+          ),
+        }));
+      },
+
+      setBounds(bounds) {
+        set({ bounds });
+        get().organize();
+      },
+
+      expandPane(paneId) {
+        const { layout, expandedPaneId } = get();
+        if (expandedPaneId === paneId) {
+          get().unexpand();
+          return;
+        }
+        if (!layout.nodes[paneId]) return;
+        if (openPaneIds(layout).length <= 1) return;
+        startFly({ paneMotion: true });
+        set((state) => ({
+          expandedPaneId: paneId,
+          framing: { paneId: null, overview: null },
+          layout: planLayout(
+            focusNode(state.layout, paneId),
+            state.bounds,
+            state.activeStrategyId,
+            state.params,
+            true,
+            paneId,
+          ),
+        }));
+      },
+
+      unexpand() {
+        if (get().expandedPaneId === null) return;
+        startFly({ paneMotion: true });
+        set((state) => ({
+          expandedPaneId: null,
+          framing: { paneId: null, overview: null },
+          layout: planLayout(
+            state.layout,
+            state.bounds,
+            state.activeStrategyId,
+            state.params,
+            true,
+            null,
+          ),
+        }));
+      },
+
+      framePane(paneId) {
+        const { layout, bounds, framing } = get();
+        // Re-framing the current pane toggles it off.
+        if (framing.paneId === paneId) {
+          get().unframe();
+          return;
+        }
+        if (openPaneIds(layout).length <= 1) return;
+        const node = layout.nodes[paneId];
+        if (!node) return;
+        startFly();
+        set((state) => ({
+          framing: {
+            paneId,
+            // Snapshot the pre-framing camera only when entering from the overview; switching frames keeps
+            // it so unframe still pans back out to where the user started, not to the previous frame.
+            overview: state.framing.overview ?? state.layout.viewport,
+          },
+          // Frame the pane and select it (white border).
+          layout: focusNode(
+            setEngineViewport(state.layout, frameRectViewport(node.rect, bounds)),
+            paneId,
+          ),
+        }));
+      },
+
+      unframe() {
+        const { framing, layout } = get();
+        if (framing.paneId === null) return;
+        // Pan back out to the overview captured when framing began. Above the pane limit the camera snaps
+        // instead of flying, since animating the scaled world back out re-rasterizes every pane per frame.
+        if (openPaneIds(layout).length <= UNFRAME_FLY_PANE_LIMIT) startFly();
+        set((state) => ({
+          framing: { paneId: null, overview: null },
+          layout: setEngineViewport(state.layout, state.framing.overview ?? state.layout.viewport),
+        }));
+      },
+
+      resetView() {
+        startFly();
+        set((state) => ({
+          framing: { paneId: null, overview: null },
+          expandedPaneId: null,
+          layout: setEngineViewport(state.layout, { panX: 0, panY: 0, scale: 1 }),
+        }));
+      },
+
+      setViewport(viewport) {
+        set((state) => ({ layout: setEngineViewport(state.layout, viewport) }));
+      },
+    }),
+    {
+      name: FRONTEND_STORAGE_KEYS.canvasLabStore,
+      storage: createFrontendPersistStorage<PersistedLabState>(),
+      version: CANVAS_LAB_STORAGE_VERSION,
+      // Persist only what rebuilds the canvas + continues the counters: the open record set (contentRefs
+      // WITH label + per-pane rect), the docked set (every kind), and the spawn counters. Transient camera
+      // and animation state is intentionally left out so a reload lands on a clean overview.
+      partialize: (state): PersistedLabState => ({
+        contentRefs: state.contentRefs,
+        paneRects: collectOpenPaneRects(state.layout),
+        docked: state.docked,
+        paneCounters: state.paneCounters,
+        nextPaneIndex: state.nextPaneIndex,
+      }),
+      merge: (persisted, current) => mergeLabState(persisted, current),
+      // v1 is the first persisted shape; mergeLabState is fully shape-tolerant, so migrate just hands the
+      // payload through and a future bump localizes any structural change here.
+      migrate: (persisted) => (persisted ?? {}) as PersistedLabState,
+    },
+  ),
+);
 
 let flyTimer: number | null = null;
 

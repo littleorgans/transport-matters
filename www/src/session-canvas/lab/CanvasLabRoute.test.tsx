@@ -1,5 +1,6 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { FRONTEND_STORAGE_KEYS } from "../../stores/persistence";
 import type { CliCapability, CliName } from "../../types";
 import { CanvasLabRoute } from "./CanvasLabRoute";
 import { resetCanvasLabStoreForTests, useCanvasLabStore } from "./canvasLabStore";
@@ -28,6 +29,28 @@ function seedCapabilities(installed: Record<CliName, boolean>): void {
     status: "ready",
     clis: { claude: capability(installed.claude), codex: capability(installed.codex) },
   });
+}
+
+const SEED_RECT = { x: 48, y: 48, width: 360, height: 280 } as const;
+
+function capturedRef(runKey: string, label: string) {
+  return { kind: "captured-run", owner: "local", provider: "claude", runKey, label } as const;
+}
+
+// Seed both persisted payloads for a reload: the lab store's own record set plus the captured-run
+// bindings it composes with. beforeEach has already reset the in-memory stores; callers rehydrate after.
+function seedPersistedLab(
+  labState: Record<string, unknown>,
+  runs: Record<string, { provider: CliName; runId: string; minimized?: boolean }>,
+): void {
+  localStorage.setItem(
+    FRONTEND_STORAGE_KEYS.canvasLabStore,
+    JSON.stringify({ version: 1, state: labState }),
+  );
+  localStorage.setItem(
+    FRONTEND_STORAGE_KEYS.capturedRunStore,
+    JSON.stringify({ version: 3, state: { runs } }),
+  );
 }
 
 describe("CanvasLabRoute captured-run spawn buttons", () => {
@@ -81,40 +104,72 @@ describe("CanvasLabRoute captured-run spawn buttons", () => {
     expect(screen.getByRole("button", { name: "Spawn Codex" })).toBeInTheDocument();
   });
 
-  it("re-adds a captured-run pane on mount for each persisted run (reload re-attach)", () => {
-    // A browser reload drops the in-memory lab store but keeps each pane's run. The lab
-    // reconciles on mount so every captured pane reappears at its key and re-attaches by
-    // id instead of leaving the headless run orphaned.
-    useCapturedRunStore.setState({
-      runs: { "claude:k1": { provider: "claude", runId: "run-1" } },
-    });
+  it("restores a persisted open captured-run pane onto the canvas after a reload", async () => {
+    // After S3 a browser reload rehydrates the lab store's own record set: a previously-open captured
+    // pane comes back ON THE CANVAS at its key carrying its label, and re-attaches to its kept runId
+    // (capturedRunStore) instead of re-spawning — no mount-time reconcile in the route.
     seedCapabilities({ claude: true, codex: true });
+    seedPersistedLab(
+      {
+        contentRefs: {
+          "claude:k1": capturedRef("claude:k1", "Claude-1"),
+        },
+        paneRects: { "claude:k1": SEED_RECT },
+        docked: [],
+        paneCounters: { Claude: 1 },
+        nextPaneIndex: 0,
+      },
+      { "claude:k1": { provider: "claude", runId: "run-1" } },
+    );
+    await useCapturedRunStore.persist.rehydrate();
+    await useCanvasLabStore.persist.rehydrate();
 
     render(<CanvasLabRoute />);
 
-    expect(useCanvasLabStore.getState().contentRefs["claude:k1"]).toEqual({
-      kind: "captured-run",
-      owner: "local",
-      provider: "claude",
+    expect(useCanvasLabStore.getState().contentRefs["claude:k1"]).toMatchObject({
       runKey: "claude:k1",
+      label: "Claude-1",
+    });
+    expect(useCanvasLabStore.getState().layout.nodes["claude:k1"]).toBeDefined();
+    // The kept runId means the viewer re-attaches by id; no new run is POSTed.
+    expect(useCapturedRunStore.getState().runs["claude:k1"]).toEqual({
+      provider: "claude",
+      runId: "run-1",
     });
   });
 
-  it("docks a persisted minimized run on mount instead of reopening it (reload-persist)", () => {
-    // A run minimized before a browser reload must come back DOCKED, not as an active pane. The kept
-    // runId lets a later restore re-attach by id (no re-spawn); on mount it simply parks in the dock.
-    useCapturedRunStore.setState({
-      runs: { "claude:k1": { provider: "claude", runId: "run-1", minimized: true } },
-    });
+  it("restores persisted docked panes of every kind into the dock after a reload", async () => {
+    // The all-kind dock round-trip: a docked terminal AND a docked regular pane (plus a captured one)
+    // come back IN THE DOCK after a reload, not on the canvas and not lost. The dock count reflects all.
     seedCapabilities({ claude: true, codex: true });
+    seedPersistedLab(
+      {
+        contentRefs: {},
+        paneRects: {},
+        docked: [
+          { paneId: "lab-1", ref: { kind: "terminal", owner: "local", label: "Terminal-1" } },
+          { paneId: "lab-2", ref: null },
+          { paneId: "claude:k1", ref: capturedRef("claude:k1", "Claude-1") },
+        ],
+        paneCounters: { Terminal: 1, Claude: 1 },
+        nextPaneIndex: 2,
+      },
+      { "claude:k1": { provider: "claude", runId: "run-1", minimized: true } },
+    );
+    await useCapturedRunStore.persist.rehydrate();
+    await useCanvasLabStore.persist.rehydrate();
 
     render(<CanvasLabRoute />);
 
-    // Not reopened as an active pane...
-    expect(useCanvasLabStore.getState().contentRefs["claude:k1"]).toBeUndefined();
-    // ...parked in the dock instead, so the operator restores it deliberately.
-    expect(useCanvasLabStore.getState().docked.map((entry) => entry.paneId)).toEqual(["claude:k1"]);
-    expect(screen.getByRole("button", { name: "Minimized panes, 1" })).toBeInTheDocument();
+    // None reopened on the canvas; all three parked in the dock.
+    expect(useCanvasLabStore.getState().layout.nodes).toEqual({});
+    expect(
+      useCanvasLabStore
+        .getState()
+        .docked.map((entry) => entry.paneId)
+        .sort(),
+    ).toEqual(["claude:k1", "lab-1", "lab-2"]);
+    expect(screen.getByRole("button", { name: "Minimized panes, 3" })).toBeInTheDocument();
   });
 
   it("keeps the dock visible when the lab top bar is TAB-hidden", () => {

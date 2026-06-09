@@ -5,6 +5,7 @@ import {
   UNFRAME_FLY_PANE_LIMIT,
   useCanvasLabStore,
 } from "./canvasLabStore";
+import { capturedPaneIds } from "./canvasLabStore.testSupport";
 import { resetCapturedRunStoreForTests, useCapturedRunStore } from "./capturedRunStore";
 // Register the captured-run lifecycle hook (onClose -> stopRun) the same way production does (via
 // CanvasLabRoute's side-effect import), so close-kills-run is exercised through the real wiring.
@@ -334,26 +335,7 @@ describe("canvasLabStore captured runs", () => {
       vi.useRealTimers();
     }
   });
-
-  it("restoreCapturedPane recreates a pane at its key and is idempotent", () => {
-    store().restoreCapturedPane("claude:k1", "claude");
-    store().restoreCapturedPane("claude:k1", "claude"); // remount within a session: no duplicate
-
-    expect(store().contentRefs["claude:k1"]).toEqual({
-      kind: "captured-run",
-      owner: "local",
-      provider: "claude",
-      runKey: "claude:k1",
-    });
-    expect(capturedPaneIds(store().contentRefs)).toEqual(["claude:k1"]);
-  });
 });
-
-function capturedPaneIds(contentRefs: Record<string, { kind: string }>): string[] {
-  return Object.entries(contentRefs)
-    .filter(([, ref]) => ref.kind === "captured-run")
-    .map(([id]) => id);
-}
 
 describe("canvasLabStore framing", () => {
   it("frames a pane (capturing the overview) and toggles back on a second call", () => {
