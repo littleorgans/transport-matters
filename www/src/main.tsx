@@ -5,6 +5,7 @@ import { fetchMeta } from "./api";
 import "./index.css";
 import "./session-canvas/canvas.css";
 import "./session-canvas/viewers/placeholder/placeholder-pane.css";
+import { WindowDragRegion } from "./components/WindowDragRegion";
 import { queryClient } from "./lib/queryClient";
 import { selectRootRoute } from "./session-canvas/route";
 
@@ -36,6 +37,7 @@ if (selectedRoute === "legacy") {
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
+      <WindowDragRegion />
       <Suspense
         fallback={<div className="min-h-screen bg-canvas text-txt">Loading Transport Matters</div>}
       >
