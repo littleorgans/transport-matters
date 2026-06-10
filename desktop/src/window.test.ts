@@ -96,6 +96,8 @@ describe("desktop hosted window", () => {
     expect(browserWindowConstructor).toHaveBeenCalledWith(
       expect.objectContaining({
         title: "Transport Matters",
+        titleBarStyle: "hidden",
+        trafficLightPosition: { x: 12, y: 12 },
         webPreferences: {
           contextIsolation: true,
           nodeIntegration: false,

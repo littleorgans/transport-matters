@@ -23,6 +23,14 @@ export function createWindowOptions(
     minWidth: 900,
     show: false,
     title: APP_NAME,
+    // Hide the native title bar but keep the macOS traffic lights. The dark app
+    // chrome flows to the top edge; the renderer recreates the bar's drag behavior
+    // with a top strip (www WindowDragRegion). On Windows/Linux the equivalent
+    // window-controls overlay is requested instead of floating traffic lights.
+    titleBarStyle: "hidden",
+    ...(process.platform !== "darwin" ? { titleBarOverlay: true } : {}),
+    // Position the traffic lights inside the recreated title-bar strip.
+    trafficLightPosition: { x: 12, y: 12 },
     width: 1280,
     webPreferences: {
       contextIsolation: true,
@@ -30,7 +38,7 @@ export function createWindowOptions(
       preload: preloadPath,
       sandbox: true,
     },
-  };
+  } as BrowserWindowConstructorOptions;
 }
 
 export function createHostedWindow(

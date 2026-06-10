@@ -1,0 +1,17 @@
+/* The reborn title bar: a full-width strip across the top edge that the OS treats as
+   a window-move handle (the native bar's only real job once titleBarStyle:"hidden"
+   removes it). Height matches a standard macOS title bar so the manually-placed
+   traffic lights sit inside it. Only mounted in the Electron shell (WindowDragRegion),
+   so the click-swallowing drag behavior never affects the browser build.
+
+   Anything interactive that later lives in this band must set
+   `-webkit-app-region: no-drag`, since a drag region eats mouse events. */
+.window-drag-region {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--window-titlebar-height, 38px);
+  z-index: 1000;
+  -webkit-app-region: drag;
+}
