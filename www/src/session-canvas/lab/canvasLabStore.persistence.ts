@@ -10,9 +10,14 @@ import {
 } from "../../engine";
 import { createFrontendPersistStorage, FRONTEND_STORAGE_KEYS } from "../../stores/persistence";
 import type { DockedPane, PaneContentRef } from "../model/paneRecords";
-import type { CanvasLabState } from "./canvasLabStore";
+import type { CanvasLabState } from "./canvasLabTypes";
 
 export const CANVAS_LAB_STORAGE_VERSION = 1;
+
+interface SeedPaneState {
+  contentRefs: Record<PaneId, PaneContentRef>;
+  layout: EngineLayoutState;
+}
 
 /** The persisted lab record set: enough to rebuild the canvas (open panes from contentRefs + paneRects,
  *  docked panes from `docked`) and continue the spawn counters, with no transient camera/animation state.
@@ -30,11 +35,11 @@ export interface PersistedLabState {
 // record, reload replays a persisted one, so create and restore cannot drift. No planning or focus here:
 // spawn layers those on top; reload places each pane at its persisted rect.
 export function seedPaneFromRecord(
-  state: CanvasLabState,
+  state: SeedPaneState,
   paneId: PaneId,
   ref: PaneContentRef | null,
   rect: WorldRect,
-): Pick<CanvasLabState, "contentRefs" | "layout"> {
+): Pick<SeedPaneState, "contentRefs" | "layout"> {
   return {
     contentRefs: ref ? { ...state.contentRefs, [paneId]: ref } : state.contentRefs,
     layout: upsertNode(state.layout, createPaneNode(paneId, rect, nextPaneZ(state.layout.nodes))),
