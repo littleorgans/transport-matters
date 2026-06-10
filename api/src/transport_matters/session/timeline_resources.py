@@ -3,6 +3,11 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from transport_matters.session import exchange_correlation
+from transport_matters.session.resource_ids import (
+    inline_resource_id,
+    native_resource_id,
+    wire_resource_id,
+)
 from transport_matters.session.timeline_models import (
     ContentPart,
     ContextItem,
@@ -70,7 +75,7 @@ def _add_native_record_resource(
     resources: dict[str, ResourceSummaryType],
     seen_refs: set[tuple[str, int | None]],
 ) -> None:
-    resource_id = f"native:{row.session_id}:{row.seq}"
+    resource_id = native_resource_id(row.session_id, row.seq)
     _append_resource_ref(
         refs,
         seen_refs=seen_refs,
@@ -139,7 +144,7 @@ def _add_inline_artifact_resource(
     resources: dict[str, ResourceSummaryType],
     seen_refs: set[tuple[str, int | None]],
 ) -> None:
-    resource_id = f"inline:{artifact_hash}"
+    resource_id = inline_resource_id(artifact_hash)
     _append_resource_ref(
         refs,
         seen_refs=seen_refs,
@@ -167,7 +172,7 @@ def _add_wire_resource(
     exchange_id = _wire_exchange_id(row)
     if exchange_id is None:
         return
-    resource_id = f"wire:{exchange_id}"
+    resource_id = wire_resource_id(exchange_id)
     _append_resource_ref(
         refs,
         seen_refs=seen_refs,
