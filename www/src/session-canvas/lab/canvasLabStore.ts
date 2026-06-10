@@ -4,19 +4,16 @@ import {
   type CanvasViewport,
   CLOSE_DELAY_MS,
   createInitialEngineLayoutState,
-  createPaneNode,
   DEFAULT_CANVAS_VIEWPORT,
   type EngineLayoutState,
   focusNode,
   frameRectViewport,
   markNodeClosing,
-  nextPaneZ,
   type PaneId,
   removeNode,
   setViewport as setEngineViewport,
   updateNodeRect,
   updateNodeRects,
-  upsertNode,
   type ViewportBounds,
   type WorldRect,
 } from "../../engine";
@@ -28,10 +25,10 @@ import {
   type ParamValue,
   resolveLayout,
 } from "../../engine/layout";
-import { createFrontendPersistStorage, FRONTEND_STORAGE_KEYS } from "../../stores/persistence";
 import type { CliName } from "../../types";
 import { resolvePaneLifecycle } from "../model/paneLifecycle";
 import { cliLabel, type DockedPane, type PaneContentRef } from "../model/paneRecords";
+import { canvasLabPersistOptions, seedPaneFromRecord } from "./canvasLabStore.persistence";
 import { createCapturedRunKey } from "./capturedRunStore";
 import { fitExpandFrameToWidth, planExpandedLayout } from "./expandLayout";
 
@@ -206,22 +203,6 @@ function isZoomedInPastOverview(current: CanvasViewport, overview: CanvasViewpor
   return current.scale > overview.scale + CLOSE_ZOOM_RESET_EPSILON;
 }
 
-// The single node+ref seed: place a pane node at `rect` carrying an optional content ref (null is a demo
-// card/ruler stub). The ONE pane-creation primitive both paths funnel through — spawn mints a fresh
-// record, reload replays a persisted one — so create and restore can never drift. No planning or focus
-// here: spawn layers those on top (spawnPaneLayout); reload places each pane at its persisted rect.
-function seedPaneFromRecord(
-  state: CanvasLabState,
-  paneId: PaneId,
-  ref: PaneContentRef | null,
-  rect: WorldRect,
-): Pick<CanvasLabState, "contentRefs" | "layout"> {
-  return {
-    contentRefs: ref ? { ...state.contentRefs, [paneId]: ref } : state.contentRefs,
-    layout: upsertNode(state.layout, createPaneNode(paneId, rect, nextPaneZ(state.layout.nodes))),
-  };
-}
-
 // Spawn a NEW pane: seed it at SEED_RECT through seedPaneFromRecord, focus it, then plan over the seeded
 // layout in the SAME commit so it flies into its slot. Two separate sets (seed then organize) would flash
 // the pane at SEED_RECT's corner for a frame first. Shared by addPane/addTerminal/addCapturedRun and the
@@ -253,62 +234,6 @@ function labelFor(
 ): { label: string; counters: Record<string, number> } {
   const next = (counters[prefix] ?? 0) + 1;
   return { label: `${prefix}-${next}`, counters: { ...counters, [prefix]: next } };
-}
-
-const CANVAS_LAB_STORAGE_VERSION = 1;
-
-/** The persisted lab record set: enough to rebuild the canvas (open panes from contentRefs + paneRects,
- *  docked panes from `docked`) and continue the spawn counters, with no transient camera/animation state.
- *  Captured panes compose their live runId/minimized from capturedRunStore, keyed by the same runKey. */
-interface PersistedLabState {
-  contentRefs: Record<PaneId, PaneContentRef>;
-  paneRects: Record<PaneId, WorldRect>;
-  docked: DockedPane[];
-  paneCounters: Record<string, number>;
-  nextPaneIndex: number;
-}
-
-// Rects of the OPEN canvas panes only. Docked panes ride back in `docked`; a pane mid-close-animation
-// (closing) must not resurrect on reload, so it is excluded too.
-function collectOpenPaneRects(layout: EngineLayoutState): Record<PaneId, WorldRect> {
-  const rects: Record<PaneId, WorldRect> = {};
-  for (const node of Object.values(layout.nodes)) {
-    if (node.lifecycle === "open") rects[node.paneId] = node.rect;
-  }
-  return rects;
-}
-
-// Reload hydration: rebuild the canvas from the persisted record set through the SAME seedPaneFromRecord
-// primitive the spawn path uses, so create and restore can never diverge. Each open record seeds a node at
-// its persisted rect carrying its persisted ref (label included → titles survive); docked records ride
-// back in `docked`; captured panes re-attach by runId when their viewer mounts (capturedRunStore). Fully
-// defensive against a missing/partial payload (the first load after upgrade has no lab-store key), so
-// hydration never crashes or wipes the run bindings.
-function mergeLabState(persisted: unknown, current: CanvasLabState): CanvasLabState {
-  const saved = (persisted ?? {}) as Partial<PersistedLabState>;
-  const contentRefs = saved.contentRefs ?? {};
-  const paneRects = saved.paneRects ?? {};
-  let seeded: Pick<CanvasLabState, "contentRefs" | "layout"> = {
-    contentRefs: {},
-    layout: createInitialEngineLayoutState(),
-  };
-  for (const [paneId, rect] of Object.entries(paneRects)) {
-    const next = seedPaneFromRecord(
-      { ...current, ...seeded },
-      paneId,
-      contentRefs[paneId] ?? null,
-      rect,
-    );
-    seeded = { contentRefs: next.contentRefs, layout: next.layout };
-  }
-  return {
-    ...current,
-    contentRefs: seeded.contentRefs,
-    layout: seeded.layout,
-    docked: saved.docked ?? [],
-    paneCounters: saved.paneCounters ?? {},
-    nextPaneIndex: saved.nextPaneIndex ?? 0,
-  };
 }
 
 export const useCanvasLabStore = create<CanvasLabState>()(
@@ -544,25 +469,7 @@ export const useCanvasLabStore = create<CanvasLabState>()(
         set((state) => ({ layout: setEngineViewport(state.layout, viewport) }));
       },
     }),
-    {
-      name: FRONTEND_STORAGE_KEYS.canvasLabStore,
-      storage: createFrontendPersistStorage<PersistedLabState>(),
-      version: CANVAS_LAB_STORAGE_VERSION,
-      // Persist only what rebuilds the canvas + continues the counters: the open record set (contentRefs
-      // WITH label + per-pane rect), the docked set (every kind), and the spawn counters. Transient camera
-      // and animation state is intentionally left out so a reload lands on a clean overview.
-      partialize: (state): PersistedLabState => ({
-        contentRefs: state.contentRefs,
-        paneRects: collectOpenPaneRects(state.layout),
-        docked: state.docked,
-        paneCounters: state.paneCounters,
-        nextPaneIndex: state.nextPaneIndex,
-      }),
-      merge: (persisted, current) => mergeLabState(persisted, current),
-      // v1 is the first persisted shape; mergeLabState is fully shape-tolerant, so migrate just hands the
-      // payload through and a future bump localizes any structural change here.
-      migrate: (persisted) => (persisted ?? {}) as PersistedLabState,
-    },
+    canvasLabPersistOptions,
   ),
 );
 
