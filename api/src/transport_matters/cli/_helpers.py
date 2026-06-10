@@ -26,8 +26,8 @@ if TYPE_CHECKING:
 #
 # On `--json`, both fire: the `option` span covers [0,6), the `switch`
 # span covers [1,6). Rich's `Text.render` splits at every span boundary,
-# producing two adjacent runs — `[0,1) = "-"` and `[1,6) = "-json"`,
-# each styled bold — which serialises as
+# producing two adjacent runs: `[0,1) = "-"` and `[1,6) = "-json"`,
+# each styled bold, which serialises as
 # `\x1b[1m-\x1b[0m\x1b[1m-json\x1b[0m` and breaks substring matches for
 # the raw flag.
 #
@@ -77,7 +77,7 @@ def _patch_allocate_pairs(
         return pair
 
     monkeypatch.setattr("transport_matters.cli.allocate_port_pair", _alloc)
-    monkeypatch.setattr("transport_matters.cli.runner.allocate_port_pair", _alloc)
+    monkeypatch.setattr("transport_matters.cli.bind_retry.allocate_port_pair", _alloc)
     return drawn
 
 

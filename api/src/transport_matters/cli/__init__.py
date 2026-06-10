@@ -6,15 +6,16 @@ commands (`claude`, `codex`, `desktop`) plus support commands (`doctor`, `paths`
 `list`, `version`).
 
 Module layout:
-  help.py         — all static help text + plain-text renderers
-  net.py          — port probing helpers
-  banner.py       — startup banner
-  runner.py       — supervisor-driven child lifecycles
-  start_cmd.py    — `transport-matters claude` implementation
-  codex_cmd.py    — `transport-matters codex` implementation
-  desktop_cmd.py  — `transport-matters desktop` validation + Electron viewer hook
-  launch_runtime.py — shared launch plumbing
-  __init__.py     — typer app, command registration, and re-exports
+  help.py         : all static help text + plain text renderers
+  net.py          : port probing helpers
+  banner.py       : startup banner
+  bind_retry.py   : bind conflict detection and retry policy
+  runner.py       : supervisor-driven child lifecycles
+  start_cmd.py    : `transport-matters claude` implementation
+  codex_cmd.py    : `transport-matters codex` implementation
+  desktop_cmd.py  : `transport-matters desktop` validation and Electron viewer hook
+  launch_runtime.py : shared launch plumbing
+  __init__.py     : typer app, command registration, and package exports
 
 Re-exports (`SIGNAL_EXIT`, `ProcessSupervisor`, `port_in_use`,
 `wait_for_port_ready`, `print_banner`, `run_children`) stay at
@@ -47,6 +48,7 @@ from transport_matters.supervisor import SIGNAL_EXIT, ProcessSupervisor
 from transport_matters.workspace import run_root, workspace_id, workspace_root
 
 from .banner import print_banner, print_client_banner
+from .bind_retry import BindFailure
 from .codex_cmd import run_codex
 from .db_cmd import db_app
 from .desktop_cmd import prepare_desktop_launch
@@ -77,7 +79,7 @@ from .net import port_in_use, wait_for_port_ready
 from .paths import resolve_paths
 from .ports import PortAllocationError, allocate_port_pair
 from .prompt import inject_system_prompt, user_supplied_system_prompt
-from .runner import BindFailure, run_children, run_client_with_retry
+from .runner import run_children, run_client_with_retry
 from .start_cmd import run_start
 from .trust import resolve_codex_ca_certificate
 

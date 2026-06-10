@@ -1,4 +1,4 @@
-"""Tests for ``run_children`` — the supervisor-driven start lifecycle.
+"""Tests for ``run_children``; the supervisor-driven start lifecycle.
 
 These tests drive ``run_children`` directly (no CLI) and assert how it
 sequences ``ProcessSupervisor.spawn`` / ``wait_any`` / ``terminate_all``
@@ -7,7 +7,7 @@ under the four interesting outcomes: clean shutdown, signal during
 exit after claude exits successfully.
 
 Plus the bind-failure helpers (``failing_ports_from_log`` and
-``handle_bind_failure``) used by the allocate-→-spawn retry loop —
+``handle_bind_failure``) used by the allocate-to-spawn retry loop;
 isolated here so the regex/decision-table edge cases don't have to
 go through the full CLI surface.
 """
@@ -20,15 +20,17 @@ import pytest
 import typer
 
 from transport_matters.cli import SIGNAL_EXIT, run_children
-from transport_matters.cli.runner import (
+from transport_matters.cli.bind_retry import (
     BindFailure,
     LaunchBindFailureOutcome,
-    LaunchExitOutcome,
     LaunchRetryExhaustedOutcome,
-    ManagedClient,
     failing_ports_from_log,
     format_retry_exhaustion,
     handle_bind_failure,
+)
+from transport_matters.cli.runner import (
+    LaunchExitOutcome,
+    ManagedClient,
     run_client_children_until_outcome,
 )
 
@@ -75,7 +77,7 @@ def test_run_children_bails_out_on_signal_before_claude_spawn(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """If Ctrl+C arrives during the mitmdump readiness wait, we should
-    terminate mitmdump and exit 0 *without* spawning claude — spawning
+    terminate mitmdump and exit 0 *without* spawning claude; spawning
     just to tear down on the next line is wasteful.
     """
     fake_sup = MagicMock()
@@ -104,7 +106,7 @@ def test_run_children_bails_out_on_signal_before_claude_spawn(
     spawn_names = [call.args[0] for call in fake_sup.spawn.call_args_list]
     assert spawn_names == ["mitmdump"]
     fake_sup.terminate_all.assert_called_once()
-    # And we never reached wait_any — it would have been called after
+    # And we never reached wait_any; it would have been called after
     # the claude spawn we correctly skipped.
     fake_sup.wait_any.assert_not_called()
 
@@ -368,14 +370,14 @@ def test_run_client_children_outcome_captures_bind_failure(
 def test_failing_ports_from_log_returns_none_when_log_missing(
     tmp_path: Path,
 ) -> None:
-    """No log on disk → caller can't tell bind-vs-other; returns None."""
+    """No log on disk, caller can't tell bind-vs-other; returns None."""
     assert failing_ports_from_log(tmp_path / "absent.log", (8787,)) is None
 
 
 def test_failing_ports_from_log_returns_none_when_no_bind_needles(
     tmp_path: Path,
 ) -> None:
-    """Log exists but doesn't mention EADDRINUSE → not a bind failure;
+    """Log exists but doesn't mention EADDRINUSE, not a bind failure;
     return None so the caller surfaces the original (non-retryable)
     error instead of looping pointlessly."""
     log = tmp_path / "mitm.log"
@@ -386,7 +388,7 @@ def test_failing_ports_from_log_returns_none_when_no_bind_needles(
 def test_failing_ports_from_log_extracts_darwin_errno(tmp_path: Path) -> None:
     """Darwin's mitmdump message: 'errno 48' + 'Address already in use'.
     The port should be picked out of the same line, filtered to ones we
-    actually attempted (errno 48 is a number too — we ignore it)."""
+    actually attempted (errno 48 is a number too; we ignore it)."""
     log = tmp_path / "mitm.log"
     log.write_text(
         "Error starting proxy server: error while attempting to bind on "
@@ -408,7 +410,7 @@ def test_failing_ports_from_log_returns_empty_when_port_unattributable(
     tmp_path: Path,
 ) -> None:
     """EADDRINUSE present but no attempted port appears on the line.
-    Returns empty tuple — caller treats that as 'bind failed but we
+    Returns empty tuple; caller treats that as 'bind failed but we
     can't pin which port', falling back to re-allocating both unpinned
     slots."""
     log = tmp_path / "mitm.log"
@@ -425,7 +427,7 @@ def test_failing_ports_from_log_falls_back_to_errno_when_phrases_missing(
     OSError repr keeps emitting `[Errno 48]` on Darwin and
     `[Errno 98]` on Linux regardless of what mitmproxy decides to
     print around it, so we match on those too. Pin both Darwin and
-    Linux variants in one test — there's only one production
+    Linux variants in one test; there's only one production
     `_BIND_NEEDLES` tuple to break."""
     log = tmp_path / "mitm.log"
     log.write_text(
@@ -458,10 +460,10 @@ def _make_failure(
 def test_handle_bind_failure_pinned_web_port_fails_fast(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Web slot user-pinned and named in failing_ports → typer.Exit(2),
+    """Web slot user-pinned and named in failing_ports, typer.Exit(2),
     do not call the allocator."""
     spy = MagicMock()
-    monkeypatch.setattr("transport_matters.cli.runner.allocate_port_pair", spy)
+    monkeypatch.setattr("transport_matters.cli.bind_retry.allocate_port_pair", spy)
 
     exc = _make_failure(proxy_port=12000, web_port=8788, failing_ports=(8788,), tmp_path=tmp_path)
     with pytest.raises(typer.Exit) as exc_info:
@@ -482,7 +484,7 @@ def test_handle_bind_failure_both_pinned_anonymous_failure_fails_fast(
     """Log signalled EADDRINUSE but couldn't extract a port; both slots
     are pinned, so there's nothing left to safely re-allocate. Exit 2."""
     spy = MagicMock()
-    monkeypatch.setattr("transport_matters.cli.runner.allocate_port_pair", spy)
+    monkeypatch.setattr("transport_matters.cli.bind_retry.allocate_port_pair", spy)
 
     exc = _make_failure(proxy_port=9000, web_port=9001, failing_ports=(), tmp_path=tmp_path)
     with pytest.raises(typer.Exit) as exc_info:
@@ -503,7 +505,7 @@ def test_handle_bind_failure_reallocates_only_named_unpinned_slot(
     """Failing names the proxy port; web is fine (and unpinned). Only
     the proxy slot should swap; web stays put."""
     monkeypatch.setattr(
-        "transport_matters.cli.runner.allocate_port_pair",
+        "transport_matters.cli.bind_retry.allocate_port_pair",
         lambda: (60001, 60002),
     )
     exc = _make_failure(proxy_port=12000, web_port=12001, failing_ports=(12000,), tmp_path=tmp_path)
@@ -522,9 +524,9 @@ def test_handle_bind_failure_reallocates_only_named_unpinned_slot(
 def test_handle_bind_failure_anonymous_failure_replaces_all_unpinned(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Log couldn't pin the port; both slots unpinned → swap both."""
+    """Log couldn't pin the port; both slots unpinned, swap both."""
     monkeypatch.setattr(
-        "transport_matters.cli.runner.allocate_port_pair",
+        "transport_matters.cli.bind_retry.allocate_port_pair",
         lambda: (50000, 50001),
     )
     exc = _make_failure(proxy_port=12000, web_port=12001, failing_ports=(), tmp_path=tmp_path)
@@ -541,10 +543,10 @@ def test_handle_bind_failure_anonymous_failure_replaces_all_unpinned(
 def test_handle_bind_failure_keeps_pinned_proxy_when_only_web_named(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Proxy is user-pinned but failing names the (unpinned) web port —
+    """Proxy is user-pinned but failing names the (unpinned) web port;
     swap web only, leave the user's proxy choice alone."""
     monkeypatch.setattr(
-        "transport_matters.cli.runner.allocate_port_pair",
+        "transport_matters.cli.bind_retry.allocate_port_pair",
         lambda: (60001, 60002),
     )
     exc = _make_failure(proxy_port=9000, web_port=12001, failing_ports=(12001,), tmp_path=tmp_path)
@@ -569,7 +571,7 @@ def test_handle_bind_failure_propagates_allocator_error(
     def _raise() -> tuple[int, int]:
         raise PortAllocationError("kernel said no")
 
-    monkeypatch.setattr("transport_matters.cli.runner.allocate_port_pair", _raise)
+    monkeypatch.setattr("transport_matters.cli.bind_retry.allocate_port_pair", _raise)
 
     exc = _make_failure(proxy_port=12000, web_port=12001, failing_ports=(), tmp_path=tmp_path)
     with pytest.raises(typer.Exit) as exc_info:

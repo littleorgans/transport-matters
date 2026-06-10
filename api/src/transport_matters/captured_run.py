@@ -20,12 +20,9 @@ if TYPE_CHECKING:
     from importlib.resources.abc import Traversable
     from pathlib import Path
 
+    from transport_matters.cli.bind_retry import LaunchBindFailureOutcome
     from transport_matters.cli.launch_profile import LaunchProfile, ManagedSession
-    from transport_matters.cli.runner import (
-        LaunchBindFailureOutcome,
-        LaunchExitOutcome,
-        ManagedClient,
-    )
+    from transport_matters.cli.runner import LaunchExitOutcome, ManagedClient
 
 _BIND_RETRY_ATTEMPTS = 3
 CLAUDE_CLIENT_NAME = "claude"
@@ -399,11 +396,13 @@ def prepare_captured_run(
     install_signal_handlers: bool = False,
 ) -> tuple[CapturedRunSpawnSpec, CapturedRunLease]:
     """Prepare one captured run and return the client spawn spec plus lease."""
-    from transport_matters.cli.runner import (
+    from transport_matters.cli.bind_retry import (
         BindFailure,
         LaunchBindFailureOutcome,
-        LaunchExitOutcome,
         handle_bind_failure,
+    )
+    from transport_matters.cli.runner import (
+        LaunchExitOutcome,
         mitmdump_log_path,
         start_prepared_proxy,
     )
@@ -657,7 +656,7 @@ def _write_workspace_manifest(
 
 
 def _raise_prepare_outcome(outcome: LaunchBindFailureOutcome | LaunchExitOutcome) -> None:
-    from transport_matters.cli.runner import LaunchBindFailureOutcome
+    from transport_matters.cli.bind_retry import LaunchBindFailureOutcome
 
     if isinstance(outcome, LaunchBindFailureOutcome):
         raise CapturedRunBindConflict(str(outcome.failure)) from outcome.failure
