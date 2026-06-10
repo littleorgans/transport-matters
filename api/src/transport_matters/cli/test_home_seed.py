@@ -12,7 +12,7 @@ from transport_matters.cli.home_seed import (
     codex_sessions_root,
     seed_home_dir,
 )
-from transport_matters.cli.launch_runtime import CLIENT_NAME_CLAUDE, CLIENT_NAME_CODEX
+from transport_matters.launch_environment import CLIENT_NAME_CLAUDE, CLIENT_NAME_CODEX
 
 from ._helpers import _which_all, _which_by_name
 

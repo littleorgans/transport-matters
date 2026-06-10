@@ -14,7 +14,7 @@ from transport_matters.api.v1.exchanges import exchange_detail_route
 from transport_matters.api.v1.session_test_support import session_client
 from transport_matters.session import exchange_correlation, resource_content
 from transport_matters.session.artifacts import artifact_hash
-from transport_matters.session.dao import AsyncSessionDao
+from transport_matters.session.async_dao import AsyncSessionDao
 from transport_matters.session.pool import create_async_pool
 from transport_matters.session.resource_content import BINARY_CONTENT_LIMIT
 from transport_matters.session.resource_content_models import ExchangeRedirectResponse

@@ -6,7 +6,7 @@ import pytest
 from typer.testing import CliRunner
 
 from transport_matters.cli import main, workspace_root
-from transport_matters.cli.launch_runtime import (
+from transport_matters.launch_environment import (
     CLIENT_NAME_CLAUDE,
     build_managed_child_env,
 )

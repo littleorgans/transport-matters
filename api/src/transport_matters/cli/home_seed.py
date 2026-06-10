@@ -14,7 +14,7 @@ import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol
 
-from .launch_runtime import CLIENT_NAME_CLAUDE, CLIENT_NAME_CODEX
+from transport_matters.launch_environment import CLIENT_NAME_CLAUDE, CLIENT_NAME_CODEX
 
 if TYPE_CHECKING:
     from collections.abc import Mapping

@@ -30,15 +30,15 @@ from typing import TYPE_CHECKING, ClassVar
 
 from transport_matters.index.adapters.base import encode_source_descriptor
 from transport_matters.index.adapters.claude import claude_transcript_source
-from transport_matters.storage.session_facts import OwnedSessionFacts, write_owned_session_facts
-
-from .codex_session import resolve_codex_cli_version, seed_codex_session
-from .home_seed import claude_projects_root, codex_sessions_root
-from .launch_runtime import (
+from transport_matters.launch_environment import (
     CLIENT_NAME_CLAUDE,
     CLIENT_NAME_CODEX,
     managed_child_shell_env_excludes,
 )
+from transport_matters.storage.session_facts import OwnedSessionFacts, write_owned_session_facts
+
+from .codex_session import resolve_codex_cli_version, seed_codex_session
+from .home_seed import claude_projects_root, codex_sessions_root
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence

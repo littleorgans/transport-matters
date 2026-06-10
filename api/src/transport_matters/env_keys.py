@@ -1,7 +1,7 @@
 """Canonical names for the ``TRANSPORT_MATTERS_*`` process-environment contract.
 
 Single source for the env-var prefix and every project-owned key, shared by the
-writer (:mod:`transport_matters.cli.launch_runtime`) and the readers
+writer (:mod:`transport_matters.launch_environment`) and the readers
 (:class:`transport_matters.config.Settings` via ``env_prefix``,
 :mod:`transport_matters.cli.paths`, and the Typer ``envvar=`` options). Deriving
 each key from :data:`ENV_PREFIX` keeps the writer and readers on one symbol and

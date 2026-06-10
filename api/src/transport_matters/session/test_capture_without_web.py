@@ -15,7 +15,7 @@ from transport_matters.ir import (
     SamplingParams,
     TextBlock,
 )
-from transport_matters.session.dao import AsyncSessionDao
+from transport_matters.session.async_dao import AsyncSessionDao
 from transport_matters.session.ingest import EventWrite, build_event_batch
 from transport_matters.session.listen import (
     SessionEventHub,

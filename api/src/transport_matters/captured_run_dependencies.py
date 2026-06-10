@@ -55,9 +55,6 @@ def default_claude_run_dependencies(
 
     from transport_matters.cli.identity import CLI_COMMAND
     from transport_matters.cli.launch_runtime import (
-        check_session_store as default_check_session_store,
-    )
-    from transport_matters.cli.launch_runtime import (
         resolve_mitmdump_executable,
     )
     from transport_matters.cli.net import port_in_use as default_port_in_use
@@ -67,6 +64,9 @@ def default_claude_run_dependencies(
     )
     from transport_matters.cli.prompt import (
         user_supplied_system_prompt as default_user_supplied_system_prompt,
+    )
+    from transport_matters.session_store_preflight import (
+        check_session_store as default_check_session_store,
     )
 
     def require_packaged_addon() -> Traversable:

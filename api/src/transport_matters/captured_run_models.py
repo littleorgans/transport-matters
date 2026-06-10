@@ -29,6 +29,7 @@ __all__ = [
     "WEB_RUNTIME_EMBEDDED",
     "WEB_RUNTIME_EXTERNAL",
     "CapturedRunBindConflict",
+    "CapturedRunCli",
     "CapturedRunLease",
     "CapturedRunRequest",
     "CapturedRunSpawnSpec",
@@ -38,6 +39,7 @@ __all__ = [
 CLAUDE_CLIENT_NAME = "claude"
 CODEX_CLIENT_NAME = "codex"
 CLAUDE_UPSTREAM_DEFAULT = "https://api.anthropic.com"
+CapturedRunCli = Literal["claude", "codex"]
 CapturedRunWebRuntime = Literal["embedded", "external"]
 WEB_RUNTIME_EMBEDDED: CapturedRunWebRuntime = "embedded"
 WEB_RUNTIME_EXTERNAL: CapturedRunWebRuntime = "external"

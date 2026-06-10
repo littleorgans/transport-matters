@@ -9,6 +9,7 @@ import typer
 
 from transport_matters import config
 from transport_matters.cli import launch_runtime
+from transport_matters.session_store_preflight import check_session_store
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -21,7 +22,7 @@ def test_check_session_store_reports_missing_config(
     monkeypatch.delenv("TRANSPORT_MATTERS_DATABASE_URL", raising=False)
     config.get_settings.cache_clear()
 
-    msg = launch_runtime.check_session_store()
+    msg = check_session_store()
 
     assert msg is not None
     assert "not configured" in msg
@@ -34,7 +35,7 @@ def test_check_session_store_reports_unreachable(
     monkeypatch.setenv("TRANSPORT_MATTERS_DATABASE_URL", "postgresql://u:p@127.0.0.1:1/none")
     config.get_settings.cache_clear()
 
-    msg = launch_runtime.check_session_store()
+    msg = check_session_store()
 
     assert msg is not None
     assert "reach" in msg.lower()

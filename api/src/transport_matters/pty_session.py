@@ -19,6 +19,9 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 CHILD_EXIT_TIMEOUT_S = 1.0
+DEFAULT_TERMINAL_COLS = 80
+DEFAULT_TERMINAL_ROWS = 24
+PTY_READ_CHUNK_SIZE = 8192
 _TERMINAL_CHILD_DEFAULT_SIGNALS = (
     signal.SIGHUP,
     signal.SIGINT,
@@ -36,6 +39,18 @@ class _WinsizeSetter(Protocol):
 
 
 WinsizeSetter = _WinsizeSetter
+
+
+class SpawnPtyProcess(Protocol):
+    def __call__(
+        self,
+        *,
+        argv: Sequence[str],
+        env: Mapping[str, str],
+        cwd: Path,
+        cols: int,
+        rows: int,
+    ) -> TerminalPty: ...
 
 
 @dataclass(slots=True)

@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, ConfigDict
 
-from transport_matters.session.dao import AsyncSessionDao
+from transport_matters.session.async_dao import AsyncSessionDao
 
 if TYPE_CHECKING:
     from psycopg import AsyncConnection

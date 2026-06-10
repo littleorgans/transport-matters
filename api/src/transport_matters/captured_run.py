@@ -22,6 +22,7 @@ from transport_matters.captured_run_models import (
     WEB_RUNTIME_EMBEDDED,
     WEB_RUNTIME_EXTERNAL,
     CapturedRunBindConflict,
+    CapturedRunCli,
     CapturedRunLease,
     CapturedRunRequest,
     CapturedRunSpawnSpec,
@@ -49,6 +50,7 @@ __all__ = [
     "WEB_RUNTIME_EMBEDDED",
     "WEB_RUNTIME_EXTERNAL",
     "CapturedRunBindConflict",
+    "CapturedRunCli",
     "CapturedRunDependencies",
     "CapturedRunLease",
     "CapturedRunRequest",
@@ -97,13 +99,15 @@ def build_start_invocation(
 ) -> Callable[[int, int | None], tuple[list[str], dict[str, str], ManagedClient | None]]:
     """Build the retry-safe invocation factory for a captured Claude launch."""
     from transport_matters.cli.launch_runtime import (
-        CLIENT_NAME_CLAUDE,
-        build_launch_env,
-        build_managed_child_env,
         build_mitmdump_argv,
     )
     from transport_matters.cli.net import loopback_http_url
     from transport_matters.cli.runner import ManagedClient
+    from transport_matters.launch_environment import (
+        CLIENT_NAME_CLAUDE,
+        build_launch_env,
+        build_managed_child_env,
+    )
 
     def build_invocation(
         proxy_port: int,
@@ -195,7 +199,8 @@ def run_captured_run_on_local_tty(
 ) -> None:
     """Run the captured Claude launch on the local terminal using the shared seam."""
     from transport_matters.cli.home_seed import seed_home_dir
-    from transport_matters.cli.launch_runtime import CLIENT_NAME_CLAUDE, print_invocation
+    from transport_matters.cli.launch_runtime import print_invocation
+    from transport_matters.launch_environment import CLIENT_NAME_CLAUDE
 
     ctx = _build_captured_run_context(
         request,
@@ -526,7 +531,7 @@ def _write_workspace_manifest(
     proxy_port: int,
     web_port: int | None,
 ) -> None:
-    from transport_matters.cli.launch_runtime import write_workspace_manifest
+    from transport_matters.launch_manifest import write_workspace_manifest
 
     write_workspace_manifest(
         manifest_path=wslock.manifest_path,

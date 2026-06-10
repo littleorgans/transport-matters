@@ -10,7 +10,7 @@ from httpx import ASGITransport, AsyncClient
 from transport_matters.api.v1.session_test_support import session_client as _client
 from transport_matters.config import get_settings
 from transport_matters.main import create_app, lifespan
-from transport_matters.session.dao import AsyncSessionDao
+from transport_matters.session.async_dao import AsyncSessionDao
 from transport_matters.session.listen import (
     SessionEventHub,
     SessionEventListener,

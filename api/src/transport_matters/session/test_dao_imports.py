@@ -6,8 +6,8 @@ import sys
 from pathlib import Path
 
 
-def test_package_root_terminal_modules_import_in_subprocess() -> None:
-    src_root = Path(__file__).resolve().parents[1]
+def test_session_dao_modules_import_in_subprocess() -> None:
+    src_root = Path(__file__).resolve().parents[2]
     env = os.environ.copy()
     pythonpath = str(src_root)
     if existing := env.get("PYTHONPATH"):
@@ -15,10 +15,11 @@ def test_package_root_terminal_modules_import_in_subprocess() -> None:
     env["PYTHONPATH"] = pythonpath
 
     for module in (
-        "transport_matters.captured_run_models",
-        "transport_matters.pty_session",
-        "transport_matters.run_terminal",
-        "transport_matters.run_manager",
+        "transport_matters.session.dao_rows",
+        "transport_matters.session.dao_statements",
+        "transport_matters.session.dao",
+        "transport_matters.session.async_dao",
+        "transport_matters.session",
     ):
         result = subprocess.run(
             [sys.executable, "-c", f"import {module}"],
