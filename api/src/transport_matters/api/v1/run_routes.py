@@ -14,21 +14,23 @@ from starlette.websockets import WebSocketDisconnect
 
 from transport_matters.api.v1 import terminal_bridge
 from transport_matters.captured_run import CLAUDE_CLIENT_NAME, CODEX_CLIENT_NAME
+from transport_matters.captured_run_models import CapturedRunCli
 from transport_matters.config import Settings, get_settings
 from transport_matters.run_manager import (
-    SLOW_VIEWER_CLOSE_CODE,
-    AttachedTerminal,
-    AttachmentClosed,
-    CapturedRunCli,
     ManagedRun,
     ManagedRunView,
-    PtyChunk,
     RunFilters,
     RunManager,
     RunManagerError,
     RunNotFoundError,
     RunState,
     SpawnRun,
+)
+from transport_matters.run_terminal import (
+    SLOW_VIEWER_CLOSE_CODE,
+    AttachedTerminal,
+    AttachmentClosed,
+    PtyChunk,
 )
 
 if TYPE_CHECKING:

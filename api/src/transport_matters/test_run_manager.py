@@ -21,14 +21,13 @@ from transport_matters.captured_run import (
 from transport_matters.cli.runner import ManagedClient
 from transport_matters.pty_session import TerminalPty
 from transport_matters.run_manager import (
-    SLOW_VIEWER_CLOSE_CODE,
     ManagedRun,
-    PtyChunk,
     RunManager,
     RunManagerError,
     RunState,
     SpawnRun,
 )
+from transport_matters.run_terminal import SLOW_VIEWER_CLOSE_CODE, PtyChunk
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
@@ -216,7 +215,9 @@ async def spawn_run(manager: RunManager, tmp_path: Path) -> ManagedRun:
 def test_package_root_seams_do_not_import_api() -> None:
     api_root = Path(__file__).resolve().parents[2]
     for relative in (
+        Path("src/transport_matters/captured_run_models.py"),
         Path("src/transport_matters/run_manager.py"),
+        Path("src/transport_matters/run_terminal.py"),
         Path("src/transport_matters/pty_session.py"),
     ):
         tree = ast.parse((api_root / relative).read_text())

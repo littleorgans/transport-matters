@@ -12,6 +12,12 @@ from typing import TYPE_CHECKING
 import typer
 
 from transport_matters.captured_run import require_web_port
+from transport_matters.launch_environment import (
+    CLIENT_NAME_CODEX,
+    build_launch_env,
+    build_managed_child_env,
+)
+from transport_matters.launch_manifest import run_with_workspace_manifest
 
 from .home_seed import seed_home_dir
 from .identity import CLI_COMMAND, PRODUCT_LABEL
@@ -21,15 +27,11 @@ from .launch_profile import (
     prepare_managed_session,
 )
 from .launch_runtime import (
-    CLIENT_NAME_CODEX,
-    build_launch_env,
-    build_managed_child_env,
     build_mitmdump_argv,
     preflight_session_store_or_exit,
     prepare_launch,
     print_invocation,
     reject_passthrough_without_client,
-    run_with_workspace_manifest,
 )
 from .net import loopback_http_url
 from .runner import ManagedClient

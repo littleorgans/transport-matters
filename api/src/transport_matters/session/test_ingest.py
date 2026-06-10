@@ -15,8 +15,8 @@ from transport_matters.index.adapters.base import (
 from transport_matters.index.adapters.claude import ClaudeAdapter
 from transport_matters.index.test_replay_support import _seed_claude_run, _seed_codex_run
 from transport_matters.session.artifacts import artifact_hash
+from transport_matters.session.async_dao import AsyncSessionDao
 from transport_matters.session.backfill import replay_transcript_run
-from transport_matters.session.dao import AsyncSessionDao
 from transport_matters.session.ingest import EventWrite, build_event, build_event_batch
 from transport_matters.session.pool import async_connect, create_async_pool
 from transport_matters.session.writer import SessionWriter

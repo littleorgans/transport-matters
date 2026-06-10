@@ -12,12 +12,17 @@ from pydantic import ValidationError
 
 from transport_matters.api.v1.exchanges import exchange_detail_route
 from transport_matters.api.v1.session_test_support import session_client
-from transport_matters.session import exchange_correlation, resource_content
+from transport_matters.session import (
+    exchange_correlation,
+    resource_content,
+    resource_content_rendering,
+    resource_ids,
+)
 from transport_matters.session.artifacts import artifact_hash
-from transport_matters.session.dao import AsyncSessionDao
+from transport_matters.session.async_dao import AsyncSessionDao
 from transport_matters.session.pool import create_async_pool
-from transport_matters.session.resource_content import BINARY_CONTENT_LIMIT
 from transport_matters.session.resource_content_models import ExchangeRedirectResponse
+from transport_matters.session.resource_content_rendering import BINARY_CONTENT_LIMIT
 from transport_matters.session.test_foundation import event, root_session
 
 if TYPE_CHECKING:
@@ -26,16 +31,21 @@ if TYPE_CHECKING:
 
 
 def test_session_resource_content_layer_does_not_import_api_v1() -> None:
-    source = Path(resource_content.__file__).read_text(encoding="utf-8")
-    tree = ast.parse(source)
-    imported_modules: set[str] = set()
-    for node in tree.body:
-        if isinstance(node, ast.ImportFrom) and node.module is not None:
-            imported_modules.add(node.module)
-        if isinstance(node, ast.Import):
-            imported_modules.update(alias.name for alias in node.names)
+    for module in (resource_content, resource_content_rendering, resource_ids):
+        assert module.__file__ is not None
+        source = Path(module.__file__).read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        imported_modules: set[str] = set()
+        for node in tree.body:
+            if isinstance(node, ast.ImportFrom) and node.module is not None:
+                imported_modules.add(node.module)
+            if isinstance(node, ast.Import):
+                imported_modules.update(alias.name for alias in node.names)
 
-    assert not any(module.startswith("transport_matters.api.v1") for module in imported_modules)
+        assert not any(
+            imported_module.startswith("transport_matters.api.v1")
+            for imported_module in imported_modules
+        )
 
 
 def test_exchange_redirect_response_requires_non_null_route() -> None:

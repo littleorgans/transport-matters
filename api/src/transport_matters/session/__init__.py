@@ -1,5 +1,6 @@
 from transport_matters.session.artifacts import ARTIFACT_HASH_ALGO, artifact_hash
-from transport_matters.session.dao import AsyncSessionDao, SessionDao
+from transport_matters.session.async_dao import AsyncSessionDao
+from transport_matters.session.dao import SessionDao
 from transport_matters.session.models import (
     ArtifactRow,
     ChildSessionRow,

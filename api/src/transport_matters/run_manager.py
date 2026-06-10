@@ -5,13 +5,11 @@ import contextlib
 import errno
 import logging
 import os
-from collections import deque
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, Protocol
-from uuid import uuid4
 
 from transport_matters.captured_run import (
     CLAUDE_CLIENT_NAME,
@@ -19,6 +17,7 @@ from transport_matters.captured_run import (
     CODEX_CLIENT_NAME,
     WEB_RUNTIME_EXTERNAL,
     CapturedRunBindConflict,
+    CapturedRunCli,
     CapturedRunDependencies,
     CapturedRunLease,
     CapturedRunRequest,
@@ -28,26 +27,30 @@ from transport_matters.captured_run import (
     prepare_captured_run,
 )
 from transport_matters.pty_session import (
+    DEFAULT_TERMINAL_COLS,
+    DEFAULT_TERMINAL_ROWS,
+    PTY_READ_CHUNK_SIZE,
+    SpawnPtyProcess,
     TerminalPty,
     close_terminal_master,
     spawn_pty_process,
     terminate_terminal_pty,
 )
+from transport_matters.run_terminal import (
+    DEFAULT_ATTACHMENT_QUEUE_SIZE,
+    DEFAULT_SCROLLBACK_BYTES,
+    AttachedTerminal,
+    ScrollbackRing,
+    TerminalAttachment,
+    TerminalFanout,
+)
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Mapping, Sequence
+    from collections.abc import Callable
 
 logger = logging.getLogger(__name__)
 
-CapturedRunCli = Literal["claude", "codex"]
 StopReason = Literal["explicit-stop", "shutdown", "idle-timeout", "natural-exit", "failed"]
-
-DEFAULT_SCROLLBACK_BYTES = 2 * 1024 * 1024
-DEFAULT_TERMINAL_COLS = 80
-DEFAULT_TERMINAL_ROWS = 24
-DEFAULT_ATTACHMENT_QUEUE_SIZE = 256
-PTY_READ_CHUNK_SIZE = 8192
-SLOW_VIEWER_CLOSE_CODE = "retryable-overload"
 
 
 def _utcnow() -> datetime:
@@ -70,18 +73,6 @@ class PrepareCapturedRun(Protocol):
     ) -> tuple[CapturedRunSpawnSpec, CapturedRunLease]: ...
 
 
-class SpawnPtyProcess(Protocol):
-    def __call__(
-        self,
-        *,
-        argv: Sequence[str],
-        env: Mapping[str, str],
-        cwd: Path,
-        cols: int,
-        rows: int,
-    ) -> TerminalPty: ...
-
-
 class RunState(StrEnum):
     STARTING = "starting"
     RUNNING = "running"
@@ -99,104 +90,6 @@ class RunManagerError(RuntimeError):
 
 class RunNotFoundError(KeyError):
     pass
-
-
-@dataclass(frozen=True, slots=True)
-class PtyChunk:
-    seq: int
-    data: bytes
-    emitted_at: datetime
-
-
-@dataclass(frozen=True, slots=True)
-class AttachmentClosed:
-    code: str
-    retryable: bool
-    message: str
-
-
-TerminalQueueItem = PtyChunk | AttachmentClosed
-
-
-class ScrollbackRing:
-    def __init__(
-        self,
-        *,
-        max_bytes: int = DEFAULT_SCROLLBACK_BYTES,
-        clock: Callable[[], datetime] = _utcnow,
-    ) -> None:
-        if max_bytes < 0:
-            raise ValueError("scrollback max_bytes must be non negative")
-        self._max_bytes = max_bytes
-        self._clock = clock
-        self._chunks: deque[PtyChunk] = deque()
-        self._total_bytes = 0
-        self._next_seq = 0
-        self._truncated = False
-
-    @property
-    def max_bytes(self) -> int:
-        return self._max_bytes
-
-    @property
-    def total_bytes(self) -> int:
-        return self._total_bytes
-
-    @property
-    def next_seq(self) -> int:
-        return self._next_seq
-
-    @property
-    def truncated(self) -> bool:
-        return self._truncated
-
-    def append(self, data: bytes, *, emitted_at: datetime | None = None) -> PtyChunk:
-        emitted = emitted_at or self._clock()
-        seq = self._next_seq
-        self._next_seq += 1
-        live_chunk = PtyChunk(seq=seq, data=data, emitted_at=emitted)
-        if self._max_bytes == 0:
-            if data:
-                self._truncated = True
-            return live_chunk
-
-        if len(data) > self._max_bytes:
-            self._truncated = True
-            stored_data = data[-self._max_bytes :]
-        else:
-            stored_data = data
-        if stored_data:
-            stored_chunk = PtyChunk(seq=seq, data=stored_data, emitted_at=emitted)
-            self._chunks.append(stored_chunk)
-            self._total_bytes += len(stored_data)
-            self._trim()
-        return live_chunk
-
-    def snapshot(self) -> tuple[PtyChunk, ...]:
-        return tuple(self._chunks)
-
-    def _trim(self) -> None:
-        while self._total_bytes > self._max_bytes and self._chunks:
-            chunk = self._chunks.popleft()
-            self._total_bytes -= len(chunk.data)
-            self._truncated = True
-
-
-@dataclass(slots=True)
-class TerminalAttachment:
-    attachment_id: str
-    queue: asyncio.Queue[TerminalQueueItem]
-    cols: int
-    rows: int
-    connected_at: datetime
-    closed_reason: str | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class AttachedTerminal:
-    attachment: TerminalAttachment
-    scrollback: tuple[PtyChunk, ...]
-    start_seq: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -256,8 +149,7 @@ class ManagedRun:
     spawn_spec: CapturedRunSpawnSpec
     lease: CapturedRunLease
     terminal: TerminalPty
-    scrollback: ScrollbackRing
-    attachments: dict[str, TerminalAttachment]
+    terminal_output: TerminalFanout
     created_at: datetime
     started_at: datetime
     updated_at: datetime
@@ -265,6 +157,14 @@ class ManagedRun:
     exit_code: int | None
     stop_reason: str | None
     drain_task: asyncio.Task[None] = field(init=False)
+
+    @property
+    def scrollback(self) -> ScrollbackRing:
+        return self.terminal_output.scrollback
+
+    @property
+    def attachments(self) -> dict[str, TerminalAttachment]:
+        return self.terminal_output.attachments
 
     def view(self) -> ManagedRunView:
         return ManagedRunView(
@@ -350,8 +250,11 @@ class RunManager:
                 spawn_spec=spawn_spec,
                 lease=lease,
                 terminal=terminal,
-                scrollback=ScrollbackRing(max_bytes=self._scrollback_bytes, clock=self._clock),
-                attachments={},
+                terminal_output=TerminalFanout(
+                    clock=self._clock,
+                    scrollback_bytes=self._scrollback_bytes,
+                    attachment_queue_size=self._attachment_queue_size,
+                ),
                 created_at=now,
                 started_at=now,
                 updated_at=now,
@@ -412,23 +315,15 @@ class RunManager:
         run = self.get(run_id)
         if run.state is not RunState.RUNNING:
             raise RunManagerError("run_not_attachable", f"run {run_id} is {run.state}")
-        scrollback = run.scrollback.snapshot()
-        start_seq = run.scrollback.next_seq
-        attachment = TerminalAttachment(
-            attachment_id=attachment_id or uuid4().hex,
-            queue=asyncio.Queue(maxsize=queue_maxsize or self._attachment_queue_size),
+        attached = run.terminal_output.attach(
             cols=cols,
             rows=rows,
-            connected_at=self._clock(),
+            attachment_id=attachment_id,
+            queue_maxsize=queue_maxsize,
         )
-        run.attachments[attachment.attachment_id] = attachment
         run.viewerless_since = None
         run.updated_at = self._clock()
-        return AttachedTerminal(
-            attachment=attachment,
-            scrollback=scrollback,
-            start_seq=start_seq,
-        )
+        return attached
 
     def detach(self, run_id: str, attachment_id: str) -> None:
         run = self.get(run_id)
@@ -551,22 +446,10 @@ class RunManager:
         now = self._clock()
         if run.state not in {RunState.RUNNING, RunState.STOPPING}:
             return
-        chunk = run.scrollback.append(data, emitted_at=now)
+        _, closed_attachment_ids = run.terminal_output.append(data, emitted_at=now)
         run.updated_at = now
-        overloaded: list[str] = []
-        for attachment in tuple(run.attachments.values()):
-            try:
-                attachment.queue.put_nowait(chunk)
-            except asyncio.QueueFull:
-                overloaded.append(attachment.attachment_id)
-        for attachment_id in overloaded:
-            self._close_attachment(
-                run,
-                attachment_id,
-                code=SLOW_VIEWER_CLOSE_CODE,
-                retryable=True,
-                message="terminal output queue overloaded; reconnect to resume",
-            )
+        if closed_attachment_ids and not run.attachments and run.state is RunState.RUNNING:
+            run.viewerless_since = now
 
     async def _teardown_run(
         self,
@@ -637,36 +520,10 @@ class RunManager:
         retryable: bool,
         message: str,
     ) -> None:
-        for attachment_id in tuple(run.attachments):
-            self._close_attachment(
-                run,
-                attachment_id,
-                code=code,
-                retryable=retryable,
-                message=message,
-            )
-
-    def _close_attachment(
-        self,
-        run: ManagedRun,
-        attachment_id: str,
-        *,
-        code: str,
-        retryable: bool,
-        message: str,
-    ) -> None:
-        attachment = run.attachments.pop(attachment_id, None)
-        if attachment is None:
-            return
-        attachment.closed_reason = code
-        close_item = AttachmentClosed(code=code, retryable=retryable, message=message)
-        with contextlib.suppress(asyncio.QueueFull):
-            attachment.queue.put_nowait(close_item)
-        if not run.attachments and run.state is RunState.RUNNING:
-            run.viewerless_since = self._clock()
+        run.terminal_output.close_all(code=code, retryable=retryable, message=message)
 
     def _detach(self, run: ManagedRun, attachment_id: str) -> None:
-        run.attachments.pop(attachment_id, None)
+        run.terminal_output.detach(attachment_id)
         if not run.attachments and run.state is RunState.RUNNING:
             run.viewerless_since = self._clock()
         run.updated_at = self._clock()

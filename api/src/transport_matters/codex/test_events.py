@@ -1,3 +1,5 @@
+import subprocess
+import sys
 from datetime import UTC, datetime
 from typing import Any, cast, get_args
 
@@ -40,6 +42,24 @@ def _cursor() -> CodexDerivationCursor:
         },
         terminal_seen=False,
     )
+
+
+@pytest.mark.parametrize(
+    "module",
+    [
+        "transport_matters.codex.derivation_engine",
+        "transport_matters.codex.derivation_events",
+    ],
+)
+def test_codex_derivation_modules_are_standalone_importable(module: str) -> None:
+    result = subprocess.run(
+        [sys.executable, "-c", f"import {module}"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
 
 
 def test_semantic_event_json_is_stable_for_equivalent_input() -> None:

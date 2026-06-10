@@ -10,7 +10,7 @@ from typer.testing import CliRunner
 from transport_matters import env_keys
 from transport_matters.captured_run import (
     CapturedRunRequest,
-    build_start_invocation,
+    build_claude_captured_invocation,
     prepare_captured_run,
 )
 from transport_matters.cli import BindFailure, main
@@ -93,9 +93,18 @@ def _prepare(
     )
 
 
-def test_captured_run_module_is_standalone_importable() -> None:
+@pytest.mark.parametrize(
+    "module",
+    [
+        "transport_matters.captured_run",
+        "transport_matters.captured_claude",
+        "transport_matters.captured_codex",
+        "transport_matters.captured_run_context",
+    ],
+)
+def test_captured_run_modules_are_standalone_importable(module: str) -> None:
     result = subprocess.run(
-        [sys.executable, "-c", "import transport_matters.captured_run"],
+        [sys.executable, "-c", f"import {module}"],
         check=False,
         capture_output=True,
         text=True,
@@ -130,7 +139,7 @@ def test_prepare_captured_run_spawn_spec_matches_public_invocation_helper(
         proxy_starter=_proxy_starter,
     )
     try:
-        expected = build_start_invocation(
+        expected = build_claude_captured_invocation(
             addon_path=addon,
             mitmdump="/bin/mitmdump",
             upstream="https://api.anthropic.com",
@@ -210,7 +219,7 @@ def test_prepare_captured_run_preserves_owned_session_across_retries(
     def _alloc() -> tuple[int, int]:
         return next(pairs)
 
-    monkeypatch.setattr("transport_matters.cli.runner.allocate_port_pair", _alloc)
+    monkeypatch.setattr("transport_matters.cli.bind_failure.allocate_port_pair", _alloc)
     attempts: list[dict[str, Any]] = []
     supervisors = [FakeSupervisor(), FakeSupervisor()]
 

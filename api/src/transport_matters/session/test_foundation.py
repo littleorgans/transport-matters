@@ -8,7 +8,8 @@ from psycopg.errors import CheckViolation, ForeignKeyViolation, UniqueViolation
 
 from transport_matters.session import async_connect, connect
 from transport_matters.session.artifacts import artifact_hash
-from transport_matters.session.dao import AsyncSessionDao, SessionDao
+from transport_matters.session.async_dao import AsyncSessionDao
+from transport_matters.session.dao import SessionDao
 from transport_matters.session.models import EventRow, SessionRow
 from transport_matters.session.pool import (
     async_transaction,
