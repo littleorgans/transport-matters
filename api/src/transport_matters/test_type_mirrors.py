@@ -7,7 +7,10 @@ from typing import TypeGuard
 REPO_ROOT = Path(__file__).resolve().parents[3]
 PY_IR = Path(__file__).with_name("ir.py")
 PY_OVERRIDES = Path(__file__).with_name("overrides.py")
-TS_TYPES = REPO_ROOT / "www" / "src" / "types.ts"
+TS_TYPE_FILES = (
+    REPO_ROOT / "www" / "src" / "types" / "ir.ts",
+    REPO_ROOT / "www" / "src" / "types" / "overrides.ts",
+)
 
 NON_BLOCK_MIRRORED_MODELS = (
     "SystemPart",
@@ -48,16 +51,17 @@ class TsField:
 
 def test_override_kind_values_match() -> None:
     py_values = _py_literal_values(PY_OVERRIDES.read_text(), "OverrideKind")
-    ts_values = _ts_type_values(TS_TYPES.read_text(), "OverrideKind")
+    ts_values = _ts_type_values(_ts_contract_source(), "OverrideKind")
 
     assert set(ts_values) == set(py_values)
 
 
 def test_ir_model_field_sets_match() -> None:
     py_source = PY_IR.read_text()
+    ts_source = _ts_contract_source()
     mirrored_models = _mirrored_model_names(py_source)
     py_fields = _py_model_fields(py_source, mirrored_models)
-    ts_fields = _ts_interface_fields(TS_TYPES.read_text(), mirrored_models)
+    ts_fields = _ts_interface_fields(ts_source, mirrored_models)
 
     for model_name in mirrored_models:
         assert set(ts_fields[model_name]) == set(py_fields[model_name]), model_name
@@ -68,16 +72,17 @@ def test_ir_model_field_sets_match() -> None:
 
 def test_content_block_union_matches_python_ir() -> None:
     py_blocks = _py_assignment_blocks(PY_IR.read_text(), "ContentBlock")
-    ts_blocks = _ts_type_blocks(TS_TYPES.read_text(), "ContentBlock")
+    ts_blocks = _ts_type_blocks(_ts_contract_source(), "ContentBlock")
 
     assert ts_blocks == py_blocks
 
 
 def test_targeted_type_mirror_contracts() -> None:
     py_source = PY_IR.read_text()
+    ts_source = _ts_contract_source()
     mirrored_models = _mirrored_model_names(py_source)
     py_fields = _py_model_fields(py_source, mirrored_models)
-    ts_fields = _ts_interface_fields(TS_TYPES.read_text(), mirrored_models)
+    ts_fields = _ts_interface_fields(ts_source, mirrored_models)
 
     assert _field(ts_fields, "Message", "role").type == "string"
     assert "provider_data" not in ts_fields["UnknownBlock"]
@@ -96,6 +101,10 @@ def test_targeted_type_mirror_contracts() -> None:
         "content",
     )
     assert "ContentBlock" not in _field(ts_fields, "InternalResponse", "content").type
+
+
+def _ts_contract_source() -> str:
+    return "\n\n".join(path.read_text() for path in TS_TYPE_FILES)
 
 
 def _py_literal_values(source: str, name: str) -> list[str]:
