@@ -461,7 +461,7 @@ def test_handle_bind_failure_pinned_web_port_fails_fast(
     """Web slot user-pinned and named in failing_ports → typer.Exit(2),
     do not call the allocator."""
     spy = MagicMock()
-    monkeypatch.setattr("transport_matters.cli.runner.allocate_port_pair", spy)
+    monkeypatch.setattr("transport_matters.cli.bind_failure.allocate_port_pair", spy)
 
     exc = _make_failure(proxy_port=12000, web_port=8788, failing_ports=(8788,), tmp_path=tmp_path)
     with pytest.raises(typer.Exit) as exc_info:
@@ -482,7 +482,7 @@ def test_handle_bind_failure_both_pinned_anonymous_failure_fails_fast(
     """Log signalled EADDRINUSE but couldn't extract a port; both slots
     are pinned, so there's nothing left to safely re-allocate. Exit 2."""
     spy = MagicMock()
-    monkeypatch.setattr("transport_matters.cli.runner.allocate_port_pair", spy)
+    monkeypatch.setattr("transport_matters.cli.bind_failure.allocate_port_pair", spy)
 
     exc = _make_failure(proxy_port=9000, web_port=9001, failing_ports=(), tmp_path=tmp_path)
     with pytest.raises(typer.Exit) as exc_info:
@@ -503,7 +503,7 @@ def test_handle_bind_failure_reallocates_only_named_unpinned_slot(
     """Failing names the proxy port; web is fine (and unpinned). Only
     the proxy slot should swap; web stays put."""
     monkeypatch.setattr(
-        "transport_matters.cli.runner.allocate_port_pair",
+        "transport_matters.cli.bind_failure.allocate_port_pair",
         lambda: (60001, 60002),
     )
     exc = _make_failure(proxy_port=12000, web_port=12001, failing_ports=(12000,), tmp_path=tmp_path)
@@ -524,7 +524,7 @@ def test_handle_bind_failure_anonymous_failure_replaces_all_unpinned(
 ) -> None:
     """Log couldn't pin the port; both slots unpinned → swap both."""
     monkeypatch.setattr(
-        "transport_matters.cli.runner.allocate_port_pair",
+        "transport_matters.cli.bind_failure.allocate_port_pair",
         lambda: (50000, 50001),
     )
     exc = _make_failure(proxy_port=12000, web_port=12001, failing_ports=(), tmp_path=tmp_path)
@@ -544,7 +544,7 @@ def test_handle_bind_failure_keeps_pinned_proxy_when_only_web_named(
     """Proxy is user-pinned but failing names the (unpinned) web port —
     swap web only, leave the user's proxy choice alone."""
     monkeypatch.setattr(
-        "transport_matters.cli.runner.allocate_port_pair",
+        "transport_matters.cli.bind_failure.allocate_port_pair",
         lambda: (60001, 60002),
     )
     exc = _make_failure(proxy_port=9000, web_port=12001, failing_ports=(12001,), tmp_path=tmp_path)
@@ -569,7 +569,7 @@ def test_handle_bind_failure_propagates_allocator_error(
     def _raise() -> tuple[int, int]:
         raise PortAllocationError("kernel said no")
 
-    monkeypatch.setattr("transport_matters.cli.runner.allocate_port_pair", _raise)
+    monkeypatch.setattr("transport_matters.cli.bind_failure.allocate_port_pair", _raise)
 
     exc = _make_failure(proxy_port=12000, web_port=12001, failing_ports=(), tmp_path=tmp_path)
     with pytest.raises(typer.Exit) as exc_info:

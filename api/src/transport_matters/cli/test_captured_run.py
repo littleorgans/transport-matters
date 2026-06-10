@@ -210,7 +210,7 @@ def test_prepare_captured_run_preserves_owned_session_across_retries(
     def _alloc() -> tuple[int, int]:
         return next(pairs)
 
-    monkeypatch.setattr("transport_matters.cli.runner.allocate_port_pair", _alloc)
+    monkeypatch.setattr("transport_matters.cli.bind_failure.allocate_port_pair", _alloc)
     attempts: list[dict[str, Any]] = []
     supervisors = [FakeSupervisor(), FakeSupervisor()]
 

@@ -77,7 +77,7 @@ def _patch_allocate_pairs(
         return pair
 
     monkeypatch.setattr("transport_matters.cli.allocate_port_pair", _alloc)
-    monkeypatch.setattr("transport_matters.cli.runner.allocate_port_pair", _alloc)
+    monkeypatch.setattr("transport_matters.cli.bind_failure.allocate_port_pair", _alloc)
     return drawn
 
 
