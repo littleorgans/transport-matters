@@ -12,6 +12,8 @@
   left: 0;
   right: 0;
   height: var(--window-titlebar-height, 38px);
-  z-index: 1000;
+  /* Deliberately NO z-index: the strip mounts in a pre-#root host (main.tsx), so the app
+     always paints and hit-tests above it by DOM order. Window dragging needs neither paint
+     order nor DOM events; it comes from the OS app-region map computed off layout boxes. */
   -webkit-app-region: drag;
 }
