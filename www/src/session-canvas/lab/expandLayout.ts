@@ -1,16 +1,14 @@
-import type { PaneId, ViewportBounds, WorldRect } from "../../engine";
+import type { CanvasViewport, PaneId, ViewportBounds, WorldRect } from "../../engine";
+import { resolveLayout } from "../../engine/layout";
 
 export const EXPAND_LAYOUT = {
   marginX: 48,
   marginY: 48,
   columnGap: 24,
-  gridGap: 16,
   leftRatio: 0.45,
-  gridMinW: 300,
-  gridMinH: 220,
-  gridMaxH: 320,
-  gridAspect: 4 / 3,
 } as const;
+
+export const EXPAND_REMAINDER_STRATEGY_ID = "grid-overflow";
 
 export interface ExpandLayoutInput {
   paneIds: readonly PaneId[];
@@ -21,91 +19,107 @@ export interface ExpandLayoutInput {
 export interface ExpandLayoutResult {
   rects: Record<PaneId, WorldRect>;
   frame: WorldRect;
+  camera: CanvasViewport;
 }
 
-export function planExpandedLayout(input: ExpandLayoutInput): ExpandLayoutResult {
+export interface ExpandColumns {
+  hero: WorldRect;
+  remainder: WorldRect;
+}
+
+export function planExpandLayout(input: ExpandLayoutInput): ExpandLayoutResult {
   const { paneIds, expandedPaneId, viewport } = input;
-  const stackIds = paneIds.filter((paneId) => paneId !== expandedPaneId);
-  const columns = splitColumns(viewport);
-  const stack = planRightColumn(stackIds, columns.right);
-  const frameH = Math.max(viewport.height, stack.contentH + 2 * EXPAND_LAYOUT.marginY);
+  const remainderPaneIds = paneIds.filter((paneId) => paneId !== expandedPaneId);
+  const columns = splitExpandColumns(viewport);
+  const remainderStrategy = resolveLayout(EXPAND_REMAINDER_STRATEGY_ID);
+  const params = remainderStrategy.defaults;
+  const remainder = remainderStrategy.plan(
+    { paneIds: remainderPaneIds, viewport: columns.remainder },
+    params,
+  );
+  const remainderRects = translateRects(remainder.rects, columns.remainder);
+  const remainderFrame = translateRect(
+    remainder.frame ?? {
+      x: 0,
+      y: 0,
+      width: columns.remainder.width,
+      height: columns.remainder.height,
+    },
+    columns.remainder,
+  );
+  const frame = composeExpandFrame(columns.hero, remainderFrame, viewport);
 
   return {
     rects: {
-      ...stack.rects,
-      [expandedPaneId]: columns.left,
+      ...remainderRects,
+      [expandedPaneId]: columns.hero,
     },
-    frame: {
-      x: 0,
-      y: 0,
-      width: viewport.width,
-      height: frameH,
-    },
+    frame,
+    camera: fitExpandFrameCamera(frame, viewport),
   };
 }
 
-export function fitExpandFrameToWidth(frame: WorldRect, bounds: ViewportBounds) {
-  const scale = Math.min(1, bounds.width / frame.width);
-  return {
-    scale,
-    panX: bounds.width / 2 - (frame.x + frame.width / 2) * scale,
-    panY: -frame.y * scale,
-  };
-}
-
-function splitColumns(viewport: ViewportBounds): {
-  left: WorldRect;
-  right: WorldRect;
-  visibleContentH: number;
-} {
+export function splitExpandColumns(viewport: ViewportBounds): ExpandColumns {
   const { columnGap, leftRatio, marginX, marginY } = EXPAND_LAYOUT;
   const innerW = Math.max(0, viewport.width - 2 * marginX - columnGap);
   const visibleContentH = Math.max(0, viewport.height - 2 * marginY);
-  const leftW = innerW * leftRatio;
-  const rightW = innerW - leftW;
+  const heroW = innerW * leftRatio;
+  const remainderW = innerW - heroW;
   return {
-    left: {
+    hero: {
       x: marginX,
       y: marginY,
-      width: leftW,
+      width: heroW,
       height: visibleContentH,
     },
-    right: {
-      x: marginX + leftW + columnGap,
+    remainder: {
+      x: marginX + heroW + columnGap,
       y: marginY,
-      width: rightW,
+      width: remainderW,
       height: visibleContentH,
     },
-    visibleContentH,
   };
 }
 
-function planRightColumn(
-  paneIds: readonly PaneId[],
-  column: WorldRect,
-): { rects: Record<PaneId, WorldRect>; contentH: number } {
-  if (paneIds.length === 0) return { rects: {}, contentH: column.height };
-
-  const { gridAspect, gridGap, gridMaxH, gridMinH, gridMinW } = EXPAND_LAYOUT;
-  const cols = Math.max(1, Math.floor((column.width + gridGap) / (gridMinW + gridGap)));
-  const cellW = (column.width - (cols - 1) * gridGap) / cols;
-  const cellH = Math.min(gridMaxH, Math.max(gridMinH, cellW / gridAspect));
-  const rows = Math.ceil(paneIds.length / cols);
-  const rects: Record<PaneId, WorldRect> = {};
-
-  paneIds.forEach((paneId, index) => {
-    const row = Math.floor(index / cols);
-    const col = index % cols;
-    rects[paneId] = {
-      x: column.x + col * (cellW + gridGap),
-      y: column.y + row * (cellH + gridGap),
-      width: cellW,
-      height: cellH,
-    };
-  });
-
+export function translateRect(rect: WorldRect, origin: WorldRect): WorldRect {
   return {
-    rects,
-    contentH: rows * cellH + (rows - 1) * gridGap,
+    x: origin.x + rect.x,
+    y: origin.y + rect.y,
+    width: rect.width,
+    height: rect.height,
+  };
+}
+
+export function translateRects(
+  rects: Record<PaneId, WorldRect>,
+  origin: WorldRect,
+): Record<PaneId, WorldRect> {
+  const translated: Record<PaneId, WorldRect> = {};
+  for (const [paneId, rect] of Object.entries(rects)) {
+    translated[paneId] = translateRect(rect, origin);
+  }
+  return translated;
+}
+
+export function composeExpandFrame(
+  hero: WorldRect,
+  remainderFrame: WorldRect,
+  viewport: ViewportBounds,
+): WorldRect {
+  const contentBottom = Math.max(hero.y + hero.height, remainderFrame.y + remainderFrame.height);
+  return {
+    x: 0,
+    y: 0,
+    width: viewport.width,
+    height: Math.max(viewport.height, contentBottom + EXPAND_LAYOUT.marginY),
+  };
+}
+
+export function fitExpandFrameCamera(frame: WorldRect, viewport: ViewportBounds): CanvasViewport {
+  const scale = Math.min(1, viewport.width / frame.width);
+  return {
+    scale,
+    panX: viewport.width / 2 - (frame.x + frame.width / 2) * scale,
+    panY: -frame.y * scale,
   };
 }
