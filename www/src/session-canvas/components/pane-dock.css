@@ -11,6 +11,11 @@
   z-index: 1900;
   display: flex;
   align-items: center;
+  /* The chip lives inside the desktop title-bar drag strip (window-drag-region, top 38px),
+     and a drag region eats mouse events regardless of z-order, leaving only the chip's
+     bottom sliver clickable. Drag carve-outs are per element box, so the overflowing
+     dropdown declares its own below. Inert in the browser build (no drag strip mounts). */
+  -webkit-app-region: no-drag;
   /* Occupy the top band: the same number as the pane-grid top margin, so at rest (scale 1) the chip
      sits in the gap above the first pane row. */
   block-size: var(--canvas-layout-margin);
@@ -58,6 +63,9 @@
   inset-block-start: 100%;
   inset-inline-end: 0;
   z-index: 1;
+  /* Own carve-out: the menu box overflows the dock container, and drag-region
+     subtraction only counts each element's own box (see .canvas-viewport-dock). */
+  -webkit-app-region: no-drag;
   display: flex;
   flex-direction: column;
   gap: calc(var(--canvas-pane-gap) * 0.5);
