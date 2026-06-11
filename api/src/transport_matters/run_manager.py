@@ -51,6 +51,17 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 StopReason = Literal["explicit-stop", "shutdown", "idle-timeout", "natural-exit", "failed"]
+RunManagerErrorCode = Literal[
+    "bind_conflict",
+    "invalid_cwd",
+    "launch_failed",
+    "run_manager_closed",
+    "run_not_attachable",
+    "run_stale",
+    "run_stopped",
+    "session_store_unavailable",
+    "unsupported_cli",
+]
 
 
 def _utcnow() -> datetime:
@@ -82,7 +93,7 @@ class RunState(StrEnum):
 
 
 class RunManagerError(RuntimeError):
-    def __init__(self, code: str, message: str) -> None:
+    def __init__(self, code: RunManagerErrorCode, message: str) -> None:
         super().__init__(message)
         self.code = code
         self.message = message
@@ -313,6 +324,10 @@ class RunManager:
         queue_maxsize: int | None = None,
     ) -> AttachedTerminal:
         run = self.get(run_id)
+        if run.stop_reason == "explicit-stop":
+            raise RunManagerError("run_stopped", f"run {run_id} was stopped")
+        if run.terminal.closed:
+            raise RunManagerError("run_stale", f"run {run_id} has no live terminal")
         if run.state is not RunState.RUNNING:
             raise RunManagerError("run_not_attachable", f"run {run_id} is {run.state}")
         attached = run.terminal_output.attach(

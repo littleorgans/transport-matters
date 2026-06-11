@@ -22,6 +22,7 @@ from transport_matters.run_manager import (
     RunFilters,
     RunManager,
     RunManagerError,
+    RunManagerErrorCode,
     RunNotFoundError,
     RunState,
     SpawnRun,
@@ -38,6 +39,17 @@ if TYPE_CHECKING:
 
 RUNS_ROUTE_PREFIX = "/runs"
 _CAPTURED_RUN_CLI_ALLOWLIST = frozenset({CLAUDE_CLIENT_NAME, CODEX_CLIENT_NAME})
+_RUN_MANAGER_HTTP_STATUS: dict[RunManagerErrorCode, int] = {
+    "bind_conflict": http_status.HTTP_409_CONFLICT,
+    "invalid_cwd": http_status.HTTP_400_BAD_REQUEST,
+    "launch_failed": http_status.HTTP_500_INTERNAL_SERVER_ERROR,
+    "run_manager_closed": http_status.HTTP_503_SERVICE_UNAVAILABLE,
+    "run_not_attachable": http_status.HTTP_409_CONFLICT,
+    "run_stale": http_status.HTTP_409_CONFLICT,
+    "run_stopped": http_status.HTTP_409_CONFLICT,
+    "session_store_unavailable": http_status.HTTP_503_SERVICE_UNAVAILABLE,
+    "unsupported_cli": http_status.HTTP_400_BAD_REQUEST,
+}
 
 router = APIRouter()
 
@@ -132,19 +144,15 @@ def _raise_api_error(
 
 
 def _http_error_from_manager(exc: RunManagerError) -> NoReturn:
-    if exc.code == "invalid_cwd":
-        _raise_api_error(http_status.HTTP_400_BAD_REQUEST, "invalid_cwd", exc.message)
-    if exc.code == "unsupported_cli":
-        _raise_api_error(http_status.HTTP_400_BAD_REQUEST, "unsupported_cli", exc.message)
-    if exc.code == "session_store_unavailable":
+    status_code = _RUN_MANAGER_HTTP_STATUS.get(exc.code)
+    if status_code is None:
         _raise_api_error(
-            http_status.HTTP_503_SERVICE_UNAVAILABLE,
-            "session_store_unavailable",
-            exc.message,
+            http_status.HTTP_500_INTERNAL_SERVER_ERROR,
+            "unmapped_run_manager_error",
+            "unmapped run manager error",
+            {"code": exc.code},
         )
-    if exc.code == "bind_conflict":
-        _raise_api_error(http_status.HTTP_409_CONFLICT, "bind_conflict", exc.message)
-    _raise_api_error(http_status.HTTP_500_INTERNAL_SERVER_ERROR, "launch_failed", exc.message)
+    _raise_api_error(status_code, exc.code, exc.message)
 
 
 def _not_found(run_id: str) -> NoReturn:
@@ -333,8 +341,7 @@ async def run_terminal_socket(
             websocket, code="run_not_found", message=f"run not found: {run_id}"
         )
     except RunManagerError as exc:
-        code = exc.code if exc.code == "run_not_attachable" else "launch_failed"
-        await send_run_error_and_close(websocket, code=code, message=exc.message)
+        await send_run_error_and_close(websocket, code=exc.code, message=exc.message)
     except WebSocketDisconnect:
         return
     except asyncio.CancelledError:
