@@ -7,16 +7,8 @@ import type {
 } from "../../engine";
 import type { LayoutParams, ParamValue } from "../../engine/layout";
 import type { CliName } from "../../types";
+import type { FramingState } from "../model/paneAffordances";
 import type { DockedPane, PaneContentRef } from "../model/paneRecords";
-
-export interface FramingState {
-  // Single-level framing. `paneId` is the framed pane (null at the overview). `overview` is the camera
-  // snapshotted when framing began, restored on unframe. Framing a different pane while framed just
-  // moves the camera and keeps the original overview, so unframe always pans back out to where the
-  // user started. No nested frame history: stepping out of a frame returns to the overview, full stop.
-  paneId: PaneId | null;
-  overview: CanvasViewport | null;
-}
 
 export interface CanvasLabState {
   layout: EngineLayoutState;
@@ -39,7 +31,7 @@ export interface CanvasLabState {
   addPane(): void;
   addTerminal(): void;
   addCapturedRun(provider: CliName): void;
-  /** Minimize ([-]): park the pane in the dock and remove it. Generic — runs the kind's onMinimize hook (captured keeps its run alive). */
+  /** Minimize ([-]): park the pane in the dock and remove it. Generic, runs the kind's onMinimize hook (captured keeps its run alive). */
   minimizePane(paneId: PaneId): void;
   /** Close ([X]): remove the pane and run the kind's onClose hook (captured-run kills the run via DELETE). */
   closePane(paneId: PaneId): void;

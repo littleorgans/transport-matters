@@ -1,5 +1,7 @@
 import type { PersistOptions } from "zustand/middleware";
+import { seedParams } from "../../engine/layout";
 import { createFrontendPersistStorage, FRONTEND_STORAGE_KEYS } from "../../stores/persistence";
+import { INITIAL_STRATEGY_ID } from "../model/layoutPlanning";
 import {
   collectOpenPaneRects,
   type PersistedCanvasState,
@@ -26,6 +28,20 @@ function mergePersistedCanvasLabState(persisted: unknown, current: CanvasLabStat
   };
 }
 
+function emptyPersistedCanvasLabState(): CanvasLabPersistedState {
+  return {
+    contentRefs: {},
+    paneRects: {},
+    docked: [],
+    activeStrategyId: INITIAL_STRATEGY_ID,
+    params: seedParams(INITIAL_STRATEGY_ID),
+    fitToContent: true,
+    expandedPaneId: null,
+    paneCounters: {},
+    nextPaneIndex: 0,
+  };
+}
+
 export const canvasLabPersistOptions: PersistOptions<CanvasLabState, CanvasLabPersistedState> = {
   name: FRONTEND_STORAGE_KEYS.canvasLabStore,
   storage: createFrontendPersistStorage<CanvasLabPersistedState>(),
@@ -43,5 +59,6 @@ export const canvasLabPersistOptions: PersistOptions<CanvasLabState, CanvasLabPe
     paneCounters: state.paneCounters,
     nextPaneIndex: state.nextPaneIndex,
   }),
+  migrate: () => emptyPersistedCanvasLabState(),
   merge: (persisted, current) => mergePersistedCanvasLabState(persisted, current),
 };

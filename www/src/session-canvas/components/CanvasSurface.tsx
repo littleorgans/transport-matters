@@ -5,6 +5,7 @@ import { useCanvasStore } from "../model/canvasStore";
 import type { CanvasLaunchContext } from "../route";
 import { PICKER_PANE_ID, renderPaneContent } from "../viewers/registry";
 import { CanvasCommandBar } from "./CanvasCommandBar";
+import { PaneDock } from "./PaneDock";
 import { PaneWindow } from "./PaneWindow";
 
 export interface CanvasSurfaceProps {
@@ -20,8 +21,16 @@ export function CanvasSurface({ launch, launchStatus, launchSessionId }: CanvasS
   const workspaceHash = useCanvasStore((state) => state.workspaceHash);
   const focusPane = useCanvasStore((state) => state.focusPane);
   const closePane = useCanvasStore((state) => state.closePane);
+  const closeDockedPane = useCanvasStore((state) => state.closeDockedPane);
+  const docked = useCanvasStore((state) => state.docked);
+  const expandedPaneId = useCanvasStore((state) => state.expandedPaneId);
+  const framedPaneId = useCanvasStore((state) => state.framing.paneId);
+  const expandPane = useCanvasStore((state) => state.expandPane);
+  const framePane = useCanvasStore((state) => state.framePane);
+  const minimizePane = useCanvasStore((state) => state.minimizePane);
   const movePane = useCanvasStore((state) => state.movePane);
   const resizePane = useCanvasStore((state) => state.resizePane);
+  const restorePane = useCanvasStore((state) => state.restorePane);
   const setBounds = useCanvasStore((state) => state.setBounds);
   const setViewport = useCanvasStore((state) => state.setViewport);
   const resetViewport = useCanvasStore((state) => state.resetViewport);
@@ -66,8 +75,14 @@ export function CanvasSurface({ launch, launchStatus, launchSessionId }: CanvasS
       });
       return (
         <PaneWindow
+          expanded={expandedPaneId === paneId}
+          framed={framedPaneId === paneId}
           focused={focusedPaneId === paneId}
           onClose={() => closePane(paneId)}
+          onExpand={() => expandPane(paneId)}
+          onFrame={() => framePane(paneId)}
+          onHeaderDoubleClick={(event) => (event.shiftKey ? expandPane(paneId) : framePane(paneId))}
+          onMinimize={() => minimizePane(paneId)}
           pane={pane}
           titleId={titleId}
         >
@@ -78,7 +93,12 @@ export function CanvasSurface({ launch, launchStatus, launchSessionId }: CanvasS
     [
       panes,
       closePane,
+      expandPane,
+      expandedPaneId,
+      framePane,
+      framedPaneId,
       focusPane,
+      minimizePane,
       spawnOrFocusTranscript,
       canvasId,
       workspaceHash,
@@ -103,6 +123,7 @@ export function CanvasSurface({ launch, launchStatus, launchSessionId }: CanvasS
         onFocusPane={focusPane}
         onMovePane={movePane}
         onResizePane={resizePane}
+        overlay={<PaneDock docked={docked} onClose={closeDockedPane} onRestore={restorePane} />}
         renderPane={renderPane}
         setViewport={setViewport}
         titleIdForPane={titleIdForPane}

@@ -3,35 +3,43 @@ import { persist } from "zustand/middleware";
 import {
   createInitialEngineLayoutState,
   focusNode,
-  frameRectViewport,
   type PaneId,
   setViewport as setEngineViewport,
   updateNodeRect,
 } from "../../engine";
 import { sanitizeParam, seedParams } from "../../engine/layout";
-import { resolvePaneLifecycle } from "../model/paneLifecycle";
-import { cliLabel } from "../model/paneRecords";
+import { planExpandLayout } from "../model/expandLayout";
+import {
+  dismissPane,
+  emptyFraming,
+  invokeDockedPaneCloseLifecycle,
+  invokeDockedPaneRestoreLifecycle,
+  type PaneDismissalPlan,
+  type PaneDismissMode,
+  type PaneFlyIntent,
+  parkDockedPane,
+  planPaneExpand,
+  planPaneFrame,
+  planPaneUnexpand,
+  planPaneUnframe,
+  removeDockedPane,
+  stripPaneFlyIntent,
+} from "../model/paneAffordances";
+import { type CanvasPaneRef, cliLabel, type PaneContentRef } from "../model/paneRecords";
 import {
   DEFAULT_BOUNDS,
   INITIAL_STRATEGY_ID,
-  openPaneIds,
   planLayout,
   spawnPaneLayout,
-  UNFRAME_FLY_PANE_LIMIT,
 } from "./canvasLabLayout";
-import { dismissPane } from "./canvasLabPaneLifecycle";
 import { canvasLabPersistOptions } from "./canvasLabStore.persistence";
-import type { CanvasLabState, FramingState } from "./canvasLabTypes";
+import type { CanvasLabState } from "./canvasLabTypes";
 import { createCapturedRunKey } from "./capturedRunStore";
 
 const FRAME_MS = 320;
 const INITIAL_DEMO_PANE_COUNT = 4;
 
-export { UNFRAME_FLY_PANE_LIMIT } from "./canvasLabLayout";
-
-export function framedPaneId(framing: FramingState): PaneId | null {
-  return framing.paneId;
-}
+export { framedPaneId, UNFRAME_FLY_PANE_LIMIT } from "../model/paneAffordances";
 
 type CanvasLabValues = Pick<
   CanvasLabState,
@@ -49,10 +57,6 @@ type CanvasLabValues = Pick<
   | "docked"
   | "paneCounters"
 >;
-
-function emptyFraming(): FramingState {
-  return { paneId: null, overview: null };
-}
 
 function createEmptyCanvasLabValues(): CanvasLabValues {
   return {
@@ -92,6 +96,26 @@ function labelFor(
 ): { label: string; counters: Record<string, number> } {
   const next = (counters[prefix] ?? 0) + 1;
   return { label: `${prefix}-${next}`, counters: { ...counters, [prefix]: next } };
+}
+
+function labPaneRef(state: CanvasLabState, paneId: PaneId): CanvasPaneRef | null {
+  return state.contentRefs[paneId] ?? null;
+}
+
+function labDockedRef(ref: CanvasPaneRef | null): PaneContentRef | null {
+  return ref?.kind === "session-picker" ? null : (ref ?? null);
+}
+
+function applyLabPaneRemoval(
+  state: CanvasLabState,
+  plan: PaneDismissalPlan,
+  ref: CanvasPaneRef | null,
+  mode: PaneDismissMode,
+  paneId: PaneId,
+): Partial<CanvasLabState> {
+  const { [paneId]: _closed, ...contentRefs } = state.contentRefs;
+  const docked = mode === "minimize" ? parkDockedPane(state.docked, paneId, ref) : state.docked;
+  return { ...stripPaneFlyIntent(plan), contentRefs, docked };
 }
 
 export const useCanvasLabStore = create<CanvasLabState>()(
@@ -142,16 +166,30 @@ export const useCanvasLabStore = create<CanvasLabState>()(
       },
 
       minimizePane(paneId) {
-        // Minimize ([-]): park the pane in the dock and remove it. Generic across kinds — the resolved
+        // Minimize ([-]): park the pane in the dock and remove it. Generic across kinds, the resolved
         // onMinimize hook runs inside the close window (captured-run has none: its run keeps running and
         // the binding is kept, so restore re-attaches by id). The non-destructive counterpart to close.
-        dismissPane(useCanvasLabStore, paneId, "minimize", startFly);
+        dismissPane(useCanvasLabStore, {
+          paneId,
+          mode: "minimize",
+          getRef: labPaneRef,
+          applyRemoval: applyLabPaneRemoval,
+          onFly: startFlyForIntent,
+          planExpandedLayout: planExpandLayout,
+        });
       },
 
       closePane(paneId) {
-        // Close ([X]): remove the pane and run its onClose hook — destructive and terminal. The
+        // Close ([X]): remove the pane and run its onClose hook, destructive and terminal. The
         // captured-run hook kills the run (DELETE); panes with no hook are a plain remove.
-        dismissPane(useCanvasLabStore, paneId, "close", startFly);
+        dismissPane(useCanvasLabStore, {
+          paneId,
+          mode: "close",
+          getRef: labPaneRef,
+          applyRemoval: applyLabPaneRemoval,
+          onFly: startFlyForIntent,
+          planExpandedLayout: planExpandLayout,
+        });
       },
 
       restorePane(paneId) {
@@ -161,24 +199,25 @@ export const useCanvasLabStore = create<CanvasLabState>()(
         // the viewer; the dock entry is already cleared here, so we never seek a replacement.
         const entry = get().docked.find((docked) => docked.paneId === paneId);
         if (!entry) return;
+        const ref = labDockedRef(entry.ref);
         // Re-attach side effect through the seam (the inverse of minimize): a captured-run clears its
         // persisted `minimized` flag so a reload after restore reopens it as a pane, not docked. Plain
-        // panes declare no onRestore. Mirrors closeDockedPane's dispatch — zero kind=== branches here.
-        if (entry.ref) resolvePaneLifecycle(entry.ref).onRestore?.(entry.ref);
+        // panes declare no onRestore. Mirrors closeDockedPane's dispatch, zero kind=== branches here.
+        invokeDockedPaneRestoreLifecycle(entry);
         set((state) => ({
-          docked: state.docked.filter((docked) => docked.paneId !== paneId),
-          ...spawnPaneLayout(state, paneId, entry.ref),
+          docked: removeDockedPane(state.docked, paneId),
+          ...spawnPaneLayout(state, paneId, ref),
         }));
       },
 
       closeDockedPane(paneId) {
-        // Close/kill a docked pane in place — no restore. It is already off the canvas, so there is no
+        // Close/kill a docked pane in place, no restore. It is already off the canvas, so there is no
         // node teardown: just run its onClose hook (captured-run -> stopRun, DELETE; plain panes have
         // none, same seam as an on-canvas close) and drop the dock entry.
         const entry = get().docked.find((docked) => docked.paneId === paneId);
         if (!entry) return;
-        if (entry.ref) resolvePaneLifecycle(entry.ref).onClose?.(entry.ref);
-        set((state) => ({ docked: state.docked.filter((docked) => docked.paneId !== paneId) }));
+        invokeDockedPaneCloseLifecycle(entry);
+        set((state) => ({ docked: removeDockedPane(state.docked, paneId) }));
       },
 
       focusPane(paneId) {
@@ -225,90 +264,54 @@ export const useCanvasLabStore = create<CanvasLabState>()(
       },
 
       expandPane(paneId) {
-        const { layout, expandedPaneId } = get();
-        if (expandedPaneId === paneId) {
-          get().unexpand();
-          return;
-        }
-        if (!layout.nodes[paneId]) return;
-        if (openPaneIds(layout).length <= 1) return;
-        startFly({ paneMotion: true });
-        set((state) => ({
-          expandedPaneId: paneId,
-          framing: { paneId: null, overview: null },
-          layout: planLayout(
-            focusNode(state.layout, paneId),
-            state.bounds,
-            state.activeStrategyId,
-            state.params,
-            true,
-            paneId,
-          ),
-        }));
+        const transition = planPaneExpand(get(), paneId, planExpandLayout);
+        if (!transition) return;
+        startFlyForIntent(transition.fly);
+        set(stripPaneFlyIntent(transition));
       },
 
       unexpand() {
-        if (get().expandedPaneId === null) return;
-        startFly({ paneMotion: true });
-        set((state) => ({
-          expandedPaneId: null,
-          framing: { paneId: null, overview: null },
-          layout: planLayout(
-            state.layout,
-            state.bounds,
-            state.activeStrategyId,
-            state.params,
-            true,
-            null,
-          ),
-        }));
+        const transition = planPaneUnexpand(get(), planExpandLayout);
+        if (!transition) return;
+        startFlyForIntent(transition.fly);
+        set(stripPaneFlyIntent(transition));
       },
 
       framePane(paneId) {
-        const { layout, bounds, framing } = get();
-        // Re-framing the current pane toggles it off.
-        if (framing.paneId === paneId) {
-          get().unframe();
-          return;
-        }
-        if (openPaneIds(layout).length <= 1) return;
-        const node = layout.nodes[paneId];
-        if (!node) return;
-        startFly();
-        set((state) => ({
-          framing: {
-            paneId,
-            // Snapshot the pre-framing camera only when entering from the overview; switching frames keeps
-            // it so unframe still pans back out to where the user started, not to the previous frame.
-            overview: state.framing.overview ?? state.layout.viewport,
-          },
-          // Frame the pane and select it (white border).
-          layout: focusNode(
-            setEngineViewport(state.layout, frameRectViewport(node.rect, bounds)),
-            paneId,
-          ),
-        }));
+        const transition = planPaneFrame(get(), paneId);
+        if (!transition) return;
+        startFlyForIntent(transition.fly);
+        set(stripPaneFlyIntent(transition));
       },
 
       unframe() {
-        const { framing, layout } = get();
-        if (framing.paneId === null) return;
-        // Pan back out to the overview captured when framing began. Above the pane limit the camera snaps
-        // instead of flying, since animating the scaled world back out re-rasterizes every pane per frame.
-        if (openPaneIds(layout).length <= UNFRAME_FLY_PANE_LIMIT) startFly();
-        set((state) => ({
-          framing: { paneId: null, overview: null },
-          layout: setEngineViewport(state.layout, state.framing.overview ?? state.layout.viewport),
-        }));
+        const transition = planPaneUnframe(get());
+        if (!transition) return;
+        startFlyForIntent(transition.fly);
+        set(stripPaneFlyIntent(transition));
       },
 
       resetView() {
         startFly();
-        set((state) => ({
-          framing: { paneId: null, overview: null },
-          expandedPaneId: null,
-          layout: setEngineViewport(state.layout, { panX: 0, panY: 0, scale: 1 }),
-        }));
+        set((state) => {
+          const framing = emptyFraming();
+          const expandedPaneId = null;
+          return {
+            framing,
+            expandedPaneId,
+            layout: setEngineViewport(
+              planLayout(
+                state.layout,
+                state.bounds,
+                state.activeStrategyId,
+                state.params,
+                state.fitToContent,
+                expandedPaneId,
+              ),
+              { panX: 0, panY: 0, scale: 1 },
+            ),
+          };
+        });
       },
 
       setViewport(viewport) {
@@ -323,6 +326,11 @@ let flyTimer: number | null = null;
 
 interface FlyOptions {
   paneMotion?: boolean;
+}
+
+function startFlyForIntent(intent: PaneFlyIntent): void {
+  if (intent === "none") return;
+  startFly({ paneMotion: intent === "pane-motion" });
 }
 
 // Brief transition flags for camera fly and opt-in pane geometry motion.

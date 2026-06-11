@@ -1,9 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { PaneId, WorldRect } from "../../engine";
 import { resolveLayout } from "../../engine/layout";
 import { makeSessionSummary } from "../testUtils";
 import { PICKER_PANE_ID } from "../viewers/registry";
 import { resetCanvasStoreForTests, useCanvasStore } from "./canvasStore";
+import { planExpandLayout } from "./expandLayout";
 import { openPaneIds } from "./layoutPlanning";
 
 type CanvasStoreSnapshot = ReturnType<typeof useCanvasStore.getState>;
@@ -21,6 +22,20 @@ function expectRectsToMatchStrategy(state: CanvasStoreSnapshot): void {
   for (const [paneId, rect] of Object.entries(expected)) {
     expect(state.layout.nodes[paneId]?.rect).toEqual(rect);
   }
+}
+
+function expectNoFlyIntent(state: CanvasStoreSnapshot): void {
+  expect("fly" in state).toBe(false);
+}
+
+function rectsFor(state: CanvasStoreSnapshot): Record<PaneId, WorldRect> {
+  const rects: Record<PaneId, WorldRect> = {};
+  for (const paneId of openPaneIds(state.layout)) {
+    const rect = state.layout.nodes[paneId]?.rect;
+    if (!rect) throw new Error(`expected ${paneId} to have a rect`);
+    rects[paneId] = rect;
+  }
+  return rects;
 }
 
 describe("canvasStore", () => {
@@ -101,5 +116,115 @@ describe("canvasStore", () => {
     const state = useCanvasStore.getState();
     expect(Object.keys(state.panes).sort()).toEqual(["resource:abc:r1", "session-picker"]);
     expect(state.layout.focusedPaneId).toBe("resource:abc:r1");
+  });
+
+  it("minimizes a pane into the dock and restores it with a planned rect", () => {
+    vi.useFakeTimers();
+    try {
+      resetCanvasStoreForTests();
+      useCanvasStore
+        .getState()
+        .spawnOrFocusTranscript(
+          makeSessionSummary({ session_id: "session-abc", title: "Agent transcript" }),
+        );
+      useCanvasStore.getState().spawnPane({
+        kind: "resource",
+        owner: "local",
+        sessionId: "session-abc",
+        resourceId: "r1",
+      });
+
+      useCanvasStore.getState().minimizePane("transcript:session-abc");
+      vi.runAllTimers();
+
+      expect(useCanvasStore.getState().panes["transcript:session-abc"]).toBeUndefined();
+      expect(useCanvasStore.getState().layout.nodes["transcript:session-abc"]).toBeUndefined();
+      expect(useCanvasStore.getState().docked[0]?.record?.title).toBe("Agent transcript");
+      expectNoFlyIntent(useCanvasStore.getState());
+
+      useCanvasStore.getState().restorePane("transcript:session-abc");
+
+      const restored = useCanvasStore.getState();
+      expect(restored.docked).toEqual([]);
+      expect(restored.panes["transcript:session-abc"]?.title).toBe("Agent transcript");
+      expect(restored.layout.nodes["transcript:session-abc"]).toBeDefined();
+      expectRectsToMatchStrategy(restored);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("expands through the shared hero plus grid overflow planner and unexpands to the strategy", () => {
+    resetCanvasStoreForTests();
+    useCanvasStore.getState().spawnOrFocusTranscript(makeSessionSummary({ session_id: "abc" }));
+    useCanvasStore
+      .getState()
+      .spawnPane({ kind: "resource", owner: "local", sessionId: "abc", resourceId: "r1" });
+
+    useCanvasStore.getState().expandPane("transcript:abc");
+
+    const expanded = useCanvasStore.getState();
+    expectNoFlyIntent(expanded);
+    const paneIds = openPaneIds(expanded.layout);
+    const expected = planExpandLayout({
+      paneIds,
+      expandedPaneId: "transcript:abc",
+      viewport: expanded.bounds,
+    });
+    expect(expanded.expandedPaneId).toBe("transcript:abc");
+    for (const [paneId, rect] of Object.entries(expected.rects)) {
+      expect(expanded.layout.nodes[paneId]?.rect).toEqual(rect);
+    }
+    expect(expanded.layout.viewport).toEqual(expected.camera);
+
+    useCanvasStore.getState().unexpand();
+
+    const unexpanded = useCanvasStore.getState();
+    expectNoFlyIntent(unexpanded);
+    expect(unexpanded.expandedPaneId).toBeNull();
+    expectRectsToMatchStrategy(unexpanded);
+  });
+
+  it("guards expand for single, missing, and docked panes", () => {
+    vi.useFakeTimers();
+    try {
+      resetCanvasStoreForTests();
+      useCanvasStore.getState().expandPane(PICKER_PANE_ID);
+      expect(useCanvasStore.getState().expandedPaneId).toBeNull();
+
+      useCanvasStore.getState().spawnOrFocusTranscript(makeSessionSummary({ session_id: "abc" }));
+      useCanvasStore.getState().minimizePane("transcript:abc");
+      vi.runAllTimers();
+
+      useCanvasStore.getState().expandPane("transcript:abc");
+      expect(useCanvasStore.getState().expandedPaneId).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("frames by moving the camera only and unframes back to the overview", () => {
+    resetCanvasStoreForTests();
+    useCanvasStore.getState().spawnOrFocusTranscript(makeSessionSummary({ session_id: "abc" }));
+    useCanvasStore
+      .getState()
+      .spawnPane({ kind: "resource", owner: "local", sessionId: "abc", resourceId: "r1" });
+    const overview = useCanvasStore.getState().layout.viewport;
+    const rectsBefore = rectsFor(useCanvasStore.getState());
+
+    useCanvasStore.getState().framePane("transcript:abc");
+
+    const framed = useCanvasStore.getState();
+    expectNoFlyIntent(framed);
+    expect(framed.framing.paneId).toBe("transcript:abc");
+    expect(framed.layout.viewport).not.toEqual(overview);
+    expect(rectsFor(framed)).toEqual(rectsBefore);
+
+    useCanvasStore.getState().unframe();
+
+    expect(useCanvasStore.getState().framing.paneId).toBeNull();
+    expectNoFlyIntent(useCanvasStore.getState());
+    expect(useCanvasStore.getState().layout.viewport).toEqual(overview);
+    expect(rectsFor(useCanvasStore.getState())).toEqual(rectsBefore);
   });
 });

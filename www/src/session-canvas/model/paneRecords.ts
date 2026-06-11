@@ -81,11 +81,16 @@ export type PaneContentRef =
 /**
  * A pane removed from the canvas but retained locally so the dock can restore it (Option A: local
  * minimized state only, no `/api/runs`). `ref` is the viewer ref to re-seed on restore; `null` for
- * demo card/ruler stubs that carry no ref (the node is re-created from the pane id alone).
+ * demo card/ruler stubs that carry no ref (the node is re-created from the pane id alone). Production
+ * may also park the full PaneRecord so restore preserves user-facing pane metadata exactly.
  */
 export interface DockedPane {
   paneId: PaneId;
-  ref: PaneContentRef | null;
+  ref: CanvasPaneRef | null;
+  /** Production /canvas parks the full record so restore keeps its exact title and timestamps. */
+  record?: PaneRecord;
+  /** True for protected chrome panes that may restore but not be killed from the dock. */
+  closeDisabled?: boolean;
 }
 
 /** The built-in session picker is canvas chrome, not transcript content. */
@@ -128,11 +133,19 @@ export function isPaneContentRef(value: unknown): value is PaneContentRef {
   }
 }
 
-export function isDockedPane(value: unknown): value is DockedPane {
+export function isCanvasPaneRef(value: unknown): value is CanvasPaneRef {
   return (
-    isRecord(value) &&
+    (isRecord(value) && value.kind === "session-picker" && hasLocalOwner(value)) ||
+    isPaneContentRef(value)
+  );
+}
+
+export function isDockedPane(value: unknown): value is DockedPane {
+  if (!isRecord(value)) return false;
+  return (
     typeof value.paneId === "string" &&
-    (value.ref === null || isPaneContentRef(value.ref))
+    (value.ref === null || isCanvasPaneRef(value.ref)) &&
+    (value.closeDisabled === undefined || typeof value.closeDisabled === "boolean")
   );
 }
 

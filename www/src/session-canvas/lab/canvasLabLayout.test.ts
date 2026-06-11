@@ -9,8 +9,6 @@ import {
   type WorldRect,
 } from "../../engine";
 import { resolveLayout } from "../../engine/layout";
-import { planLayout } from "./canvasLabLayout";
-import { resetCanvasLabStoreForTests, useCanvasLabStore } from "./canvasLabStore";
 import {
   composeExpandFrame,
   EXPAND_REMAINDER_STRATEGY_ID,
@@ -18,7 +16,9 @@ import {
   splitExpandColumns,
   translateRect,
   translateRects,
-} from "./expandLayout";
+} from "../model/expandLayout";
+import { planLayout } from "./canvasLabLayout";
+import { resetCanvasLabStoreForTests, useCanvasLabStore } from "./canvasLabStore";
 
 const BOUNDS: ViewportBounds = { width: 1000, height: 700 };
 const HERO_ID = "hero";

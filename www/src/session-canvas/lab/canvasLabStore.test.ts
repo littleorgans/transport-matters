@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { resolveLayout } from "../../engine/layout";
 import {
   framedPaneId,
   resetCanvasLabStoreForTests,
@@ -505,6 +506,7 @@ describe("canvasLabStore expand", () => {
       expect(store().expandedPaneId).toBe("lab-1");
       expect(store().flying).toBe(true);
       expect(store().paneMotion).toBe(true);
+      expect("fly" in store()).toBe(false);
 
       vi.advanceTimersByTime(1000);
       expect(store().flying).toBe(false);
@@ -514,6 +516,39 @@ describe("canvasLabStore expand", () => {
       expect(store().expandedPaneId).toBeNull();
       expect(store().flying).toBe(true);
       expect(store().paneMotion).toBe(true);
+      expect("fly" in store()).toBe(false);
+    } finally {
+      resetCanvasLabStoreForTests();
+      vi.useRealTimers();
+    }
+  });
+
+  it("resetView replans expanded panes back to the active strategy", () => {
+    vi.useFakeTimers();
+    try {
+      resetCanvasLabStoreForTests();
+      store().addPane(); // lab-1
+      store().addPane(); // lab-2
+      store().addPane(); // lab-3
+      const paneIds = ["lab-1", "lab-2", "lab-3"];
+      const strategyRects = resolveLayout(store().activeStrategyId).plan(
+        { paneIds, viewport: store().bounds },
+        store().params,
+      ).rects;
+
+      store().expandPane("lab-1");
+      expect(store().expandedPaneId).toBe("lab-1");
+      expect(store().layout.nodes["lab-1"]?.rect).not.toEqual(strategyRects["lab-1"]);
+      store().setViewport({ panX: -120, panY: -80, scale: 0.6 });
+
+      store().resetView();
+
+      expect(store().expandedPaneId).toBeNull();
+      expect("fly" in store()).toBe(false);
+      expect(store().layout.viewport).toEqual({ panX: 0, panY: 0, scale: 1 });
+      for (const paneId of paneIds) {
+        expect(store().layout.nodes[paneId]?.rect).toEqual(strategyRects[paneId]);
+      }
     } finally {
       resetCanvasLabStoreForTests();
       vi.useRealTimers();

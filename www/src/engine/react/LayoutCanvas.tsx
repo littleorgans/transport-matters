@@ -17,8 +17,7 @@ export interface LayoutCanvasProps extends CanvasViewportActions {
   // Optional: lets panes transform between world rects during explicit layout mode changes.
   paneMotion?: boolean;
   // Optional screen-space overlay rendered inside .canvas-viewport, over .canvas-world. Fixed to
-  // the viewport so it is immune to pan/zoom and to command-bar visibility (survives the TAB hide).
-  // The lab feeds the pane dock through here; /canvas omits it, so production is unchanged.
+  // the viewport so it is immune to pan/zoom and to command-bar visibility.
   overlay?: React.ReactNode;
 }
 

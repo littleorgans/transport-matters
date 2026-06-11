@@ -108,7 +108,7 @@ describe("CanvasLabRoute captured-run spawn buttons", () => {
   it("restores a persisted open captured-run pane onto the canvas after a reload", async () => {
     // After S3 a browser reload rehydrates the lab store's own record set: a previously-open captured
     // pane comes back ON THE CANVAS at its key carrying its label, and re-attaches to its kept runId
-    // (capturedRunStore) instead of re-spawning — no mount-time reconcile in the route.
+    // (capturedRunStore) instead of re-spawning; no mount-time reconcile in the route.
     seedCapabilities({ claude: true, codex: true });
     seedPersistedLab(
       {
@@ -173,6 +173,35 @@ describe("CanvasLabRoute captured-run spawn buttons", () => {
     expect(screen.getByRole("button", { name: "Minimized panes, 3" })).toBeInTheDocument();
   });
 
+  it("resets a stale cache with legacy pane refs before mounting the route", async () => {
+    seedCapabilities({ claude: true, codex: true });
+    seedPersistedLab(
+      {
+        contentRefs: {
+          "lab-1": { kind: "session", owner: "local", sessionId: "legacy-session" },
+        },
+        paneRects: { "lab-1": SEED_RECT },
+        docked: [],
+        activeStrategyId: "grid-fit",
+        params: {},
+        fitToContent: true,
+        expandedPaneId: null,
+        paneCounters: {},
+        nextPaneIndex: 1,
+      },
+      {},
+    );
+
+    await useCanvasLabStore.persist.rehydrate();
+
+    render(<CanvasLabRoute />);
+
+    expect(screen.getByRole("toolbar", { name: "Canvas lab controls" })).toBeInTheDocument();
+    expect(useCanvasLabStore.getState().contentRefs).toEqual({});
+    expect(useCanvasLabStore.getState().layout.nodes).toEqual({});
+    expect(useCanvasLabStore.getState().docked).toEqual([]);
+  });
+
   it("keeps the dock visible when the lab top bar is TAB-hidden", () => {
     seedCapabilities({ claude: true, codex: true });
     render(<CanvasLabRoute />);
@@ -187,7 +216,7 @@ describe("CanvasLabRoute captured-run spawn buttons", () => {
     expect(screen.getByRole("button", { name: "Minimized panes, 1" })).toBeInTheDocument();
 
     // TAB hides the command bar; the dock lives in the canvas viewport overlay (not the bar), so it
-    // persists — the operator can still restore a minimized pane in cockpit mode.
+    // persists, so the operator can still restore a minimized pane in cockpit mode.
     act(() => {
       fireEvent.keyDown(window, { key: "Tab" });
     });
