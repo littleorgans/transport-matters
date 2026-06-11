@@ -3,12 +3,6 @@
 .canvas-route-shell {
   position: fixed;
   inset: 0;
-  /* Above the desktop title-bar drag strip (window-drag-region, z-1000): fixed positioning
-     makes this shell a stacking context, so interior z-indexes (dock 1900) can never cross
-     the strip from inside, and the strip hit-tests over the canvas top band. The strip stays
-     functional underneath: OS window-drag comes from the app-region map, not DOM events,
-     and the dock's no-drag carve-outs (pane-dock.css) exempt exactly its own pixels. */
-  z-index: 1001;
   overflow: hidden;
   background:
     radial-gradient(circle at 20% 18%, rgb(var(--accent-rgb) / 0.08), transparent 28%),
