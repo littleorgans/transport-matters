@@ -9,6 +9,22 @@ export function cliLabel(provider: CliName): string {
   return CLI_LABELS[provider];
 }
 
+export function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isOptionalString(value: unknown): value is string | undefined {
+  return value === undefined || typeof value === "string";
+}
+
+function hasLocalOwner(ref: Record<string, unknown>): boolean {
+  return ref.owner === "local";
+}
+
+function isCliName(value: unknown): value is CliName {
+  return value === "claude" || value === "codex";
+}
+
 export type CanvasId = string;
 export type ViewerId =
   | "session-picker"
@@ -77,6 +93,48 @@ export type PickerPaneRef = { kind: "session-picker"; owner: "local" };
 
 /** Every pane the canvas manages: the picker plus opened transcript content. */
 export type CanvasPaneRef = PickerPaneRef | PaneContentRef;
+
+export function isPaneContentRef(value: unknown): value is PaneContentRef {
+  if (!isRecord(value) || !hasLocalOwner(value)) return false;
+  switch (value.kind) {
+    case "session-timeline":
+      return typeof value.sessionId === "string";
+    case "subagent-timeline":
+      return (
+        typeof value.sessionId === "string" &&
+        typeof value.subagentId === "string" &&
+        typeof value.parentSessionId === "string" &&
+        (typeof value.parentSeq === "number" || value.parentSeq === null) &&
+        typeof value.title === "string"
+      );
+    case "resource":
+      return typeof value.sessionId === "string" && typeof value.resourceId === "string";
+    case "provider-exchange":
+      return (
+        typeof value.sessionId === "string" &&
+        typeof value.exchangeId === "string" &&
+        isOptionalString(value.initialView)
+      );
+    case "terminal":
+      return isOptionalString(value.label);
+    case "captured-run":
+      return (
+        isCliName(value.provider) &&
+        typeof value.runKey === "string" &&
+        isOptionalString(value.label)
+      );
+    default:
+      return false;
+  }
+}
+
+export function isDockedPane(value: unknown): value is DockedPane {
+  return (
+    isRecord(value) &&
+    typeof value.paneId === "string" &&
+    (value.ref === null || isPaneContentRef(value.ref))
+  );
+}
 
 /**
  * The pre-slice-3 transcript ref shape. Accepted at the spawn boundary and

@@ -25,11 +25,63 @@ import type { CanvasLabState, FramingState } from "./canvasLabTypes";
 import { createCapturedRunKey } from "./capturedRunStore";
 
 const FRAME_MS = 320;
+const INITIAL_DEMO_PANE_COUNT = 4;
 
 export { UNFRAME_FLY_PANE_LIMIT } from "./canvasLabLayout";
 
 export function framedPaneId(framing: FramingState): PaneId | null {
   return framing.paneId;
+}
+
+type CanvasLabValues = Pick<
+  CanvasLabState,
+  | "layout"
+  | "bounds"
+  | "activeStrategyId"
+  | "params"
+  | "fitToContent"
+  | "framing"
+  | "expandedPaneId"
+  | "flying"
+  | "paneMotion"
+  | "nextPaneIndex"
+  | "contentRefs"
+  | "docked"
+  | "paneCounters"
+>;
+
+function emptyFraming(): FramingState {
+  return { paneId: null, overview: null };
+}
+
+function createEmptyCanvasLabValues(): CanvasLabValues {
+  return {
+    layout: createInitialEngineLayoutState(),
+    bounds: DEFAULT_BOUNDS,
+    activeStrategyId: INITIAL_STRATEGY_ID,
+    params: seedParams(INITIAL_STRATEGY_ID),
+    fitToContent: true,
+    framing: emptyFraming(),
+    expandedPaneId: null,
+    flying: false,
+    paneMotion: false,
+    nextPaneIndex: 0,
+    contentRefs: {},
+    docked: [],
+    paneCounters: {},
+  };
+}
+
+function createInitialCanvasLabValues(): CanvasLabValues {
+  let seeded = createEmptyCanvasLabValues();
+  for (let index = 1; index <= INITIAL_DEMO_PANE_COUNT; index += 1) {
+    seeded = {
+      ...seeded,
+      nextPaneIndex: index,
+      ...spawnPaneLayout(seeded, `lab-${index}`, null),
+    };
+  }
+  return seeded;
 }
 
 // Next incremental label for a prefix ("Terminal" | "Claude" | "Codex"), plus the bumped counter
@@ -45,19 +97,7 @@ function labelFor(
 export const useCanvasLabStore = create<CanvasLabState>()(
   persist(
     (set, get) => ({
-      layout: createInitialEngineLayoutState(),
-      bounds: DEFAULT_BOUNDS,
-      activeStrategyId: INITIAL_STRATEGY_ID,
-      params: seedParams(INITIAL_STRATEGY_ID),
-      fitToContent: true,
-      framing: { paneId: null, overview: null },
-      expandedPaneId: null,
-      flying: false,
-      paneMotion: false,
-      nextPaneIndex: 0,
-      contentRefs: {},
-      docked: [],
-      paneCounters: {},
+      ...createInitialCanvasLabValues(),
 
       addPane() {
         set((state) => {
@@ -301,19 +341,5 @@ function startFly(options: FlyOptions = {}): void {
 export function resetCanvasLabStoreForTests(): void {
   if (flyTimer !== null) window.clearTimeout(flyTimer);
   flyTimer = null;
-  useCanvasLabStore.setState({
-    layout: createInitialEngineLayoutState(),
-    bounds: DEFAULT_BOUNDS,
-    activeStrategyId: INITIAL_STRATEGY_ID,
-    params: seedParams(INITIAL_STRATEGY_ID),
-    fitToContent: true,
-    framing: { paneId: null, overview: null },
-    expandedPaneId: null,
-    flying: false,
-    paneMotion: false,
-    nextPaneIndex: 0,
-    contentRefs: {},
-    docked: [],
-    paneCounters: {},
-  });
+  useCanvasLabStore.setState(createEmptyCanvasLabValues());
 }
