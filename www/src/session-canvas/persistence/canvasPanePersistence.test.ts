@@ -32,6 +32,22 @@ function emptySeedState() {
   };
 }
 
+function seededSeedState() {
+  let seeded = seedPaneFromRecord(emptySeedState(), "lab-1", null, {
+    x: 0,
+    y: 0,
+    width: 360,
+    height: 280,
+  });
+  seeded = seedPaneFromRecord(seeded, "lab-2", terminalRef, {
+    x: 400,
+    y: 0,
+    width: 360,
+    height: 280,
+  });
+  return seeded;
+}
+
 function emptySeedCanvasState() {
   return {
     ...emptySeedState(),
@@ -42,7 +58,112 @@ function emptySeedCanvasState() {
   };
 }
 
+function seededSeedCanvasState() {
+  return {
+    ...seededSeedState(),
+    activeStrategyId: "single-row",
+    params: seedParams("single-row"),
+    fitToContent: false,
+    expandedPaneId: "lab-1",
+  };
+}
+
 describe("canvas pane persistence", () => {
+  it("preserves current seeded panes when no persisted payload exists", () => {
+    const current = seededSeedState();
+
+    for (const payload of [undefined, {}]) {
+      const rebuilt = rebuildPersistedPanes(payload, current);
+
+      expect(rebuilt.layout).toBe(current.layout);
+      expect(rebuilt.contentRefs).toBe(current.contentRefs);
+      expect(Object.keys(rebuilt.layout.nodes).sort()).toEqual(["lab-1", "lab-2"]);
+      expect(rebuilt.docked).toEqual([]);
+    }
+  });
+
+  it("hydrates a valid empty persisted pane payload as an empty canvas", () => {
+    const current = seededSeedState();
+    const rebuilt = rebuildPersistedPanes(
+      {
+        contentRefs: {},
+        paneRects: {},
+        docked: [],
+      },
+      current,
+    );
+
+    expect(rebuilt.layout).not.toBe(current.layout);
+    expect(rebuilt.contentRefs).toEqual({});
+    expect(rebuilt.layout.focusedPaneId).toBeNull();
+    expect(rebuilt.layout.nodes).toEqual({});
+    expect(rebuilt.docked).toEqual([]);
+  });
+
+  it("resets non-record and malformed pane payloads without throwing", () => {
+    const current = seededSeedState();
+    const malformedPayloads: unknown[] = [
+      "bad-payload",
+      [],
+      {
+        contentRefs: [],
+        paneRects: {},
+        docked: [],
+      },
+      {
+        contentRefs: {},
+        paneRects: [],
+        docked: [],
+      },
+      {
+        contentRefs: {},
+        paneRects: {},
+        docked: {},
+      },
+    ];
+
+    for (const payload of malformedPayloads) {
+      let rebuilt: ReturnType<typeof rebuildPersistedPanes> | undefined;
+
+      expect(() => {
+        rebuilt = rebuildPersistedPanes(payload, current);
+      }).not.toThrow();
+
+      expect(rebuilt?.contentRefs).toEqual({});
+      expect(rebuilt?.layout.focusedPaneId).toBeNull();
+      expect(rebuilt?.layout.nodes).toEqual({});
+      expect(rebuilt?.docked).toEqual([]);
+    }
+  });
+
+  it("preserves current canvas view state when no persisted payload exists", () => {
+    const current = seededSeedCanvasState();
+    const rebuilt = rebuildPersistedCanvasState({}, current);
+
+    expect(rebuilt.layout).toBe(current.layout);
+    expect(rebuilt.contentRefs).toBe(current.contentRefs);
+    expect(rebuilt.activeStrategyId).toBe(current.activeStrategyId);
+    expect(rebuilt.params).toBe(current.params);
+    expect(rebuilt.fitToContent).toBe(false);
+    expect(rebuilt.expandedPaneId).toBe("lab-1");
+  });
+
+  it("resets stale pane payloads instead of hydrating invalid refs", () => {
+    const current = seededSeedState();
+    const stalePayload: unknown = {
+      contentRefs: { "lab-1": { kind: "session", owner: "local", sessionId: "legacy" } },
+      paneRects: { "lab-1": { x: 0, y: 0, width: 360, height: 280 } },
+      docked: [],
+    };
+
+    const rebuilt = rebuildPersistedPanes(stalePayload, current);
+
+    expect(rebuilt.contentRefs).toEqual({});
+    expect(rebuilt.layout.focusedPaneId).toBeNull();
+    expect(rebuilt.layout.nodes).toEqual({});
+    expect(rebuilt.docked).toEqual([]);
+  });
+
   it("rebuilds open pane records for demo, terminal, and captured-run panes", () => {
     const persisted = {
       contentRefs: {

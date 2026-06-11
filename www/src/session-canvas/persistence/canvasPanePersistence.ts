@@ -7,7 +7,13 @@ import {
   type WorldRect,
 } from "../../engine";
 import { type LayoutParams, type ParamValue, sanitizeParam, seedParams } from "../../engine/layout";
-import type { DockedPane, PaneContentRef } from "../model/paneRecords";
+import {
+  type DockedPane,
+  isDockedPane,
+  isPaneContentRef,
+  isRecord,
+  type PaneContentRef,
+} from "../model/paneRecords";
 
 export interface PersistedCanvasPanes {
   contentRefs: Record<PaneId, PaneContentRef>;
@@ -27,6 +33,7 @@ export interface PersistedCanvasState extends PersistedCanvasPanes, PersistedCan
 interface SeedPaneState {
   contentRefs: Record<PaneId, PaneContentRef>;
   layout: EngineLayoutState;
+  docked?: DockedPane[];
 }
 
 interface SeedCanvasState extends SeedPaneState, PersistedCanvasView {}
@@ -71,23 +78,106 @@ export function rebuildPersistedPanes(
   persisted: unknown,
   current: SeedPaneState,
 ): RebuiltCanvasPanes {
-  const saved = (persisted ?? {}) as Partial<PersistedCanvasPanes>;
-  const contentRefs = saved.contentRefs ?? {};
-  const paneRects = saved.paneRects ?? {};
+  const saved = readPersistedPanes(persisted);
+  return rebuildPersistedPanesFromSaved(saved, current);
+}
+
+function rebuildPersistedPanesFromSaved(
+  saved: PersistedCanvasPanes | null | undefined,
+  current: SeedPaneState,
+): RebuiltCanvasPanes {
+  if (saved === undefined) return currentPanes(current);
+  if (saved === null) return resetPanes(current);
+
   let seeded: SeedPaneState = {
     contentRefs: {},
     layout: { ...current.layout, focusedPaneId: null, nodes: {} },
   };
 
-  for (const [paneId, rect] of Object.entries(paneRects)) {
-    seeded = seedPaneFromRecord(seeded, paneId, contentRefs[paneId] ?? null, rect);
+  for (const [paneId, rect] of Object.entries(saved.paneRects)) {
+    seeded = seedPaneFromRecord(seeded, paneId, saved.contentRefs[paneId] ?? null, rect);
   }
 
   return {
     contentRefs: seeded.contentRefs,
     layout: seeded.layout,
-    docked: saved.docked ?? [],
+    docked: saved.docked,
   };
+}
+
+function currentPanes(current: SeedPaneState): RebuiltCanvasPanes {
+  return {
+    contentRefs: current.contentRefs,
+    layout: current.layout,
+    docked: current.docked ?? [],
+  };
+}
+
+function resetPanes(current: SeedPaneState): RebuiltCanvasPanes {
+  return {
+    contentRefs: {},
+    layout: { ...current.layout, focusedPaneId: null, nodes: {} },
+    docked: [],
+  };
+}
+
+function readPersistedPanes(persisted: unknown): PersistedCanvasPanes | null | undefined {
+  if (persisted === undefined || persisted === null) return undefined;
+  if (!isRecord(persisted)) return null;
+  if (!hasPersistedPanePayload(persisted)) return undefined;
+
+  const contentRefs = readContentRefs(persisted.contentRefs);
+  const paneRects = readPaneRects(persisted.paneRects);
+  const docked = readDockedPanes(persisted.docked);
+  if (!contentRefs || !paneRects || !docked) return null;
+  return { contentRefs, paneRects, docked };
+}
+
+function hasPersistedPanePayload(value: Record<string, unknown>): boolean {
+  return "contentRefs" in value || "paneRects" in value || "docked" in value;
+}
+
+function readContentRefs(value: unknown): Record<PaneId, PaneContentRef> | null {
+  if (value === undefined) return {};
+  if (!isRecord(value)) return null;
+  const contentRefs: Record<PaneId, PaneContentRef> = {};
+  for (const [paneId, ref] of Object.entries(value)) {
+    if (!isPaneContentRef(ref)) return null;
+    contentRefs[paneId] = ref;
+  }
+  return contentRefs;
+}
+
+function readPaneRects(value: unknown): Record<PaneId, WorldRect> | null {
+  if (value === undefined) return {};
+  if (!isRecord(value)) return null;
+  const rects: Record<PaneId, WorldRect> = {};
+  for (const [paneId, rect] of Object.entries(value)) {
+    if (!isWorldRect(rect)) return null;
+    rects[paneId] = rect;
+  }
+  return rects;
+}
+
+function readDockedPanes(value: unknown): DockedPane[] | null {
+  if (value === undefined) return [];
+  if (!Array.isArray(value)) return null;
+  const docked: DockedPane[] = [];
+  for (const entry of value) {
+    if (!isDockedPane(entry)) return null;
+    docked.push(entry);
+  }
+  return docked;
+}
+
+function isWorldRect(value: unknown): value is WorldRect {
+  if (!isRecord(value)) return false;
+  return (
+    Number.isFinite(value.x) &&
+    Number.isFinite(value.y) &&
+    Number.isFinite(value.width) &&
+    Number.isFinite(value.height)
+  );
 }
 
 function canResolveStrategy(strategyId: string): boolean {
@@ -142,8 +232,27 @@ export function rebuildPersistedCanvasState(
   persisted: unknown,
   current: SeedCanvasState,
 ): RebuiltCanvasState {
-  const saved = (persisted ?? {}) as Partial<PersistedCanvasState>;
-  const panes = rebuildPersistedPanes(saved, current);
+  const saved = isRecord(persisted) ? (persisted as Partial<PersistedCanvasState>) : {};
+  const persistedPanes = readPersistedPanes(persisted);
+  const panes = rebuildPersistedPanesFromSaved(persistedPanes, current);
+  if (persistedPanes === undefined) {
+    return {
+      ...panes,
+      activeStrategyId: current.activeStrategyId,
+      params: current.params,
+      fitToContent: current.fitToContent,
+      expandedPaneId: current.expandedPaneId,
+    };
+  }
+  if (persistedPanes === null) {
+    return {
+      ...panes,
+      activeStrategyId: current.activeStrategyId,
+      params: current.params,
+      fitToContent: current.fitToContent,
+      expandedPaneId: null,
+    };
+  }
   const openPaneIds = Object.values(panes.layout.nodes)
     .filter((node) => node.lifecycle === "open")
     .map((node) => node.paneId);
