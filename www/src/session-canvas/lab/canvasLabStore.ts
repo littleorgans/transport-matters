@@ -8,6 +8,7 @@ import {
   setViewport as setEngineViewport,
   updateNodeRect,
 } from "../../engine";
+import { sanitizeParam, seedParams } from "../../engine/layout";
 import { resolvePaneLifecycle } from "../model/paneLifecycle";
 import { cliLabel } from "../model/paneRecords";
 import {
@@ -15,8 +16,6 @@ import {
   INITIAL_STRATEGY_ID,
   openPaneIds,
   planLayout,
-  sanitizeParam,
-  seedParams,
   spawnPaneLayout,
   UNFRAME_FLY_PANE_LIMIT,
 } from "./canvasLabLayout";

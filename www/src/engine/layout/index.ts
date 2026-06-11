@@ -5,5 +5,6 @@ import.meta.glob("./strategies/*.ts", { eager: true });
 
 export * from "./configs";
 export * from "./fit";
+export * from "./params";
 export * from "./registry";
 export * from "./types";

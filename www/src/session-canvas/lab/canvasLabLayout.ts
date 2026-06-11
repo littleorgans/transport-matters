@@ -13,7 +13,6 @@ import {
   fitScale,
   type LayoutParams,
   listLayouts,
-  type ParamValue,
   resolveLayout,
 } from "../../engine/layout";
 import type { PaneContentRef } from "../model/paneRecords";
@@ -44,30 +43,6 @@ export function openPaneIds(layout: EngineLayoutState): PaneId[] {
   return Object.values(layout.nodes)
     .filter((node) => node.lifecycle === "open")
     .map((node) => node.paneId);
-}
-
-export function seedParams(strategyId: string): LayoutParams {
-  return { ...resolveLayout(strategyId).defaults };
-}
-
-// Returns a valid, in-range value, or undefined when the (key, value) is not a valid edit for the
-// active strategy (unknown key, wrong runtime type, or out-of-range enum) so setParam ignores it.
-export function sanitizeParam(
-  strategyId: string,
-  key: string,
-  value: ParamValue,
-): ParamValue | undefined {
-  const control = resolveLayout(strategyId).controls.find((entry) => entry.key === key);
-  if (!control) return undefined; // unknown key
-  if (control.kind === "number") {
-    if (typeof value !== "number" || !Number.isFinite(value)) return undefined;
-    return Math.min(control.max, Math.max(control.min, value));
-  }
-  if (control.kind === "toggle") {
-    return typeof value === "boolean" ? value : undefined;
-  }
-  if (typeof value !== "string") return undefined;
-  return control.options.some((option) => option.value === value) ? value : undefined;
 }
 
 function boundingBox(rects: Record<PaneId, WorldRect>): WorldRect | null {

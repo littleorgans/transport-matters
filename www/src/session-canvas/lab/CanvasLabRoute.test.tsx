@@ -4,6 +4,7 @@ import { FRONTEND_STORAGE_KEYS } from "../../stores/persistence";
 import type { CliCapability, CliName } from "../../types";
 import { CanvasLabRoute } from "./CanvasLabRoute";
 import { resetCanvasLabStoreForTests, useCanvasLabStore } from "./canvasLabStore";
+import { CANVAS_LAB_STORAGE_VERSION } from "./canvasLabStore.persistence";
 import { resetCapabilitiesStoreForTests, useCapabilitiesStore } from "./capabilitiesStore";
 import { resetCapturedRunStoreForTests, useCapturedRunStore } from "./capturedRunStore";
 
@@ -45,7 +46,7 @@ function seedPersistedLab(
 ): void {
   localStorage.setItem(
     FRONTEND_STORAGE_KEYS.canvasLabStore,
-    JSON.stringify({ version: 1, state: labState }),
+    JSON.stringify({ version: CANVAS_LAB_STORAGE_VERSION, state: labState }),
   );
   localStorage.setItem(
     FRONTEND_STORAGE_KEYS.capturedRunStore,
