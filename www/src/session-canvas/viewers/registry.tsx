@@ -70,8 +70,11 @@ const registry: ViewerRegistration[] = [
   defineViewer<ResourceRef>({
     id: "resource",
     canRender: (ref): ref is ResourceRef => ref.kind === "resource",
-    paneId: (ref) => `${RESOURCE_PANE_PREFIX}${ref.sessionId}:${ref.resourceId}`,
-    title: (ref) => `Resource ${ref.resourceId.slice(0, 8)}`,
+    paneId: (ref) =>
+      "source" in ref
+        ? `${RESOURCE_PANE_PREFIX}${ref.source}:${ref.source === "path" ? ref.path : ref.url}`
+        : `${RESOURCE_PANE_PREFIX}${ref.sessionId}:${ref.resourceId}`,
+    title: (ref) => resourceRefTitle(ref),
     render: (props) => <ResourcePane {...props} />,
   }),
   defineViewer<ExchangeRef>({
@@ -132,6 +135,14 @@ const registry: ViewerRegistration[] = [
     render: (props) => <PlaceholderPane {...props} />,
   }),
 ];
+
+/** Locator refs title by their file name; db refs keep the short-id title. */
+function resourceRefTitle(ref: ResourceRef): string {
+  if (!("source" in ref)) return `Resource ${ref.resourceId.slice(0, 8)}`;
+  const locator = ref.source === "path" ? ref.path : ref.url;
+  const tail = locator.split("/").filter(Boolean).at(-1);
+  return tail ?? locator;
+}
 
 export function registerViewer(viewer: ViewerRegistration): void {
   const existingIndex = registry.findIndex((entry) => entry.id === viewer.id);

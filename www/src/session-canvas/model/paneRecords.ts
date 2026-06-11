@@ -68,6 +68,8 @@ export type PaneContentRef =
       title: string;
     }
   | { kind: "resource"; owner: "local"; sessionId: string; resourceId: string }
+  | { kind: "resource"; owner: "local"; source: "path"; path: string }
+  | { kind: "resource"; owner: "local"; source: "url"; url: string }
   | {
       kind: "provider-exchange";
       owner: "local";
@@ -113,6 +115,12 @@ export function isPaneContentRef(value: unknown): value is PaneContentRef {
         typeof value.title === "string"
       );
     case "resource":
+      if ("source" in value) {
+        return (
+          (value.source === "path" && typeof value.path === "string") ||
+          (value.source === "url" && typeof value.url === "string")
+        );
+      }
       return typeof value.sessionId === "string" && typeof value.resourceId === "string";
     case "provider-exchange":
       return (
