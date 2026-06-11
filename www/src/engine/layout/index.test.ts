@@ -7,6 +7,7 @@ describe("layout strategy auto-discovery (extensibility proof)", () => {
   it("registers every strategy file with zero other edits", () => {
     const registeredIds = listLayouts().map((strategy) => strategy.id);
     expect(registeredIds).toContain("grid-fit");
+    expect(registeredIds).toContain("grid-overflow");
     expect(registeredIds).toContain("single-row");
   });
 
