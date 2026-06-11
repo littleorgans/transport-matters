@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import asyncio
 import os
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, cast, get_args
 
 import pytest
 from fastapi.testclient import TestClient
@@ -22,7 +23,7 @@ from transport_matters.captured_run import (
 from transport_matters.config import Settings
 from transport_matters.main import create_app
 from transport_matters.pty_session import TerminalPty, spawn_pty_process
-from transport_matters.run_manager import RunManager, RunState
+from transport_matters.run_manager import RunManager, RunManagerErrorCode, RunState
 from transport_matters.test_run_manager import (
     PreparedRunHarness,
     PtyHarness,
@@ -98,6 +99,32 @@ def test_post_get_attach_detach_and_delete(monkeypatch: pytest.MonkeyPatch, tmp_
             "state": "exited",
             "stopReason": "explicit-stop",
         }
+
+
+def test_delete_run_is_idempotent(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    harness = ManagedRunHarness(tmp_path, monkeypatch)
+    client = _client(monkeypatch, tmp_path)
+
+    with client:
+        run_id = client.post(
+            "/api/runs",
+            json={"cli": "claude", "cwd": str(tmp_path)},
+            headers=_http_headers(BACKEND_ORIGIN),
+        ).json()["run"]["runId"]
+
+        first = client.delete(
+            f"/api/runs/{run_id}",
+            headers=_http_headers(BACKEND_ORIGIN),
+        )
+        second = client.delete(
+            f"/api/runs/{run_id}",
+            headers=_http_headers(BACKEND_ORIGIN),
+        )
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert first.json() == second.json()
+    assert harness.prepared.leases[0].close_count == 1
 
 
 def test_post_rejects_origin_before_spawn(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -188,6 +215,46 @@ def test_websocket_unknown_run_sends_error_and_closes(
         }
 
 
+def test_websocket_stopped_run_sends_typed_error(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    ManagedRunHarness(tmp_path, monkeypatch)
+    client = _client(monkeypatch, tmp_path)
+
+    with client:
+        run_id = client.post(
+            "/api/runs",
+            json={"cli": "claude", "cwd": str(tmp_path)},
+            headers=_http_headers(BACKEND_ORIGIN),
+        ).json()["run"]["runId"]
+        client.delete(f"/api/runs/{run_id}", headers=_http_headers(BACKEND_ORIGIN))
+        with client.websocket_connect(
+            f"/api/runs/{run_id}/terminal",
+            headers=_websocket_headers(BACKEND_ORIGIN),
+        ) as websocket:
+            assert websocket.receive_json()["code"] == "run_stopped"
+
+
+def test_websocket_stale_run_sends_typed_error(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    harness = ManagedRunHarness(tmp_path, monkeypatch)
+    client = _client(monkeypatch, tmp_path)
+
+    with client:
+        run_id = client.post(
+            "/api/runs",
+            json={"cli": "claude", "cwd": str(tmp_path)},
+            headers=_http_headers(BACKEND_ORIGIN),
+        ).json()["run"]["runId"]
+        harness.pty.close_master(harness.manager.get(run_id).terminal)
+        with client.websocket_connect(
+            f"/api/runs/{run_id}/terminal",
+            headers=_websocket_headers(BACKEND_ORIGIN),
+        ) as websocket:
+            assert websocket.receive_json()["code"] == "run_stale"
+
+
 def test_websocket_binary_input_reaches_child(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -262,6 +329,28 @@ def test_spawn_request_is_nested_capture_only(tmp_path: Path) -> None:
 
     assert request.web_port is None
     assert request.web_runtime == "external"
+
+
+def test_post_after_manager_close_returns_machine_error(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    harness = ManagedRunHarness(tmp_path, monkeypatch)
+    client = _client(monkeypatch, tmp_path)
+    asyncio.run(harness.manager.close())
+
+    with client:
+        response = client.post(
+            "/api/runs",
+            json={"cli": "claude", "cwd": str(tmp_path)},
+            headers=_http_headers(BACKEND_ORIGIN),
+        )
+
+    assert response.status_code == 503
+    assert response.json()["detail"]["code"] == "run_manager_closed"
+
+
+def test_run_manager_http_mapping_covers_declared_codes() -> None:
+    assert set(run_routes._RUN_MANAGER_HTTP_STATUS) == set(get_args(RunManagerErrorCode))
 
 
 def test_post_launch_failure_returns_machine_error(

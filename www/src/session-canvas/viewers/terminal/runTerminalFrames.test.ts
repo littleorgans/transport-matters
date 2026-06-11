@@ -4,12 +4,12 @@ import { parseRunErrorFrame } from "./runTerminalFrames";
 describe("parseRunErrorFrame", () => {
   it("parses a run.error control frame into a typed error", () => {
     const parsed = parseRunErrorFrame(
-      JSON.stringify({ type: "run.error", code: "run_not_found", message: "run not found: x" }),
+      JSON.stringify({ type: "run.error", code: "run_stale", message: "run has no live terminal" }),
     );
     expect(parsed).toEqual({
       type: "run.error",
-      code: "run_not_found",
-      message: "run not found: x",
+      code: "run_stale",
+      message: "run has no live terminal",
     });
   });
 
