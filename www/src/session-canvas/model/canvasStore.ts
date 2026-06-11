@@ -3,19 +3,24 @@ import {
   type CanvasViewport,
   CLOSE_DELAY_MS,
   createInitialEngineLayoutState,
-  createPaneNode,
   focusNode,
   markNodeClosing,
-  nextPaneZ,
   type PaneId,
   removeNode,
   setViewport as setEngineViewport,
   updateNodeRect,
-  upsertNode,
+  type ViewportBounds,
   type WorldRect,
 } from "../../engine";
+import { type LayoutParams, seedParams } from "../../engine/layout";
 import type { CanvasLaunchContext } from "../route";
-import { PICKER_PANE_ID, paneIdForRef, rectForRef, titleForRef } from "../viewers/registry";
+import { PICKER_PANE_ID, paneIdForRef, titleForRef } from "../viewers/registry";
+import {
+  DEFAULT_BOUNDS,
+  INITIAL_STRATEGY_ID,
+  planLayout,
+  planSpawnedPaneLayout,
+} from "./layoutPlanning";
 import type {
   CanvasModel,
   CanvasPaneRef,
@@ -26,13 +31,21 @@ import type {
 } from "./paneRecords";
 import { createPaneRecord, normalizeRef, titleForSession } from "./spawn";
 
-interface CanvasStoreState extends CanvasModel {
+interface CanvasStoreModel extends CanvasModel {
+  activeStrategyId: string;
+  bounds: ViewportBounds;
+  fitToContent: boolean;
+  params: LayoutParams;
+}
+
+interface CanvasStoreState extends CanvasStoreModel {
   closePane(paneId: PaneId): void;
   focusPane(paneId: PaneId): void;
   initializeCanvas(launch: CanvasLaunchContext): void;
   movePane(paneId: PaneId, rect: WorldRect): void;
   resizePane(paneId: PaneId, rect: WorldRect): void;
   resetViewport(): void;
+  setBounds(bounds: ViewportBounds): void;
   setViewport(viewport: CanvasViewport): void;
   spawnPane(ref: SpawnablePaneRef, options?: SpawnPaneOptions): PaneId;
   spawnOrFocusTranscript(session: SpawnSessionDescriptor): void;
@@ -59,7 +72,12 @@ export const useCanvasStore = create<CanvasStoreState>()((set, get) => ({
     window.setTimeout(() => {
       set((state) => {
         const { [paneId]: _removed, ...panes } = state.panes;
-        return { ...state, panes, layout: removeNode(state.layout, paneId) };
+        const layout = planCanvasLayout({
+          ...state,
+          panes,
+          layout: removeNode(state.layout, paneId),
+        });
+        return { ...state, panes, layout };
       });
     }, CLOSE_DELAY_MS);
   },
@@ -96,6 +114,14 @@ export const useCanvasStore = create<CanvasStoreState>()((set, get) => ({
     set((state) => ({ ...state, layout: setEngineViewport(state.layout, viewport) }));
   },
 
+  setBounds(bounds) {
+    set((state) => ({
+      ...state,
+      bounds,
+      layout: planCanvasLayout({ ...state, bounds }),
+    }));
+  },
+
   spawnPane(ref, options) {
     const normalized = normalizeRef(ref);
     const paneId = paneIdForRef(normalized);
@@ -119,20 +145,28 @@ export const useCanvasStore = create<CanvasStoreState>()((set, get) => ({
   },
 }));
 
-function createInitialCanvasModel(launch: CanvasLaunchContext): CanvasModel {
+function createInitialCanvasModel(launch: CanvasLaunchContext): CanvasStoreModel {
   const layout = createInitialEngineLayoutState();
   const ref: CanvasPaneRef = { kind: "session-picker", owner: "local" };
   const pane = createPaneRecord(ref, "Session picker", new Date().toISOString());
-  const node = createPaneNode(pane.paneId, rectForRef(ref, 0), nextPaneZ(layout.nodes));
-  const nextLayout = focusNode(upsertNode(layout, node), pane.paneId);
-  return {
+  const activeStrategyId = INITIAL_STRATEGY_ID;
+  const params = seedParams(activeStrategyId);
+  const model: CanvasStoreModel = {
     id: launch.workspaceHash ?? "direct-local",
     owner: "local",
     workspaceHash: launch.workspaceHash,
     cwd: null,
     launch,
-    layout: nextLayout,
+    layout,
     panes: { [pane.paneId]: pane },
+    activeStrategyId,
+    bounds: DEFAULT_BOUNDS,
+    fitToContent: true,
+    params,
+  };
+  return {
+    ...model,
+    layout: planSpawnedPaneLayout(model, pane.paneId),
   };
 }
 
@@ -143,17 +177,21 @@ function insertPane(
   focus: boolean,
 ): Partial<CanvasStoreState> {
   const pane = createPaneRecord(ref, title, new Date().toISOString());
-  const node = createPaneNode(
-    pane.paneId,
-    rectForRef(ref, Object.keys(state.panes).length),
-    nextPaneZ(state.layout.nodes),
-  );
-  const layout = upsertNode(state.layout, node);
-  const focusedLayout = focus ? focusNode(layout, pane.paneId) : layout;
+  const panes = { ...state.panes, [pane.paneId]: pane };
   return {
-    panes: { ...state.panes, [pane.paneId]: pane },
-    layout: focusedLayout,
+    panes,
+    layout: planSpawnedPaneLayout(state, pane.paneId, null, undefined, focus),
   };
+}
+
+function planCanvasLayout(state: CanvasStoreState): CanvasStoreState["layout"] {
+  return planLayout(
+    state.layout,
+    state.bounds,
+    state.activeStrategyId,
+    state.params,
+    state.fitToContent,
+  );
 }
 
 function focusCanvasPane(state: CanvasStoreState, paneId: PaneId): Partial<CanvasStoreState> {

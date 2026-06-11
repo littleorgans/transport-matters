@@ -1,7 +1,27 @@
 import { describe, expect, it } from "vitest";
+import type { PaneId, WorldRect } from "../../engine";
+import { resolveLayout } from "../../engine/layout";
 import { makeSessionSummary } from "../testUtils";
 import { PICKER_PANE_ID } from "../viewers/registry";
 import { resetCanvasStoreForTests, useCanvasStore } from "./canvasStore";
+import { openPaneIds } from "./layoutPlanning";
+
+type CanvasStoreSnapshot = ReturnType<typeof useCanvasStore.getState>;
+
+function plannedRects(state: CanvasStoreSnapshot): Record<PaneId, WorldRect> {
+  const paneIds = openPaneIds(state.layout);
+  return resolveLayout(state.activeStrategyId).plan(
+    { paneIds, viewport: state.bounds },
+    state.params,
+  ).rects;
+}
+
+function expectRectsToMatchStrategy(state: CanvasStoreSnapshot): void {
+  const expected = plannedRects(state);
+  for (const [paneId, rect] of Object.entries(expected)) {
+    expect(state.layout.nodes[paneId]?.rect).toEqual(rect);
+  }
+}
 
 describe("canvasStore", () => {
   it("starts with a stable picker pane", () => {
@@ -22,6 +42,33 @@ describe("canvasStore", () => {
     const state = useCanvasStore.getState();
     expect(Object.keys(state.panes).sort()).toEqual(["session-picker", "transcript:session-abc"]);
     expect(state.layout.focusedPaneId).toBe("transcript:session-abc");
+  });
+
+  it("plans spawned panes with the active grid fit strategy", () => {
+    resetCanvasStoreForTests();
+    const session = makeSessionSummary({ session_id: "session-abc" });
+
+    useCanvasStore.getState().spawnOrFocusTranscript(session);
+
+    const state = useCanvasStore.getState();
+    expect(state.activeStrategyId).toBe("grid-fit");
+    expectRectsToMatchStrategy(state);
+  });
+
+  it("replans open panes when viewport bounds change", () => {
+    resetCanvasStoreForTests();
+    useCanvasStore.getState().spawnOrFocusTranscript(makeSessionSummary({ session_id: "abc" }));
+    useCanvasStore
+      .getState()
+      .spawnPane({ kind: "resource", owner: "local", sessionId: "abc", resourceId: "r1" });
+    const before = useCanvasStore.getState().layout.nodes["resource:abc:r1"]?.rect;
+
+    useCanvasStore.getState().setBounds({ width: 640, height: 480 });
+
+    const state = useCanvasStore.getState();
+    expect(state.bounds).toEqual({ width: 640, height: 480 });
+    expectRectsToMatchStrategy(state);
+    expect(state.layout.nodes["resource:abc:r1"]?.rect).not.toEqual(before);
   });
 
   it("aliases a legacy session ref onto the session-timeline pane without duplicating", () => {

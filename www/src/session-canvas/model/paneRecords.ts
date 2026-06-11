@@ -1,4 +1,4 @@
-import type { EngineLayoutState, PaneId, WorldRect } from "../../engine";
+import type { EngineLayoutState, PaneId } from "../../engine";
 import type { CliName } from "../../types";
 import type { CanvasLaunchContext } from "../route";
 
@@ -126,7 +126,5 @@ export interface ViewerRegistration<TRef extends CanvasPaneRef = CanvasPaneRef> 
   /** Deterministic pane id; also the dedupe key. */
   paneId(ref: TRef): PaneId;
   title(ref: TRef): string;
-  /** Stable initial rect so loading content never shifts layout. */
-  defaultRect(ref: TRef, index: number): WorldRect;
   render(props: ViewerProps<TRef>): React.ReactNode;
 }

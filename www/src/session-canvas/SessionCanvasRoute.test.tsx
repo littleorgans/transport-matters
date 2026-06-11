@@ -1,6 +1,6 @@
-import { screen, waitFor } from "@testing-library/react";
+import { act, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { resetCanvasStoreForTests } from "./model/canvasStore";
+import { resetCanvasStoreForTests, useCanvasStore } from "./model/canvasStore";
 import { SessionCanvasRoute } from "./SessionCanvasRoute";
 import {
   installMockTransport,
@@ -21,6 +21,7 @@ class MockEventSource {
 describe("SessionCanvasRoute", () => {
   afterEach(() => {
     restoreTransport();
+    vi.restoreAllMocks();
     vi.unstubAllGlobals();
     window.history.pushState({}, "", "/");
   });
@@ -61,5 +62,39 @@ describe("SessionCanvasRoute", () => {
     await waitFor(() => {
       expect(screen.getByText("hello transcript")).toBeInTheDocument();
     });
+  });
+
+  it("feeds surface resize bounds into canvas planning", async () => {
+    resetCanvasStoreForTests();
+    window.history.pushState({}, "", "/canvas");
+    installMockTransport(() => jsonResponse([]));
+    let width = 900;
+    let height = 700;
+    vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockImplementation(() => width);
+    vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockImplementation(() => height);
+    const observers: Array<{ callback: ResizeObserverCallback }> = [];
+    class MockResizeObserver {
+      observe = vi.fn();
+      unobserve = vi.fn();
+      disconnect = vi.fn();
+
+      constructor(readonly callback: ResizeObserverCallback) {
+        observers.push(this);
+      }
+    }
+    vi.stubGlobal("ResizeObserver", MockResizeObserver);
+
+    renderWithQuery(<SessionCanvasRoute />);
+
+    await waitFor(() => expect(observers).toHaveLength(1));
+    expect(useCanvasStore.getState().bounds).toEqual({ width: 900, height: 700 });
+
+    act(() => {
+      width = 640;
+      height = 480;
+      observers[0]?.callback([], observers[0] as unknown as ResizeObserver);
+    });
+
+    expect(useCanvasStore.getState().bounds).toEqual({ width: 640, height: 480 });
   });
 });

@@ -155,4 +155,14 @@ describe("registry pane ids", () => {
     };
     expect(resolveViewer(ref).paneId(ref)).toBe(paneIdForRef(ref));
   });
+
+  it("keeps layout geometry out of the viewer registry", () => {
+    const ref: PaneContentRef = {
+      kind: "resource",
+      owner: "local",
+      sessionId: "s1",
+      resourceId: "r1",
+    };
+    expect(Object.hasOwn(resolveViewer(ref), "defaultRect")).toBe(false);
+  });
 });

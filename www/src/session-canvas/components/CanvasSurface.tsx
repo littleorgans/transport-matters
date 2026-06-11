@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { LayoutCanvas } from "../../engine";
 import type { LaunchResolutionStatus } from "../api/launchResolution";
 import { useCanvasStore } from "../model/canvasStore";
@@ -22,11 +22,27 @@ export function CanvasSurface({ launch, launchStatus, launchSessionId }: CanvasS
   const closePane = useCanvasStore((state) => state.closePane);
   const movePane = useCanvasStore((state) => state.movePane);
   const resizePane = useCanvasStore((state) => state.resizePane);
+  const setBounds = useCanvasStore((state) => state.setBounds);
   const setViewport = useCanvasStore((state) => state.setViewport);
   const resetViewport = useCanvasStore((state) => state.resetViewport);
   const spawnOrFocusTranscript = useCanvasStore((state) => state.spawnOrFocusTranscript);
+  const surfaceRef = useRef<HTMLElement>(null);
   const focusedPaneId = layout.focusedPaneId;
   const focusedTitle = focusedPaneId ? (panes[focusedPaneId]?.title ?? null) : null;
+
+  useEffect(() => {
+    const element = surfaceRef.current;
+    if (!element) return;
+    const measure = () => {
+      const bounds = { width: element.clientWidth, height: element.clientHeight };
+      if (bounds.width > 0 && bounds.height > 0) setBounds(bounds);
+    };
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [setBounds]);
 
   // Stable across viewport-only renders so the memoized PaneLayer skips the pane subtree on pan/zoom.
   // Re-created only when the data it reads changes (panes, focus, actions, launch context).
@@ -74,7 +90,7 @@ export function CanvasSurface({ launch, launchStatus, launchSessionId }: CanvasS
   );
 
   return (
-    <main className="canvas-route-shell">
+    <main className="canvas-route-shell" ref={surfaceRef}>
       <CanvasCommandBar
         focusedTitle={focusedTitle}
         launch={launch}
