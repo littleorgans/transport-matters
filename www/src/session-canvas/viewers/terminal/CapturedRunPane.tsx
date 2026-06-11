@@ -63,14 +63,16 @@ export function CapturedRunPane({ runKey, provider, cwd }: CapturedRunPaneProps)
   if (runId === null) {
     return <div className="terminal-pane" aria-busy="true" />;
   }
-  return <AttachedRunTerminal provider={provider} runId={runId} />;
+  return <AttachedRunTerminal paneId={runKey} provider={provider} runId={runId} />;
 }
 
 /** Attach the shared terminal session core to an already-spawned run's PTY. */
 function AttachedRunTerminal({
+  paneId,
   provider,
   runId,
 }: {
+  paneId: string;
   provider: CliName;
   runId: string;
 }): ReactElement {
@@ -87,7 +89,7 @@ function AttachedRunTerminal({
     if (frame) setErrorFrame(frame);
   }, []);
 
-  const { surfaceRef, closedCode } = useTerminalSession({ buildUrl, onTextFrame });
+  const { surfaceRef, closedCode } = useTerminalSession({ buildUrl, onTextFrame, paneId });
   const status = runStatus(provider, errorFrame, closedCode);
 
   return (

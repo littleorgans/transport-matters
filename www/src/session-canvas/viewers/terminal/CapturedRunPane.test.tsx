@@ -16,6 +16,7 @@ const { terminals, MockTerminal, MockFitAddon } = vi.hoisted(() => {
     loadAddon = vi.fn();
     open = vi.fn();
     focus = vi.fn();
+    paste = vi.fn();
     write = vi.fn();
     dispose = vi.fn();
     onData = vi.fn(() => ({ dispose: vi.fn() }));

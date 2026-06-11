@@ -96,11 +96,11 @@ const registry: ViewerRegistration[] = [
     title: (ref) => ref.label ?? "Terminal",
     // The terminal is self-contained (its own xterm + PTY socket); it ignores viewer props. It is
     // lazy, so a Suspense boundary covers the one-time chunk fetch.
-    render: () => (
+    render: (props) => (
       <Suspense
         fallback={<div aria-busy="true" className="canvas-transcript canvas-transcript--center" />}
       >
-        <TerminalPane />
+        <TerminalPane pane={props.pane} />
       </Suspense>
     ),
   }),

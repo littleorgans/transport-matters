@@ -1,5 +1,6 @@
 import { act, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { resolvePasteHandle } from "./pasteRegistry";
 import { TerminalPane } from "./TerminalPane";
 
 // xterm renders to a real canvas/WebGL surface that jsdom cannot host, so the
@@ -16,6 +17,7 @@ const { terminals, MockTerminal, MockFitAddon } = vi.hoisted(() => {
     loadAddon = vi.fn();
     open = vi.fn();
     focus = vi.fn();
+    paste = vi.fn();
     write = vi.fn();
     dispose = vi.fn();
     onData = vi.fn(() => ({ dispose: vi.fn() }));
@@ -66,7 +68,7 @@ describe("TerminalPane", () => {
   });
 
   it("opens an xterm terminal and a same-origin terminal websocket", () => {
-    render(<TerminalPane />);
+    render(<TerminalPane pane={paneFixture()} />);
 
     const terminal = only(terminals);
     const socket = only(sockets);
@@ -75,13 +77,24 @@ describe("TerminalPane", () => {
     expect(socket.url).toMatch(/\/api\/terminal\?cols=80&rows=24$/);
   });
 
+  it("registers a paste handle for its pane id and deregisters on unmount", () => {
+    const { unmount } = render(<TerminalPane pane={paneFixture()} />);
+    const terminal = only(terminals);
+    const handle = resolvePasteHandle("terminal:test-pane");
+    expect(handle).not.toBeNull();
+    handle?.("hello");
+    expect(terminal.paste).toHaveBeenCalledWith("hello");
+    unmount();
+    expect(resolvePasteHandle("terminal:test-pane")).toBeNull();
+  });
+
   it("focuses the terminal on mount so keys (incl. Ctrl-C) reach the PTY", () => {
-    render(<TerminalPane />);
+    render(<TerminalPane pane={paneFixture()} />);
     expect(only(terminals).focus).toHaveBeenCalledTimes(1);
   });
 
   it("surfaces a refused state when the socket is rejected (close 1008)", () => {
-    render(<TerminalPane />);
+    render(<TerminalPane pane={paneFixture()} />);
     const socket = only(sockets);
 
     act(() => {
@@ -94,7 +107,7 @@ describe("TerminalPane", () => {
   it("copies the selection to the clipboard as it changes (copy-on-select)", () => {
     const writeText = vi.fn(() => Promise.resolve());
     vi.stubGlobal("navigator", { ...window.navigator, clipboard: { writeText } });
-    render(<TerminalPane />);
+    render(<TerminalPane pane={paneFixture()} />);
     const terminal = only(terminals);
     const [onSelectionChange] = terminal.onSelectionChange.mock.calls[0] ?? [];
     if (onSelectionChange === undefined) throw new Error("expected a selection listener");
@@ -110,13 +123,13 @@ describe("TerminalPane", () => {
   });
 
   it("sends an initial resize control frame sized to the terminal", () => {
-    render(<TerminalPane />);
+    render(<TerminalPane pane={paneFixture()} />);
 
     expect(only(sockets).send).toHaveBeenCalledWith('{"type":"resize","cols":80,"rows":24}');
   });
 
   it("closes the socket and disposes the terminal on unmount", () => {
-    const { unmount } = render(<TerminalPane />);
+    const { unmount } = render(<TerminalPane pane={paneFixture()} />);
     const terminal = only(terminals);
     const socket = only(sockets);
 
@@ -133,4 +146,16 @@ function only<T>(items: readonly T[]): T {
   const [item] = items;
   if (item === undefined) throw new Error("expected exactly one item");
   return item;
+}
+
+function paneFixture() {
+  return {
+    paneId: "terminal:test-pane",
+    viewerId: "terminal",
+    title: "Terminal",
+    contentRef: { kind: "terminal", owner: "local" },
+    chromeState: "default",
+    createdAt: "2026-06-11T00:00:00Z",
+    lastFocusedAt: null,
+  } as const;
 }
