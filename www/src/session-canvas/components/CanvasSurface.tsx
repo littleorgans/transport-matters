@@ -1,10 +1,12 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { LayoutCanvas } from "../../engine";
 import type { LaunchResolutionStatus } from "../api/launchResolution";
+import { handleCanvasDrop } from "../dnd/canvasDrop";
 import { useCanvasStore } from "../model/canvasStore";
 import type { CanvasLaunchContext } from "../route";
 import { PICKER_PANE_ID, renderPaneContent } from "../viewers/registry";
 import { CanvasCommandBar } from "./CanvasCommandBar";
+import { CanvasDropHint } from "./CanvasDropHint";
 import { PaneDock } from "./PaneDock";
 import { PaneWindow } from "./PaneWindow";
 
@@ -29,6 +31,7 @@ export function CanvasSurface({ launch, launchStatus, launchSessionId }: CanvasS
   const framePane = useCanvasStore((state) => state.framePane);
   const minimizePane = useCanvasStore((state) => state.minimizePane);
   const movePane = useCanvasStore((state) => state.movePane);
+  const spawnPane = useCanvasStore((state) => state.spawnPane);
   const resizePane = useCanvasStore((state) => state.resizePane);
   const restorePane = useCanvasStore((state) => state.restorePane);
   const setBounds = useCanvasStore((state) => state.setBounds);
@@ -36,6 +39,7 @@ export function CanvasSurface({ launch, launchStatus, launchSessionId }: CanvasS
   const resetViewport = useCanvasStore((state) => state.resetViewport);
   const spawnOrFocusTranscript = useCanvasStore((state) => state.spawnOrFocusTranscript);
   const surfaceRef = useRef<HTMLElement>(null);
+  const [dropHint, setDropHint] = useState<string | null>(null);
   const focusedPaneId = layout.focusedPaneId;
   const focusedTitle = focusedPaneId ? (panes[focusedPaneId]?.title ?? null) : null;
 
@@ -52,6 +56,38 @@ export function CanvasSurface({ launch, launchStatus, launchSessionId }: CanvasS
     observer.observe(element);
     return () => observer.disconnect();
   }, [setBounds]);
+
+  useEffect(() => {
+    const surface = surfaceRef.current;
+    if (!surface) return;
+
+    const onDragOver = (event: DragEvent) => {
+      event.preventDefault();
+    };
+    const onDrop = (event: DragEvent) => {
+      event.preventDefault();
+      if (!event.dataTransfer) return;
+      const rect = surface.getBoundingClientRect();
+      handleCanvasDrop(
+        useCanvasStore.getState().layout,
+        { x: event.clientX - rect.left, y: event.clientY - rect.top },
+        event.dataTransfer,
+        {
+          resolvePath: window.transportMattersDesktop?.getPathForFile ?? null,
+          spawnPane,
+          minimizePane,
+          showHint: setDropHint,
+        },
+      );
+    };
+
+    surface.addEventListener("dragover", onDragOver);
+    surface.addEventListener("drop", onDrop);
+    return () => {
+      surface.removeEventListener("dragover", onDragOver);
+      surface.removeEventListener("drop", onDrop);
+    };
+  }, [spawnPane, minimizePane]);
 
   // Stable across viewport-only renders so the memoized PaneLayer skips the pane subtree on pan/zoom.
   // Re-created only when the data it reads changes (panes, focus, actions, launch context).
@@ -117,6 +153,7 @@ export function CanvasSurface({ launch, launchStatus, launchSessionId }: CanvasS
         onFocusPicker={() => focusPane(PICKER_PANE_ID)}
         onResetViewport={resetViewport}
       />
+      {dropHint === null ? null : <CanvasDropHint message={dropHint} onDismiss={() => setDropHint(null)} />}
       <LayoutCanvas
         label={`Session canvas, ${layout.mode} mode`}
         layout={layout}

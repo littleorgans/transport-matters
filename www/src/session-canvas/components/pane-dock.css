@@ -1,6 +1,5 @@
-/* Colocated styles for PaneDock.tsx (imported there as a side effect, matching the viewer-CSS
-   convention: terminal-pane.css, resource/*-viewer.css). Uses the global canvas tokens from
-   index.css; --canvas-layout-margin is set on the route shell from CANVAS_LAYOUT_MARGIN. */
+/* Colocated screen-overlay styles for PaneDock.tsx and CanvasDropHint.tsx. Uses the global
+   canvas tokens from index.css; --canvas-layout-margin is set on the route shell. */
 
 /* Pane dock: a canvas-resident chip in the viewport top band (the pane-grid top margin). Screen-
    space, z-1900 — above panes, below the transient command bar (z-2000), whose trailing end is now
@@ -118,4 +117,22 @@
   font-size: 0.82rem;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+
+.canvas-drop-hint {
+  position: absolute;
+  inset-block-end: calc(var(--canvas-command-inset) * 2);
+  inset-inline-start: 50%;
+  z-index: 2100;
+  max-inline-size: min(36rem, calc(100% - var(--canvas-command-inset) * 2));
+  margin: 0;
+  transform: translateX(-50%);
+  border: var(--canvas-pane-border);
+  background: rgb(var(--shadow-rgb) / 0.86);
+  box-shadow: var(--canvas-pane-shadow);
+  backdrop-filter: blur(16px);
+  color: var(--color-txt);
+  padding: var(--canvas-pane-gap) var(--canvas-pane-padding);
+  text-align: center;
 }
