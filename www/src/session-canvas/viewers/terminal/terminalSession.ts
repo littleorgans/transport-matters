@@ -56,6 +56,16 @@ export function useTerminalSession({ buildUrl, onTextFrame }: TerminalSessionOpt
     // via onData while its textarea holds focus.
     term.focus();
 
+    // Copy on select. Cmd+C needs a `copy` event to reach xterm's hidden
+    // textarea, which pane focus handling can starve; writing the clipboard as
+    // the selection settles skips that chain. The hasSelection guard keeps a
+    // cleared selection from clobbering the clipboard with an empty string.
+    // Disposed with the terminal via term.dispose().
+    term.onSelectionChange(() => {
+      if (!term.hasSelection()) return;
+      void navigator.clipboard?.writeText(term.getSelection()).catch(() => {});
+    });
+
     let disposed = false;
     const socket = openTerminalSocket(term, {
       url: buildUrlRef.current(term.cols, term.rows),

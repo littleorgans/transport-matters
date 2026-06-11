@@ -12,12 +12,16 @@ const { terminals, MockTerminal, MockFitAddon } = vi.hoisted(() => {
   class MockTerminal {
     cols = 80;
     rows = 24;
+    selection = "";
     loadAddon = vi.fn();
     open = vi.fn();
     focus = vi.fn();
     write = vi.fn();
     dispose = vi.fn();
     onData = vi.fn(() => ({ dispose: vi.fn() }));
+    onSelectionChange = vi.fn((_listener: () => void) => ({ dispose: vi.fn() }));
+    hasSelection = vi.fn(() => this.selection.length > 0);
+    getSelection = vi.fn(() => this.selection);
     constructor() {
       terminals.push(this);
     }
@@ -85,6 +89,24 @@ describe("TerminalPane", () => {
     });
 
     expect(screen.getByRole("alert")).toHaveTextContent(/refused/i);
+  });
+
+  it("copies the selection to the clipboard as it changes (copy-on-select)", () => {
+    const writeText = vi.fn(() => Promise.resolve());
+    vi.stubGlobal("navigator", { ...window.navigator, clipboard: { writeText } });
+    render(<TerminalPane />);
+    const terminal = only(terminals);
+    const [onSelectionChange] = terminal.onSelectionChange.mock.calls[0] ?? [];
+    if (onSelectionChange === undefined) throw new Error("expected a selection listener");
+
+    terminal.selection = "picked text";
+    onSelectionChange();
+    expect(writeText).toHaveBeenCalledWith("picked text");
+
+    // Clearing the selection must not clobber the clipboard with "".
+    terminal.selection = "";
+    onSelectionChange();
+    expect(writeText).toHaveBeenCalledTimes(1);
   });
 
   it("sends an initial resize control frame sized to the terminal", () => {

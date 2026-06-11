@@ -19,6 +19,9 @@ const { terminals, MockTerminal, MockFitAddon } = vi.hoisted(() => {
     write = vi.fn();
     dispose = vi.fn();
     onData = vi.fn(() => ({ dispose: vi.fn() }));
+    onSelectionChange = vi.fn(() => ({ dispose: vi.fn() }));
+    hasSelection = vi.fn(() => false);
+    getSelection = vi.fn(() => "");
     constructor() {
       terminals.push(this);
     }
