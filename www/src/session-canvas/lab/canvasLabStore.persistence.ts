@@ -1,64 +1,45 @@
-import type { PersistOptions } from "zustand/middleware";
-import { seedParams } from "../../engine/layout";
-import { createFrontendPersistStorage, FRONTEND_STORAGE_KEYS } from "../../stores/persistence";
-import { INITIAL_STRATEGY_ID } from "../model/layoutPlanning";
-import {
-  collectOpenPaneRects,
-  type PersistedCanvasState,
-  rebuildPersistedCanvasState,
-} from "../persistence/canvasPanePersistence";
+import { FRONTEND_STORAGE_KEYS } from "../../stores/persistence";
+import { isPaneContentRef, type PaneContentRef } from "../model/paneRecords";
+import type { RebuiltCanvasState } from "../persistence/canvasPanePersistence";
+import { createCanvasPersistOptions } from "../persistence/canvasPersistOptions";
 import type { CanvasLabState } from "./canvasLabTypes";
 
 export const CANVAS_LAB_STORAGE_VERSION = 2;
 
-interface CanvasLabPersistedState extends PersistedCanvasState {
-  paneCounters: Record<string, number>;
-  nextPaneIndex: number;
-}
-
-function mergePersistedCanvasLabState(persisted: unknown, current: CanvasLabState): CanvasLabState {
-  const saved = (persisted ?? {}) as Partial<CanvasLabPersistedState>;
-  const canvas = rebuildPersistedCanvasState(saved, current);
-
-  return {
-    ...current,
-    ...canvas,
-    paneCounters: saved.paneCounters ?? {},
-    nextPaneIndex: saved.nextPaneIndex ?? 0,
-  };
-}
-
-function emptyPersistedCanvasLabState(): CanvasLabPersistedState {
-  return {
-    contentRefs: {},
-    paneRects: {},
-    docked: [],
-    activeStrategyId: INITIAL_STRATEGY_ID,
-    params: seedParams(INITIAL_STRATEGY_ID),
-    fitToContent: true,
-    expandedPaneId: null,
-    paneCounters: {},
-    nextPaneIndex: 0,
-  };
-}
-
-export const canvasLabPersistOptions: PersistOptions<CanvasLabState, CanvasLabPersistedState> = {
+export const canvasLabPersistOptions = createCanvasPersistOptions<CanvasLabState, PaneContentRef>({
   name: FRONTEND_STORAGE_KEYS.canvasLabStore,
-  storage: createFrontendPersistStorage<CanvasLabPersistedState>(),
   version: CANVAS_LAB_STORAGE_VERSION,
+  isContentRef: isPaneContentRef,
+  getContentRefs: (state) => state.contentRefs,
+  mergeCanvasState: mergeCanvasLabState,
   // Persist the core pane rebuild set plus lab scaffolding counters. Transient camera and animation
   // state is intentionally left out.
-  partialize: (state): CanvasLabPersistedState => ({
-    contentRefs: state.contentRefs,
-    paneRects: collectOpenPaneRects(state.layout),
-    docked: state.docked,
-    activeStrategyId: state.activeStrategyId,
-    params: state.params,
-    fitToContent: state.fitToContent,
-    expandedPaneId: state.expandedPaneId,
+  partializeExtras: (state) => ({
     paneCounters: state.paneCounters,
     nextPaneIndex: state.nextPaneIndex,
   }),
-  migrate: () => emptyPersistedCanvasLabState(),
-  merge: (persisted, current) => mergePersistedCanvasLabState(persisted, current),
-};
+  mergeExtras: (saved) => ({
+    paneCounters: isPaneCounters(saved.paneCounters) ? saved.paneCounters : {},
+    nextPaneIndex: typeof saved.nextPaneIndex === "number" ? saved.nextPaneIndex : 0,
+  }),
+});
+
+function mergeCanvasLabState(
+  _current: CanvasLabState,
+  canvas: RebuiltCanvasState<PaneContentRef>,
+): Partial<CanvasLabState> {
+  return {
+    layout: canvas.layout,
+    docked: canvas.docked,
+    activeStrategyId: canvas.activeStrategyId,
+    params: canvas.params,
+    fitToContent: canvas.fitToContent,
+    expandedPaneId: canvas.expandedPaneId,
+    contentRefs: canvas.contentRefs,
+  };
+}
+
+function isPaneCounters(value: unknown): value is Record<string, number> {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
+  return Object.values(value).every((count) => typeof count === "number");
+}
