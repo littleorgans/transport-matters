@@ -31,4 +31,13 @@ describe("escapeDropLocator", () => {
       "https://x.test/a b",
     );
   });
+
+  it("strips control characters so a hostile file name cannot inject into the PTY", () => {
+    expect(escapeDropLocator({ source: "path", locator: "/tmp/evil\nrm -rf x\r.png" })).toBe(
+      "/tmp/evilrm\\ -rf\\ x.png",
+    );
+    expect(escapeDropLocator({ source: "url", locator: "https://x.test/a\r\nb" })).toBe(
+      "https://x.test/ab",
+    );
+  });
 });

@@ -293,3 +293,30 @@ export function parkDockedPane(
 export function removeDockedPane(docked: readonly DockedPane[], paneId: PaneId): DockedPane[] {
   return docked.filter((entry) => entry.paneId !== paneId);
 }
+
+/**
+ * The shared spawn contract both canvas stores honor: an already-open pane is
+ * focused (or left alone), a docked pane is restored, anything else is seeded
+ * fresh. Branch ordering lives here once so the stores cannot drift apart;
+ * each store supplies its own lookups and seeding.
+ */
+export interface SpawnPaneFlow {
+  isOpen(paneId: PaneId): boolean;
+  focusPane(paneId: PaneId): void;
+  isDocked(paneId: PaneId): boolean;
+  restorePane(paneId: PaneId): void;
+  seed(paneId: PaneId): void;
+}
+
+export function runSpawnPaneFlow(paneId: PaneId, focus: boolean, flow: SpawnPaneFlow): PaneId {
+  if (flow.isOpen(paneId)) {
+    if (focus) flow.focusPane(paneId);
+    return paneId;
+  }
+  if (flow.isDocked(paneId)) {
+    flow.restorePane(paneId);
+    return paneId;
+  }
+  flow.seed(paneId);
+  return paneId;
+}

@@ -54,6 +54,21 @@ describe("classifyDrop", () => {
     expect(classifyDrop(transfer, null)).toEqual({ locators: [], unresolvedFiles: true });
   });
 
+  it("flags files the bridge cannot resolve (empty path for non-filesystem drags)", () => {
+    const transfer = { files: [{} as File], getData: () => "" } as never;
+    expect(classifyDrop(transfer, () => "")).toEqual({ locators: [], unresolvedFiles: true });
+  });
+
+  it("keeps resolvable files and drops unresolvable ones from a mixed drag", () => {
+    const paths = ["/tmp/shot.png", ""];
+    let index = 0;
+    const transfer = { files: [{} as File, {} as File], getData: () => "" } as never;
+    expect(classifyDrop(transfer, () => paths[index++] ?? "")).toEqual({
+      locators: [{ source: "path", locator: "/tmp/shot.png" }],
+      unresolvedFiles: false,
+    });
+  });
+
   it("parses uri-list drags, skipping comment lines", () => {
     const transfer = {
       files: [],

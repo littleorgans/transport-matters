@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
@@ -188,6 +189,11 @@ def create_app() -> FastAPI:
         allow_methods=settings.cors_methods,
         allow_headers=settings.cors_headers,
     )
+
+    # Added after CORS so it wraps it (outermost runs first): every request,
+    # HTTP and WebSocket, must carry a trusted Host before anything else sees
+    # it. This is the DNS rebinding defense; see Settings.trusted_hosts.
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.trusted_hosts)
 
     @app.get("/health")
     async def health() -> dict[str, str]:

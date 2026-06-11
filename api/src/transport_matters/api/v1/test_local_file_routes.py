@@ -96,6 +96,32 @@ def test_raw_relative_path_is_404(monkeypatch: pytest.MonkeyPatch, tmp_path: Pat
     assert response.status_code == 404
 
 
+def test_spoofed_host_is_rejected(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    # DNS rebinding defense: a rebound page reaches this server same-origin with
+    # an attacker Host header. CORS never fires on same-origin reads, so the
+    # Host allowlist is the guard that keeps /api/local-file off the open web.
+    target = tmp_path / "shot.png"
+    target.write_bytes(PNG_BYTES)
+    with _client(monkeypatch, tmp_path) as client:
+        for route, params in (
+            ("/api/local-file", {"path": str(target)}),
+            ("/api/local-file/raw", {"path": str(target)}),
+        ):
+            response = client.get(route, params=params, headers={"host": "rebound.evil.example"})
+            assert response.status_code == 400
+
+
+def test_loopback_hosts_are_allowed(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    target = tmp_path / "shot.png"
+    target.write_bytes(PNG_BYTES)
+    with _client(monkeypatch, tmp_path) as client:
+        for host in ("localhost:8788", "127.0.0.1:8788"):
+            response = client.get(
+                "/api/local-file", params={"path": str(target)}, headers={"host": host}
+            )
+            assert response.status_code == 200
+
+
 def test_markdown_returns_text_content(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     target = tmp_path / "notes.md"
     target.write_text("# hello\n", encoding="utf-8")

@@ -23,6 +23,7 @@ import {
   planPaneUnexpand,
   planPaneUnframe,
   removeDockedPane,
+  runSpawnPaneFlow,
   stripPaneFlyIntent,
 } from "../model/paneAffordances";
 import { type CanvasPaneRef, cliLabel, type PaneContentRef } from "../model/paneRecords";
@@ -167,19 +168,13 @@ export const useCanvasLabStore = create<CanvasLabState>()(
       },
 
       spawnPane(ref, options) {
-        // Mirrors the core canvasStore spawnPane contract: dedupe to the open
-        // pane, restore a docked one, otherwise seed at the registry pane id.
-        const paneId = paneIdForRef(ref);
-        if (get().contentRefs[paneId] !== undefined) {
-          if (options?.focus !== false) get().focusPane(paneId);
-          return paneId;
-        }
-        if (get().docked.some((entry) => entry.paneId === paneId)) {
-          get().restorePane(paneId);
-          return paneId;
-        }
-        set((state) => spawnPaneLayout(state, paneId, ref));
-        return paneId;
+        return runSpawnPaneFlow(paneIdForRef(ref), options?.focus !== false, {
+          isOpen: (paneId) => get().contentRefs[paneId] !== undefined,
+          focusPane: (paneId) => get().focusPane(paneId),
+          isDocked: (paneId) => get().docked.some((entry) => entry.paneId === paneId),
+          restorePane: (paneId) => get().restorePane(paneId),
+          seed: (paneId) => set((state) => spawnPaneLayout(state, paneId, ref)),
+        });
       },
 
       minimizePane(paneId) {

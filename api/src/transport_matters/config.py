@@ -117,6 +117,11 @@ class Settings(BaseSettings):
     session_pool_min_size: int = 1
     session_pool_max_size: int = 10
 
+    # DNS rebinding defense: a rebound origin reaches the loopback server
+    # same-origin, where CORS never applies, so the Host header is the only
+    # signal left. "testserver" is the TestClient default; "test" is the
+    # AsyncClient base_url host the existing suites use.
+    trusted_hosts: list[str] = ["localhost", "127.0.0.1", "::1", "testserver", "test"]
     cors_origins: list[str] = [
         "http://localhost:3000",
         "http://localhost:5173",

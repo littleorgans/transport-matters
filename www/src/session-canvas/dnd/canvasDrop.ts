@@ -27,10 +27,13 @@ export function classifyDrop(
   const files = Array.from(transfer.files);
   if (files.length > 0) {
     if (resolvePath === null) return { locators: [], unresolvedFiles: true };
-    return {
-      locators: files.map((file) => ({ source: "path", locator: resolvePath(file) })),
-      unresolvedFiles: false,
-    };
+    // Electron returns "" for files with no filesystem backing (e.g. an image
+    // dragged out of a browser); an empty locator is not a real path.
+    const locators = files
+      .map((file) => resolvePath(file))
+      .filter((path) => path.length > 0)
+      .map((path): DropLocator => ({ source: "path", locator: path }));
+    return { locators, unresolvedFiles: locators.length === 0 };
   }
 
   const uriList = transfer.getData("text/uri-list");
