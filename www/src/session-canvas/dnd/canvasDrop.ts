@@ -1,9 +1,9 @@
 import type { EngineLayoutState, WorldRect } from "../../engine";
 import type { CanvasPaneRef, PaneContentRef } from "../model/paneRecords";
 import {
+  type DropLocator,
   escapeDropLocator,
   resolvePasteHandle,
-  type DropLocator,
 } from "../viewers/terminal/pasteRegistry";
 
 export const DROP_HINT_MESSAGE = "File drops need the desktop app. URL drags work here.";

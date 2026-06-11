@@ -8,14 +8,18 @@ the legitimate caller. The no-header requests below ARE the real app path.
 from __future__ import annotations
 
 import base64
-from pathlib import Path
+from typing import TYPE_CHECKING
 
-import pytest
 from fastapi.testclient import TestClient
 
 from transport_matters import config
 from transport_matters.api.v1 import local_file_routes
 from transport_matters.main import create_app
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    import pytest
 
 PNG_BYTES = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk"
@@ -32,7 +36,8 @@ def _client(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> TestClient:
 def _get(client: TestClient, path: str) -> dict[str, object]:
     response = client.get("/api/local-file", params={"path": path})
     assert response.status_code == 200
-    return response.json()
+    body: dict[str, object] = response.json()
+    return body
 
 
 def test_png_returns_image_content_without_origin_header(
@@ -48,9 +53,7 @@ def test_png_returns_image_content_without_origin_header(
     assert body["title"] == "shot.png"
 
 
-def test_markdown_returns_text_content(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_markdown_returns_text_content(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     target = tmp_path / "notes.md"
     target.write_text("# hello\n", encoding="utf-8")
     with _client(monkeypatch, tmp_path) as client:
@@ -77,9 +80,7 @@ def test_missing_file_returns_typed_missing(
     assert body["reason"] == "not-found"
 
 
-def test_directory_returns_typed_missing(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_directory_returns_typed_missing(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     with _client(monkeypatch, tmp_path) as client:
         body = _get(client, str(tmp_path))
     assert body["kind"] == "missing"
@@ -95,9 +96,7 @@ def test_relative_path_returns_typed_missing(
     assert body["reason"] == "unsupported"
 
 
-def test_oversized_file_returns_too_large(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_oversized_file_returns_too_large(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     target = tmp_path / "huge.bin"
     target.write_bytes(b"x" * 32)
     monkeypatch.setattr(local_file_routes, "LOCAL_FILE_BYTE_LIMIT", 16)

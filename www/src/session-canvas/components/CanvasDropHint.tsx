@@ -1,5 +1,5 @@
-import { useEffect } from "react";
 import type { ReactElement } from "react";
+import { useEffect } from "react";
 import "./pane-dock.css";
 
 const HINT_DISMISS_MS = 4000;

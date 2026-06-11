@@ -119,7 +119,6 @@
   white-space: nowrap;
 }
 
-
 .canvas-drop-hint {
   position: absolute;
   inset-block-end: calc(var(--canvas-command-inset) * 2);

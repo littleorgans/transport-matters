@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { isCanvasPaneRef, isPaneContentRef } from "./paneRecords";
 import { paneIdForRef, titleForRef } from "../viewers/registry";
+import { isCanvasPaneRef, isPaneContentRef } from "./paneRecords";
 
 describe("locator resource refs", () => {
   const pathRef = {

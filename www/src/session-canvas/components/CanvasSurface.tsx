@@ -159,7 +159,9 @@ export function CanvasSurface({ launch, launchStatus, launchSessionId }: CanvasS
         onFocusPicker={() => focusPane(PICKER_PANE_ID)}
         onResetViewport={resetViewport}
       />
-      {dropHint === null ? null : <CanvasDropHint message={dropHint} onDismiss={() => setDropHint(null)} />}
+      {dropHint === null ? null : (
+        <CanvasDropHint message={dropHint} onDismiss={() => setDropHint(null)} />
+      )}
       <LayoutCanvas
         label={`Session canvas, ${layout.mode} mode`}
         layout={layout}

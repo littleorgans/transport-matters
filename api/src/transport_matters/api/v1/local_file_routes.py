@@ -8,6 +8,7 @@ omit the Origin header; posture matches list_runs.
 
 from __future__ import annotations
 
+import asyncio
 import mimetypes
 from pathlib import Path
 
@@ -27,6 +28,12 @@ LOCAL_FILE_BYTE_LIMIT = 16 * 1024 * 1024
 
 @router.get("/local-file", response_model=ResourceContentResponse)
 async def local_file_content(path: str = Query(min_length=1)) -> object:
+    # Blocking pathlib I/O runs off the event loop, matching run_manager's
+    # asyncio.to_thread precedent (routes stay async per the api conventions).
+    return await asyncio.to_thread(_read_local_file, path)
+
+
+def _read_local_file(path: str) -> object:
     candidate = Path(path)
     if not candidate.is_absolute():
         return _missing(path, "unsupported", "path must be absolute")
@@ -56,9 +63,7 @@ async def local_file_content(path: str = Query(min_length=1)) -> object:
     )
 
 
-def _missing(
-    path: str, reason: MissingResourceReason, message: str
-) -> MissingResourceResponse:
+def _missing(path: str, reason: MissingResourceReason, message: str) -> MissingResourceResponse:
     return MissingResourceResponse(
         id=path,
         title="Missing resource",

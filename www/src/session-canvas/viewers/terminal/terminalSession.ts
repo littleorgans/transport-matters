@@ -98,7 +98,8 @@ export function useTerminalSession({ buildUrl, onTextFrame, paneId }: TerminalSe
       unregisterPaste?.();
       term.dispose();
     };
-  }, []);
+    // paneId is stable for a mounted pane, so the effect stays one-shot.
+  }, [paneId]);
 
   return { surfaceRef, closedCode };
 }

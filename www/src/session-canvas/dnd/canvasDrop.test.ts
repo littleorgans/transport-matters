@@ -1,12 +1,27 @@
 import { describe, expect, it, vi } from "vitest";
-import { classifyDrop, deliverPaneDropToTerminal, handleCanvasDrop, paneIdAtPoint } from "./canvasDrop";
 import { registerPasteHandle } from "../viewers/terminal/pasteRegistry";
+import {
+  classifyDrop,
+  deliverPaneDropToTerminal,
+  handleCanvasDrop,
+  paneIdAtPoint,
+} from "./canvasDrop";
 
 const layout = {
   viewport: { panX: 10, panY: 20, scale: 2 },
   nodes: {
-    "terminal:a": { paneId: "terminal:a", lifecycle: "open", rect: { x: 0, y: 0, width: 100, height: 100 }, z: 1 },
-    "resource:b": { paneId: "resource:b", lifecycle: "open", rect: { x: 50, y: 50, width: 100, height: 100 }, z: 2 },
+    "terminal:a": {
+      paneId: "terminal:a",
+      lifecycle: "open",
+      rect: { x: 0, y: 0, width: 100, height: 100 },
+      z: 1,
+    },
+    "resource:b": {
+      paneId: "resource:b",
+      lifecycle: "open",
+      rect: { x: 50, y: 50, width: 100, height: 100 },
+      z: 2,
+    },
   },
 } as never;
 
@@ -63,7 +78,12 @@ describe("handleCanvasDrop", () => {
     const paste = vi.fn();
     const unregister = registerPasteHandle("terminal:a", paste);
     const deps = baseDeps();
-    handleCanvasDrop(layout, { x: 30, y: 60 }, { files: [{} as File], getData: () => "" } as never, deps);
+    handleCanvasDrop(
+      layout,
+      { x: 30, y: 60 },
+      { files: [{} as File], getData: () => "" } as never,
+      deps,
+    );
     expect(paste).toHaveBeenCalledWith("/tmp/My\\ Shot.png");
     expect(deps.spawnPane).toHaveBeenCalledWith(
       { kind: "resource", owner: "local", source: "path", path: "/tmp/My Shot.png" },
@@ -75,7 +95,12 @@ describe("handleCanvasDrop", () => {
 
   it("spawns an open pane on canvas background", () => {
     const deps = baseDeps();
-    handleCanvasDrop(layout, { x: 9999, y: 9999 }, { files: [{} as File], getData: () => "" } as never, deps);
+    handleCanvasDrop(
+      layout,
+      { x: 9999, y: 9999 },
+      { files: [{} as File], getData: () => "" } as never,
+      deps,
+    );
     expect(deps.spawnPane).toHaveBeenCalledWith(
       { kind: "resource", owner: "local", source: "path", path: "/tmp/My Shot.png" },
       undefined,
@@ -85,16 +110,27 @@ describe("handleCanvasDrop", () => {
 
   it("shows the hint for file drops without a bridge", () => {
     const deps = { ...baseDeps(), resolvePath: null };
-    handleCanvasDrop(layout, { x: 30, y: 60 }, { files: [{} as File], getData: () => "" } as never, deps);
-    expect(deps.showHint).toHaveBeenCalledWith("File drops need the desktop app. URL drags work here.");
+    handleCanvasDrop(
+      layout,
+      { x: 30, y: 60 },
+      { files: [{} as File], getData: () => "" } as never,
+      deps,
+    );
+    expect(deps.showHint).toHaveBeenCalledWith(
+      "File drops need the desktop app. URL drags work here.",
+    );
     expect(deps.spawnPane).not.toHaveBeenCalled();
   });
 });
 
-
 describe("deliverPaneDropToTerminal", () => {
   const rectOver = (x: number, y: number) => ({ x, y, width: 40, height: 40 });
-  const pathRef = { kind: "resource", owner: "local", source: "path", path: "/tmp/My Shot.png" } as const;
+  const pathRef = {
+    kind: "resource",
+    owner: "local",
+    source: "path",
+    path: "/tmp/My Shot.png",
+  } as const;
 
   it("pastes the moved locator pane's locator into the terminal under its center", () => {
     const paste = vi.fn();
