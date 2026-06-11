@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { LayoutCanvas } from "../../engine";
 import { CANVAS_LAYOUT_MARGIN, listLayouts } from "../../engine/layout";
+import { CanvasDropHint } from "../components/CanvasDropHint";
 import { CommandBarSections } from "../components/CommandBarSections";
 import { PaneChrome } from "../components/PaneChrome";
 import { PaneDock } from "../components/PaneDock";
 import { RouteSwitcher } from "../components/RouteSwitcher";
+import { useCanvasDropTargets } from "../dnd/useCanvasDropTargets";
 import type { PaneContentRef, ViewerProps } from "../model/paneRecords";
 import { renderPaneContent, titleForRef, viewerIdForRef } from "../viewers/registry";
 import { ControlsPanel } from "./ControlsPanel";
@@ -30,6 +32,7 @@ export function CanvasLabRoute() {
   const addPane = useCanvasLabStore((state) => state.addPane);
   const addTerminal = useCanvasLabStore((state) => state.addTerminal);
   const addCapturedRun = useCanvasLabStore((state) => state.addCapturedRun);
+  const spawnPane = useCanvasLabStore((state) => state.spawnPane);
   const organize = useCanvasLabStore((state) => state.organize);
   const minimizePane = useCanvasLabStore((state) => state.minimizePane);
   const closePane = useCanvasLabStore((state) => state.closePane);
@@ -50,6 +53,12 @@ export function CanvasLabRoute() {
   const codexInstalled = useCapabilitiesStore((state) => cliInstalled(state, "codex"));
 
   const stageRef = useRef<HTMLDivElement>(null);
+  const { dropHint, dismissDropHint, onMovePaneEnd } = useCanvasDropTargets(stageRef, {
+    getLayout: () => useCanvasLabStore.getState().layout,
+    contentRefFor: (paneId) => useCanvasLabStore.getState().contentRefs[paneId],
+    spawnPane,
+    minimizePane,
+  });
   const strategies = useMemo(() => listLayouts(), []);
   const [chromeHidden, setChromeHidden] = useState(false);
 
@@ -220,12 +229,16 @@ export function CanvasLabRoute() {
         </div>
       )}
       <div className="canvas-lab-stage" ref={stageRef}>
+        {dropHint === null ? null : (
+          <CanvasDropHint message={dropHint} onDismiss={dismissDropHint} />
+        )}
         <LayoutCanvas
           framing={flying}
           label={`Canvas lab, ${activeStrategyId}`}
           layout={layout}
           onFocusPane={focusPane}
           onMovePane={updatePaneRect}
+          onMovePaneEnd={onMovePaneEnd}
           onResizePane={updatePaneRect}
           // Canvas-resident dock: top band, screen-space, survives the TAB hide of the command bar.
           overlay={<PaneDock docked={docked} onClose={closeDockedPane} onRestore={restorePane} />}

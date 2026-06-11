@@ -26,6 +26,7 @@ import {
   stripPaneFlyIntent,
 } from "../model/paneAffordances";
 import { type CanvasPaneRef, cliLabel, type PaneContentRef } from "../model/paneRecords";
+import { paneIdForRef } from "../viewers/registry";
 import {
   DEFAULT_BOUNDS,
   INITIAL_STRATEGY_ID,
@@ -163,6 +164,22 @@ export const useCanvasLabStore = create<CanvasLabState>()(
             }),
           };
         });
+      },
+
+      spawnPane(ref, options) {
+        // Mirrors the core canvasStore spawnPane contract: dedupe to the open
+        // pane, restore a docked one, otherwise seed at the registry pane id.
+        const paneId = paneIdForRef(ref);
+        if (get().contentRefs[paneId] !== undefined) {
+          if (options?.focus !== false) get().focusPane(paneId);
+          return paneId;
+        }
+        if (get().docked.some((entry) => entry.paneId === paneId)) {
+          get().restorePane(paneId);
+          return paneId;
+        }
+        set((state) => spawnPaneLayout(state, paneId, ref));
+        return paneId;
       },
 
       minimizePane(paneId) {

@@ -48,6 +48,48 @@ describe("canvasLabStore terminals", () => {
     expect(Object.keys(store().layout.nodes).sort()).toEqual(["lab-1", "lab-2", "lab-3"]);
   });
 
+  it("spawnPane opens a locator resource pane keyed by its registry pane id", () => {
+    resetCanvasLabStoreForTests();
+    const ref = {
+      kind: "resource",
+      owner: "local",
+      source: "path",
+      path: "/tmp/shot.png",
+    } as const;
+
+    const paneId = store().spawnPane(ref);
+
+    expect(paneId).toBe("resource:path:/tmp/shot.png");
+    expect(store().contentRefs[paneId]).toEqual(ref);
+    expect(store().layout.nodes[paneId]).toBeDefined();
+  });
+
+  it("spawnPane dedupes to the existing pane and restores a docked one", () => {
+    vi.useFakeTimers();
+    try {
+      resetCanvasLabStoreForTests();
+      const ref = {
+        kind: "resource",
+        owner: "local",
+        source: "path",
+        path: "/tmp/shot.png",
+      } as const;
+
+      const paneId = store().spawnPane(ref);
+      expect(store().spawnPane(ref)).toBe(paneId);
+      expect(Object.keys(store().contentRefs)).toHaveLength(1);
+
+      store().minimizePane(paneId);
+      vi.runAllTimers();
+      expect(store().layout.nodes[paneId]).toBeUndefined();
+      expect(store().spawnPane(ref)).toBe(paneId);
+      expect(store().docked).toHaveLength(0);
+      expect(store().layout.nodes[paneId]?.lifecycle).toBe("open");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("forgets a pane's content ref once its close animation completes", () => {
     vi.useFakeTimers();
     try {
