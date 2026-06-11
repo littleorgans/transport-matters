@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { listLayouts, resolveLayout } from "../index";
-import { type GridOverflowParams, planGridOverflow } from "./gridOverflow";
+import { listLayouts, resolveLayout } from "./index";
+import { type GridOverflowParams, planGridOverflow } from "./strategies/gridOverflow";
 
 const DEFAULTS: GridOverflowParams = {
   minW: 300,
