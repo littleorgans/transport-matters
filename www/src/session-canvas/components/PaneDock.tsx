@@ -5,10 +5,10 @@ import { titleForRef } from "../viewers/registry";
 import "./pane-dock.css";
 
 // Canvas-resident dock: a count-badged chip in the viewport's top band whose menu lists the locally
-// minimized panes; selecting one restores it. Sourced ONLY from local minimized state (Option A) —
+// minimized panes; selecting one restores it. Sourced ONLY from local minimized state (Option A),
 // no GET /api/runs, no liveness polling, no per-row attach/stop. Screen-space and rendered through
 // LayoutCanvas's overlay slot, so it is immune to pan/zoom and survives the lab top-bar TAB hide.
-// Shared (components/, not lab/) so production can reuse it once it grows its own `docked` state.
+// Shared (components/, not lab/) so lab and production render the same dock affordance.
 export interface PaneDockProps {
   docked: DockedPane[];
   onRestore(paneId: PaneId): void;
@@ -73,7 +73,7 @@ export function PaneDock({ docked, onRestore, onClose }: PaneDockProps) {
         {open ? (
           <div aria-label="Minimized panes" className="canvas-dock__menu" role="menu">
             {docked.map((pane) => {
-              const title = pane.ref ? titleForRef(pane.ref) : pane.paneId;
+              const title = pane.record?.title ?? (pane.ref ? titleForRef(pane.ref) : pane.paneId);
               return (
                 <div className="canvas-dock__row" key={pane.paneId}>
                   <button
@@ -87,6 +87,7 @@ export function PaneDock({ docked, onRestore, onClose }: PaneDockProps) {
                   <button
                     aria-label={`Close ${title}`}
                     className="canvas-dock__kill"
+                    disabled={pane.closeDisabled}
                     onClick={() => close(pane.paneId)}
                     role="menuitem"
                     type="button"

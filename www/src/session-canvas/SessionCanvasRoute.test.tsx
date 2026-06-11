@@ -1,4 +1,4 @@
-import { act, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { resetCanvasStoreForTests, useCanvasStore } from "./model/canvasStore";
 import { SessionCanvasRoute } from "./SessionCanvasRoute";
@@ -21,6 +21,7 @@ class MockEventSource {
 describe("SessionCanvasRoute", () => {
   afterEach(() => {
     restoreTransport();
+    vi.useRealTimers();
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
     window.history.pushState({}, "", "/");
@@ -96,5 +97,59 @@ describe("SessionCanvasRoute", () => {
     });
 
     expect(useCanvasStore.getState().bounds).toEqual({ width: 640, height: 480 });
+  });
+
+  it("renders pane affordance controls and dispatches header double-click gestures", () => {
+    resetCanvasStoreForTests();
+    window.history.pushState({}, "", "/canvas");
+    installMockTransport(() => jsonResponse([]));
+
+    renderWithQuery(<SessionCanvasRoute />);
+    act(() => {
+      useCanvasStore
+        .getState()
+        .spawnOrFocusTranscript(makeSessionSummary({ session_id: "abc", title: "Project agent" }));
+    });
+
+    expect(screen.getByRole("button", { name: "Frame Project agent" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Expand Project agent" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Minimize Project agent" })).toBeInTheDocument();
+
+    const header = screen.getByRole("heading", { name: "Project agent" }).closest("header");
+    if (!header) throw new Error("expected Project agent pane header");
+
+    fireEvent.doubleClick(header);
+    expect(useCanvasStore.getState().framing.paneId).toBe("transcript:abc");
+
+    fireEvent.doubleClick(header, { shiftKey: true });
+    expect(useCanvasStore.getState().expandedPaneId).toBe("transcript:abc");
+  });
+
+  it("renders the pane dock and restores a minimized pane", () => {
+    vi.useFakeTimers();
+    resetCanvasStoreForTests();
+    window.history.pushState({}, "", "/canvas");
+    installMockTransport(() => jsonResponse([]));
+
+    renderWithQuery(<SessionCanvasRoute />);
+    act(() => {
+      useCanvasStore
+        .getState()
+        .spawnOrFocusTranscript(makeSessionSummary({ session_id: "abc", title: "Project agent" }));
+    });
+
+    act(() => {
+      useCanvasStore.getState().minimizePane("transcript:abc");
+      vi.runAllTimers();
+    });
+
+    const chip = screen.getByRole("button", { name: "Minimized panes, 1" });
+    expect(chip).toBeInTheDocument();
+
+    fireEvent.click(chip);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Project agent" }));
+
+    expect(useCanvasStore.getState().docked).toEqual([]);
+    expect(screen.getByRole("heading", { name: "Project agent" })).toBeInTheDocument();
   });
 });

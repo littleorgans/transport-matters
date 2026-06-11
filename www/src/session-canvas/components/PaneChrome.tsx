@@ -1,13 +1,11 @@
 // Content-agnostic pane chrome shared by PaneWindow (production /canvas) and the lab. Takes
-// primitive props only — no PaneRecord — so neither caller duplicates the chrome markup.
-// Optional onFrame / onHeaderDoubleClick add the lab's framing affordances without changing the
-// production DOM (PaneWindow passes neither, so no Frame button and no double-click handler).
+// primitive props only, no PaneRecord, so neither caller duplicates the chrome markup.
+// Optional onFrame / onHeaderDoubleClick add framing affordances for callers that wire them.
 // Optional `compact` keeps the header to a single line (title + controls) by dropping the kicker
-// and the visible state label — the lab opts in so small tiled panes stay legible; production does
+// and the visible state label, the lab opts in so small tiled panes stay legible; production does
 // not, so its header is unchanged. The dropped text stays in `data-state` and the aria-label.
 // Optional onMinimize adds a [-] button left of Close, so Close stays the rightmost control. Only
-// callers with somewhere to minimize to pass it (the lab parks every pane in its canvas dock);
-// production passes neither it nor onFrame, so its header is unchanged.
+// callers with somewhere to minimize to pass it.
 export interface PaneChromeProps {
   title: string;
   badge: string;
