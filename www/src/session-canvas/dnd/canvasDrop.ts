@@ -48,7 +48,16 @@ export function paneIdAtWorldPoint(
   world: { x: number; y: number },
   excludePaneId?: string,
 ): string | null {
-  return paneHitsAtWorldPoint(layout, world, excludePaneId)[0]?.paneId ?? null;
+  let hit: { paneId: string; z: number } | null = null;
+
+  for (const node of Object.values(layout.nodes)) {
+    if (node.lifecycle !== "open" || node.paneId === excludePaneId) continue;
+    const { x, y, width, height } = node.rect;
+    const inside = world.x >= x && world.x <= x + width && world.y >= y && world.y <= y + height;
+    if (inside && (hit === null || node.z > hit.z)) hit = { paneId: node.paneId, z: node.z };
+  }
+
+  return hit?.paneId ?? null;
 }
 
 export function paneIdAtPoint(
@@ -101,40 +110,16 @@ export function deliverPaneDropToTerminal(
   const locator = locatorForPaneRef(contentRef);
   if (locator === null) return;
 
-  const paste = pasteHandleAtWorldPoint(
+  const targetPaneId = paneIdAtWorldPoint(
     layout,
     { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 },
     movedPaneId,
   );
+  if (targetPaneId === null) return;
+
+  const paste = resolvePasteHandle(targetPaneId);
   if (paste === null) return;
   paste(escapeDropLocator(locator));
-}
-
-function pasteHandleAtWorldPoint(
-  layout: EngineLayoutState,
-  world: { x: number; y: number },
-  excludePaneId?: string,
-): ((text: string) => void) | null {
-  for (const hit of paneHitsAtWorldPoint(layout, world, excludePaneId)) {
-    const paste = resolvePasteHandle(hit.paneId);
-    if (paste !== null) return paste;
-  }
-  return null;
-}
-
-function paneHitsAtWorldPoint(
-  layout: EngineLayoutState,
-  world: { x: number; y: number },
-  excludePaneId?: string,
-): Array<{ paneId: string; z: number }> {
-  return Object.values(layout.nodes)
-    .filter((node) => {
-      if (node.lifecycle !== "open" || node.paneId === excludePaneId) return false;
-      const { x, y, width, height } = node.rect;
-      return world.x >= x && world.x <= x + width && world.y >= y && world.y <= y + height;
-    })
-    .map((node) => ({ paneId: node.paneId, z: node.z }))
-    .sort((left, right) => right.z - left.z);
 }
 
 function locatorForPaneRef(contentRef: CanvasPaneRef | undefined): DropLocator | null {

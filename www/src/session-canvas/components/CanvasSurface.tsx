@@ -63,6 +63,7 @@ export function CanvasSurface({ launch, launchStatus, launchSessionId }: CanvasS
 
     const onDragOver = (event: DragEvent) => {
       event.preventDefault();
+      if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
     };
     const onDrop = (event: DragEvent) => {
       event.preventDefault();

@@ -3,6 +3,7 @@ import type { PaneId } from "../../engine";
 import {
   type CanvasPaneRef,
   cliLabel,
+  locatorTail,
   type PaneContentRef,
   type PaneRecord,
   type PickerPaneRef,
@@ -140,8 +141,7 @@ const registry: ViewerRegistration[] = [
 function resourceRefTitle(ref: ResourceRef): string {
   if (!("source" in ref)) return `Resource ${ref.resourceId.slice(0, 8)}`;
   const locator = ref.source === "path" ? ref.path : ref.url;
-  const tail = locator.split("/").filter(Boolean).at(-1);
-  return tail ?? locator;
+  return locatorTail(locator);
 }
 
 export function registerViewer(viewer: ViewerRegistration): void {

@@ -2,7 +2,7 @@ import type { ReactElement } from "react";
 import type { ImageContentResponse, ResourceContentResponse } from "../../api/resourceContent";
 import { useLocalFileContent } from "../../hooks/useLocalFileContent";
 import { useResourceContent } from "../../hooks/useResourceContent";
-import type { PaneContentRef, ViewerProps } from "../../model/paneRecords";
+import { locatorTail, type PaneContentRef, type ViewerProps } from "../../model/paneRecords";
 import { ResourcePaneStateView } from "../placeholder/paneState";
 import { BinaryResourceViewer } from "./BinaryResourceViewer";
 import { ImageResourceViewer } from "./ImageResourceViewer";
@@ -62,7 +62,7 @@ function UrlImageResourcePane({ url }: { url: string }): ReactElement {
   const content: ImageContentResponse = {
     kind: "image",
     id: url,
-    title: url.split("/").filter(Boolean).at(-1) ?? url,
+    title: locatorTail(url),
     mediaType: null,
     contentLength: null,
     contentProvenance: "current",

@@ -99,8 +99,16 @@ describe("deliverPaneDropToTerminal", () => {
   it("pastes the moved locator pane's locator into the terminal under its center", () => {
     const paste = vi.fn();
     const unregister = registerPasteHandle("terminal:a", paste);
-    deliverPaneDropToTerminal(layout, pathRef, "resource:path:/tmp/My Shot.png", rectOver(30, 30));
+    deliverPaneDropToTerminal(layout, pathRef, "resource:path:/tmp/My Shot.png", rectOver(10, 10));
     expect(paste).toHaveBeenCalledWith("/tmp/My\\ Shot.png");
+    unregister();
+  });
+
+  it("does nothing when a non-terminal pane is stacked over a terminal", () => {
+    const paste = vi.fn();
+    const unregister = registerPasteHandle("terminal:a", paste);
+    deliverPaneDropToTerminal(layout, pathRef, "resource:path:/tmp/My Shot.png", rectOver(30, 30));
+    expect(paste).not.toHaveBeenCalled();
     unregister();
   });
 

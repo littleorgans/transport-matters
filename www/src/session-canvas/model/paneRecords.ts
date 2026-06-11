@@ -9,6 +9,10 @@ export function cliLabel(provider: CliName): string {
   return CLI_LABELS[provider];
 }
 
+export function locatorTail(locator: string): string {
+  return locator.split("/").filter(Boolean).at(-1) ?? locator;
+}
+
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
