@@ -68,6 +68,15 @@ def test_settings_home_dir_defaults_none(monkeypatch: pytest.MonkeyPatch) -> Non
     assert get_settings().agent_home_dir is None
 
 
+def test_shipped_trusted_hosts_default_is_loopback_only(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The conftest injects harness hosts ("testserver", "test") via env; the
+    # SHIPPED default is a security posture and must stay loopback-only.
+    monkeypatch.delenv("TRANSPORT_MATTERS_TRUSTED_HOSTS", raising=False)
+    assert get_settings().trusted_hosts == ["localhost", "127.0.0.1", "::1"]
+
+
 def test_settings_default_storage_root_uses_transport_matters(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

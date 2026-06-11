@@ -119,9 +119,11 @@ class Settings(BaseSettings):
 
     # DNS rebinding defense: a rebound origin reaches the loopback server
     # same-origin, where CORS never applies, so the Host header is the only
-    # signal left. "testserver" is the TestClient default; "test" is the
-    # AsyncClient base_url host the existing suites use.
-    trusted_hosts: list[str] = ["localhost", "127.0.0.1", "::1", "testserver", "test"]
+    # signal left. Loopback names only; an operator binding beyond loopback
+    # (LAN IP, *.local, reverse proxy) must extend this allowlist via
+    # TRANSPORT_MATTERS_TRUSTED_HOSTS or settings.toml, or every request 400s.
+    # The test suite injects its harness hosts in conftest.py, never here.
+    trusted_hosts: list[str] = ["localhost", "127.0.0.1", "::1"]
     cors_origins: list[str] = [
         "http://localhost:3000",
         "http://localhost:5173",
