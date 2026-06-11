@@ -57,7 +57,7 @@ export interface PaneRecord {
 }
 
 export type PaneContentRef =
-  | { kind: "session-timeline"; owner: "local"; sessionId: string }
+  | { kind: "session-timeline"; owner: "local"; sessionId: string; title?: string }
   | {
       kind: "subagent-timeline";
       owner: "local";
@@ -103,7 +103,7 @@ export function isPaneContentRef(value: unknown): value is PaneContentRef {
   if (!isRecord(value) || !hasLocalOwner(value)) return false;
   switch (value.kind) {
     case "session-timeline":
-      return typeof value.sessionId === "string";
+      return typeof value.sessionId === "string" && isOptionalString(value.title);
     case "subagent-timeline":
       return (
         typeof value.sessionId === "string" &&
@@ -137,15 +137,6 @@ export function isCanvasPaneRef(value: unknown): value is CanvasPaneRef {
   return (
     (isRecord(value) && value.kind === "session-picker" && hasLocalOwner(value)) ||
     isPaneContentRef(value)
-  );
-}
-
-export function isDockedPane(value: unknown): value is DockedPane {
-  if (!isRecord(value)) return false;
-  return (
-    typeof value.paneId === "string" &&
-    (value.ref === null || isCanvasPaneRef(value.ref)) &&
-    (value.closeDisabled === undefined || typeof value.closeDisabled === "boolean")
   );
 }
 

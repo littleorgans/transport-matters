@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { persist } from "zustand/middleware";
 import {
   type CanvasViewport,
   createInitialEngineLayoutState,
@@ -12,6 +13,7 @@ import {
 import { type LayoutParams, seedParams } from "../../engine/layout";
 import type { CanvasLaunchContext } from "../route";
 import { PICKER_PANE_ID, paneIdForRef, titleForRef } from "../viewers/registry";
+import { createCanvasStorePersistOptions } from "./canvasStore.persistence";
 import { planExpandLayout } from "./expandLayout";
 import { DEFAULT_BOUNDS, INITIAL_STRATEGY_ID } from "./layoutPlanning";
 import {
@@ -85,155 +87,162 @@ const INITIAL_LAUNCH_CONTEXT: CanvasLaunchContext = Object.freeze({
   runId: null,
 });
 
-export const useCanvasStore = create<CanvasStoreState>()((set, get) => ({
-  ...createInitialCanvasModel(INITIAL_LAUNCH_CONTEXT),
+export const useCanvasStore = create<CanvasStoreState>()(
+  persist(
+    (set, get) => ({
+      ...createInitialCanvasModel(INITIAL_LAUNCH_CONTEXT),
 
-  closePane(paneId) {
-    if (paneId === PICKER_PANE_ID) return;
-    dismissPane(useCanvasStore, {
-      paneId,
-      mode: "close",
-      getRef: canvasPaneRef,
-      applyRemoval: applyCanvasPaneRemoval,
-      planExpandedLayout: planExpandLayout,
-    });
-  },
+      closePane(paneId) {
+        if (paneId === PICKER_PANE_ID) return;
+        dismissPane(useCanvasStore, {
+          paneId,
+          mode: "close",
+          getRef: canvasPaneRef,
+          applyRemoval: applyCanvasPaneRemoval,
+          planExpandedLayout: planExpandLayout,
+        });
+      },
 
-  closeDockedPane(paneId) {
-    const entry = get().docked.find((docked) => docked.paneId === paneId);
-    if (!entry || entry.closeDisabled) return;
-    invokeDockedPaneCloseLifecycle(entry);
-    set((state) => ({ ...state, docked: removeDockedPane(state.docked, paneId) }));
-  },
+      closeDockedPane(paneId) {
+        const entry = get().docked.find((docked) => docked.paneId === paneId);
+        if (!entry || entry.closeDisabled) return;
+        invokeDockedPaneCloseLifecycle(entry);
+        set((state) => ({ ...state, docked: removeDockedPane(state.docked, paneId) }));
+      },
 
-  expandPane(paneId) {
-    const transition = planPaneExpand(get(), paneId, planExpandLayout);
-    if (!transition) return;
-    set(stripPaneFlyIntent(transition));
-  },
+      expandPane(paneId) {
+        const transition = planPaneExpand(get(), paneId, planExpandLayout);
+        if (!transition) return;
+        set(stripPaneFlyIntent(transition));
+      },
 
-  focusPane(paneId) {
-    if (!get().panes[paneId] && get().docked.some((entry) => entry.paneId === paneId)) {
-      get().restorePane(paneId);
-      return;
-    }
-    set((state) => focusCanvasPane(state, paneId));
-  },
+      focusPane(paneId) {
+        if (!get().panes[paneId] && get().docked.some((entry) => entry.paneId === paneId)) {
+          get().restorePane(paneId);
+          return;
+        }
+        set((state) => focusCanvasPane(state, paneId));
+      },
 
-  framePane(paneId) {
-    const transition = planPaneFrame(get(), paneId);
-    if (!transition) return;
-    set(stripPaneFlyIntent(transition));
-  },
+      framePane(paneId) {
+        const transition = planPaneFrame(get(), paneId);
+        if (!transition) return;
+        set(stripPaneFlyIntent(transition));
+      },
 
-  initializeCanvas(launch) {
-    set((state) => ({
-      ...state,
-      id: launch.workspaceHash ?? "direct-local",
-      launch,
-      workspaceHash: launch.workspaceHash,
-    }));
-  },
+      initializeCanvas(launch) {
+        set((state) => ({
+          ...state,
+          id: launch.workspaceHash ?? "direct-local",
+          launch,
+          workspaceHash: launch.workspaceHash,
+        }));
+      },
 
-  movePane(paneId, rect) {
-    set((state) => ({ ...state, layout: updateNodeRect(state.layout, paneId, rect) }));
-  },
+      movePane(paneId, rect) {
+        set((state) => ({ ...state, layout: updateNodeRect(state.layout, paneId, rect) }));
+      },
 
-  minimizePane(paneId) {
-    if (!get().panes[paneId]) return;
-    dismissPane(useCanvasStore, {
-      paneId,
-      mode: "minimize",
-      getRef: canvasPaneRef,
-      applyRemoval: applyCanvasPaneRemoval,
-      planExpandedLayout: planExpandLayout,
-    });
-  },
+      minimizePane(paneId) {
+        if (!get().panes[paneId]) return;
+        dismissPane(useCanvasStore, {
+          paneId,
+          mode: "minimize",
+          getRef: canvasPaneRef,
+          applyRemoval: applyCanvasPaneRemoval,
+          planExpandedLayout: planExpandLayout,
+        });
+      },
 
-  resizePane(paneId, rect) {
-    set((state) => ({ ...state, layout: updateNodeRect(state.layout, paneId, rect) }));
-  },
+      resizePane(paneId, rect) {
+        set((state) => ({ ...state, layout: updateNodeRect(state.layout, paneId, rect) }));
+      },
 
-  resetViewport() {
-    set((state) => ({
-      ...state,
-      expandedPaneId: null,
-      framing: emptyFraming(),
-      layout: setEngineViewport(
-        planCanvasLayout({ ...state, expandedPaneId: null, framing: emptyFraming() }),
-        { panX: 0, panY: 0, scale: 1 },
-      ),
-    }));
-  },
+      resetViewport() {
+        set((state) => ({
+          ...state,
+          expandedPaneId: null,
+          framing: emptyFraming(),
+          layout: setEngineViewport(
+            planCanvasLayout({ ...state, expandedPaneId: null, framing: emptyFraming() }),
+            { panX: 0, panY: 0, scale: 1 },
+          ),
+        }));
+      },
 
-  restorePane(paneId) {
-    const entry = get().docked.find((docked) => docked.paneId === paneId);
-    if (!entry?.record) return;
-    const record = entry.record;
-    invokeDockedPaneRestoreLifecycle(entry);
-    set((state) => {
-      const now = new Date().toISOString();
-      const pane: PaneRecord = { ...record, lastFocusedAt: now };
-      return {
-        ...state,
-        docked: removeDockedPane(state.docked, paneId),
-        panes: { ...state.panes, [paneId]: pane },
-        layout: planSpawnedAffordancePaneLayout(state, paneId, planExpandLayout),
-      };
-    });
-  },
+      restorePane(paneId) {
+        const entry = get().docked.find((docked) => docked.paneId === paneId);
+        if (!entry?.record) return;
+        const record = entry.record;
+        invokeDockedPaneRestoreLifecycle(entry);
+        set((state) => {
+          const now = new Date().toISOString();
+          const pane: PaneRecord = { ...record, lastFocusedAt: now };
+          return {
+            ...state,
+            docked: removeDockedPane(state.docked, paneId),
+            panes: { ...state.panes, [paneId]: pane },
+            layout: planSpawnedAffordancePaneLayout(state, paneId, planExpandLayout),
+          };
+        });
+      },
 
-  setViewport(viewport) {
-    set((state) => ({ ...state, layout: setEngineViewport(state.layout, viewport) }));
-  },
+      setViewport(viewport) {
+        set((state) => ({ ...state, layout: setEngineViewport(state.layout, viewport) }));
+      },
 
-  setBounds(bounds) {
-    set((state) => ({
-      ...state,
-      bounds,
-      layout: planCanvasLayout({ ...state, bounds }),
-    }));
-  },
+      setBounds(bounds) {
+        set((state) => ({
+          ...state,
+          bounds,
+          layout: planCanvasLayout({ ...state, bounds }),
+        }));
+      },
 
-  spawnPane(ref, options) {
-    const normalized = normalizeRef(ref);
-    const paneId = paneIdForRef(normalized);
-    const existing = get().panes[paneId];
-    if (existing) {
-      if (options?.focus !== false) get().focusPane(paneId);
-      return paneId;
-    }
-    const docked = get().docked.find((entry) => entry.paneId === paneId);
-    if (docked) {
-      get().restorePane(paneId);
-      return paneId;
-    }
-    const title = options?.title ?? titleForRef(normalized);
-    set((state) => insertPane(state, normalized, title, options?.focus !== false));
-    return paneId;
-  },
+      spawnPane(ref, options) {
+        const normalized = normalizeRef(ref);
+        const paneId = paneIdForRef(normalized);
+        const existing = get().panes[paneId];
+        if (existing) {
+          if (options?.focus !== false) get().focusPane(paneId);
+          return paneId;
+        }
+        const docked = get().docked.find((entry) => entry.paneId === paneId);
+        if (docked) {
+          get().restorePane(paneId);
+          return paneId;
+        }
+        const title = options?.title ?? titleForRef(normalized);
+        set((state) => insertPane(state, normalized, title, options?.focus !== false));
+        return paneId;
+      },
 
-  spawnOrFocusTranscript(session) {
-    const ref: PaneContentRef = {
-      kind: "session-timeline",
-      owner: "local",
-      sessionId: session.session_id,
-    };
-    get().spawnPane(ref, { focus: true, title: titleForSession(session) });
-  },
+      spawnOrFocusTranscript(session) {
+        const title = titleForSession(session);
+        const ref: PaneContentRef = {
+          kind: "session-timeline",
+          owner: "local",
+          sessionId: session.session_id,
+          title,
+        };
+        get().spawnPane(ref, { focus: true, title });
+      },
 
-  unexpand() {
-    const transition = planPaneUnexpand(get(), planExpandLayout);
-    if (!transition) return;
-    set(stripPaneFlyIntent(transition));
-  },
+      unexpand() {
+        const transition = planPaneUnexpand(get(), planExpandLayout);
+        if (!transition) return;
+        set(stripPaneFlyIntent(transition));
+      },
 
-  unframe() {
-    const transition = planPaneUnframe(get());
-    if (!transition) return;
-    set(stripPaneFlyIntent(transition));
-  },
-}));
+      unframe() {
+        const transition = planPaneUnframe(get());
+        if (!transition) return;
+        set(stripPaneFlyIntent(transition));
+      },
+    }),
+    createCanvasStorePersistOptions<CanvasStoreState>(),
+  ),
+);
 
 function createInitialCanvasModel(launch: CanvasLaunchContext): CanvasStoreModel {
   const layout = createInitialEngineLayoutState();

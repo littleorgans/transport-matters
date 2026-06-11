@@ -8,15 +8,19 @@ import {
 } from "../../engine";
 import { type LayoutParams, type ParamValue, sanitizeParam, seedParams } from "../../engine/layout";
 import {
+  type CanvasPaneRef,
   type DockedPane,
-  isDockedPane,
   isPaneContentRef,
   isRecord,
   type PaneContentRef,
 } from "../model/paneRecords";
 
-export interface PersistedCanvasPanes {
-  contentRefs: Record<PaneId, PaneContentRef>;
+interface CanvasPanePersistenceOptions<TRef extends CanvasPaneRef> {
+  isContentRef(value: unknown): value is TRef;
+}
+
+export interface PersistedCanvasPanes<TRef extends CanvasPaneRef = PaneContentRef> {
+  contentRefs: Record<PaneId, TRef>;
   paneRects: Record<PaneId, WorldRect>;
   docked: DockedPane[];
 }
@@ -28,33 +32,43 @@ export interface PersistedCanvasView {
   expandedPaneId: PaneId | null;
 }
 
-export interface PersistedCanvasState extends PersistedCanvasPanes, PersistedCanvasView {}
+export interface PersistedCanvasState<TRef extends CanvasPaneRef = PaneContentRef>
+  extends PersistedCanvasPanes<TRef>,
+    PersistedCanvasView {}
 
-interface SeedPaneState {
-  contentRefs: Record<PaneId, PaneContentRef>;
+interface SeedPaneState<TRef extends CanvasPaneRef = PaneContentRef> {
+  contentRefs: Record<PaneId, TRef>;
   layout: EngineLayoutState;
   docked?: DockedPane[];
 }
 
-interface SeedCanvasState extends SeedPaneState, PersistedCanvasView {}
+interface SeedCanvasState<TRef extends CanvasPaneRef = PaneContentRef>
+  extends SeedPaneState<TRef>,
+    PersistedCanvasView {}
 
-export interface RebuiltCanvasPanes {
-  contentRefs: Record<PaneId, PaneContentRef>;
+export interface RebuiltCanvasPanes<TRef extends CanvasPaneRef = PaneContentRef> {
+  contentRefs: Record<PaneId, TRef>;
   layout: EngineLayoutState;
   docked: DockedPane[];
 }
 
-export interface RebuiltCanvasState extends RebuiltCanvasPanes, PersistedCanvasView {}
+export type PersistedCanvasPaneStatus = "absent" | "reset" | "hydrated";
+
+export interface RebuiltCanvasState<TRef extends CanvasPaneRef = PaneContentRef>
+  extends RebuiltCanvasPanes<TRef>,
+    PersistedCanvasView {
+  paneStatus: PersistedCanvasPaneStatus;
+}
 
 // The single node+ref seed: place a pane node at `rect` carrying an optional content ref (null is a
 // demo/placeholder pane). Spawn and reload both funnel through this primitive, so create and restore
 // cannot drift. No planning or focus happens here: callers layer those concerns on top.
-export function seedPaneFromRecord(
-  state: SeedPaneState,
+export function seedPaneFromRecord<TRef extends CanvasPaneRef = PaneContentRef>(
+  state: SeedPaneState<TRef>,
   paneId: PaneId,
-  ref: PaneContentRef | null,
+  ref: TRef | null,
   rect: WorldRect,
-): Pick<SeedPaneState, "contentRefs" | "layout"> {
+): Pick<SeedPaneState<TRef>, "contentRefs" | "layout"> {
   return {
     contentRefs: ref ? { ...state.contentRefs, [paneId]: ref } : state.contentRefs,
     layout: upsertNode(state.layout, createPaneNode(paneId, rect, nextPaneZ(state.layout.nodes))),
@@ -74,22 +88,23 @@ export function collectOpenPaneRects(layout: EngineLayoutState): Record<PaneId, 
 // Reload hydration: rebuild the canvas from the persisted record set through the same seed primitive
 // the spawn path uses. Each open record seeds a node at its persisted rect carrying its persisted ref;
 // docked records ride back in `docked` for the surface adapter to expose.
-export function rebuildPersistedPanes(
+export function rebuildPersistedPanes<TRef extends CanvasPaneRef = PaneContentRef>(
   persisted: unknown,
-  current: SeedPaneState,
-): RebuiltCanvasPanes {
-  const saved = readPersistedPanes(persisted);
+  current: SeedPaneState<TRef>,
+  options?: CanvasPanePersistenceOptions<TRef>,
+): RebuiltCanvasPanes<TRef> {
+  const saved = readPersistedPanes(persisted, contentRefGuard(options));
   return rebuildPersistedPanesFromSaved(saved, current);
 }
 
-function rebuildPersistedPanesFromSaved(
-  saved: PersistedCanvasPanes | null | undefined,
-  current: SeedPaneState,
-): RebuiltCanvasPanes {
+function rebuildPersistedPanesFromSaved<TRef extends CanvasPaneRef = PaneContentRef>(
+  saved: PersistedCanvasPanes<TRef> | null | undefined,
+  current: SeedPaneState<TRef>,
+): RebuiltCanvasPanes<TRef> {
   if (saved === undefined) return currentPanes(current);
   if (saved === null) return resetPanes(current);
 
-  let seeded: SeedPaneState = {
+  let seeded: SeedPaneState<TRef> = {
     contentRefs: {},
     layout: { ...current.layout, focusedPaneId: null, nodes: {} },
   };
@@ -105,7 +120,9 @@ function rebuildPersistedPanesFromSaved(
   };
 }
 
-function currentPanes(current: SeedPaneState): RebuiltCanvasPanes {
+function currentPanes<TRef extends CanvasPaneRef = PaneContentRef>(
+  current: SeedPaneState<TRef>,
+): RebuiltCanvasPanes<TRef> {
   return {
     contentRefs: current.contentRefs,
     layout: current.layout,
@@ -113,7 +130,9 @@ function currentPanes(current: SeedPaneState): RebuiltCanvasPanes {
   };
 }
 
-function resetPanes(current: SeedPaneState): RebuiltCanvasPanes {
+function resetPanes<TRef extends CanvasPaneRef = PaneContentRef>(
+  current: SeedPaneState<TRef>,
+): RebuiltCanvasPanes<TRef> {
   return {
     contentRefs: {},
     layout: { ...current.layout, focusedPaneId: null, nodes: {} },
@@ -121,14 +140,17 @@ function resetPanes(current: SeedPaneState): RebuiltCanvasPanes {
   };
 }
 
-function readPersistedPanes(persisted: unknown): PersistedCanvasPanes | null | undefined {
+function readPersistedPanes<TRef extends CanvasPaneRef = PaneContentRef>(
+  persisted: unknown,
+  isContentRef: (value: unknown) => value is TRef,
+): PersistedCanvasPanes<TRef> | null | undefined {
   if (persisted === undefined || persisted === null) return undefined;
   if (!isRecord(persisted)) return null;
   if (!hasPersistedPanePayload(persisted)) return undefined;
 
-  const contentRefs = readContentRefs(persisted.contentRefs);
+  const contentRefs = readContentRefs(persisted.contentRefs, isContentRef);
   const paneRects = readPaneRects(persisted.paneRects);
-  const docked = readDockedPanes(persisted.docked);
+  const docked = readDockedPanes(persisted.docked, isContentRef);
   if (!contentRefs || !paneRects || !docked) return null;
   return { contentRefs, paneRects, docked };
 }
@@ -137,12 +159,15 @@ function hasPersistedPanePayload(value: Record<string, unknown>): boolean {
   return "contentRefs" in value || "paneRects" in value || "docked" in value;
 }
 
-function readContentRefs(value: unknown): Record<PaneId, PaneContentRef> | null {
+function readContentRefs<TRef extends CanvasPaneRef = PaneContentRef>(
+  value: unknown,
+  isContentRef: (candidate: unknown) => candidate is TRef,
+): Record<PaneId, TRef> | null {
   if (value === undefined) return {};
   if (!isRecord(value)) return null;
-  const contentRefs: Record<PaneId, PaneContentRef> = {};
+  const contentRefs: Record<PaneId, TRef> = {};
   for (const [paneId, ref] of Object.entries(value)) {
-    if (!isPaneContentRef(ref)) return null;
+    if (!isContentRef(ref)) return null;
     contentRefs[paneId] = ref;
   }
   return contentRefs;
@@ -159,15 +184,30 @@ function readPaneRects(value: unknown): Record<PaneId, WorldRect> | null {
   return rects;
 }
 
-function readDockedPanes(value: unknown): DockedPane[] | null {
+function readDockedPanes<TRef extends CanvasPaneRef = PaneContentRef>(
+  value: unknown,
+  isContentRef: (candidate: unknown) => candidate is TRef,
+): DockedPane[] | null {
   if (value === undefined) return [];
   if (!Array.isArray(value)) return null;
   const docked: DockedPane[] = [];
   for (const entry of value) {
-    if (!isDockedPane(entry)) return null;
+    if (!isPersistedDockedPane(entry, isContentRef)) return null;
     docked.push(entry);
   }
   return docked;
+}
+
+function isPersistedDockedPane<TRef extends CanvasPaneRef = PaneContentRef>(
+  value: unknown,
+  isContentRef: (candidate: unknown) => candidate is TRef,
+): value is DockedPane & { ref: TRef | null } {
+  if (!isRecord(value)) return false;
+  return (
+    typeof value.paneId === "string" &&
+    (value.ref === null || isContentRef(value.ref)) &&
+    (value.closeDisabled === undefined || typeof value.closeDisabled === "boolean")
+  );
 }
 
 function isWorldRect(value: unknown): value is WorldRect {
@@ -228,12 +268,14 @@ function restoreExpandedPaneId(
 
 // Reload hydration for the full core canvas shape: panes rebuild from persisted rects, while the
 // view controls hydrate without re-planning. The camera stays transient on `current.layout`.
-export function rebuildPersistedCanvasState(
+export function rebuildPersistedCanvasState<TRef extends CanvasPaneRef = PaneContentRef>(
   persisted: unknown,
-  current: SeedCanvasState,
-): RebuiltCanvasState {
-  const saved = isRecord(persisted) ? (persisted as Partial<PersistedCanvasState>) : {};
-  const persistedPanes = readPersistedPanes(persisted);
+  current: SeedCanvasState<TRef>,
+  options?: CanvasPanePersistenceOptions<TRef>,
+): RebuiltCanvasState<TRef> {
+  const saved = isRecord(persisted) ? (persisted as Partial<PersistedCanvasState<TRef>>) : {};
+  const paneOptions = contentRefGuard(options);
+  const persistedPanes = readPersistedPanes(persisted, paneOptions);
   const panes = rebuildPersistedPanesFromSaved(persistedPanes, current);
   if (persistedPanes === undefined) {
     return {
@@ -242,6 +284,7 @@ export function rebuildPersistedCanvasState(
       params: current.params,
       fitToContent: current.fitToContent,
       expandedPaneId: current.expandedPaneId,
+      paneStatus: "absent",
     };
   }
   if (persistedPanes === null) {
@@ -251,6 +294,7 @@ export function rebuildPersistedCanvasState(
       params: current.params,
       fitToContent: current.fitToContent,
       expandedPaneId: null,
+      paneStatus: "reset",
     };
   }
   const openPaneIds = Object.values(panes.layout.nodes)
@@ -265,5 +309,12 @@ export function rebuildPersistedCanvasState(
     fitToContent:
       typeof saved.fitToContent === "boolean" ? saved.fitToContent : current.fitToContent,
     expandedPaneId: restoreExpandedPaneId(saved, openPaneIds),
+    paneStatus: "hydrated",
   };
+}
+
+function contentRefGuard<TRef extends CanvasPaneRef = PaneContentRef>(
+  options: CanvasPanePersistenceOptions<TRef> | undefined,
+): (value: unknown) => value is TRef {
+  return options?.isContentRef ?? (isPaneContentRef as (value: unknown) => value is TRef);
 }

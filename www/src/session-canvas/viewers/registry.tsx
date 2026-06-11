@@ -64,7 +64,7 @@ const registry: ViewerRegistration[] = [
     canRender: (ref): ref is Extract<PaneContentRef, { kind: "session-timeline" }> =>
       ref.kind === "session-timeline",
     paneId: (ref) => `${TRANSCRIPT_PANE_PREFIX}${ref.sessionId}`,
-    title: (ref) => `Transcript ${ref.sessionId.slice(0, 8)}`,
+    title: (ref) => ref.title ?? `Transcript ${ref.sessionId.slice(0, 8)}`,
     render: (props) => <TranscriptChatPane {...props} />,
   }),
   defineViewer<ResourceRef>({

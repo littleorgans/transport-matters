@@ -16,6 +16,7 @@
   cursor: auto;
   overflow: hidden;
   outline: none;
+  touch-action: none;
 }
 .canvas-viewport:focus-visible {
   box-shadow: inset var(--canvas-focus-ring);

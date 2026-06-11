@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createInitialEngineLayoutState, markNodeClosing, type PaneId } from "../../engine";
 import { seedParams } from "../../engine/layout";
-import type { DockedPane, PaneContentRef } from "../model/paneRecords";
+import { type DockedPane, isPaneContentRef, type PaneContentRef } from "../model/paneRecords";
 import {
   collectOpenPaneRects,
   type PersistedCanvasPanes,
@@ -24,6 +24,10 @@ const capturedRef = {
   runKey: "claude:k1",
   label: "Claude-1",
 } satisfies PaneContentRef;
+
+function isTerminalRef(value: unknown): value is Extract<PaneContentRef, { kind: "terminal" }> {
+  return isPaneContentRef(value) && value.kind === "terminal";
+}
 
 function emptySeedState() {
   return {
@@ -208,6 +212,22 @@ describe("canvas pane persistence", () => {
     expect(rebuilt.layout.nodes["terminal-2"]).toBeUndefined();
   });
 
+  it("resets docked records that fail the injected ref guard", () => {
+    const persisted = {
+      contentRefs: {},
+      paneRects: {},
+      docked: [{ paneId: "picker", ref: { kind: "session-picker", owner: "local" } }],
+    };
+
+    const rebuilt = rebuildPersistedPanes(persisted, emptySeedState(), {
+      isContentRef: isTerminalRef,
+    });
+
+    expect(rebuilt.contentRefs).toEqual({});
+    expect(rebuilt.layout.nodes).toEqual({});
+    expect(rebuilt.docked).toEqual([]);
+  });
+
   it("rebuilds from a raw persisted payload", () => {
     const rawPayload: unknown = {
       contentRefs: { "terminal-1": terminalRef },
@@ -228,7 +248,7 @@ describe("canvas pane persistence", () => {
   it("collects open pane rects and excludes panes mid-close", () => {
     const openPaneId: PaneId = "open-1";
     const closingPaneId: PaneId = "closing-1";
-    let seeded = seedPaneFromRecord(emptySeedState(), openPaneId, terminalRef, {
+    let seeded = seedPaneFromRecord<PaneContentRef>(emptySeedState(), openPaneId, terminalRef, {
       x: 0,
       y: 0,
       width: 360,
