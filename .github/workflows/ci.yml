@@ -126,6 +126,45 @@ jobs:
           retention-days: 1
 
   # ------------------------------------------------------------------- #
+  # Unit tests mount components in jsdom with fresh storage, so a route  #
+  # that crashes at mount in a real browser ships green: the /canvas-lab #
+  # route broke on a live roadtest while lint, typecheck, vitest, and    #
+  # the vite build all passed. This job runs the behavioral Playwright   #
+  # e2e suite (tests/e2e) against a real dev server in chromium, which   #
+  # mounts every route the specs cover. Chromium only: CI guards route   #
+  # behavior, the local three-browser run guards engine differences.     #
+  # ------------------------------------------------------------------- #
+  frontend-e2e:
+    name: frontend e2e
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: www
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v5
+        with:
+          package_json_file: www/package.json
+
+      - name: Install Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: www/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Install Playwright chromium
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Behavioral e2e (chromium)
+        run: pnpm exec playwright test --project=chromium
+
+  # ------------------------------------------------------------------- #
   # Desktop never ran in CI, so a broken Electron preload shipped green: #
   # typecheck + mocked unit tests pass while the real app fails to load. #
   # This job builds the desktop package and runs the packaged smoke under #
