@@ -1,5 +1,5 @@
-import type { EngineLayoutState } from "../../engine";
-import type { PaneContentRef } from "../model/paneRecords";
+import type { EngineLayoutState, WorldRect } from "../../engine";
+import type { CanvasPaneRef, PaneContentRef } from "../model/paneRecords";
 import {
   escapeDropLocator,
   resolvePasteHandle,
@@ -43,23 +43,23 @@ export function classifyDrop(
   return { locators, unresolvedFiles: false };
 }
 
+export function paneIdAtWorldPoint(
+  layout: EngineLayoutState,
+  world: { x: number; y: number },
+  excludePaneId?: string,
+): string | null {
+  return paneHitsAtWorldPoint(layout, world, excludePaneId)[0]?.paneId ?? null;
+}
+
 export function paneIdAtPoint(
   layout: EngineLayoutState,
   point: { x: number; y: number },
 ): string | null {
   const { panX, panY, scale } = layout.viewport;
-  const worldX = (point.x - panX) / scale;
-  const worldY = (point.y - panY) / scale;
-  let hit: { paneId: string; z: number } | null = null;
-
-  for (const node of Object.values(layout.nodes)) {
-    if (node.lifecycle !== "open") continue;
-    const { x, y, width, height } = node.rect;
-    const inside = worldX >= x && worldX <= x + width && worldY >= y && worldY <= y + height;
-    if (inside && (hit === null || node.z > hit.z)) hit = { paneId: node.paneId, z: node.z };
-  }
-
-  return hit?.paneId ?? null;
+  return paneIdAtWorldPoint(layout, {
+    x: (point.x - panX) / scale,
+    y: (point.y - panY) / scale,
+  });
 }
 
 export function handleCanvasDrop(
@@ -90,6 +90,58 @@ export function handleCanvasDrop(
   for (const locator of locators) {
     deps.spawnPane(refForLocator(locator), undefined);
   }
+}
+
+export function deliverPaneDropToTerminal(
+  layout: EngineLayoutState,
+  contentRef: CanvasPaneRef | undefined,
+  movedPaneId: string,
+  rect: WorldRect,
+): void {
+  const locator = locatorForPaneRef(contentRef);
+  if (locator === null) return;
+
+  const paste = pasteHandleAtWorldPoint(
+    layout,
+    { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 },
+    movedPaneId,
+  );
+  if (paste === null) return;
+  paste(escapeDropLocator(locator));
+}
+
+function pasteHandleAtWorldPoint(
+  layout: EngineLayoutState,
+  world: { x: number; y: number },
+  excludePaneId?: string,
+): ((text: string) => void) | null {
+  for (const hit of paneHitsAtWorldPoint(layout, world, excludePaneId)) {
+    const paste = resolvePasteHandle(hit.paneId);
+    if (paste !== null) return paste;
+  }
+  return null;
+}
+
+function paneHitsAtWorldPoint(
+  layout: EngineLayoutState,
+  world: { x: number; y: number },
+  excludePaneId?: string,
+): Array<{ paneId: string; z: number }> {
+  return Object.values(layout.nodes)
+    .filter((node) => {
+      if (node.lifecycle !== "open" || node.paneId === excludePaneId) return false;
+      const { x, y, width, height } = node.rect;
+      return world.x >= x && world.x <= x + width && world.y >= y && world.y <= y + height;
+    })
+    .map((node) => ({ paneId: node.paneId, z: node.z }))
+    .sort((left, right) => right.z - left.z);
+}
+
+function locatorForPaneRef(contentRef: CanvasPaneRef | undefined): DropLocator | null {
+  if (contentRef?.kind !== "resource" || !("source" in contentRef)) return null;
+  return contentRef.source === "path"
+    ? { source: "path", locator: contentRef.path }
+    : { source: "url", locator: contentRef.url };
 }
 
 function refForLocator(locator: DropLocator): PaneContentRef {

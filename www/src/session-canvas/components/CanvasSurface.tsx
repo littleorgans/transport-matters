@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { LayoutCanvas } from "../../engine";
+import { LayoutCanvas, type PaneId, type WorldRect } from "../../engine";
 import type { LaunchResolutionStatus } from "../api/launchResolution";
-import { handleCanvasDrop } from "../dnd/canvasDrop";
+import { deliverPaneDropToTerminal, handleCanvasDrop } from "../dnd/canvasDrop";
 import { useCanvasStore } from "../model/canvasStore";
 import type { CanvasLaunchContext } from "../route";
 import { PICKER_PANE_ID, renderPaneContent } from "../viewers/registry";
@@ -89,6 +89,11 @@ export function CanvasSurface({ launch, launchStatus, launchSessionId }: CanvasS
     };
   }, [spawnPane, minimizePane]);
 
+  const onMovePaneEnd = useCallback((paneId: PaneId, rect: WorldRect) => {
+    const state = useCanvasStore.getState();
+    deliverPaneDropToTerminal(state.layout, state.panes[paneId]?.contentRef, paneId, rect);
+  }, []);
+
   // Stable across viewport-only renders so the memoized PaneLayer skips the pane subtree on pan/zoom.
   // Re-created only when the data it reads changes (panes, focus, actions, launch context).
   const renderPane = useCallback(
@@ -159,6 +164,7 @@ export function CanvasSurface({ launch, launchStatus, launchSessionId }: CanvasS
         layout={layout}
         onFocusPane={focusPane}
         onMovePane={movePane}
+        onMovePaneEnd={onMovePaneEnd}
         onResizePane={resizePane}
         overlay={<PaneDock docked={docked} onClose={closeDockedPane} onRestore={restorePane} />}
         renderPane={renderPane}

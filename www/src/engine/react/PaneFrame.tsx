@@ -16,6 +16,7 @@ export interface PaneFrameProps {
   layoutMotion?: boolean;
   onFocus(paneId: string): void;
   onMove(paneId: string, rect: WorldRect): void;
+  onMoveEnd?(paneId: string, rect: WorldRect): void;
   onResize(paneId: string, rect: WorldRect): void;
   children: React.ReactNode;
 }
@@ -39,6 +40,7 @@ export function PaneFrame({
   layoutMotion = false,
   onFocus,
   onMove,
+  onMoveEnd,
   onResize,
   children,
 }: PaneFrameProps) {
@@ -106,6 +108,10 @@ export function PaneFrame({
         else setLiveRect(next);
       }
       if (last) {
+        if (dragMode.current === "move") {
+          const base = moveBase.current ?? node.rect;
+          onMoveEnd?.(node.paneId, moveRect(base, moveX / scale, moveY / scale));
+        }
         dragMode.current = null;
         moveBase.current = null;
         resizeBase.current = null;
