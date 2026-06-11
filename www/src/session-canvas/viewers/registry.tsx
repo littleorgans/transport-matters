@@ -1,5 +1,5 @@
 import { lazy, type ReactNode, Suspense } from "react";
-import type { PaneId, WorldRect } from "../../engine";
+import type { PaneId } from "../../engine";
 import {
   type CanvasPaneRef,
   cliLabel,
@@ -34,33 +34,16 @@ const SUBAGENT_PANE_PREFIX = "subagent:";
 const RESOURCE_PANE_PREFIX = "resource:";
 const EXCHANGE_PANE_PREFIX = "exchange:";
 
-const PICKER_RECT: WorldRect = Object.freeze({ x: 48, y: 48, width: 440, height: 640 });
-const TRANSCRIPT_RECT: WorldRect = Object.freeze({ x: 512, y: 48, width: 720, height: 640 });
-const PLACEHOLDER_RECT: WorldRect = Object.freeze({ x: 560, y: 88, width: 560, height: 560 });
-const TERMINAL_RECT: WorldRect = Object.freeze({ x: 512, y: 48, width: 760, height: 520 });
-const CASCADE_OFFSET = 28;
-
 /**
- * Narrows a registration to its ref kind so paneId/title/defaultRect/render can
- * read ref fields without casts, then erases the generic for the heterogeneous
- * registry. Safe because `resolveViewer` only calls a registration after its own
+ * Narrows a registration to its ref kind so paneId/title/render can read ref
+ * fields without casts, then erases the generic for the heterogeneous registry.
+ * Safe because `resolveViewer` only calls a registration after its own
  * `canRender` guard has matched.
  */
 function defineViewer<TRef extends CanvasPaneRef>(
   reg: ViewerRegistration<TRef>,
 ): ViewerRegistration {
   return reg as ViewerRegistration;
-}
-
-function cascadeRect(base: WorldRect, step: number): WorldRect {
-  if (step <= 0) return { ...base };
-  return { ...base, x: base.x + step * CASCADE_OFFSET, y: base.y + step * CASCADE_OFFSET };
-}
-
-// The picker is always present, so transcript and content panes cascade from the
-// second pane onward to preserve the established placement.
-function contentStep(paneCount: number): number {
-  return Math.max(0, paneCount - 1);
 }
 
 type ResourceRef = Extract<PaneContentRef, { kind: "resource" }>;
@@ -74,7 +57,6 @@ const registry: ViewerRegistration[] = [
     canRender: (ref): ref is PickerPaneRef => ref.kind === "session-picker",
     paneId: () => PICKER_PANE_ID,
     title: () => "Session picker",
-    defaultRect: () => ({ ...PICKER_RECT }),
     render: (props) => <SessionPickerPane {...props} />,
   }),
   defineViewer<Extract<PaneContentRef, { kind: "session-timeline" }>>({
@@ -83,7 +65,6 @@ const registry: ViewerRegistration[] = [
       ref.kind === "session-timeline",
     paneId: (ref) => `${TRANSCRIPT_PANE_PREFIX}${ref.sessionId}`,
     title: (ref) => `Transcript ${ref.sessionId.slice(0, 8)}`,
-    defaultRect: (_ref, index) => cascadeRect(TRANSCRIPT_RECT, contentStep(index)),
     render: (props) => <TranscriptChatPane {...props} />,
   }),
   defineViewer<ResourceRef>({
@@ -91,7 +72,6 @@ const registry: ViewerRegistration[] = [
     canRender: (ref): ref is ResourceRef => ref.kind === "resource",
     paneId: (ref) => `${RESOURCE_PANE_PREFIX}${ref.sessionId}:${ref.resourceId}`,
     title: (ref) => `Resource ${ref.resourceId.slice(0, 8)}`,
-    defaultRect: (_ref, index) => cascadeRect(PLACEHOLDER_RECT, contentStep(index)),
     render: (props) => <ResourcePane {...props} />,
   }),
   defineViewer<ExchangeRef>({
@@ -99,7 +79,6 @@ const registry: ViewerRegistration[] = [
     canRender: (ref): ref is ExchangeRef => ref.kind === "provider-exchange",
     paneId: (ref) => `${EXCHANGE_PANE_PREFIX}${ref.sessionId}:${ref.exchangeId}`,
     title: (ref) => `Exchange ${ref.exchangeId.slice(0, 8)}`,
-    defaultRect: (_ref, index) => cascadeRect(PLACEHOLDER_RECT, contentStep(index)),
     render: (props) => (
       <ProviderExchangeResourceViewer
         exchangeId={props.pane.contentRef.exchangeId}
@@ -112,7 +91,6 @@ const registry: ViewerRegistration[] = [
     canRender: (ref): ref is TerminalRef => ref.kind === "terminal",
     paneId: () => "terminal",
     title: (ref) => ref.label ?? "Terminal",
-    defaultRect: (_ref, index) => cascadeRect(TERMINAL_RECT, contentStep(index)),
     // The terminal is self-contained (its own xterm + PTY socket); it ignores viewer props. It is
     // lazy, so a Suspense boundary covers the one-time chunk fetch.
     render: () => (
@@ -131,7 +109,6 @@ const registry: ViewerRegistration[] = [
     // pane ids; they never dedupe onto one shared terminal.
     paneId: (ref) => ref.runKey,
     title: (ref) => ref.label ?? cliLabel(ref.provider),
-    defaultRect: (_ref, index) => cascadeRect(TERMINAL_RECT, contentStep(index)),
     // Self-contained like the bare terminal (its own xterm + captured PTY socket). The pane id is
     // the per-pane run key, so each captured pane owns its own run. Lazy, so a Suspense boundary
     // covers the one-time shared-chunk fetch.
@@ -152,7 +129,6 @@ const registry: ViewerRegistration[] = [
     paneId: (ref) => `${SUBAGENT_PANE_PREFIX}${ref.sessionId}:${ref.subagentId}`,
     // The real backend child-session title travels on the ref (SubagentRef.title).
     title: (ref) => ref.title,
-    defaultRect: (_ref, index) => cascadeRect(PLACEHOLDER_RECT, contentStep(index)),
     render: (props) => <PlaceholderPane {...props} />,
   }),
 ];
@@ -176,10 +152,6 @@ export function paneIdForRef(ref: CanvasPaneRef): PaneId {
 
 export function titleForRef(ref: CanvasPaneRef): string {
   return resolveViewer(ref).title(ref);
-}
-
-export function rectForRef(ref: CanvasPaneRef, paneCount: number): WorldRect {
-  return resolveViewer(ref).defaultRect(ref, paneCount);
 }
 
 export function viewerIdForRef(ref: CanvasPaneRef): ViewerId {
