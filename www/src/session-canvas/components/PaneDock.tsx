@@ -1,8 +1,12 @@
 import { type SyntheticEvent, useCallback, useEffect, useRef, useState } from "react";
 import type { PaneId } from "../../engine";
+import { truncateMiddle } from "../../lib/formatting";
 import type { DockedPane } from "../model/paneRecords";
 import { titleForRef } from "../viewers/registry";
 import "./pane-dock.css";
+
+/** Row labels middle-truncate (file names discriminate at both ends); full title on hover. */
+const DOCK_TITLE_MAX = 44;
 
 // Canvas-resident dock: a count-badged chip in the viewport's top band whose menu lists the locally
 // minimized panes; selecting one restores it. Sourced ONLY from local minimized state (Option A),
@@ -80,9 +84,12 @@ export function PaneDock({ docked, onRestore, onClose }: PaneDockProps) {
                     className="canvas-dock__restore"
                     onClick={() => restore(pane.paneId)}
                     role="menuitem"
+                    title={title}
                     type="button"
                   >
-                    <span className="canvas-dock__title">{title}</span>
+                    <span className="canvas-dock__title">
+                      {truncateMiddle(title, DOCK_TITLE_MAX)}
+                    </span>
                   </button>
                   <button
                     aria-label={`Close ${title}`}

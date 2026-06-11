@@ -66,6 +66,8 @@
   /* Own carve-out: the menu box overflows the dock container, and drag-region
      subtraction only counts each element's own box (see .canvas-viewport-dock). */
   -webkit-app-region: no-drag;
+  /* Backstop for the truncateMiddle row labels: the menu never sprawls to fit a name. */
+  max-inline-size: 28rem;
   display: flex;
   flex-direction: column;
   gap: calc(var(--canvas-pane-gap) * 0.5);
