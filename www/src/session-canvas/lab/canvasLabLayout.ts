@@ -13,11 +13,12 @@ import {
   fitScale,
   type LayoutParams,
   listLayouts,
+  type PlanResult,
   resolveLayout,
 } from "../../engine/layout";
 import type { PaneContentRef } from "../model/paneRecords";
 import { seedPaneFromRecord } from "../persistence/canvasPanePersistence";
-import { fitExpandFrameToWidth, planExpandedLayout } from "./expandLayout";
+import { type ExpandLayoutResult, planExpandLayout } from "./expandLayout";
 
 export const DEFAULT_BOUNDS: ViewportBounds = { width: 1600, height: 1000 };
 const SEED_RECT: WorldRect = { x: 48, y: 48, width: 360, height: 280 };
@@ -87,9 +88,10 @@ function fitViewport(
   };
 }
 
-// Pure planner: run the active strategy over the open panes, write every planned rect back, and
-// (when fitToContent) recompute the fit camera. Shared by organize() and addPane() so the new pane
-// can be planned into its final slot within a single store commit. No get/set: callers own the set.
+// Pure planner: compose expand as a hero plus fixed remainder strategy when a pane is expanded;
+// otherwise run the active strategy over the open panes. Shared by organize() and addPane() so the
+// new pane can be planned into its final slot within a single store commit. No get/set: callers own
+// the set.
 export function planLayout(
   layout: EngineLayoutState,
   bounds: ViewportBounds,
@@ -99,22 +101,14 @@ export function planLayout(
   expandedPaneId: PaneId | null,
 ): EngineLayoutState {
   const paneIds = openPaneIds(layout);
-  if (expandedPaneId && paneIds.includes(expandedPaneId)) {
-    const { rects, frame } = planExpandedLayout({ paneIds, expandedPaneId, viewport: bounds });
-    let next = updateNodeRects(layout, rects);
-    if (fitToContent) {
-      next = setEngineViewport(next, fitExpandFrameToWidth(frame, bounds));
-    }
-    return next;
-  }
-
-  const { rects, frame } = resolveLayout(activeStrategyId).plan(
-    { paneIds, viewport: bounds },
-    params,
-  );
-  let next = updateNodeRects(layout, rects);
+  const planned: PlanResult | ExpandLayoutResult =
+    expandedPaneId && paneIds.includes(expandedPaneId)
+      ? planExpandLayout({ paneIds, expandedPaneId, viewport: bounds })
+      : resolveLayout(activeStrategyId).plan({ paneIds, viewport: bounds }, params);
+  let next = updateNodeRects(layout, planned.rects);
   if (fitToContent) {
-    const fitted = fitViewport(rects, bounds, frame);
+    const fitted =
+      "camera" in planned ? planned.camera : fitViewport(planned.rects, bounds, planned.frame);
     if (fitted) next = setEngineViewport(next, fitted);
   }
   return next;
