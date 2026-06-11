@@ -30,6 +30,18 @@ export function truncatePreview(text: string, maxPreview = PREVIEW_MAX): string 
   return text.length <= maxPreview ? text : `${text.slice(0, maxPreview)}…`;
 }
 
+/**
+ * Middle truncation for identifiers whose start AND end both discriminate,
+ * e.g. file names (prefix + extension) or run keys. End-truncation
+ * (truncatePreview) is for prose, where only the start matters.
+ */
+export function truncateMiddle(text: string, max: number): string {
+  if (text.length <= max) return text;
+  const head = Math.ceil((max - 1) / 2);
+  const tail = max - 1 - head;
+  return `${text.slice(0, head)}…${text.slice(text.length - tail)}`;
+}
+
 export function formatRelativeAge(ts: string, nowMs = Date.now()): string {
   const parsed = new Date(ts);
   if (Number.isNaN(parsed.getTime())) return ts;

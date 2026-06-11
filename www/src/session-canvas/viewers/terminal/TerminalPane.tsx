@@ -1,4 +1,5 @@
 import type { ReactElement } from "react";
+import type { ViewerProps } from "../../model/paneRecords";
 import { closedMessage, useTerminalSession } from "./terminalSession";
 import { terminalSocketUrl } from "./terminalSocket";
 import "./terminal-pane.css";
@@ -10,8 +11,11 @@ import "./terminal-pane.css";
  * unmount so a closed pane leaves nothing running. Each mounted instance owns
  * its own shell, so multiple terminal panes run independently.
  */
-export function TerminalPane(): ReactElement {
-  const { surfaceRef, closedCode } = useTerminalSession({ buildUrl: terminalSocketUrl });
+export function TerminalPane({ pane }: Pick<ViewerProps, "pane">): ReactElement {
+  const { surfaceRef, closedCode } = useTerminalSession({
+    buildUrl: terminalSocketUrl,
+    paneId: pane.paneId,
+  });
 
   return (
     <div className="terminal-pane">

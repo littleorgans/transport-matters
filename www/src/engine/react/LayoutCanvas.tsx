@@ -8,6 +8,7 @@ export interface LayoutCanvasProps extends CanvasViewportActions {
   label: string;
   onFocusPane(paneId: PaneId): void;
   onMovePane(paneId: PaneId, rect: WorldRect): void;
+  onMovePaneEnd?(paneId: PaneId, rect: WorldRect): void;
   onResizePane(paneId: PaneId, rect: WorldRect): void;
   titleIdForPane(paneId: PaneId): string;
   renderPane(paneId: PaneId): React.ReactNode;
@@ -28,6 +29,7 @@ interface PaneLayerProps {
   paneMotion: boolean;
   onFocusPane(paneId: PaneId): void;
   onMovePane(paneId: PaneId, rect: WorldRect): void;
+  onMovePaneEnd?(paneId: PaneId, rect: WorldRect): void;
   onResizePane(paneId: PaneId, rect: WorldRect): void;
   titleIdForPane(paneId: PaneId): string;
   renderPane(paneId: PaneId): React.ReactNode;
@@ -48,6 +50,7 @@ const PaneLayer = memo(function PaneLayer({
   paneMotion,
   onFocusPane,
   onMovePane,
+  onMovePaneEnd,
   onResizePane,
   titleIdForPane,
   renderPane,
@@ -63,6 +66,7 @@ const PaneLayer = memo(function PaneLayer({
           node={node}
           onFocus={onFocusPane}
           onMove={onMovePane}
+          onMoveEnd={onMovePaneEnd}
           onResize={onResizePane}
           titleId={titleIdForPane(node.paneId)}
         >
@@ -80,6 +84,7 @@ export function LayoutCanvas({
   setViewport,
   onFocusPane,
   onMovePane,
+  onMovePaneEnd,
   onResizePane,
   titleIdForPane,
   framing = false,
@@ -136,6 +141,7 @@ export function LayoutCanvas({
           paneMotion={paneMotion}
           onFocusPane={onFocusPane}
           onMovePane={onMovePane}
+          onMovePaneEnd={onMovePaneEnd}
           onResizePane={onResizePane}
           renderPane={renderPane}
           titleIdForPane={titleIdForPane}

@@ -31,6 +31,17 @@ def _clear_settings_cache() -> None:
     get_settings.cache_clear()
 
 
+@pytest.fixture(autouse=True)
+def _trusted_test_hosts(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Extend the Host allowlist with the harness hosts ("testserver" is the
+    TestClient default, "test" the AsyncClient base_url host). Injected here so
+    the shipped Settings.trusted_hosts default stays loopback-only."""
+    monkeypatch.setenv(
+        f"{env_keys.ENV_PREFIX}TRUSTED_HOSTS",
+        '["localhost", "127.0.0.1", "::1", "testserver", "test"]',
+    )
+
+
 @pytest.fixture
 async def client() -> AsyncGenerator[AsyncClient, None]:
     app = create_app()

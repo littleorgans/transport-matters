@@ -10,6 +10,11 @@ import electron = require("electron");
 // the package smoke) and the value mirrors APP_NAME in window.ts. These live
 // across the CommonJS / ESM module boundary, so the literals are duplicated
 // intentionally; keep the three in sync.
-const desktopApi = Object.freeze({ appName: "Transport Matters" });
+// getPathForFile is the only sanctioned way to learn a dropped File's OS path
+// (reference semantics for canvas file drops; the browser build has no bridge).
+const desktopApi = Object.freeze({
+  appName: "Transport Matters",
+  getPathForFile: (file: File): string => electron.webUtils.getPathForFile(file),
+});
 
 electron.contextBridge.exposeInMainWorld("transportMattersDesktop", desktopApi);

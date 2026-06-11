@@ -2,6 +2,7 @@ import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 import { useEffect, useRef, useState } from "react";
+import { registerPasteHandle } from "./pasteRegistry";
 import { openTerminalSocket } from "./terminalSocket";
 
 // Shared core for every terminal-backed pane: it mounts an xterm surface, opens
@@ -16,6 +17,8 @@ export interface TerminalSessionOptions {
   buildUrl: (cols: number, rows: number) => string;
   /** Receive inbound JSON text frames (captured-run ready/error). Bare terminal omits it. */
   onTextFrame?: (text: string) => void;
+  /** Registers a drop-paste handle for this pane while mounted. */
+  paneId?: string;
 }
 
 /**
@@ -24,7 +27,7 @@ export interface TerminalSessionOptions {
  * socket is refused/lost; a deliberate unmount close detaches the handler so it
  * never lands here).
  */
-export function useTerminalSession({ buildUrl, onTextFrame }: TerminalSessionOptions) {
+export function useTerminalSession({ buildUrl, onTextFrame, paneId }: TerminalSessionOptions) {
   const surfaceRef = useRef<HTMLDivElement>(null);
   const [closedCode, setClosedCode] = useState<number | null>(null);
   // The socket is created once on mount; read the latest callbacks off refs so
@@ -55,6 +58,18 @@ export function useTerminalSession({ buildUrl, onTextFrame }: TerminalSessionOpt
     // Ctrl-D, ...) reach the PTY instead of the browser. xterm only emits keys
     // via onData while its textarea holds focus.
     term.focus();
+    const unregisterPaste =
+      paneId === undefined ? null : registerPasteHandle(paneId, (text) => term.paste(text));
+
+    // Copy on select. Cmd+C needs a `copy` event to reach xterm's hidden
+    // textarea, which pane focus handling can starve; writing the clipboard as
+    // the selection settles skips that chain. The hasSelection guard keeps a
+    // cleared selection from clobbering the clipboard with an empty string.
+    // Disposed with the terminal via term.dispose().
+    term.onSelectionChange(() => {
+      if (!term.hasSelection()) return;
+      void navigator.clipboard?.writeText(term.getSelection()).catch(() => {});
+    });
 
     let disposed = false;
     const socket = openTerminalSocket(term, {
@@ -80,9 +95,11 @@ export function useTerminalSession({ buildUrl, onTextFrame }: TerminalSessionOpt
       disposed = true;
       observer.disconnect();
       socket.close();
+      unregisterPaste?.();
       term.dispose();
     };
-  }, []);
+    // paneId is stable for a mounted pane, so the effect stays one-shot.
+  }, [paneId]);
 
   return { surfaceRef, closedCode };
 }

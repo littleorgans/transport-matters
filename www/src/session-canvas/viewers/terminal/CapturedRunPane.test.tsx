@@ -2,6 +2,7 @@ import { act, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { resetCapturedRunStoreForTests, useCapturedRunStore } from "../../lab/capturedRunStore";
 import { CapturedRunPane } from "./CapturedRunPane";
+import { resolvePasteHandle } from "./pasteRegistry";
 
 // xterm renders to a real canvas/WebGL surface that jsdom cannot host, so the
 // terminal is mocked (as in TerminalPane.test). The point under test is the
@@ -16,9 +17,13 @@ const { terminals, MockTerminal, MockFitAddon } = vi.hoisted(() => {
     loadAddon = vi.fn();
     open = vi.fn();
     focus = vi.fn();
+    paste = vi.fn();
     write = vi.fn();
     dispose = vi.fn();
     onData = vi.fn(() => ({ dispose: vi.fn() }));
+    onSelectionChange = vi.fn(() => ({ dispose: vi.fn() }));
+    hasSelection = vi.fn(() => false);
+    getSelection = vi.fn(() => "");
     constructor() {
       terminals.push(this);
     }
@@ -98,6 +103,20 @@ describe("CapturedRunPane", () => {
     await waitFor(() => expect(sockets).toHaveLength(1));
     expect(createCapturedRunMock).not.toHaveBeenCalled();
     expect(only(sockets).url).toMatch(/\/api\/runs\/run-persisted\/terminal\?cols=80&rows=24$/);
+  });
+
+  it("registers a paste handle for its pane id and deregisters on unmount", async () => {
+    createCapturedRunMock.mockResolvedValue("run-abc123");
+    const { unmount } = render(<CapturedRunPane runKey="claude:k1" provider="claude" />);
+
+    await waitFor(() => expect(sockets).toHaveLength(1));
+    const terminal = only(terminals);
+    const handle = resolvePasteHandle("claude:k1");
+    expect(handle).not.toBeNull();
+    handle?.("hello");
+    expect(terminal.paste).toHaveBeenCalledWith("hello");
+    unmount();
+    expect(resolvePasteHandle("claude:k1")).toBeNull();
   });
 
   it("turns a run.error frame into an alert banner", async () => {

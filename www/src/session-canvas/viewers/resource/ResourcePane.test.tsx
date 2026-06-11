@@ -35,12 +35,12 @@ function stubTransport(body: unknown): void {
   });
 }
 
-function paneProps(): ViewerProps<ResourcePaneRef> {
+function paneProps(ref: ResourcePaneRef = REF): ViewerProps<ResourcePaneRef> {
   const pane: PaneRecord & { contentRef: ResourcePaneRef } = {
     paneId: "resource:s1:r1",
     viewerId: "resource",
     title: "Resource r1",
-    contentRef: REF,
+    contentRef: ref,
     chromeState: "default",
     createdAt: "2026-06-08T00:00:00Z",
     lastFocusedAt: null,
@@ -62,10 +62,14 @@ function paneProps(): ViewerProps<ResourcePaneRef> {
 
 function renderPane(body: unknown): ReactElement {
   stubTransport(body);
+  return renderWithRef(REF);
+}
+
+function renderWithRef(ref: ResourcePaneRef): ReactElement {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
-      <ResourcePane {...paneProps()} />
+      <ResourcePane {...paneProps(ref)} />
     </QueryClientProvider>,
   ).container as unknown as ReactElement;
 }
@@ -75,6 +79,50 @@ afterEach(() => {
 });
 
 describe("ResourcePane", () => {
+  it("renders a local path ref through GET /api/local-file", async () => {
+    const requested: string[] = [];
+    setApiTransport({
+      request: (path: string) => {
+        requested.push(path);
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              kind: "image",
+              id: "/tmp/shot.png",
+              title: "shot.png",
+              mediaType: "image/png",
+              contentLength: 8,
+              contentProvenance: "current",
+              provenance: {},
+              url: null,
+              bytesBase64: "aGVsbG8=",
+              width: null,
+              height: null,
+              alt: null,
+            }),
+            { status: 200, headers: { "content-type": "application/json" } },
+          ),
+        );
+      },
+    });
+    renderWithRef({ kind: "resource", owner: "local", source: "path", path: "/tmp/shot.png" });
+    expect(await screen.findByRole("img")).toBeInTheDocument();
+    expect(requested[0]).toBe(`/api/local-file?path=${encodeURIComponent("/tmp/shot.png")}`);
+  });
+
+  it("renders a url ref without touching the backend", () => {
+    const request = vi.fn();
+    setApiTransport({ request });
+    renderWithRef({
+      kind: "resource",
+      owner: "local",
+      source: "url",
+      url: "https://x.test/cat.png",
+    });
+    expect(screen.getByRole("img")).toHaveAttribute("src", "https://x.test/cat.png");
+    expect(request).not.toHaveBeenCalled();
+  });
+
   it("renders plain text through the text viewer with the captured provenance label", async () => {
     renderPane({
       ...base,

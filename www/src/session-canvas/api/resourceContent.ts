@@ -113,6 +113,17 @@ export async function loadResourceContent(
   );
 }
 
+export function localFileContentPath(path: string): string {
+  return `/api/local-file?path=${encodeURIComponent(path)}`;
+}
+
+export async function loadLocalFileContent(path: string): Promise<ResourceContentResponse> {
+  return requestApiJson<ResourceContentResponse>(
+    localFileContentPath(path),
+    "Failed to fetch local file",
+  );
+}
+
 export function resourceContentPath(filters: ResourceContentFilters): string {
   const params = new URLSearchParams({ owner: filters.owner });
   appendNumberParam(params, "range_start", filters.rangeStart);

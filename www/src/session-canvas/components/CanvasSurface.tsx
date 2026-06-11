@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useRef } from "react";
 import { LayoutCanvas } from "../../engine";
 import type { LaunchResolutionStatus } from "../api/launchResolution";
+import { useCanvasDropTargets } from "../dnd/useCanvasDropTargets";
 import { useCanvasStore } from "../model/canvasStore";
 import type { CanvasLaunchContext } from "../route";
 import { PICKER_PANE_ID, renderPaneContent } from "../viewers/registry";
 import { CanvasCommandBar } from "./CanvasCommandBar";
+import { CanvasDropHint } from "./CanvasDropHint";
 import { PaneDock } from "./PaneDock";
 import { PaneWindow } from "./PaneWindow";
 
@@ -29,6 +31,7 @@ export function CanvasSurface({ launch, launchStatus, launchSessionId }: CanvasS
   const framePane = useCanvasStore((state) => state.framePane);
   const minimizePane = useCanvasStore((state) => state.minimizePane);
   const movePane = useCanvasStore((state) => state.movePane);
+  const spawnPane = useCanvasStore((state) => state.spawnPane);
   const resizePane = useCanvasStore((state) => state.resizePane);
   const restorePane = useCanvasStore((state) => state.restorePane);
   const setBounds = useCanvasStore((state) => state.setBounds);
@@ -52,6 +55,13 @@ export function CanvasSurface({ launch, launchStatus, launchSessionId }: CanvasS
     observer.observe(element);
     return () => observer.disconnect();
   }, [setBounds]);
+
+  const { dropHint, dismissDropHint, onMovePaneEnd } = useCanvasDropTargets(surfaceRef, {
+    getLayout: () => useCanvasStore.getState().layout,
+    contentRefFor: (paneId) => useCanvasStore.getState().panes[paneId]?.contentRef,
+    spawnPane,
+    minimizePane,
+  });
 
   // Stable across viewport-only renders so the memoized PaneLayer skips the pane subtree on pan/zoom.
   // Re-created only when the data it reads changes (panes, focus, actions, launch context).
@@ -117,11 +127,13 @@ export function CanvasSurface({ launch, launchStatus, launchSessionId }: CanvasS
         onFocusPicker={() => focusPane(PICKER_PANE_ID)}
         onResetViewport={resetViewport}
       />
+      {dropHint === null ? null : <CanvasDropHint message={dropHint} onDismiss={dismissDropHint} />}
       <LayoutCanvas
         label={`Session canvas, ${layout.mode} mode`}
         layout={layout}
         onFocusPane={focusPane}
         onMovePane={movePane}
+        onMovePaneEnd={onMovePaneEnd}
         onResizePane={resizePane}
         overlay={<PaneDock docked={docked} onClose={closeDockedPane} onRestore={restorePane} />}
         renderPane={renderPane}

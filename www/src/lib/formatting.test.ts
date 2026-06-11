@@ -1,5 +1,24 @@
 import { describe, expect, it } from "vitest";
-import { displayCwd, formatRelativeAge } from "./formatting";
+import { displayCwd, formatRelativeAge, truncateMiddle } from "./formatting";
+
+describe("truncateMiddle", () => {
+  it("returns short strings untouched", () => {
+    expect(truncateMiddle("shot.png", 24)).toBe("shot.png");
+  });
+
+  it("keeps the discriminating start and extension of long file names", () => {
+    const name = "1_brand_context_helioy_is_infrastructure_019cf0eb-dc7c.svg";
+    const result = truncateMiddle(name, 32);
+    expect(result).toHaveLength(32);
+    expect(result.startsWith("1_brand_context_")).toBe(true);
+    expect(result.endsWith("c7c.svg")).toBe(true);
+    expect(result).toContain("…");
+  });
+
+  it("handles tiny budgets without going negative", () => {
+    expect(truncateMiddle("abcdefgh", 3)).toBe("a…h");
+  });
+});
 
 describe("displayCwd", () => {
   it("keeps the final two path segments for long absolute paths", () => {

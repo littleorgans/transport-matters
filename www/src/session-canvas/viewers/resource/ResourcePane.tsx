@@ -1,6 +1,8 @@
 import type { ReactElement } from "react";
+import type { ImageContentResponse, ResourceContentResponse } from "../../api/resourceContent";
+import { useLocalFileContent } from "../../hooks/useLocalFileContent";
 import { useResourceContent } from "../../hooks/useResourceContent";
-import type { PaneContentRef, ViewerProps } from "../../model/paneRecords";
+import { locatorTail, type PaneContentRef, type ViewerProps } from "../../model/paneRecords";
 import { ResourcePaneStateView } from "../placeholder/paneState";
 import { BinaryResourceViewer } from "./BinaryResourceViewer";
 import { ImageResourceViewer } from "./ImageResourceViewer";
@@ -11,6 +13,7 @@ import { type ResourceView, resolveResourceContent } from "./resourceState";
 import { TextResourceViewer } from "./TextResourceViewer";
 
 export type ResourcePaneRef = Extract<PaneContentRef, { kind: "resource" }>;
+type DbResourcePaneRef = Extract<ResourcePaneRef, { sessionId: string; resourceId: string }>;
 
 /**
  * Resource pane orchestrator. Fetches the resource content endpoint, then maps
@@ -22,30 +25,88 @@ export type ResourcePaneRef = Extract<PaneContentRef, { kind: "resource" }>;
  */
 export function ResourcePane({ pane }: ViewerProps<ResourcePaneRef>): ReactElement {
   const ref = pane.contentRef;
-  const query = useResourceContent({
-    sessionId: ref.sessionId,
-    resourceId: ref.resourceId,
-    owner: ref.owner,
-  });
+  if ("source" in ref && ref.source === "path") return <LocalFileResourcePane path={ref.path} />;
+  if ("source" in ref && ref.source === "url") return <UrlImageResourcePane url={ref.url} />;
+  return <DbResourcePane contentRef={ref} />;
+}
 
-  if (query.isPending) {
-    return <ResourcePaneStateView provenance="captured" state={{ status: "loading" }} />;
+function DbResourcePane({ contentRef }: { contentRef: DbResourcePaneRef }): ReactElement {
+  const query = useResourceContent({
+    sessionId: contentRef.sessionId,
+    resourceId: contentRef.resourceId,
+    owner: contentRef.owner,
+  });
+  return (
+    <ResourceQueryPane
+      data={query.data}
+      error={query.error}
+      isPending={query.isPending}
+      loadingProvenance="captured"
+    />
+  );
+}
+
+function LocalFileResourcePane({ path }: { path: string }): ReactElement {
+  const query = useLocalFileContent(path);
+  return (
+    <ResourceQueryPane
+      data={query.data}
+      error={query.error}
+      isPending={query.isPending}
+      loadingProvenance="current"
+    />
+  );
+}
+
+function UrlImageResourcePane({ url }: { url: string }): ReactElement {
+  const content: ImageContentResponse = {
+    kind: "image",
+    id: url,
+    title: locatorTail(url),
+    mediaType: null,
+    contentLength: null,
+    contentProvenance: "current",
+    provenance: { source: "url", url },
+    url,
+    bytesBase64: null,
+    width: null,
+    height: null,
+    alt: null,
+  };
+  return <ImageResourceViewer content={content} />;
+}
+
+function ResourceQueryPane({
+  data,
+  error,
+  isPending,
+  loadingProvenance,
+}: {
+  data: ResourceContentResponse | undefined;
+  error: Error | null;
+  isPending: boolean;
+  loadingProvenance: ResourceContentResponse["contentProvenance"];
+}): ReactElement {
+  if (isPending) {
+    return <ResourcePaneStateView provenance={loadingProvenance} state={{ status: "loading" }} />;
   }
 
-  if (query.error || query.data === undefined) {
-    const message = query.error instanceof Error ? query.error.message : undefined;
+  if (error || data === undefined) {
+    const message = error instanceof Error ? error.message : undefined;
     return (
       <ResourcePaneStateView
         messageOverride={message}
-        provenance="captured"
+        provenance={loadingProvenance}
         state={{ status: "missing" }}
       />
     );
   }
 
-  const content = query.data;
-  const resolution = resolveResourceContent(content);
+  return <ResolvedResourceContent content={data} />;
+}
 
+function ResolvedResourceContent({ content }: { content: ResourceContentResponse }): ReactElement {
+  const resolution = resolveResourceContent(content);
   if (resolution.kind === "state") {
     return (
       <ResourcePaneStateView

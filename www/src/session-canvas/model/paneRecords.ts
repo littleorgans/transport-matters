@@ -9,6 +9,10 @@ export function cliLabel(provider: CliName): string {
   return CLI_LABELS[provider];
 }
 
+export function locatorTail(locator: string): string {
+  return locator.split("/").filter(Boolean).at(-1) ?? locator;
+}
+
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -68,6 +72,8 @@ export type PaneContentRef =
       title: string;
     }
   | { kind: "resource"; owner: "local"; sessionId: string; resourceId: string }
+  | { kind: "resource"; owner: "local"; source: "path"; path: string }
+  | { kind: "resource"; owner: "local"; source: "url"; url: string }
   | {
       kind: "provider-exchange";
       owner: "local";
@@ -113,6 +119,12 @@ export function isPaneContentRef(value: unknown): value is PaneContentRef {
         typeof value.title === "string"
       );
     case "resource":
+      if ("source" in value) {
+        return (
+          (value.source === "path" && typeof value.path === "string") ||
+          (value.source === "url" && typeof value.url === "string")
+        );
+      }
       return typeof value.sessionId === "string" && typeof value.resourceId === "string";
     case "provider-exchange":
       return (

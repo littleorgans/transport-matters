@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 import pytest
 from fastapi import status
 from fastapi.testclient import TestClient
+from starlette.testclient import WebSocketDenialResponse
 from starlette.websockets import WebSocketDisconnect
 
 from transport_matters.api.v1 import terminal
@@ -153,7 +154,10 @@ def test_terminal_rejects_non_loopback_host_with_matching_origin(
 
     with (
         client,
-        pytest.raises(WebSocketDisconnect) as exc_info,
+        # TrustedHostMiddleware (main.py) now denies the untrusted Host before
+        # the handshake is even accepted, an earlier rejection than the old
+        # accept-then-close-1008 inside the terminal route.
+        pytest.raises(WebSocketDenialResponse) as exc_info,
         client.websocket_connect(
             TERMINAL_ROUTE,
             headers=_websocket_headers(
@@ -164,7 +168,7 @@ def test_terminal_rejects_non_loopback_host_with_matching_origin(
     ):
         pass
 
-    assert exc_info.value.code == status.WS_1008_POLICY_VIOLATION
+    assert exc_info.value.status_code == status.HTTP_400_BAD_REQUEST
 
 
 def test_terminal_accepts_configured_dev_origin_through_proxy(

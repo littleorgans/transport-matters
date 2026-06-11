@@ -32,6 +32,7 @@ import {
   planPaneUnframe,
   planSpawnedAffordancePaneLayout,
   removeDockedPane,
+  runSpawnPaneFlow,
   stripPaneFlyIntent,
 } from "./paneAffordances";
 import type {
@@ -201,20 +202,17 @@ export const useCanvasStore = create<CanvasStoreState>()(
 
       spawnPane(ref, options) {
         const normalized = normalizeRef(ref);
-        const paneId = paneIdForRef(normalized);
-        const existing = get().panes[paneId];
-        if (existing) {
-          if (options?.focus !== false) get().focusPane(paneId);
-          return paneId;
-        }
-        const docked = get().docked.find((entry) => entry.paneId === paneId);
-        if (docked) {
-          get().restorePane(paneId);
-          return paneId;
-        }
-        const title = options?.title ?? titleForRef(normalized);
-        set((state) => insertPane(state, normalized, title, options?.focus !== false));
-        return paneId;
+        const focus = options?.focus !== false;
+        return runSpawnPaneFlow(paneIdForRef(normalized), focus, {
+          isOpen: (paneId) => get().panes[paneId] !== undefined,
+          focusPane: (paneId) => get().focusPane(paneId),
+          isDocked: (paneId) => get().docked.some((entry) => entry.paneId === paneId),
+          restorePane: (paneId) => get().restorePane(paneId),
+          seed: () => {
+            const title = options?.title ?? titleForRef(normalized);
+            set((state) => insertPane(state, normalized, title, focus));
+          },
+        });
       },
 
       spawnOrFocusTranscript(session) {

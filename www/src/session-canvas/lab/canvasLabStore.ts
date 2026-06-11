@@ -23,9 +23,11 @@ import {
   planPaneUnexpand,
   planPaneUnframe,
   removeDockedPane,
+  runSpawnPaneFlow,
   stripPaneFlyIntent,
 } from "../model/paneAffordances";
 import { type CanvasPaneRef, cliLabel, type PaneContentRef } from "../model/paneRecords";
+import { paneIdForRef } from "../viewers/registry";
 import {
   DEFAULT_BOUNDS,
   INITIAL_STRATEGY_ID,
@@ -162,6 +164,16 @@ export const useCanvasLabStore = create<CanvasLabState>()(
               label,
             }),
           };
+        });
+      },
+
+      spawnPane(ref, options) {
+        return runSpawnPaneFlow(paneIdForRef(ref), options?.focus !== false, {
+          isOpen: (paneId) => get().contentRefs[paneId] !== undefined,
+          focusPane: (paneId) => get().focusPane(paneId),
+          isDocked: (paneId) => get().docked.some((entry) => entry.paneId === paneId),
+          restorePane: (paneId) => get().restorePane(paneId),
+          seed: (paneId) => set((state) => spawnPaneLayout(state, paneId, ref)),
         });
       },
 

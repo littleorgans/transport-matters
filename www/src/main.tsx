@@ -33,11 +33,21 @@ if (selectedRoute === "legacy") {
   queryClient.prefetchQuery({ queryKey: ["meta"], queryFn: fetchMeta });
 }
 
+// Window chrome, not app UI: the drag strip mounts in its own host BEFORE #root, so every
+// app surface out-hit-tests it by plain DOM order and no app element ever needs a z-index
+// to clear it. Its only job is feeding the OS app-region map, which ignores paint order.
+const windowChromeHost = document.createElement("div");
+document.body.prepend(windowChromeHost);
+createRoot(windowChromeHost).render(
+  <StrictMode>
+    <WindowDragRegion />
+  </StrictMode>,
+);
+
 // biome-ignore lint/style/noNonNullAssertion: The entry point exists
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
-      <WindowDragRegion />
       <Suspense
         fallback={<div className="min-h-screen bg-canvas text-txt">Loading Transport Matters</div>}
       >

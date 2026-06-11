@@ -8,7 +8,11 @@ const DESKTOP_BRIDGE_KEY = "transportMattersDesktop";
 
 declare global {
   interface Window {
-    [DESKTOP_BRIDGE_KEY]?: { appName: string };
+    [DESKTOP_BRIDGE_KEY]?: {
+      appName: string;
+      /** Resolves a dropped File to its OS path; the browser build has no bridge. */
+      getPathForFile?: (file: File) => string;
+    };
   }
 }
 
