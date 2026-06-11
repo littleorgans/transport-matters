@@ -1,7 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { resolveLayout } from "../../engine/layout";
 import { FRONTEND_STORAGE_KEYS } from "../../stores/persistence";
 import { titleForRef } from "../viewers/registry";
 import { resetCanvasLabStoreForTests, useCanvasLabStore } from "./canvasLabStore";
+import { CANVAS_LAB_STORAGE_VERSION } from "./canvasLabStore.persistence";
 import { capturedPaneIds } from "./canvasLabStore.testSupport";
 import { resetCapturedRunStoreForTests, useCapturedRunStore } from "./capturedRunStore";
 // Register the captured-run lifecycle hook (onMinimize/onRestore/onClose) the same way production does
@@ -170,6 +172,51 @@ describe("canvasLabStore persistence adapter", () => {
     expect(store().docked.map((entry) => entry.paneId)).toEqual(["lab-2"]);
   });
 
+  it("restores view controls across a reload without re-planning pane rects", async () => {
+    const manualRect = { x: 123, y: 456, width: 321, height: 234 };
+    store().addPane();
+    store().addPane();
+    store().setStrategy("single-row");
+    store().setParam("minW", 420);
+    store().setParam("gap", 8);
+    store().setFitToContent(false);
+    store().updatePaneRect("lab-1", manualRect);
+
+    await reloadLab();
+
+    expect(store().activeStrategyId).toBe("single-row");
+    expect(store().params).toEqual({ minW: 420, gap: 8, margin: 64 });
+    expect(store().fitToContent).toBe(false);
+    expect(store().layout.nodes["lab-1"]?.rect).toEqual(manualRect);
+  });
+
+  it("restores expandedPaneId across a reload when the open set still permits it", async () => {
+    store().addPane();
+    store().addPane();
+    store().setStrategy("single-row");
+    store().setParam("minW", 420);
+    store().setParam("gap", 8);
+    store().expandPane("lab-1");
+    const expandedRect = store().layout.nodes["lab-1"]?.rect;
+
+    await reloadLab();
+
+    expect(store().expandedPaneId).toBe("lab-1");
+    expect(store().layout.nodes["lab-1"]?.rect).toEqual(expandedRect);
+
+    const activeStrategyRects = resolveLayout(store().activeStrategyId).plan(
+      { paneIds: ["lab-1", "lab-2"], viewport: store().bounds },
+      store().params,
+    ).rects;
+    expect(store().layout.nodes["lab-1"]?.rect).not.toEqual(activeStrategyRects["lab-1"]);
+
+    store().unexpand();
+
+    expect(store().expandedPaneId).toBeNull();
+    expect(store().layout.nodes["lab-1"]?.rect).toEqual(activeStrategyRects["lab-1"]);
+    expect(store().layout.nodes["lab-2"]?.rect).toEqual(activeStrategyRects["lab-2"]);
+  });
+
   it("loads clean when only a pre-S3 capturedRunStore is persisted (no lab-store key yet)", async () => {
     // A user upgrading to S3 has a persisted capturedRunStore but NO lab-store key (it never existed).
     // Both stores must hydrate without crashing or wiping: the runs survive, the lab starts empty.
@@ -202,7 +249,7 @@ describe("canvasLabStore persistence adapter", () => {
     localStorage.setItem(
       FRONTEND_STORAGE_KEYS.canvasLabStore,
       JSON.stringify({
-        version: 1,
+        version: CANVAS_LAB_STORAGE_VERSION,
         state: {
           contentRefs: { "lab-1": { kind: "terminal", owner: "local", label: "Terminal-1" } },
           paneRects: {
