@@ -17,7 +17,7 @@ import {
   resolveLayout,
 } from "../../engine/layout";
 import type { PaneContentRef } from "../model/paneRecords";
-import { seedPaneFromRecord } from "./canvasLabStore.persistence";
+import { seedPaneFromRecord } from "../persistence/canvasPanePersistence";
 import { fitExpandFrameToWidth, planExpandedLayout } from "./expandLayout";
 
 export const DEFAULT_BOUNDS: ViewportBounds = { width: 1600, height: 1000 };

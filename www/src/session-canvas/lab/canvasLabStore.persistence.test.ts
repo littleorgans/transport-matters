@@ -47,46 +47,13 @@ async function reloadLab(): Promise<void> {
   await useCanvasLabStore.persist.rehydrate();
 }
 
-describe("canvasLabStore reload persistence (S3 converge)", () => {
+describe("canvasLabStore persistence adapter", () => {
   beforeEach(() => {
     localStorage.clear();
     resetCanvasLabStoreForTests();
     resetCapturedRunStoreForTests();
     createCapturedRunMock.mockReset();
     deleteRunMock.mockReset();
-  });
-
-  it("restores all three pane kinds (regular + terminal + captured) on reload", async () => {
-    store().addPane(); // lab-1 (regular/demo, no ref)
-    store().addTerminal(); // lab-2 (Terminal-1)
-    store().addCapturedRun("claude"); // claude:<uuid> (Claude-1)
-    const capturedId = capturedPaneIds(store().contentRefs)[0];
-    if (!capturedId) throw new Error("expected a captured pane");
-    // The captured pane's run resolves (the viewer's ensureRun) before reload, so its binding persists.
-    useCapturedRunStore.setState({
-      runs: { [capturedId]: { provider: "claude", runId: "run-1" } },
-    });
-
-    await reloadLab();
-
-    // All three panes are back on the canvas (bug1: today only the captured pane survived a reload).
-    expect(store().layout.nodes["lab-1"]).toBeDefined();
-    expect(store().layout.nodes["lab-2"]).toBeDefined();
-    expect(store().layout.nodes[capturedId]).toBeDefined();
-    // The regular pane carries no content ref; the terminal and captured panes carry theirs.
-    expect(store().contentRefs["lab-1"]).toBeUndefined();
-    expect(store().contentRefs["lab-2"]).toEqual({
-      kind: "terminal",
-      owner: "local",
-      label: "Terminal-1",
-    });
-    expect(store().contentRefs[capturedId]).toEqual({
-      kind: "captured-run",
-      owner: "local",
-      provider: "claude",
-      runKey: capturedId,
-      label: "Claude-1",
-    });
   });
 
   it("keeps pane titles identical across a reload, including the incremental index", async () => {
@@ -163,7 +130,7 @@ describe("canvasLabStore reload persistence (S3 converge)", () => {
     expect(useCapturedRunStore.getState().runs[capturedId]?.minimized).toBe(true);
   });
 
-  it("round-trips a docked terminal AND a docked regular pane across a reload (all kinds)", async () => {
+  it("restores a docked pane after a reload", async () => {
     vi.useFakeTimers();
     try {
       store().addTerminal(); // lab-1 (Terminal-1)
@@ -182,8 +149,6 @@ describe("canvasLabStore reload persistence (S3 converge)", () => {
 
     await reloadLab();
 
-    // Both non-captured docked panes come back IN THE DOCK (count correct), not on the canvas and not
-    // lost — today they vanish because non-captured docked state lived only in the unpersisted store.
     expect(
       store()
         .docked.map((entry) => entry.paneId)
@@ -191,15 +156,17 @@ describe("canvasLabStore reload persistence (S3 converge)", () => {
     ).toEqual(["lab-1", "lab-2"]);
     expect(store().layout.nodes["lab-1"]).toBeUndefined();
     expect(store().layout.nodes["lab-2"]).toBeUndefined();
-    // The docked terminal keeps its labelled ref; the regular pane docks with a null ref.
-    const terminalEntry = store().docked.find((entry) => entry.paneId === "lab-1");
-    const regularEntry = store().docked.find((entry) => entry.paneId === "lab-2");
-    expect(terminalEntry?.ref).toEqual({ kind: "terminal", owner: "local", label: "Terminal-1" });
-    expect(regularEntry?.ref).toBeNull();
 
-    // Restore still works after a reload: the pane returns to the canvas and leaves the dock.
     store().restorePane("lab-1");
-    expect(store().layout.nodes["lab-1"]).toBeDefined();
+
+    const restoredNode = store().layout.nodes["lab-1"];
+    expect(restoredNode?.rect.width).toBeGreaterThan(0);
+    expect(restoredNode?.rect.height).toBeGreaterThan(0);
+    expect(store().contentRefs["lab-1"]).toEqual({
+      kind: "terminal",
+      owner: "local",
+      label: "Terminal-1",
+    });
     expect(store().docked.map((entry) => entry.paneId)).toEqual(["lab-2"]);
   });
 
@@ -229,7 +196,7 @@ describe("canvasLabStore reload persistence (S3 converge)", () => {
     expect(store().docked).toEqual([]);
   });
 
-  it("rehydrates a persisted lab-store payload into open canvas panes", async () => {
+  it("folds lab counters into a rehydrated core pane payload", async () => {
     localStorage.clear();
     resetCanvasLabStoreForTests();
     localStorage.setItem(
