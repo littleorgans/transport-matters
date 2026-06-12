@@ -1,3 +1,5 @@
+import "./pane-window.css";
+
 // Content-agnostic pane chrome shared by PaneWindow (production /canvas) and the lab. Takes
 // primitive props only, no PaneRecord, so neither caller duplicates the chrome markup.
 // Optional onFrame / onHeaderDoubleClick add framing affordances for callers that wire them.

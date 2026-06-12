@@ -57,25 +57,8 @@
   will-change: transform;
 }
 
-[data-pane-frame="true"] {
-  /* contain isolates each pane's internal layout/paint without pinning a compositor layer. Do NOT add
-     a static will-change here: with many panes it forces one always-on GPU layer per pane, which the
-     browser evicts on tab-blur / when framed off-screen and must re-rasterize all at once on return
-     or DEFRAME (lag + half-painted panes). framer-motion adds will-change transiently while a pane is
-     actually animating, which is the only time it helps. */
-  contain: layout paint style;
-  /* The pane drop shadow lives on the frame, not on .canvas-pane-window inside it: paint containment
-     clips descendant painting to the frame bounds, so a shadow on the window can never escape. The
-     frame's own box decorations are exempt from its own containment. */
-  box-shadow: var(--canvas-pane-shadow);
-  /* The frame must carry the same radius as the window it hosts: its shadow and focus ring follow
-     its own corners, and its paint-containment clip rounds the square-cornered children (header,
-     terminal body) that would otherwise poke past the window's rounded border. */
-  border-radius: var(--pane-radius);
-}
-[data-pane-frame="true"]:has(.canvas-pane-window[data-focused="true"]) {
-  box-shadow: var(--canvas-pane-shadow), var(--canvas-focus-ring);
-}
+/* Pane chrome ([data-pane-frame], .canvas-pane-window family) lives in
+   components/pane-window.css, co-located with PaneWindow/PaneChrome. */
 
 .canvas-command-bar {
   position: absolute;
@@ -163,44 +146,9 @@
   opacity: 0.45;
 }
 
-.canvas-pane-window {
-  display: flex;
-  height: 100%;
-  min-height: 0;
-  flex-direction: column;
-  border: var(--canvas-pane-border);
-  border-radius: var(--pane-radius);
-  background: rgb(var(--shadow-rgb) / var(--pane-surface-alpha));
-  outline: 1px solid rgb(var(--highlight-rgb) / 0.04);
-  /* backdrop-filter defaults to none: a per-pane blur promotes one compositor layer per pane, and at
-     scale<1 with many panes the browser evicts those layer tiles on tab-hide and fails to re-raster
-     them on restore, so panes go blank until a repaint (confirmed by A/B). The 0.74 default
-     surface alpha keeps panes opaque without it. Glass themes opt in via --pane-blur and accept
-     that compositor cost knowingly. */
-  backdrop-filter: var(--pane-blur);
-}
-.canvas-pane-window[data-focused="true"] {
-  border-color: rgb(var(--accent-rgb) / 0.78);
-}
-.canvas-pane-window__header {
-  display: flex;
-  min-height: var(--canvas-pane-header);
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--canvas-pane-gap);
-  border-bottom: 1px solid var(--color-edge-subtle);
-  background: linear-gradient(180deg, rgb(var(--highlight-rgb) / 0.06), transparent);
-  padding: var(--canvas-pane-gap) var(--canvas-pane-padding);
-  cursor: grab;
-  touch-action: none;
-  user-select: none;
-}
-.canvas-pane-window__header:active {
-  cursor: grabbing;
-}
-.canvas-pane-window__title-wrap {
-  min-width: 0;
-}
+/* Shared label typography across pane, picker, and stub surfaces. The pane
+   selectors stay here so the rule remains one source; the rest of the pane
+   window chrome lives in components/pane-window.css. */
 .canvas-pane-window__viewer,
 .canvas-pane-window__state,
 .canvas-picker__row-meta,
@@ -214,75 +162,6 @@
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
-.canvas-pane-window[data-state="loading"] .canvas-pane-window__state,
-.canvas-pane-window[data-state="empty"] .canvas-pane-window__state,
-.canvas-pane-window[data-state="error"] .canvas-pane-window__state {
-  color: var(--color-amber);
-}
-.canvas-pane-window__title {
-  overflow: hidden;
-  color: var(--color-txt);
-  font-size: 1rem;
-  font-weight: 600;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.canvas-pane-window__actions {
-  display: flex;
-  flex-shrink: 0;
-  align-items: center;
-  gap: var(--canvas-pane-gap);
-}
-.canvas-pane-window__close {
-  border: 1px solid var(--color-edge);
-  background: var(--color-surface);
-  color: var(--color-txt-2);
-  padding: calc(var(--canvas-pane-gap) * 0.6) var(--canvas-pane-gap);
-  font-size: 0.75rem;
-  text-transform: uppercase;
-}
-.canvas-pane-window__close:hover:not(:disabled) {
-  color: var(--color-txt);
-  background: var(--color-hover);
-}
-.canvas-pane-window__close:focus-visible {
-  outline: none;
-  box-shadow: var(--canvas-focus-ring);
-}
-.canvas-pane-window__close:disabled {
-  cursor: not-allowed;
-  opacity: 0.42;
-}
-.canvas-pane-window__body {
-  min-height: 0;
-  flex: 1;
-  overflow: auto;
-}
-.canvas-pane-window__resize {
-  position: absolute;
-  right: 0;
-  bottom: 0;
-  width: var(--canvas-resize-size);
-  height: var(--canvas-resize-size);
-  cursor: nwse-resize;
-  touch-action: none;
-  user-select: none;
-}
-.canvas-pane-window__resize::after {
-  position: absolute;
-  right: 4px;
-  bottom: 4px;
-  width: 8px;
-  height: 8px;
-  border-right: 1px solid var(--color-txt-3);
-  border-bottom: 1px solid var(--color-txt-3);
-  content: "";
-}
-.canvas-pane-window__resize:focus-visible {
-  outline: none;
-  box-shadow: var(--canvas-focus-ring);
-}
-
 .canvas-picker {
   display: flex;
   height: 100%;
@@ -398,8 +277,11 @@
 .canvas-stress-card {
   height: 100%;
   border: 1px solid var(--color-edge-subtle);
+  /* A translucent lift instead of the old opaque surface fill, so the card
+     reads slightly raised over the pane veil and themed scenes show through. */
   background:
-    linear-gradient(135deg, rgb(var(--accent-rgb) / 0.08), transparent), var(--color-surface);
+    linear-gradient(135deg, rgb(var(--accent-rgb) / 0.08), transparent),
+    rgb(var(--highlight-rgb) / 0.04);
   padding: var(--canvas-pane-padding);
   color: var(--color-txt-2);
 }
