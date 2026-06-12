@@ -1,12 +1,17 @@
-import { useCallback, useEffect, useRef } from "react";
-import { LayoutCanvas } from "../../engine";
+import { useCallback, useEffect, useMemo, useRef } from "react";
+import { LayoutCanvas, type PaneId } from "../../engine";
 import type { LaunchResolutionStatus } from "../api/launchResolution";
+import { CanvasPaneDnd } from "../dnd/CanvasPaneDnd";
+import { createSortablePaneAdapter } from "../dnd/SortablePane";
 import { useCanvasDropTargets } from "../dnd/useCanvasDropTargets";
+import { useReorderSettle } from "../dnd/useReorderSettle";
 import { useCanvasStore } from "../model/canvasStore";
+import { openPaneIds } from "../model/layoutPlanning";
 import type { CanvasLaunchContext } from "../route";
-import { PICKER_PANE_ID, renderPaneContent } from "../viewers/registry";
+import { bodyDragForRef, PICKER_PANE_ID, renderPaneContent } from "../viewers/registry";
 import { CanvasCommandBar } from "./CanvasCommandBar";
 import { CanvasDropHint } from "./CanvasDropHint";
+import { CanvasDropTargetOverlay } from "./CanvasDropTargetOverlay";
 import { PaneDock } from "./PaneDock";
 import { PaneWindow } from "./PaneWindow";
 
@@ -15,6 +20,20 @@ export interface CanvasSurfaceProps {
   launchStatus: LaunchResolutionStatus;
   launchSessionId: string | null;
 }
+
+const paneBodyDrag = (paneId: PaneId): boolean => {
+  const ref = useCanvasStore.getState().panes[paneId]?.contentRef;
+  return ref ? bodyDragForRef(ref) : false;
+};
+
+// Module-stable adapter so the memoized PaneLayer keeps bailing on viewport
+// renders. Scale reads non-reactively (consumed only mid-drag, zoom locked);
+// the expanded hero stops lifting through a narrow reactive selector while
+// staying a droppable delivery target.
+const SortablePane = createSortablePaneAdapter({
+  readWorldScale: () => useCanvasStore.getState().layout.viewport.scale,
+  useLiftDisabled: (paneId) => useCanvasStore((state) => state.expandedPaneId === paneId),
+});
 
 export function CanvasSurface({ launch, launchStatus, launchSessionId }: CanvasSurfaceProps) {
   const layout = useCanvasStore((state) => state.layout);
@@ -30,7 +49,8 @@ export function CanvasSurface({ launch, launchStatus, launchSessionId }: CanvasS
   const expandPane = useCanvasStore((state) => state.expandPane);
   const framePane = useCanvasStore((state) => state.framePane);
   const minimizePane = useCanvasStore((state) => state.minimizePane);
-  const movePane = useCanvasStore((state) => state.movePane);
+  const dockPane = useCanvasStore((state) => state.dockPane);
+  const commitReorder = useCanvasStore((state) => state.commitReorder);
   const spawnPane = useCanvasStore((state) => state.spawnPane);
   const resizePane = useCanvasStore((state) => state.resizePane);
   const restorePane = useCanvasStore((state) => state.restorePane);
@@ -41,6 +61,28 @@ export function CanvasSurface({ launch, launchStatus, launchSessionId }: CanvasS
   const surfaceRef = useRef<HTMLElement>(null);
   const focusedPaneId = layout.focusedPaneId;
   const focusedTitle = focusedPaneId ? (panes[focusedPaneId]?.title ?? null) : null;
+  const { reorderActive, markReorderActive, finishReorder } = useReorderSettle();
+  const dndDeps = useMemo(
+    () => ({
+      getLayout: () => useCanvasStore.getState().layout,
+      contentRefFor: (paneId: string) => useCanvasStore.getState().panes[paneId]?.contentRef,
+      titleFor: (paneId: string) => useCanvasStore.getState().panes[paneId]?.title ?? paneId,
+      commitReorder,
+      getSurfaceOrigin: () => {
+        const rect = surfaceRef.current?.getBoundingClientRect();
+        return rect ? { left: rect.left, top: rect.top } : { left: 0, top: 0 };
+      },
+      getExpandedPaneId: () => useCanvasStore.getState().expandedPaneId,
+    }),
+    [commitReorder],
+  );
+  // Open panes in committed order, minus the expanded hero (side column sorts,
+  // the hero stays a delivery-only target). Memoized on the order/nodes refs so
+  // viewport-only renders keep the same items array.
+  const sortablePaneIds = useMemo(
+    () => openPaneIds(layout).filter((paneId) => paneId !== expandedPaneId),
+    [layout, expandedPaneId],
+  );
 
   useEffect(() => {
     const element = surfaceRef.current;
@@ -56,11 +98,12 @@ export function CanvasSurface({ launch, launchStatus, launchSessionId }: CanvasS
     return () => observer.disconnect();
   }, [setBounds]);
 
-  const { dropHint, dismissDropHint, onMovePaneEnd } = useCanvasDropTargets(surfaceRef, {
+  const { dropHint, dismissDropHint } = useCanvasDropTargets(surfaceRef, {
     getLayout: () => useCanvasStore.getState().layout,
     contentRefFor: (paneId) => useCanvasStore.getState().panes[paneId]?.contentRef,
+    titleFor: (paneId) => useCanvasStore.getState().panes[paneId]?.title ?? paneId,
     spawnPane,
-    minimizePane,
+    dockPane,
   });
 
   // Stable across viewport-only renders so the memoized PaneLayer skips the pane subtree on pan/zoom.
@@ -128,18 +171,32 @@ export function CanvasSurface({ launch, launchStatus, launchSessionId }: CanvasS
         onResetViewport={resetViewport}
       />
       {dropHint === null ? null : <CanvasDropHint message={dropHint} onDismiss={dismissDropHint} />}
-      <LayoutCanvas
-        label={`Session canvas, ${layout.mode} mode`}
-        layout={layout}
-        onFocusPane={focusPane}
-        onMovePane={movePane}
-        onMovePaneEnd={onMovePaneEnd}
-        onResizePane={resizePane}
-        overlay={<PaneDock docked={docked} onClose={closeDockedPane} onRestore={restorePane} />}
-        renderPane={renderPane}
-        setViewport={setViewport}
-        titleIdForPane={titleIdForPane}
-      />
+      <CanvasPaneDnd
+        deps={dndDeps}
+        onDragActiveChange={markReorderActive}
+        onDragSettled={finishReorder}
+        sortablePaneIds={sortablePaneIds}
+      >
+        <LayoutCanvas
+          label={`Session canvas, ${layout.mode} mode`}
+          layout={layout}
+          onFocusPane={focusPane}
+          onResizePane={resizePane}
+          overlay={
+            <>
+              <PaneDock docked={docked} onClose={closeDockedPane} onRestore={restorePane} />
+              <CanvasDropTargetOverlay layout={layout} />
+            </>
+          }
+          paneBodyDrag={paneBodyDrag}
+          paneDndAdapter={SortablePane}
+          paneMotion={reorderActive}
+          renderPane={renderPane}
+          setViewport={setViewport}
+          titleIdForPane={titleIdForPane}
+          zoomLocked={reorderActive}
+        />
+      </CanvasPaneDnd>
     </main>
   );
 }

@@ -27,6 +27,8 @@ export interface EngineLayoutState {
   mode: LayoutMode;
   viewport: CanvasViewport;
   nodes: Record<PaneId, PaneNode>;
+  /** User-controlled pane sequence; strategies consume it via openPaneIds. */
+  order: PaneId[];
   focusedPaneId: PaneId | null;
 }
 

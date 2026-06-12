@@ -200,5 +200,7 @@ export interface ViewerRegistration<TRef extends CanvasPaneRef = CanvasPaneRef> 
   /** Deterministic pane id; also the dedupe key. */
   paneId(ref: TRef): PaneId;
   title(ref: TRef): string;
+  /** Body pointer-drags lift the pane (resource panes: grab the image, grab the pane). */
+  bodyDrag?: boolean;
   render(props: ViewerProps<TRef>): React.ReactNode;
 }

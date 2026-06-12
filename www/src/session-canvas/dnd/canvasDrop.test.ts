@@ -1,11 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { registerPasteHandle } from "../viewers/terminal/pasteRegistry";
-import {
-  classifyDrop,
-  deliverPaneDropToTerminal,
-  handleCanvasDrop,
-  paneIdAtPoint,
-} from "./canvasDrop";
+import { classifyDrop, handleCanvasDrop, paneIdAtPoint } from "./canvasDrop";
 
 const layout = {
   viewport: { panX: 10, panY: 20, scale: 2 },
@@ -85,11 +80,11 @@ describe("handleCanvasDrop", () => {
   const baseDeps = () => ({
     resolvePath: () => "/tmp/My Shot.png",
     spawnPane: vi.fn(() => "resource:path:/tmp/My Shot.png"),
-    minimizePane: vi.fn(),
+    dockPane: vi.fn(),
     showHint: vi.fn(),
   });
 
-  it("pastes the escaped locator into a terminal target and parks a docked pane", () => {
+  it("pastes the escaped locator into a terminal target and docks the resource directly", () => {
     const paste = vi.fn();
     const unregister = registerPasteHandle("terminal:a", paste);
     const deps = baseDeps();
@@ -100,11 +95,15 @@ describe("handleCanvasDrop", () => {
       deps,
     );
     expect(paste).toHaveBeenCalledWith("/tmp/My\\ Shot.png");
-    expect(deps.spawnPane).toHaveBeenCalledWith(
-      { kind: "resource", owner: "local", source: "path", path: "/tmp/My Shot.png" },
-      { focus: false },
-    );
-    expect(deps.minimizePane).toHaveBeenCalledWith("resource:path:/tmp/My Shot.png");
+    // straight to the dock: never spawn a pane just to minimize it, which
+    // resized the layout twice in quick succession
+    expect(deps.dockPane).toHaveBeenCalledWith({
+      kind: "resource",
+      owner: "local",
+      source: "path",
+      path: "/tmp/My Shot.png",
+    });
+    expect(deps.spawnPane).not.toHaveBeenCalled();
     unregister();
   });
 
@@ -120,7 +119,7 @@ describe("handleCanvasDrop", () => {
       { kind: "resource", owner: "local", source: "path", path: "/tmp/My Shot.png" },
       undefined,
     );
-    expect(deps.minimizePane).not.toHaveBeenCalled();
+    expect(deps.dockPane).not.toHaveBeenCalled();
   });
 
   it("shows the hint for file drops without a bridge", () => {
@@ -135,52 +134,5 @@ describe("handleCanvasDrop", () => {
       "File drops need the desktop app. URL drags work here.",
     );
     expect(deps.spawnPane).not.toHaveBeenCalled();
-  });
-});
-
-describe("deliverPaneDropToTerminal", () => {
-  const rectOver = (x: number, y: number) => ({ x, y, width: 40, height: 40 });
-  const pathRef = {
-    kind: "resource",
-    owner: "local",
-    source: "path",
-    path: "/tmp/My Shot.png",
-  } as const;
-
-  it("pastes the moved locator pane's locator into the terminal under its center", () => {
-    const paste = vi.fn();
-    const unregister = registerPasteHandle("terminal:a", paste);
-    deliverPaneDropToTerminal(layout, pathRef, "resource:path:/tmp/My Shot.png", rectOver(10, 10));
-    expect(paste).toHaveBeenCalledWith("/tmp/My\\ Shot.png");
-    unregister();
-  });
-
-  it("does nothing when a non-terminal pane is stacked over a terminal", () => {
-    const paste = vi.fn();
-    const unregister = registerPasteHandle("terminal:a", paste);
-    deliverPaneDropToTerminal(layout, pathRef, "resource:path:/tmp/My Shot.png", rectOver(30, 30));
-    expect(paste).not.toHaveBeenCalled();
-    unregister();
-  });
-
-  it("does nothing for non-locator panes", () => {
-    const paste = vi.fn();
-    const unregister = registerPasteHandle("terminal:a", paste);
-    deliverPaneDropToTerminal(
-      layout,
-      { kind: "resource", owner: "local", sessionId: "s", resourceId: "r" },
-      "resource:s:r",
-      rectOver(30, 30),
-    );
-    expect(paste).not.toHaveBeenCalled();
-    unregister();
-  });
-
-  it("never targets the moved pane itself", () => {
-    const paste = vi.fn();
-    const unregister = registerPasteHandle("terminal:a", paste);
-    deliverPaneDropToTerminal(layout, pathRef, "terminal:a", rectOver(30, 30));
-    expect(paste).not.toHaveBeenCalled();
-    unregister();
   });
 });

@@ -1,7 +1,9 @@
 import { type RefObject, useCallback, useEffect, useRef, useState } from "react";
-import type { EngineLayoutState, WorldRect } from "../../engine";
+import type { EngineLayoutState } from "../../engine";
 import type { CanvasPaneRef, PaneContentRef } from "../model/paneRecords";
-import { deliverPaneDropToTerminal, handleCanvasDrop } from "./canvasDrop";
+import { resolvePasteHandle } from "../viewers/terminal/pasteRegistry";
+import { handleCanvasDrop, paneIdAtPoint } from "./canvasDrop";
+import { clearDropTarget, setDropTarget } from "./dropTargetStore";
 
 // Shared drop wiring for every canvas surface (/canvas CanvasSurface and the
 // /canvas-lab stage): intercepts dragover/drop on the surface element (the
@@ -13,8 +15,9 @@ import { deliverPaneDropToTerminal, handleCanvasDrop } from "./canvasDrop";
 export interface CanvasDropTargetDeps {
   getLayout(): EngineLayoutState;
   contentRefFor(paneId: string): CanvasPaneRef | undefined;
+  titleFor(paneId: string): string;
   spawnPane(ref: PaneContentRef, options?: { focus: boolean }): string;
-  minimizePane(paneId: string): void;
+  dockPane(ref: PaneContentRef): string;
 }
 
 export function useCanvasDropTargets(
@@ -34,9 +37,34 @@ export function useCanvasDropTargets(
     const onDragOver = (event: DragEvent) => {
       event.preventDefault();
       if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
+      const rect = surface.getBoundingClientRect();
+      const current = depsRef.current;
+      const point = { x: event.clientX - rect.left, y: event.clientY - rect.top };
+      const layout = current.getLayout();
+      const targetPaneId = paneIdAtPoint(layout, point);
+      const paste = targetPaneId === null ? null : resolvePasteHandle(targetPaneId);
+      if (targetPaneId !== null && paste !== null) {
+        setDropTarget({
+          kind: "terminal",
+          paneId: targetPaneId,
+          label: current.titleFor(targetPaneId),
+        });
+      } else if (
+        event.dataTransfer !== null &&
+        dataTransferHasFiles(event.dataTransfer) &&
+        !window.transportMattersDesktop?.getPathForFile
+      ) {
+        setDropTarget({ kind: "hint" });
+      } else {
+        setDropTarget({ kind: "surface" });
+      }
+    };
+    const onDragLeave = () => {
+      clearDropTarget();
     };
     const onDrop = (event: DragEvent) => {
       event.preventDefault();
+      clearDropTarget();
       if (!event.dataTransfer) return;
       const rect = surface.getBoundingClientRect();
       const current = depsRef.current;
@@ -47,27 +75,27 @@ export function useCanvasDropTargets(
         {
           resolvePath: window.transportMattersDesktop?.getPathForFile ?? null,
           spawnPane: current.spawnPane,
-          minimizePane: current.minimizePane,
+          dockPane: current.dockPane,
           showHint: setDropHint,
         },
       );
     };
 
     surface.addEventListener("dragover", onDragOver);
+    surface.addEventListener("dragleave", onDragLeave);
     surface.addEventListener("drop", onDrop);
     return () => {
       surface.removeEventListener("dragover", onDragOver);
+      surface.removeEventListener("dragleave", onDragLeave);
       surface.removeEventListener("drop", onDrop);
     };
   }, [surfaceRef]);
 
-  /** Wire to LayoutCanvas onMovePaneEnd: a released locator pane over a terminal pastes. */
-  const onMovePaneEnd = useCallback((paneId: string, rect: WorldRect) => {
-    const current = depsRef.current;
-    deliverPaneDropToTerminal(current.getLayout(), current.contentRefFor(paneId), paneId, rect);
-  }, []);
-
   const dismissDropHint = useCallback(() => setDropHint(null), []);
 
-  return { dropHint, dismissDropHint, onMovePaneEnd };
+  return { dropHint, dismissDropHint };
+}
+
+function dataTransferHasFiles(transfer: DataTransfer): boolean {
+  return Array.from(transfer.types).includes("Files");
 }

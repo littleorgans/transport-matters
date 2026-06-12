@@ -3,6 +3,7 @@ import { persist } from "zustand/middleware";
 import {
   createInitialEngineLayoutState,
   focusNode,
+  movePaneOrder,
   type PaneId,
   setViewport as setEngineViewport,
   updateNodeRect,
@@ -23,6 +24,7 @@ import {
   planPaneUnexpand,
   planPaneUnframe,
   removeDockedPane,
+  runDockPaneFlow,
   runSpawnPaneFlow,
   stripPaneFlyIntent,
 } from "../model/paneAffordances";
@@ -167,6 +169,14 @@ export const useCanvasLabStore = create<CanvasLabState>()(
         });
       },
 
+      dockPane(ref) {
+        return runDockPaneFlow(paneIdForRef(ref), {
+          isOpen: (paneId) => get().contentRefs[paneId] !== undefined,
+          minimizePane: (paneId) => get().minimizePane(paneId),
+          park: (paneId) => set((state) => ({ docked: parkDockedPane(state.docked, paneId, ref) })),
+        });
+      },
+
       spawnPane(ref, options) {
         return runSpawnPaneFlow(paneIdForRef(ref), options?.focus !== false, {
           isOpen: (paneId) => get().contentRefs[paneId] !== undefined,
@@ -268,6 +278,11 @@ export const useCanvasLabStore = create<CanvasLabState>()(
             state.expandedPaneId,
           ),
         }));
+      },
+
+      commitReorder(paneId, index) {
+        set((state) => ({ layout: movePaneOrder(state.layout, paneId, index) }));
+        get().organize();
       },
 
       setBounds(bounds) {

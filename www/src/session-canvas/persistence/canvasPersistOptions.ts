@@ -63,6 +63,7 @@ function partializeCanvasState<State extends PersistableCanvasState, TRef extend
   return {
     contentRefs: getContentRefs(state),
     paneRects: collectOpenPaneRects(state.layout),
+    order: [...state.layout.order],
     docked: state.docked,
     activeStrategyId: state.activeStrategyId,
     params: state.params,
@@ -75,6 +76,7 @@ function emptyPersistedCanvasState<TRef extends CanvasPaneRef>(): PersistedCanva
   return {
     contentRefs: {},
     paneRects: {},
+    order: [],
     docked: [],
     activeStrategyId: INITIAL_STRATEGY_ID,
     params: seedParams(INITIAL_STRATEGY_ID),

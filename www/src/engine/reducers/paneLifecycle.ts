@@ -1,3 +1,4 @@
+import { roundWorldRect } from "../layout/geometry";
 import type { PaneId, PaneNode, WorldRect } from "../types";
 
 export function createPaneNode(
@@ -15,12 +16,15 @@ export function createPaneNode(
   };
 }
 
+// Gesture deltas arrive as screen pixels divided by the camera scale, so they
+// are fractional; both reducers quantize through roundWorldRect (see
+// engine/layout/geometry.ts for why whole world pixels matter).
 export function moveRect(rect: WorldRect, deltaX: number, deltaY: number): WorldRect {
-  return {
+  return roundWorldRect({
     ...rect,
     x: rect.x + deltaX,
     y: rect.y + deltaY,
-  };
+  });
 }
 
 export function resizeRect(
@@ -29,9 +33,9 @@ export function resizeRect(
   deltaY: number,
   minimum: Pick<WorldRect, "width" | "height">,
 ): WorldRect {
-  return {
+  return roundWorldRect({
     ...rect,
     width: Math.max(minimum.width, rect.width + deltaX),
     height: Math.max(minimum.height, rect.height + deltaY),
-  };
+  });
 }

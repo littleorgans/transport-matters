@@ -22,6 +22,7 @@ interface CanvasPanePersistenceOptions<TRef extends CanvasPaneRef> {
 export interface PersistedCanvasPanes<TRef extends CanvasPaneRef = PaneContentRef> {
   contentRefs: Record<PaneId, TRef>;
   paneRects: Record<PaneId, WorldRect>;
+  order?: PaneId[];
   docked: DockedPane[];
 }
 
@@ -49,6 +50,7 @@ interface SeedCanvasState<TRef extends CanvasPaneRef = PaneContentRef>
 export interface RebuiltCanvasPanes<TRef extends CanvasPaneRef = PaneContentRef> {
   contentRefs: Record<PaneId, TRef>;
   layout: EngineLayoutState;
+  order?: PaneId[];
   docked: DockedPane[];
 }
 
@@ -106,7 +108,7 @@ function rebuildPersistedPanesFromSaved<TRef extends CanvasPaneRef = PaneContent
 
   let seeded: SeedPaneState<TRef> = {
     contentRefs: {},
-    layout: { ...current.layout, focusedPaneId: null, nodes: {} },
+    layout: { ...current.layout, focusedPaneId: null, nodes: {}, order: [] },
   };
 
   for (const [paneId, rect] of Object.entries(saved.paneRects)) {
@@ -116,6 +118,7 @@ function rebuildPersistedPanesFromSaved<TRef extends CanvasPaneRef = PaneContent
   return {
     contentRefs: seeded.contentRefs,
     layout: seeded.layout,
+    order: saved.order,
     docked: saved.docked,
   };
 }
@@ -135,7 +138,7 @@ function resetPanes<TRef extends CanvasPaneRef = PaneContentRef>(
 ): RebuiltCanvasPanes<TRef> {
   return {
     contentRefs: {},
-    layout: { ...current.layout, focusedPaneId: null, nodes: {} },
+    layout: { ...current.layout, focusedPaneId: null, nodes: {}, order: [] },
     docked: [],
   };
 }
@@ -150,9 +153,10 @@ function readPersistedPanes<TRef extends CanvasPaneRef = PaneContentRef>(
 
   const contentRefs = readContentRefs(persisted.contentRefs, isContentRef);
   const paneRects = readPaneRects(persisted.paneRects);
+  const order = readPaneOrder(persisted.order);
   const docked = readDockedPanes(persisted.docked, isContentRef);
   if (!contentRefs || !paneRects || !docked) return null;
-  return { contentRefs, paneRects, docked };
+  return { contentRefs, paneRects, order, docked };
 }
 
 function hasPersistedPanePayload(value: Record<string, unknown>): boolean {
@@ -182,6 +186,11 @@ function readPaneRects(value: unknown): Record<PaneId, WorldRect> | null {
     rects[paneId] = rect;
   }
   return rects;
+}
+
+function readPaneOrder(value: unknown): PaneId[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  return value.filter((id): id is PaneId => typeof id === "string");
 }
 
 function readDockedPanes<TRef extends CanvasPaneRef = PaneContentRef>(

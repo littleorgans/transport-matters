@@ -1,14 +1,24 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { LayoutCanvas } from "../../engine";
+import { LayoutCanvas, type PaneId } from "../../engine";
 import { CANVAS_LAYOUT_MARGIN, listLayouts } from "../../engine/layout";
 import { CanvasDropHint } from "../components/CanvasDropHint";
+import { CanvasDropTargetOverlay } from "../components/CanvasDropTargetOverlay";
 import { CommandBarSections } from "../components/CommandBarSections";
 import { PaneChrome } from "../components/PaneChrome";
 import { PaneDock } from "../components/PaneDock";
 import { RouteSwitcher } from "../components/RouteSwitcher";
+import { CanvasPaneDnd } from "../dnd/CanvasPaneDnd";
+import { createSortablePaneAdapter } from "../dnd/SortablePane";
 import { useCanvasDropTargets } from "../dnd/useCanvasDropTargets";
+import { useReorderSettle } from "../dnd/useReorderSettle";
+import { openPaneIds } from "../model/layoutPlanning";
 import type { PaneContentRef, ViewerProps } from "../model/paneRecords";
-import { renderPaneContent, titleForRef, viewerIdForRef } from "../viewers/registry";
+import {
+  bodyDragForRef,
+  renderPaneContent,
+  titleForRef,
+  viewerIdForRef,
+} from "../viewers/registry";
 import { ControlsPanel } from "./ControlsPanel";
 import { framedPaneId, useCanvasLabStore } from "./canvasLabStore";
 import { cliInstalled, useCapabilitiesStore } from "./capabilitiesStore";
@@ -18,6 +28,20 @@ import "./labLifecycle";
 import "./canvas-lab.css";
 import { LabCardPane } from "./viewers/LabCardPane";
 import { LabRulerPane } from "./viewers/LabRulerPane";
+
+const paneBodyDrag = (paneId: PaneId): boolean => {
+  const ref = useCanvasLabStore.getState().contentRefs[paneId];
+  return ref ? bodyDragForRef(ref) : false;
+};
+
+// Module-stable adapter so the memoized PaneLayer keeps bailing on viewport
+// renders. Scale reads non-reactively (consumed only mid-drag, zoom locked);
+// the expanded hero stops lifting through a narrow reactive selector while
+// staying a droppable delivery target.
+const SortablePane = createSortablePaneAdapter({
+  readWorldScale: () => useCanvasLabStore.getState().layout.viewport.scale,
+  useLiftDisabled: (paneId) => useCanvasLabStore((state) => state.expandedPaneId === paneId),
+});
 
 export function CanvasLabRoute() {
   const layout = useCanvasLabStore((state) => state.layout);
@@ -33,6 +57,7 @@ export function CanvasLabRoute() {
   const addTerminal = useCanvasLabStore((state) => state.addTerminal);
   const addCapturedRun = useCanvasLabStore((state) => state.addCapturedRun);
   const spawnPane = useCanvasLabStore((state) => state.spawnPane);
+  const dockPane = useCanvasLabStore((state) => state.dockPane);
   const organize = useCanvasLabStore((state) => state.organize);
   const minimizePane = useCanvasLabStore((state) => state.minimizePane);
   const closePane = useCanvasLabStore((state) => state.closePane);
@@ -42,6 +67,7 @@ export function CanvasLabRoute() {
   const expandPane = useCanvasLabStore((state) => state.expandPane);
   const framePane = useCanvasLabStore((state) => state.framePane);
   const updatePaneRect = useCanvasLabStore((state) => state.updatePaneRect);
+  const commitReorder = useCanvasLabStore((state) => state.commitReorder);
   const setStrategy = useCanvasLabStore((state) => state.setStrategy);
   const setFitToContent = useCanvasLabStore((state) => state.setFitToContent);
   const setBounds = useCanvasLabStore((state) => state.setBounds);
@@ -53,11 +79,37 @@ export function CanvasLabRoute() {
   const codexInstalled = useCapabilitiesStore((state) => cliInstalled(state, "codex"));
 
   const stageRef = useRef<HTMLDivElement>(null);
-  const { dropHint, dismissDropHint, onMovePaneEnd } = useCanvasDropTargets(stageRef, {
+  const { reorderActive, markReorderActive, finishReorder } = useReorderSettle();
+  const dndDeps = useMemo(
+    () => ({
+      getLayout: () => useCanvasLabStore.getState().layout,
+      contentRefFor: (paneId: string) => useCanvasLabStore.getState().contentRefs[paneId],
+      titleFor: (paneId: string) => {
+        const ref = useCanvasLabStore.getState().contentRefs[paneId];
+        return ref ? titleForRef(ref) : paneId;
+      },
+      commitReorder,
+      getSurfaceOrigin: () => {
+        const rect = stageRef.current?.getBoundingClientRect();
+        return rect ? { left: rect.left, top: rect.top } : { left: 0, top: 0 };
+      },
+      getExpandedPaneId: () => useCanvasLabStore.getState().expandedPaneId,
+    }),
+    [commitReorder],
+  );
+  const sortablePaneIds = useMemo(
+    () => openPaneIds(layout).filter((paneId) => paneId !== expandedPane),
+    [layout, expandedPane],
+  );
+  const { dropHint, dismissDropHint } = useCanvasDropTargets(stageRef, {
     getLayout: () => useCanvasLabStore.getState().layout,
     contentRefFor: (paneId) => useCanvasLabStore.getState().contentRefs[paneId],
+    titleFor: (paneId) => {
+      const ref = useCanvasLabStore.getState().contentRefs[paneId];
+      return ref ? titleForRef(ref) : paneId;
+    },
     spawnPane,
-    minimizePane,
+    dockPane,
   });
   const strategies = useMemo(() => listLayouts(), []);
   const [chromeHidden, setChromeHidden] = useState(false);
@@ -232,21 +284,34 @@ export function CanvasLabRoute() {
         {dropHint === null ? null : (
           <CanvasDropHint message={dropHint} onDismiss={dismissDropHint} />
         )}
-        <LayoutCanvas
-          framing={flying}
-          label={`Canvas lab, ${activeStrategyId}`}
-          layout={layout}
-          onFocusPane={focusPane}
-          onMovePane={updatePaneRect}
-          onMovePaneEnd={onMovePaneEnd}
-          onResizePane={updatePaneRect}
-          // Canvas-resident dock: top band, screen-space, survives the TAB hide of the command bar.
-          overlay={<PaneDock docked={docked} onClose={closeDockedPane} onRestore={restorePane} />}
-          paneMotion={paneMotion}
-          renderPane={renderPane}
-          setViewport={setViewport}
-          titleIdForPane={titleIdForPane}
-        />
+        <CanvasPaneDnd
+          deps={dndDeps}
+          onDragActiveChange={markReorderActive}
+          onDragSettled={finishReorder}
+          sortablePaneIds={sortablePaneIds}
+        >
+          <LayoutCanvas
+            framing={flying}
+            label={`Canvas lab, ${activeStrategyId}`}
+            layout={layout}
+            onFocusPane={focusPane}
+            onResizePane={updatePaneRect}
+            // Canvas-resident dock: top band, screen-space, survives the TAB hide of the command bar.
+            overlay={
+              <>
+                <PaneDock docked={docked} onClose={closeDockedPane} onRestore={restorePane} />
+                <CanvasDropTargetOverlay layout={layout} />
+              </>
+            }
+            paneBodyDrag={paneBodyDrag}
+            paneDndAdapter={SortablePane}
+            paneMotion={paneMotion || reorderActive}
+            renderPane={renderPane}
+            setViewport={setViewport}
+            titleIdForPane={titleIdForPane}
+            zoomLocked={reorderActive}
+          />
+        </CanvasPaneDnd>
       </div>
     </main>
   );

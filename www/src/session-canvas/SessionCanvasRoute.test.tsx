@@ -73,9 +73,14 @@ describe("SessionCanvasRoute", () => {
     let height = 700;
     vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockImplementation(() => width);
     vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockImplementation(() => height);
-    const observers: Array<{ callback: ResizeObserverCallback }> = [];
+    // dnd-kit observes droppable panes with its own ResizeObservers, so the
+    // surface bounds observer is found by its observed element, not by count.
+    const observers: Array<{ callback: ResizeObserverCallback; targets: Element[] }> = [];
     class MockResizeObserver {
-      observe = vi.fn();
+      targets: Element[] = [];
+      observe = vi.fn((target: Element) => {
+        this.targets.push(target);
+      });
       unobserve = vi.fn();
       disconnect = vi.fn();
 
@@ -87,13 +92,18 @@ describe("SessionCanvasRoute", () => {
 
     renderWithQuery(<SessionCanvasRoute />);
 
-    await waitFor(() => expect(observers).toHaveLength(1));
+    const surfaceObserver = () =>
+      observers.find((observer) =>
+        observer.targets.some((target) => target.classList.contains("canvas-route-shell")),
+      );
+    await waitFor(() => expect(surfaceObserver()).toBeDefined());
     expect(useCanvasStore.getState().bounds).toEqual({ width: 900, height: 700 });
 
     act(() => {
       width = 640;
       height = 480;
-      observers[0]?.callback([], observers[0] as unknown as ResizeObserver);
+      const observer = surfaceObserver();
+      observer?.callback([], observer as unknown as ResizeObserver);
     });
 
     expect(useCanvasStore.getState().bounds).toEqual({ width: 640, height: 480 });

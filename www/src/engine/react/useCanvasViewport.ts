@@ -28,11 +28,19 @@ export interface CanvasViewportControls {
   zooming: boolean;
 }
 
+export interface CanvasViewportOptions {
+  // A pane drag converts pointer deltas through one scale for its whole
+  // duration; refusing zoom while it is live keeps that conversion exact.
+  zoomLocked?: boolean;
+}
+
 export function useCanvasViewport(
   viewport: CanvasViewport,
   actions: CanvasViewportActions,
+  options: CanvasViewportOptions = {},
 ): CanvasViewportControls {
   const setViewport = actions.setViewport;
+  const zoomLocked = options.zoomLocked ?? false;
   const [panReady, setPanReady] = useState(false);
   const [panning, setPanning] = useState(false);
   const [zooming, setZooming] = useState(false);
@@ -78,6 +86,7 @@ export function useCanvasViewport(
     (event: React.WheelEvent<HTMLElement>) => {
       if (!event.shiftKey) return;
       event.preventDefault();
+      if (zoomLocked) return;
       // Shift+wheel: browsers often report the scroll on deltaX (horizontal) rather than deltaY.
       const scroll = event.deltaY !== 0 ? event.deltaY : event.deltaX;
       const factor = scroll > 0 ? WHEEL_ZOOM_FACTOR : 1 / WHEEL_ZOOM_FACTOR;
@@ -89,13 +98,14 @@ export function useCanvasViewport(
         setZooming(false);
       }, ZOOM_IDLE_MS);
     },
-    [setViewport, viewport],
+    [setViewport, viewport, zoomLocked],
   );
 
   const handleKeyDown = useCallback(
     (event: React.KeyboardEvent<HTMLElement>) => {
       if (event.key === "+" || event.key === "=") {
         event.preventDefault();
+        if (zoomLocked) return;
         setViewport(
           zoomViewportAt(viewport, KEYBOARD_ZOOM_IN, window.innerWidth / 2, window.innerHeight / 2),
         );
@@ -103,6 +113,7 @@ export function useCanvasViewport(
       }
       if (event.key === "-") {
         event.preventDefault();
+        if (zoomLocked) return;
         setViewport(
           zoomViewportAt(
             viewport,
@@ -125,7 +136,7 @@ export function useCanvasViewport(
       event.preventDefault();
       setViewport(panViewport(viewport, delta[0], delta[1]));
     },
-    [setViewport, viewport],
+    [setViewport, viewport, zoomLocked],
   );
 
   return { bindViewport, handleWheel, handleKeyDown, panReady, panning, zooming };
