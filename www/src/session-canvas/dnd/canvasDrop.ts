@@ -1,5 +1,6 @@
 import type { EngineLayoutState } from "../../engine";
 import type { PaneContentRef } from "../model/paneRecords";
+import { pointerToWorld } from "./dndSpace";
 import {
   type DropLocator,
   escapeDropLocator,
@@ -67,11 +68,7 @@ export function paneIdAtPoint(
   layout: EngineLayoutState,
   point: { x: number; y: number },
 ): string | null {
-  const { panX, panY, scale } = layout.viewport;
-  return paneIdAtWorldPoint(layout, {
-    x: (point.x - panX) / scale,
-    y: (point.y - panY) / scale,
-  });
+  return paneIdAtWorldPoint(layout, pointerToWorld(layout.viewport, point));
 }
 
 export function handleCanvasDrop(
