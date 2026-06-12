@@ -3,6 +3,7 @@ import {
   createPaneNode,
   type EngineLayoutState,
   focusNode,
+  movePaneOrder,
   nextPaneZ,
   type PaneId,
   setViewport as setEngineViewport,
@@ -57,10 +58,14 @@ export function planSpawnedPaneLayout(
   expandedPaneId: PaneId | null = null,
   planExpandedLayout?: ExpandedLayoutPlanner,
   focus = true,
+  orderIndex?: number,
 ): EngineLayoutState {
   const seeded = seedPaneLayout(state.layout, paneId);
+  // Restore-at-index (doc 18): the seed appends, the splice moves, the plan
+  // packs, all before one commit, so the pane never flashes at the tail.
+  const ordered = orderIndex === undefined ? seeded : movePaneOrder(seeded, paneId, orderIndex);
   return planLayout(
-    focus ? focusNode(seeded, paneId) : seeded,
+    focus ? focusNode(ordered, paneId) : ordered,
     state.bounds,
     state.activeStrategyId,
     state.params,

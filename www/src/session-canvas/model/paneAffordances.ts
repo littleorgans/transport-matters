@@ -133,8 +133,16 @@ export function planSpawnedAffordancePaneLayout(
   paneId: PaneId,
   planExpandedLayout?: ExpandedLayoutPlanner,
   focus = true,
+  orderIndex?: number,
 ): EngineLayoutState {
-  return planSpawnedPaneLayout(state, paneId, state.expandedPaneId, planExpandedLayout, focus);
+  return planSpawnedPaneLayout(
+    state,
+    paneId,
+    state.expandedPaneId,
+    planExpandedLayout,
+    focus,
+    orderIndex,
+  );
 }
 
 export function planPaneExpand(

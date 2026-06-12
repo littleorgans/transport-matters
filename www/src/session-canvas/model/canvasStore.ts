@@ -74,6 +74,8 @@ interface CanvasStoreState extends CanvasStoreModel {
   resizePane(paneId: PaneId, rect: WorldRect): void;
   resetViewport(): void;
   restorePane(paneId: PaneId): void;
+  // Dock drag-out (doc 18): restore at the order slot the drop point chose.
+  restorePaneAtIndex(paneId: PaneId, index: number): void;
   setBounds(bounds: ViewportBounds): void;
   setViewport(viewport: CanvasViewport): void;
   spawnPane(ref: SpawnablePaneRef, options?: SpawnPaneOptions): PaneId;
@@ -185,6 +187,11 @@ export const useCanvasStore = create<CanvasStoreState>()(
       },
 
       restorePane(paneId) {
+        // Restore in place = restore at the tail, where the seed appends anyway.
+        get().restorePaneAtIndex(paneId, get().layout.order.length);
+      },
+
+      restorePaneAtIndex(paneId, index) {
         const entry = get().docked.find((docked) => docked.paneId === paneId);
         if (!entry?.record) return;
         const record = entry.record;
@@ -196,7 +203,9 @@ export const useCanvasStore = create<CanvasStoreState>()(
             ...state,
             docked: removeDockedPane(state.docked, paneId),
             panes: { ...state.panes, [paneId]: pane },
-            layout: planSpawnedAffordancePaneLayout(state, paneId, planExpandLayout),
+            // Seed, splice to the drop index, and plan in one set: a single
+            // replan, so the pane never flashes at the tail before its slot.
+            layout: planSpawnedAffordancePaneLayout(state, paneId, planExpandLayout, true, index),
           };
         });
       },
