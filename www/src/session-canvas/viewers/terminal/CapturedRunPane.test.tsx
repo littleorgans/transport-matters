@@ -89,7 +89,7 @@ describe("CapturedRunPane", () => {
     render(<CapturedRunPane runKey="claude:k1" provider="claude" />);
 
     await waitFor(() => expect(sockets).toHaveLength(1));
-    expect(createCapturedRunMock).toHaveBeenCalledWith("claude", undefined);
+    expect(createCapturedRunMock).toHaveBeenCalledWith("claude", undefined, true);
     expect(only(sockets).url).toMatch(/\/api\/runs\/run-abc123\/terminal\?cols=80&rows=24$/);
   });
 

@@ -26,6 +26,7 @@ from transport_matters.captured_run import (
     default_claude_run_dependencies,
     prepare_captured_run,
 )
+from transport_matters.osc_color_responder import OscColorResponder
 from transport_matters.pty_session import (
     DEFAULT_TERMINAL_COLS,
     DEFAULT_TERMINAL_ROWS,
@@ -35,6 +36,7 @@ from transport_matters.pty_session import (
     close_terminal_master,
     spawn_pty_process,
     terminate_terminal_pty,
+    write_all,
 )
 from transport_matters.run_terminal import (
     DEFAULT_ATTACHMENT_QUEUE_SIZE,
@@ -121,6 +123,8 @@ class SpawnRun:
     debug: bool = False
     web_runtime: CapturedRunWebRuntime = WEB_RUNTIME_EXTERNAL
     default_client_passthrough: tuple[str, ...] = ()
+    # Bridge answers the CLI's OSC 10/11 color queries (see osc_color_responder).
+    osc_color_replies: bool = True
 
 
 @dataclass(frozen=True, slots=True)
@@ -167,6 +171,8 @@ class ManagedRun:
     viewerless_since: datetime | None
     exit_code: int | None
     stop_reason: str | None
+    # None when the bridge should stay silent (osc_color_replies disabled).
+    osc_responder: OscColorResponder | None
     drain_task: asyncio.Task[None] = field(init=False)
 
     @property
@@ -272,6 +278,7 @@ class RunManager:
                 viewerless_since=now,
                 exit_code=None,
                 stop_reason=None,
+                osc_responder=OscColorResponder() if request.osc_color_replies else None,
             )
             if self._closed:
                 raise RunManagerError("run_manager_closed", "run manager is closed")
@@ -461,6 +468,12 @@ class RunManager:
         now = self._clock()
         if run.state not in {RunState.RUNNING, RunState.STOPPING}:
             return
+        if run.osc_responder is not None:
+            # Answer color queries inside the CLI's startup window; an fd that
+            # closed mid-callback just drops the reply (the CLI is exiting).
+            for reply in run.osc_responder.replies_for(data):
+                with contextlib.suppress(OSError):
+                    write_all(run.terminal.master_fd, reply)
         _, closed_attachment_ids = run.terminal_output.append(data, emitted_at=now)
         run.updated_at = now
         if closed_attachment_ids and not run.attachments and run.state is RunState.RUNNING:

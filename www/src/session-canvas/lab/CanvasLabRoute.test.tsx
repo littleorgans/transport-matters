@@ -261,3 +261,34 @@ describe("CanvasLabRoute text shadow", () => {
     expect(useCanvasLabStore.getState().textShadow).toBe(false);
   });
 });
+
+describe("CanvasLabRoute CLI color replies", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    resetLabStores();
+  });
+
+  afterEach(resetLabStores);
+
+  it("defaults on and unchecking writes the store", () => {
+    seedCapabilities({ claude: true, codex: true });
+    render(<CanvasLabRoute />);
+    fireEvent.click(screen.getByRole("button", { name: "Layout" }));
+    const checkbox = screen.getByRole("checkbox", { name: "CLI color replies" });
+    expect(checkbox).toBeChecked();
+
+    fireEvent.click(checkbox);
+    expect(useCanvasLabStore.getState().oscColorReplies).toBe(false);
+  });
+
+  it("rehydrates an explicit off and defaults junk values to on", async () => {
+    const labExtras = { contentRefs: {}, paneRects: {}, docked: [], paneCounters: {} };
+    seedPersistedLab({ ...labExtras, nextPaneIndex: 0, oscColorReplies: false }, {});
+    await useCanvasLabStore.persist.rehydrate();
+    expect(useCanvasLabStore.getState().oscColorReplies).toBe(false);
+
+    seedPersistedLab({ ...labExtras, nextPaneIndex: 0, oscColorReplies: "maybe" }, {});
+    await useCanvasLabStore.persist.rehydrate();
+    expect(useCanvasLabStore.getState().oscColorReplies).toBe(true);
+  });
+});

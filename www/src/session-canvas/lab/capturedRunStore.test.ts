@@ -43,8 +43,16 @@ describe("capturedRunStore", () => {
 
     await expect(store().ensureRun("claude:k1", "claude")).resolves.toBe("run-1");
 
-    expect(createCapturedRunMock).toHaveBeenCalledWith("claude", undefined);
+    expect(createCapturedRunMock).toHaveBeenCalledWith("claude", undefined, true);
     expect(store().runs["claude:k1"]).toEqual({ provider: "claude", runId: "run-1" });
+  });
+
+  it("passes an explicit OSC color replies opt-out through to the spawn", async () => {
+    createCapturedRunMock.mockResolvedValue("run-1");
+
+    await store().ensureRun("claude:k1", "claude", undefined, false);
+
+    expect(createCapturedRunMock).toHaveBeenCalledWith("claude", undefined, false);
   });
 
   it("keeps two same-provider panes on independent runs (no shared PTY)", async () => {

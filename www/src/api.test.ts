@@ -130,7 +130,7 @@ describe("createCapturedRun", () => {
     expect(fetchMock).toHaveBeenCalledWith("/api/runs", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ cli: "claude" }),
+      body: JSON.stringify({ cli: "claude", oscColorReplies: true }),
     });
   });
 
@@ -142,7 +142,7 @@ describe("createCapturedRun", () => {
     expect(fetchMock).toHaveBeenCalledWith("/api/runs", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ cli: "codex", cwd: "/work/proj" }),
+      body: JSON.stringify({ cli: "codex", cwd: "/work/proj", oscColorReplies: true }),
     });
   });
 

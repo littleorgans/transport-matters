@@ -19,11 +19,14 @@ export const canvasLabPersistOptions = createCanvasPersistOptions<CanvasLabState
     paneCounters: state.paneCounters,
     nextPaneIndex: state.nextPaneIndex,
     textShadow: state.textShadow,
+    oscColorReplies: state.oscColorReplies,
   }),
   mergeExtras: (saved) => ({
     paneCounters: isPaneCounters(saved.paneCounters) ? saved.paneCounters : {},
     nextPaneIndex: typeof saved.nextPaneIndex === "number" ? saved.nextPaneIndex : 0,
     textShadow: saved.textShadow === true,
+    // Default-on: only an explicit false persists the bridge into silence.
+    oscColorReplies: saved.oscColorReplies !== false,
   }),
 });
 
