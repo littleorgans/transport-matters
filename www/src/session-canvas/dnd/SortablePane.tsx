@@ -11,18 +11,19 @@ export interface SortablePaneConfig {
   // every drag tick re-renders the pane through its transform, and zoom is
   // locked for the drag's duration (LayoutCanvas zoomLocked).
   readWorldScale(): number;
-  // Reactive per-pane disable (narrow selector): the expanded hero never
-  // lifts and never collides; it stays a delivery target through the store
-  // hit-test in paneDndCallbacks.
-  useSortableDisabled(paneId: string): boolean;
+  // Reactive per-pane lift disable (narrow selector): the expanded hero
+  // never lifts, but it STAYS a droppable so collision reports it as `over`
+  // and a release over it resolves to delivery-or-no-op instead of falling
+  // through to the nearest side pane (paneDndCallbacks guards the commit).
+  useLiftDisabled(paneId: string): boolean;
 }
 
 export function createSortablePaneAdapter(config: SortablePaneConfig): PaneDndAdapter {
   return function SortablePane({ paneId, children }) {
-    const disabled = config.useSortableDisabled(paneId);
+    const liftDisabled = config.useLiftDisabled(paneId);
     const { setNodeRef, listeners, transform, isDragging } = useSortable({
       id: paneId,
-      disabled: { draggable: disabled, droppable: disabled },
+      disabled: { draggable: liftDisabled, droppable: false },
     });
     return children({
       setNodeRef,

@@ -18,6 +18,10 @@ export interface PaneDndDeps {
   titleFor(paneId: string): string;
   commitReorder(paneId: string, index: number): void;
   getSurfaceOrigin(): { left: number; top: number };
+  // The expanded hero keeps a position in layout.order and stays a droppable
+  // (so collision reports it as `over`), but it is delivery-only: a release
+  // over it must never commit a reorder.
+  getExpandedPaneId(): string | null;
 }
 
 export interface PaneDndResult {
@@ -92,10 +96,11 @@ export function createPaneDndCallbacks(deps: PaneDndDeps) {
       const point = locator === null ? null : dragWorldPoint(event);
       const terminal = point === null ? null : terminalUnder(layout, point, activeId);
 
+      const overId = event.over === null ? null : String(event.over.id);
       if (terminal && locator) {
         terminal.paste(escapeDropLocator(locator));
-      } else if (event.over !== null && event.over.id !== event.active.id) {
-        const index = layout.order.indexOf(String(event.over.id));
+      } else if (overId !== null && overId !== activeId && overId !== deps.getExpandedPaneId()) {
+        const index = layout.order.indexOf(overId);
         const spliced = index < 0 ? layout.order : splicePaneOrder(layout.order, activeId, index);
         if (spliced !== layout.order && !sameOrder(spliced, layout.order)) {
           deps.commitReorder(activeId, index);

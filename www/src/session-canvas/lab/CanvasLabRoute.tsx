@@ -36,10 +36,11 @@ const paneBodyDrag = (paneId: PaneId): boolean => {
 
 // Module-stable adapter so the memoized PaneLayer keeps bailing on viewport
 // renders. Scale reads non-reactively (consumed only mid-drag, zoom locked);
-// the expanded hero disables per pane through a narrow reactive selector.
+// the expanded hero stops lifting through a narrow reactive selector while
+// staying a droppable delivery target.
 const SortablePane = createSortablePaneAdapter({
   readWorldScale: () => useCanvasLabStore.getState().layout.viewport.scale,
-  useSortableDisabled: (paneId) => useCanvasLabStore((state) => state.expandedPaneId === paneId),
+  useLiftDisabled: (paneId) => useCanvasLabStore((state) => state.expandedPaneId === paneId),
 });
 
 export function CanvasLabRoute() {
@@ -91,6 +92,7 @@ export function CanvasLabRoute() {
         const rect = stageRef.current?.getBoundingClientRect();
         return rect ? { left: rect.left, top: rect.top } : { left: 0, top: 0 };
       },
+      getExpandedPaneId: () => useCanvasLabStore.getState().expandedPaneId,
     }),
     [commitReorder],
   );

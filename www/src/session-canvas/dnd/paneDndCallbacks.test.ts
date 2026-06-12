@@ -40,6 +40,7 @@ function deps(overrides = {}) {
     titleFor: (paneId: string) => paneId,
     commitReorder: vi.fn(),
     getSurfaceOrigin: () => ({ left: 0, top: 0 }),
+    getExpandedPaneId: (): string | null => null,
     ...overrides,
   };
 }
@@ -150,6 +151,47 @@ describe("createPaneDndCallbacks", () => {
     callbacks.onDragMove(dragEvent("b", { x: 50, y: 50 }, null));
 
     expect(useDropTargetStore.getState().target).toBeNull();
+    unregister();
+  });
+
+  // The expanded hero is registered as a droppable so collision reports it as
+  // `over`, but it is a delivery-only target: a release over it either pastes
+  // (locator + paste handle) or does nothing. It NEVER commits a reorder, even
+  // though it keeps a position in layout.order.
+  it("release over the expanded hero without a locator is a full no-op", () => {
+    const d = deps({
+      contentRefFor: () => undefined,
+      getExpandedPaneId: () => "a",
+    });
+    const callbacks = createPaneDndCallbacks(d);
+
+    const result = callbacks.onDragEnd(dragEvent("b", { x: 50, y: 50 }, "a"));
+
+    expect(d.commitReorder).not.toHaveBeenCalled();
+    expect(result.settle).toBe(false);
+  });
+
+  it("release over the expanded hero with a locator but no paste handle never reorders", () => {
+    const d = deps({ getExpandedPaneId: () => "a" });
+    const callbacks = createPaneDndCallbacks(d);
+
+    const result = callbacks.onDragEnd(dragEvent("b", { x: 50, y: 50 }, "a"));
+
+    expect(d.commitReorder).not.toHaveBeenCalled();
+    expect(result.settle).toBe(false);
+  });
+
+  it("release over the expanded hero with a locator and paste handle delivers", () => {
+    const paste = vi.fn();
+    const unregister = registerPasteHandle("a", paste);
+    const d = deps({ getExpandedPaneId: () => "a" });
+    const callbacks = createPaneDndCallbacks(d);
+
+    const result = callbacks.onDragEnd(dragEvent("b", { x: 50, y: 50 }, "a"));
+
+    expect(paste).toHaveBeenCalledWith("/t/x.png");
+    expect(d.commitReorder).not.toHaveBeenCalled();
+    expect(result.settle).toBe(false);
     unregister();
   });
 

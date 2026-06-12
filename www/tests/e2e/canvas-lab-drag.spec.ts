@@ -169,6 +169,43 @@ test("a plain header click never moves the pane", async ({ page }) => {
   expect(Math.abs(after.y - before.y)).toBeLessThan(3);
 });
 
+// Expanded mode: the hero is a droppable delivery target, never a reorder
+// target. A side-pane release over it must not commit an order change (the
+// pre-fix regression: the hero was invisible to collision, so the release
+// fell through to the nearest side pane and reordered).
+test("releasing a side pane over the expanded hero never reorders", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto("/canvas-lab");
+
+  const panes = page.locator('[data-pane-frame="true"]');
+  const hero = panes.nth(0);
+  const side = panes.nth(1);
+  await expect(side).toBeVisible();
+
+  // Shift+double-click the header expands the pane into the hero slot
+  await hero.locator(".canvas-pane-window__header").dblclick({ modifiers: ["Shift"] });
+  const heroBox = await stableBox(page, hero);
+  const sideBefore = await stableBox(page, side);
+  expect(heroBox.width).toBeGreaterThan(sideBefore.width * 1.4);
+
+  const header = side.locator(".canvas-pane-window__header");
+  const headerBox = await requiredBox(header);
+  await page.mouse.move(headerBox.x + 36, headerBox.y + headerBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(heroBox.x + heroBox.width / 2, heroBox.y + heroBox.height / 2, {
+    steps: 12,
+  });
+  await page.mouse.up();
+
+  // non-locator release over the hero is a no-op: the pane springs back to
+  // its side-column slot and the hero stays put
+  await expect
+    .poll(async () => Math.abs((await requiredBox(side)).x - sideBefore.x), { timeout: 3000 })
+    .toBeLessThan(3);
+  expect(Math.abs((await requiredBox(side)).y - sideBefore.y)).toBeLessThan(3);
+  expect(Math.abs((await requiredBox(hero)).x - heroBox.x)).toBeLessThan(3);
+});
+
 test("closing a mouse-wheel zoomed pane restores the overview zoom", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto("/canvas-lab");
