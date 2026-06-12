@@ -5,11 +5,9 @@ import {
   type PaneNode,
   upsertNode,
 } from "../../engine";
-import { openPaneIds, planLayout } from "./layoutPlanning";
+import { openPaneIds } from "./layoutPlanning";
 
 const RECT = { x: 0, y: 0, width: 100, height: 100 };
-const BOUNDS = { width: 800, height: 600 };
-
 function threePaneLayout() {
   let layout = createInitialEngineLayoutState();
   for (const id of ["a", "b", "c"]) layout = upsertNode(layout, createPaneNode(id, RECT, 1));
@@ -31,18 +29,5 @@ describe("ordered planning", () => {
       nodes: { ...layout.nodes, a: { ...(layout.nodes.a as PaneNode), lifecycle: "closed" } },
     };
     expect(openPaneIds(layout)).toEqual(["c", "b"]);
-  });
-
-  it("planLayout honors a paneIdsOverride without mutating the committed order", () => {
-    const layout = threePaneLayout();
-    const planned = planLayout(layout, BOUNDS, "grid-fit", {}, false, null, undefined, [
-      "c",
-      "a",
-      "b",
-    ]);
-    expect(planned.order).toEqual(["a", "b", "c"]);
-    expect(planned.nodes.c?.rect).toEqual(
-      planLayout(layout, BOUNDS, "grid-fit", {}, false).nodes.a?.rect,
-    );
   });
 });

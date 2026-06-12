@@ -9,6 +9,7 @@ import { PaneDock } from "../components/PaneDock";
 import { RouteSwitcher } from "../components/RouteSwitcher";
 import { createPaneReorder } from "../dnd/paneReorder";
 import { useCanvasDropTargets } from "../dnd/useCanvasDropTargets";
+import { useReorderSettle } from "../dnd/useReorderSettle";
 import type { PaneContentRef, ViewerProps } from "../model/paneRecords";
 import {
   bodyDragForRef,
@@ -54,7 +55,6 @@ export function CanvasLabRoute() {
   const expandPane = useCanvasLabStore((state) => state.expandPane);
   const framePane = useCanvasLabStore((state) => state.framePane);
   const updatePaneRect = useCanvasLabStore((state) => state.updatePaneRect);
-  const previewReorder = useCanvasLabStore((state) => state.previewReorder);
   const commitReorder = useCanvasLabStore((state) => state.commitReorder);
   const cancelReorder = useCanvasLabStore((state) => state.cancelReorder);
   const setStrategy = useCanvasLabStore((state) => state.setStrategy);
@@ -68,7 +68,7 @@ export function CanvasLabRoute() {
   const codexInstalled = useCapabilitiesStore((state) => cliInstalled(state, "codex"));
 
   const stageRef = useRef<HTMLDivElement>(null);
-  const [reorderActive, setReorderActive] = useState(false);
+  const { reorderActive, markReorderActive, finishReorder } = useReorderSettle();
   const reorder = useMemo(
     () =>
       createPaneReorder({
@@ -78,11 +78,10 @@ export function CanvasLabRoute() {
           const ref = useCanvasLabStore.getState().contentRefs[paneId];
           return ref ? titleForRef(ref) : paneId;
         },
-        previewReorder,
         commitReorder,
         cancelReorder,
       }),
-    [previewReorder, commitReorder, cancelReorder],
+    [commitReorder, cancelReorder],
   );
   const { dropHint, dismissDropHint } = useCanvasDropTargets(stageRef, {
     getLayout: () => useCanvasLabStore.getState().layout,
@@ -133,25 +132,24 @@ export function CanvasLabRoute() {
   const paneCount = Object.keys(layout.nodes).length;
   const onMovePane = useCallback(
     (paneId: PaneId, rect: WorldRect) => {
-      updatePaneRect(paneId, rect);
       reorder.onMove(paneId, rect);
-      setReorderActive(true);
+      markReorderActive(reorder.isActive());
     },
-    [updatePaneRect, reorder],
+    [markReorderActive, reorder],
   );
   const onMovePaneEnd = useCallback(
     (paneId: PaneId, rect: WorldRect) => {
-      reorder.onMoveEnd(paneId, rect);
-      setReorderActive(false);
+      const result = reorder.onMoveEnd(paneId, rect);
+      finishReorder(result.settle);
     },
-    [reorder],
+    [finishReorder, reorder],
   );
   const onMovePaneCancel = useCallback(
     (paneId: PaneId) => {
-      reorder.onCancel(paneId);
-      setReorderActive(false);
+      const result = reorder.onCancel(paneId);
+      finishReorder(result.settle);
     },
-    [reorder],
+    [finishReorder, reorder],
   );
 
   // Stable across viewport-only renders so the memoized PaneLayer skips the pane subtree on pan/zoom.

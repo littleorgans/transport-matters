@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { LayoutCanvas, type PaneId, type WorldRect } from "../../engine";
 import type { LaunchResolutionStatus } from "../api/launchResolution";
 import { createPaneReorder } from "../dnd/paneReorder";
 import { useCanvasDropTargets } from "../dnd/useCanvasDropTargets";
+import { useReorderSettle } from "../dnd/useReorderSettle";
 import { useCanvasStore } from "../model/canvasStore";
 import type { CanvasLaunchContext } from "../route";
 import { bodyDragForRef, PICKER_PANE_ID, renderPaneContent } from "../viewers/registry";
@@ -37,8 +38,6 @@ export function CanvasSurface({ launch, launchStatus, launchSessionId }: CanvasS
   const expandPane = useCanvasStore((state) => state.expandPane);
   const framePane = useCanvasStore((state) => state.framePane);
   const minimizePane = useCanvasStore((state) => state.minimizePane);
-  const movePane = useCanvasStore((state) => state.movePane);
-  const previewReorder = useCanvasStore((state) => state.previewReorder);
   const commitReorder = useCanvasStore((state) => state.commitReorder);
   const cancelReorder = useCanvasStore((state) => state.cancelReorder);
   const spawnPane = useCanvasStore((state) => state.spawnPane);
@@ -51,18 +50,17 @@ export function CanvasSurface({ launch, launchStatus, launchSessionId }: CanvasS
   const surfaceRef = useRef<HTMLElement>(null);
   const focusedPaneId = layout.focusedPaneId;
   const focusedTitle = focusedPaneId ? (panes[focusedPaneId]?.title ?? null) : null;
-  const [reorderActive, setReorderActive] = useState(false);
+  const { reorderActive, markReorderActive, finishReorder } = useReorderSettle();
   const reorder = useMemo(
     () =>
       createPaneReorder({
         getLayout: () => useCanvasStore.getState().layout,
         contentRefFor: (paneId) => useCanvasStore.getState().panes[paneId]?.contentRef,
         titleFor: (paneId) => useCanvasStore.getState().panes[paneId]?.title ?? paneId,
-        previewReorder,
         commitReorder,
         cancelReorder,
       }),
-    [previewReorder, commitReorder, cancelReorder],
+    [commitReorder, cancelReorder],
   );
 
   useEffect(() => {
@@ -89,25 +87,24 @@ export function CanvasSurface({ launch, launchStatus, launchSessionId }: CanvasS
 
   const onMovePane = useCallback(
     (paneId: PaneId, rect: WorldRect) => {
-      movePane(paneId, rect);
       reorder.onMove(paneId, rect);
-      setReorderActive(true);
+      markReorderActive(reorder.isActive());
     },
-    [movePane, reorder],
+    [markReorderActive, reorder],
   );
   const onMovePaneEnd = useCallback(
     (paneId: PaneId, rect: WorldRect) => {
-      reorder.onMoveEnd(paneId, rect);
-      setReorderActive(false);
+      const result = reorder.onMoveEnd(paneId, rect);
+      finishReorder(result.settle);
     },
-    [reorder],
+    [finishReorder, reorder],
   );
   const onMovePaneCancel = useCallback(
     (paneId: PaneId) => {
-      reorder.onCancel(paneId);
-      setReorderActive(false);
+      const result = reorder.onCancel(paneId);
+      finishReorder(result.settle);
     },
-    [reorder],
+    [finishReorder, reorder],
   );
 
   // Stable across viewport-only renders so the memoized PaneLayer skips the pane subtree on pan/zoom.

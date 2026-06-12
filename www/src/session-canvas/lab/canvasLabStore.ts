@@ -6,12 +6,10 @@ import {
   movePaneOrder,
   type PaneId,
   setViewport as setEngineViewport,
-  splicePaneOrder,
   updateNodeRect,
 } from "../../engine";
 import { sanitizeParam, seedParams } from "../../engine/layout";
 import { planExpandLayout } from "../model/expandLayout";
-import { planLayout as planSharedLayout } from "../model/layoutPlanning";
 import {
   dismissPane,
   emptyFraming,
@@ -271,25 +269,6 @@ export const useCanvasLabStore = create<CanvasLabState>()(
             state.expandedPaneId,
           ),
         }));
-      },
-
-      previewReorder(paneId, index) {
-        set((state) => {
-          const tentative = splicePaneOrder(state.layout.order, paneId, index);
-          const lifted = state.layout.nodes[paneId];
-          let layout = planSharedLayout(
-            state.layout,
-            state.bounds,
-            state.activeStrategyId,
-            state.params,
-            false,
-            state.expandedPaneId,
-            planExpandLayout,
-            tentative,
-          );
-          if (lifted) layout = updateNodeRect(layout, paneId, lifted.rect);
-          return { layout };
-        });
       },
 
       commitReorder(paneId, index) {

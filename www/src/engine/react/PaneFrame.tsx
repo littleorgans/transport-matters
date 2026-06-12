@@ -25,7 +25,11 @@ export interface PaneFrameProps {
 
 const MINIMUM_PANE_RECT = { width: 300, height: 220 };
 const NORMAL_TRANSITION = { type: "spring", stiffness: 360, damping: 38 } as const;
-const LAYOUT_MOTION_TRANSITION = { duration: 0.32, ease: [0.22, 1, 0.36, 1] } as const;
+export const LAYOUT_MOTION_MS = 320;
+const LAYOUT_MOTION_TRANSITION = {
+  duration: LAYOUT_MOTION_MS / 1000,
+  ease: [0.22, 1, 0.36, 1],
+} as const;
 const REDUCED_TRANSITION = { duration: 0 } as const;
 const SNAP_TRANSITION = { duration: 0 } as const;
 // Exit fade/scale-out is a tween timed to the removal window, so the pane reaches opacity 0 exactly
@@ -54,12 +58,9 @@ export function PaneFrame({
   // pointer 1:1, so all transitions go instant for the duration of the drag (otherwise the size FLIP
   // and position spring rubber-band behind the cursor).
   const [dragging, setDragging] = useState(false);
-  // Local resize override. During a resize drag the box follows the handle off this live rect, but
-  // the store is left untouched until release, so the content (which reads the store rect) holds its
-  // pre-drag layout and reflows exactly once on commit. Leaving the store untouched also means no
-  // other pane re-renders mid-resize. Null except while resizing. resizeBase is the rect captured at
-  // drag start; the live rect is computed off the cumulative pointer movement from it, not per-tick
-  // deltas, so a fixed store rect can never drift the accumulation.
+  // Local drag override. During move and resize drags the box follows the pointer off this live rect,
+  // but the store is left untouched until release. Reorder can then freeze layout completely while
+  // still moving the lifted pane visually, and resize content still reflows exactly once on commit.
   const [liveRect, setLiveRect] = useState<WorldRect | null>(null);
   const moveBase = useRef<WorldRect | null>(null);
   const resizeBase = useRef<WorldRect | null>(null);
@@ -120,11 +121,15 @@ export function PaneFrame({
         if (dragMode.current === "resize") resizeBase.current = node.rect;
       }
       if (dragMode.current === "move") {
-        // Move commits live: position is cheap and the pane must track the cursor as it travels. Off
-        // cumulative movement from the drag-start base, not per-tick deltas, so render cadence cannot
-        // drift the grabbed point away from the pointer.
+        // Move tracks locally while the controller computes reorder feedback from the same rect. The
+        // store stays frozen during drag, so other panes and hidden layout geometry never feed back.
         const base = moveBase.current ?? node.rect;
-        onMove(node.paneId, moveRect(base, moveX / scale, moveY / scale));
+        const next = moveRect(base, moveX / scale, moveY / scale);
+        if (last) onMoveEnd?.(node.paneId, next);
+        else {
+          setLiveRect(next);
+          onMove(node.paneId, next);
+        }
       } else {
         // Resize tracks locally (liveRect drives the box 1:1) and commits to the store only on
         // release, so content holds its pre-drag layout and reflows once. Off cumulative movement
@@ -135,10 +140,6 @@ export function PaneFrame({
         else setLiveRect(next);
       }
       if (last) {
-        if (dragMode.current === "move") {
-          const base = moveBase.current ?? node.rect;
-          onMoveEnd?.(node.paneId, moveRect(base, moveX / scale, moveY / scale));
-        }
         dragMode.current = null;
         moveBase.current = null;
         resizeBase.current = null;

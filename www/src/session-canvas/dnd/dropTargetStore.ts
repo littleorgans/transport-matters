@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import type { WorldRect } from "../../engine";
 
 // One active drop target for the whole canvas, written by both drag systems
 // (HTML5 dragover for external/dock drags, pane-lift move ticks) and read by
@@ -6,6 +7,7 @@ import { create } from "zustand";
 export type DropTarget =
   | { kind: "surface" }
   | { kind: "hint" }
+  | { kind: "slot"; rect: WorldRect }
   | { kind: "terminal"; paneId: string; label: string };
 
 interface DropTargetState {

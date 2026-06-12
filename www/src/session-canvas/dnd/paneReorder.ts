@@ -1,36 +1,43 @@
 import { type EngineLayoutState, splicePaneOrder, type WorldRect } from "../../engine";
-import { insertionIndexAtWorldPoint, type OrderedRect } from "../../engine/layout";
+import {
+  insertionIndexAtWorldPoint,
+  insertionSlotRect,
+  type OrderedRect,
+} from "../../engine/layout";
 import type { CanvasPaneRef } from "../model/paneRecords";
 import { escapeDropLocator, resolvePasteHandle } from "../viewers/terminal/pasteRegistry";
 import { paneIdAtWorldPoint } from "./canvasDrop";
 import { clearDropTarget, setDropTarget } from "./dropTargetStore";
 
+const REORDER_START_THRESHOLD_WORLD_PX = 4;
+
 // Surface-side reorder controller (one per canvas surface, store-agnostic):
 // move ticks compute the insertion index against the OTHER open panes and
-// preview on change; release delivers to a paste-handle pane (locator refs,
-// doc 14 precedence) or commits the order; escape cancels. Spec doc 17.
+// write slot or terminal feedback only; release delivers to a paste-handle
+// pane (locator refs, doc 14 precedence) or commits the order; escape
+// cancels. Spec doc 17.
 export interface PaneReorderDeps {
   getLayout(): EngineLayoutState;
   contentRefFor(paneId: string): CanvasPaneRef | undefined;
   titleFor(paneId: string): string;
-  previewReorder(paneId: string, index: number): void;
   commitReorder(paneId: string, index: number): void;
   cancelReorder(): void;
 }
 
 export function createPaneReorder(deps: PaneReorderDeps) {
   let lifted: string | null = null;
-  let lastIndex: number | null = null;
-  let previewed = false;
+  let liftOrigin: WorldRect | null = null;
+  let insertionRects: OrderedRect[] | null = null;
+  let reorderActive = false;
 
   const center = (rect: WorldRect) => ({
     x: rect.x + rect.width / 2,
     y: rect.y + rect.height / 2,
   });
 
-  // The committed order never changes mid-drag (previews are tentative), so
-  // comparing the spliced order against it detects "the pane is in its own
-  // slot": zero-move clicks stay inert, drag-back-home cancels, not commits.
+  // The committed order never changes mid-drag, so comparing the spliced
+  // order against it detects "the pane is in its own slot": zero-move clicks
+  // stay inert, drag-back-home is a no-op, not a replan.
   const sameOrder = (a: readonly string[], b: readonly string[]) =>
     a.length === b.length && a.every((id, i) => id === b[i]);
 
@@ -38,6 +45,20 @@ export function createPaneReorder(deps: PaneReorderDeps) {
     return layout.order
       .filter((id) => id !== excludePaneId && layout.nodes[id]?.lifecycle === "open")
       .map((id) => ({ paneId: id, rect: (layout.nodes[id] as { rect: WorldRect }).rect }));
+  }
+
+  function samePaneIdSet(a: readonly OrderedRect[], b: readonly OrderedRect[]): boolean {
+    if (a.length !== b.length) return false;
+    const ids = new Set(a.map((entry) => entry.paneId));
+    return b.every((entry) => ids.has(entry.paneId));
+  }
+
+  function insertionCandidates(layout: EngineLayoutState, paneId: string): OrderedRect[] {
+    const current = otherOpenRects(layout, paneId);
+    if (insertionRects === null || !samePaneIdSet(insertionRects, current)) {
+      insertionRects = current;
+    }
+    return insertionRects;
   }
 
   function locatorFor(paneId: string): { source: "path" | "url"; locator: string } | null {
@@ -55,11 +76,36 @@ export function createPaneReorder(deps: PaneReorderDeps) {
     return paste === null ? null : { targetPaneId, paste };
   }
 
+  function resetLift(): void {
+    lifted = null;
+    liftOrigin = null;
+    insertionRects = null;
+    reorderActive = false;
+  }
+
+  function startLift(paneId: string, rect: WorldRect): void {
+    lifted = paneId;
+    liftOrigin = rect;
+    insertionRects = otherOpenRects(deps.getLayout(), paneId);
+    reorderActive = false;
+  }
+
+  function movedBeyondThreshold(rect: WorldRect): boolean {
+    if (liftOrigin === null) return false;
+    const dx = rect.x - liftOrigin.x;
+    const dy = rect.y - liftOrigin.y;
+    return Math.hypot(dx, dy) > REORDER_START_THRESHOLD_WORLD_PX;
+  }
+
   return {
-    isActive: () => lifted !== null,
+    isActive: () => reorderActive,
 
     onMove(paneId: string, rect: WorldRect): void {
-      lifted = paneId;
+      if (lifted !== paneId) startLift(paneId, rect);
+      if (!reorderActive) {
+        if (!movedBeyondThreshold(rect)) return;
+        reorderActive = true;
+      }
       const layout = deps.getLayout();
       const point = center(rect);
 
@@ -70,50 +116,46 @@ export function createPaneReorder(deps: PaneReorderDeps) {
           paneId: terminal.targetPaneId,
           label: deps.titleFor(terminal.targetPaneId),
         });
-      } else {
-        clearDropTarget();
+        return;
       }
 
-      const index = insertionIndexAtWorldPoint(otherOpenRects(layout, paneId), point);
-      if (index !== lastIndex) {
-        lastIndex = index;
-        const changesOrder = !sameOrder(splicePaneOrder(layout.order, paneId, index), layout.order);
-        // Preview on a real change, or to restore the committed arrangement
-        // after earlier previews; never on the inert first tick of a click.
-        if (changesOrder || previewed) {
-          previewed = true;
-          deps.previewReorder(paneId, index);
-        }
-      }
+      const candidates = insertionCandidates(layout, paneId);
+      const index = insertionIndexAtWorldPoint(candidates, point);
+      const slot = insertionSlotRect(candidates, index, point, rect);
+      setDropTarget({ kind: "slot", rect: slot });
     },
 
-    onMoveEnd(paneId: string, rect: WorldRect): void {
+    onMoveEnd(paneId: string, rect: WorldRect) {
+      if (!reorderActive) {
+        resetLift();
+        clearDropTarget();
+        return { settle: false };
+      }
       const layout = deps.getLayout();
       const locator = locatorFor(paneId);
       const terminal = locator === null ? null : terminalUnder(layout, center(rect));
+      const releaseIndex = insertionIndexAtWorldPoint(
+        insertionCandidates(layout, paneId),
+        center(rect),
+      );
+      let settle = false;
       if (terminal && locator) {
         terminal.paste(escapeDropLocator(locator));
-        deps.cancelReorder();
-      } else if (
-        lastIndex !== null &&
-        !sameOrder(splicePaneOrder(layout.order, paneId, lastIndex), layout.order)
-      ) {
-        deps.commitReorder(paneId, lastIndex);
-      } else if (previewed) {
-        deps.cancelReorder();
+      } else if (!sameOrder(splicePaneOrder(layout.order, paneId, releaseIndex), layout.order)) {
+        deps.commitReorder(paneId, releaseIndex);
+        settle = true;
       }
-      lifted = null;
-      lastIndex = null;
-      previewed = false;
+      resetLift();
       clearDropTarget();
+      return { settle };
     },
 
-    onCancel(_paneId: string): void {
-      deps.cancelReorder();
-      lifted = null;
-      lastIndex = null;
-      previewed = false;
+    onCancel(_paneId: string) {
+      const settle = reorderActive;
+      if (settle) deps.cancelReorder();
+      resetLift();
       clearDropTarget();
+      return { settle };
     },
   };
 }

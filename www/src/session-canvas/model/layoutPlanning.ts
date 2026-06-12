@@ -77,9 +77,8 @@ export function planLayout(
   fitToContent: boolean,
   expandedPaneId: PaneId | null = null,
   planExpandedLayout?: ExpandedLayoutPlanner,
-  paneIdsOverride?: readonly PaneId[],
 ): EngineLayoutState {
-  const paneIds = paneIdsOverride ? [...paneIdsOverride] : openPaneIds(layout);
+  const paneIds = openPaneIds(layout);
   const planned: CameraPlanResult =
     expandedPaneId && paneIds.includes(expandedPaneId) && planExpandedLayout
       ? planExpandedLayout({ paneIds, expandedPaneId, viewport: bounds })
