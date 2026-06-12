@@ -1,4 +1,4 @@
-import type { PaneId } from "../../engine";
+import { normalizeLayoutOrder, type PaneId } from "../../engine";
 import { FRONTEND_STORAGE_KEYS } from "../../stores/persistence";
 import type { RebuiltCanvasState } from "../persistence/canvasPanePersistence";
 import {
@@ -38,7 +38,7 @@ function mergeCanvasStoreState<State extends CanvasStorePersistableState>(
   canvas: RebuiltCanvasState<CanvasPaneRef>,
 ): Partial<State> {
   return {
-    layout: canvas.layout,
+    layout: normalizeLayoutOrder(canvas.layout, canvas.order),
     docked: canvas.docked,
     activeStrategyId: canvas.activeStrategyId,
     params: canvas.params,

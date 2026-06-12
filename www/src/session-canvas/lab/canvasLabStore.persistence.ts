@@ -1,3 +1,4 @@
+import { normalizeLayoutOrder } from "../../engine";
 import { FRONTEND_STORAGE_KEYS } from "../../stores/persistence";
 import { isPaneContentRef, type PaneContentRef } from "../model/paneRecords";
 import type { RebuiltCanvasState } from "../persistence/canvasPanePersistence";
@@ -29,7 +30,7 @@ function mergeCanvasLabState(
   canvas: RebuiltCanvasState<PaneContentRef>,
 ): Partial<CanvasLabState> {
   return {
-    layout: canvas.layout,
+    layout: normalizeLayoutOrder(canvas.layout, canvas.order),
     docked: canvas.docked,
     activeStrategyId: canvas.activeStrategyId,
     params: canvas.params,

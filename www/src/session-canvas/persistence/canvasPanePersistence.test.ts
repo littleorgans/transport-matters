@@ -1,11 +1,18 @@
 import { describe, expect, it } from "vitest";
-import { createInitialEngineLayoutState, markNodeClosing, type PaneId } from "../../engine";
+import {
+  createInitialEngineLayoutState,
+  markNodeClosing,
+  normalizeLayoutOrder,
+  type PaneId,
+} from "../../engine";
 import { seedParams } from "../../engine/layout";
 import { type DockedPane, isPaneContentRef, type PaneContentRef } from "../model/paneRecords";
+import { createCanvasPersistOptions } from "./canvasPersistOptions";
 import {
   collectOpenPaneRects,
   type PersistedCanvasPanes,
   type PersistedCanvasState,
+  type RebuiltCanvasState,
   rebuildPersistedCanvasState,
   rebuildPersistedPanes,
   seedPaneFromRecord,
@@ -268,6 +275,46 @@ describe("canvas pane persistence", () => {
     });
   });
 
+  it("round-trips the pane order and self-heals a stale one", () => {
+    const base = seededSeedCanvasState();
+    const state = {
+      ...base,
+      docked: [],
+      layout: { ...base.layout, order: ["lab-2", "lab-1"] },
+    };
+    const options = createCanvasPersistOptions<typeof state, PaneContentRef>({
+      name: "test-canvas-order",
+      version: 1,
+      isContentRef: isPaneContentRef,
+      getContentRefs: (current) => current.contentRefs,
+      mergeCanvasState: (_current, canvas) => {
+        const order = orderFromRebuiltCanvas(canvas);
+        return {
+          layout: normalizeLayoutOrder(canvas.layout, order),
+          docked: canvas.docked,
+          activeStrategyId: canvas.activeStrategyId,
+          params: canvas.params,
+          fitToContent: canvas.fitToContent,
+          expandedPaneId: canvas.expandedPaneId,
+          contentRefs: canvas.contentRefs,
+        };
+      },
+    });
+    const partialized = options.partialize?.(state) as PersistedCanvasState<PaneContentRef> & {
+      order?: PaneId[];
+    };
+
+    expect(partialized.order).toEqual(["lab-2", "lab-1"]);
+
+    const stale = { ...partialized, order: ["lab-2", "ghost"] };
+    const healed = options.merge?.(stale, state) as typeof state;
+    expect(healed.layout.order).toEqual(["lab-2", "lab-1"]);
+
+    const { order: _order, ...legacy } = stale;
+    const legacyHydrated = options.merge?.(legacy, state) as typeof state;
+    expect(legacyHydrated.layout.order).toEqual(["lab-1", "lab-2"]);
+  });
+
   it("restores strategy, params, and fit controls without re-planning rects", () => {
     const manualRect = { x: 123, y: 456, width: 789, height: 321 };
     const persisted = {
@@ -356,3 +403,10 @@ describe("canvas pane persistence", () => {
     ).toBeNull();
   });
 });
+
+function orderFromRebuiltCanvas(
+  canvas: RebuiltCanvasState<PaneContentRef>,
+): readonly PaneId[] | undefined {
+  const order = (canvas as RebuiltCanvasState<PaneContentRef> & { order?: unknown }).order;
+  return Array.isArray(order) ? order.filter((id): id is PaneId => typeof id === "string") : undefined;
+}
