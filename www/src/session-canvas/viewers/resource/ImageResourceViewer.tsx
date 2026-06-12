@@ -94,6 +94,8 @@ export function ImageResourceViewer({ content }: { content: ImageContentResponse
         <img
           alt={content.alt ?? content.title}
           className="canvas-image__img"
+          data-pane-drag-handle="true"
+          draggable={false}
           src={src}
           style={{ transform: `scale(${zoom})` }}
         />

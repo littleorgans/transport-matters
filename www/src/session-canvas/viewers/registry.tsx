@@ -71,6 +71,7 @@ const registry: ViewerRegistration[] = [
   defineViewer<ResourceRef>({
     id: "resource",
     canRender: (ref): ref is ResourceRef => ref.kind === "resource",
+    bodyDrag: true,
     paneId: (ref) =>
       "source" in ref
         ? `${RESOURCE_PANE_PREFIX}${ref.source}:${ref.source === "path" ? ref.path : ref.url}`
@@ -159,6 +160,10 @@ export function resolveViewer(ref: CanvasPaneRef): ViewerRegistration {
 /** Registry-owned dedupe key for a ref. */
 export function paneIdForRef(ref: CanvasPaneRef): PaneId {
   return resolveViewer(ref).paneId(ref);
+}
+
+export function bodyDragForRef(ref: CanvasPaneRef): boolean {
+  return resolveViewer(ref).bodyDrag === true;
 }
 
 export function titleForRef(ref: CanvasPaneRef): string {
