@@ -64,6 +64,13 @@
      or DEFRAME (lag + half-painted panes). framer-motion adds will-change transiently while a pane is
      actually animating, which is the only time it helps. */
   contain: layout paint style;
+  /* The pane drop shadow lives on the frame, not on .canvas-pane-window inside it: paint containment
+     clips descendant painting to the frame bounds, so a shadow on the window can never escape. The
+     frame's own box decorations are exempt from its own containment. */
+  box-shadow: var(--canvas-pane-shadow);
+}
+[data-pane-frame="true"]:has(.canvas-pane-window[data-focused="true"]) {
+  box-shadow: var(--canvas-pane-shadow), var(--canvas-focus-ring);
 }
 
 .canvas-command-bar {
@@ -160,7 +167,6 @@
   border: var(--canvas-pane-border);
   border-radius: var(--pane-radius);
   background: rgb(var(--shadow-rgb) / var(--pane-surface-alpha));
-  box-shadow: var(--canvas-pane-shadow);
   outline: 1px solid rgb(var(--highlight-rgb) / 0.04);
   /* backdrop-filter defaults to none: a per-pane blur promotes one compositor layer per pane, and at
      scale<1 with many panes the browser evicts those layer tiles on tab-hide and fails to re-raster
@@ -171,7 +177,6 @@
 }
 .canvas-pane-window[data-focused="true"] {
   border-color: rgb(var(--accent-rgb) / 0.78);
-  box-shadow: var(--canvas-pane-shadow), var(--canvas-focus-ring);
 }
 .canvas-pane-window__header {
   display: flex;
