@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { localDayProgress, sceneDayProgress } from "./dayCycle";
+import { clockDayToScene, localDayProgress, sceneDayProgress, sceneDayToClock } from "./dayCycle";
 
 describe("localDayProgress", () => {
   it("maps local midnight to 0", () => {
@@ -28,5 +28,13 @@ describe("sceneDayProgress", () => {
 
   it("maps 6am to the scene's dawn at 0", () => {
     expect(sceneDayProgress(new Date(2026, 5, 13, 6, 0, 0))).toBe(0);
+  });
+});
+
+describe("clock and scene domain converters", () => {
+  it("round-trip across the whole range", () => {
+    for (const clock of [0, 0.1, 0.25, 0.5, 0.75, 0.999]) {
+      expect(sceneDayToClock(clockDayToScene(clock))).toBeCloseTo(clock);
+    }
   });
 });

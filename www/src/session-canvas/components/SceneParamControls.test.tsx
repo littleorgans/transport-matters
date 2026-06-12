@@ -28,22 +28,23 @@ describe("SceneParamControls", () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  it("renders the day slider at the scene default in manual mode", () => {
+  it("renders the day slider in wall-clock terms: the scene's 0.25 default is noon", () => {
     useThemeStore.setState({ theme: openWater, liveDayCycle: false });
     render(<SceneParamControls />);
     const slider = screen.getByRole("slider", { name: "Scene day" });
-    expect(slider).toHaveValue("0.25");
+    expect(slider).toHaveValue("0.5");
   });
 
-  it("scrubbing in manual mode writes the param through the store", () => {
+  it("manual scrub stores raw scene units behind the wall-clock display", () => {
     useThemeStore.setState({ theme: openWater, liveDayCycle: false });
     render(<SceneParamControls />);
 
     fireEvent.change(screen.getByRole("slider", { name: "Scene day" }), {
-      target: { value: "0.75" },
+      target: { value: "0.75" }, // wall 18:00
     });
 
-    expect(useThemeStore.getState().theme?.settings.sceneParams.dayProgress).toBe(0.75);
+    // stored as scene units (sunset = 0.5), displayed back as wall time
+    expect(useThemeStore.getState().theme?.settings.sceneParams.dayProgress).toBe(0.5);
     expect(screen.getByRole("slider", { name: "Scene day" })).toHaveValue("0.75");
   });
 
@@ -58,16 +59,18 @@ describe("SceneParamControls", () => {
     expect(openWater.settings.sceneParams.dayProgress).toBeUndefined();
   });
 
-  it("dragging the slider while live drops to manual and keeps the value", () => {
+  it("dragging the slider while live drops to manual with a continuous sky", () => {
     useThemeStore.setState({ theme: openWater });
     render(<SceneParamControls />);
 
     fireEvent.change(screen.getByRole("slider", { name: "Scene day" }), {
-      target: { value: "0.1" },
+      target: { value: "0.1" }, // wall 02:24, still night
     });
 
     expect(useThemeStore.getState().liveDayCycle).toBe(false);
-    expect(useThemeStore.getState().theme?.settings.sceneParams.dayProgress).toBe(0.1);
+    // stored in scene units: night (0.85), not the scene's dawn at 0.1
+    expect(useThemeStore.getState().theme?.settings.sceneParams.dayProgress).toBeCloseTo(0.85);
+    expect(screen.getByRole("slider", { name: "Scene day" })).toHaveValue("0.1");
     expect(screen.getByRole("checkbox", { name: "Live" })).not.toBeChecked();
   });
 

@@ -3,9 +3,11 @@ import type { AmbientSceneParamMetadata } from "../../ambient/sceneRegistry";
 import { sceneRegistry } from "../../ambient/sceneRegistry";
 import { useThemeStore } from "../../stores/themeStore";
 import {
+  clockDayToScene,
   DAY_PROGRESS_PARAM_ID,
   LIVE_DAY_INTERVAL_MS,
   localDayProgress,
+  sceneDayToClock,
 } from "../../theme/dayCycle";
 import type { ThemeSettings } from "../../theme/types";
 
@@ -49,9 +51,17 @@ function SceneParamRow({
   const live = isDayParam && liveDayCycle;
   const clockValue = useClockDayProgress(live);
 
-  const value = live
-    ? (clockValue ?? localDayProgress(new Date()))
-    : (settings.sceneParams[param.id] ?? param.defaultValue);
+  // The day slider speaks wall-clock time in BOTH modes; storage and the
+  // renderer keep raw scene units, converted only at this boundary. One
+  // display domain means the live -> manual handoff is continuous: grabbing
+  // the live thumb just past midnight and nudging it stays night instead of
+  // snapping to the scene's dawn-at-0.
+  const stored = settings.sceneParams[param.id] ?? param.defaultValue;
+  const value = isDayParam
+    ? live
+      ? (clockValue ?? localDayProgress(new Date()))
+      : sceneDayToClock(stored)
+    : stored;
 
   return (
     <>
@@ -63,7 +73,8 @@ function SceneParamRow({
           min={param.min}
           onChange={(event) => {
             if (live) setLiveDayCycle(false);
-            setSceneParam(param.id, Number(event.target.value));
+            const raw = Number(event.target.value);
+            setSceneParam(param.id, isDayParam ? clockDayToScene(raw) : raw);
           }}
           step={param.step}
           type="range"

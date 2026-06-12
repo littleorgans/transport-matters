@@ -24,13 +24,24 @@ export function localDayProgress(date: Date): number {
 /**
  * The sea scenes' sun curve is phased with dawn at 0 and the high sun at 0.25
  * (the scene default renders full day), while wall clock puts midnight at 0.
- * Convert clock time into the scene's domain so noon renders the high sun and
- * just-past-midnight renders night, not dawn. Host-side compensation observed
- * from rendered output; drops to identity if the lab re-phases the scene.
+ * Convert between the two domains so noon renders the high sun and
+ * just-past-midnight renders night, not dawn. The day slider always displays
+ * wall-clock time; storage and the renderer always carry raw scene units
+ * (the lab contract), so these two converters are the single seam between
+ * them. Confirmed against the shader by the lab (2026-06-13); both collapse
+ * to identity if the scene is ever re-phased.
  */
 const SCENE_HIGH_SUN = 0.25;
 const CLOCK_NOON = 0.5;
+const DAWN_SHIFT = CLOCK_NOON - SCENE_HIGH_SUN;
+
+/* Round to well below the sliders' 0.001 step so converted values neither
+   wobble the thumb nor leak float noise into stored/exported sceneParams. */
+const round6 = (value: number): number => Math.round(value * 1e6) / 1e6;
+
+export const clockDayToScene = (clock: number): number => round6((clock - DAWN_SHIFT + 1) % 1);
+export const sceneDayToClock = (scene: number): number => round6((scene + DAWN_SHIFT) % 1);
 
 export function sceneDayProgress(date: Date): number {
-  return (localDayProgress(date) - (CLOCK_NOON - SCENE_HIGH_SUN) + 1) % 1;
+  return clockDayToScene(localDayProgress(date));
 }
