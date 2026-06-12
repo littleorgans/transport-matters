@@ -1,5 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { clearActiveDockDrag, PANE_REF_MIME, readActiveDockDrag } from "../dnd/dockDragSource";
+import { clearDropTarget, setDropTarget, useDropTargetStore } from "../dnd/dropTargetStore";
 import type { DockedPane } from "../model/paneRecords";
 import { PaneDock } from "./PaneDock";
 
@@ -39,6 +41,59 @@ describe("PaneDock", () => {
     fireEvent.click(screen.getByRole("menuitem", { name: "lab-2" }));
     expect(onRestore).toHaveBeenCalledWith("lab-2");
     expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+  });
+
+  describe("drag source", () => {
+    afterEach(() => {
+      clearActiveDockDrag();
+      clearDropTarget();
+    });
+
+    function openMenuAndGetRow(name: string): HTMLElement {
+      fireEvent.click(screen.getByRole("button", { name: "Minimized panes, 3" }));
+      const row = screen.getByRole("menuitem", { name }).closest(".canvas-dock__row");
+      if (!(row instanceof HTMLElement)) throw new Error(`no dock row for ${name}`);
+      return row;
+    }
+
+    it("lifts a row with the pane-ref mime and publishes the holder", () => {
+      render(<PaneDock docked={DOCKED} onClose={vi.fn()} onRestore={vi.fn()} />);
+      // the null-ref demo row: its title deterministically falls back to the paneId
+      const row = openMenuAndGetRow("lab-2");
+      const setData = vi.fn();
+
+      fireEvent.dragStart(row, { dataTransfer: { setData, effectAllowed: "none" } });
+
+      expect(setData).toHaveBeenCalledWith(
+        PANE_REF_MIME,
+        JSON.stringify({ paneId: "lab-2", ref: null }),
+      );
+      expect(readActiveDockDrag()).toEqual({ paneId: "lab-2", ref: null });
+    });
+
+    it("clears the holder and the overlay on dragend, drop or not", () => {
+      render(<PaneDock docked={DOCKED} onClose={vi.fn()} onRestore={vi.fn()} />);
+      const row = openMenuAndGetRow("lab-2");
+      fireEvent.dragStart(row, { dataTransfer: { setData: vi.fn(), effectAllowed: "none" } });
+      setDropTarget({ kind: "surface" });
+
+      fireEvent.dragEnd(row);
+
+      expect(readActiveDockDrag()).toBeNull();
+      expect(useDropTargetStore.getState().target).toBeNull();
+    });
+
+    it("never initiates a drag from the kill button", () => {
+      render(<PaneDock docked={DOCKED} onClose={vi.fn()} onRestore={vi.fn()} />);
+      fireEvent.click(screen.getByRole("button", { name: "Minimized panes, 3" }));
+      const kill = screen.getByRole("menuitem", { name: "Close lab-2" });
+      const setData = vi.fn();
+
+      fireEvent.dragStart(kill, { dataTransfer: { setData, effectAllowed: "none" } });
+
+      expect(setData).not.toHaveBeenCalled();
+      expect(readActiveDockDrag()).toBeNull();
+    });
   });
 
   it("closes/kills a docked pane via its [×] without restoring it", () => {

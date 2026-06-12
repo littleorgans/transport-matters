@@ -215,6 +215,11 @@ export const useCanvasLabStore = create<CanvasLabState>()(
       },
 
       restorePane(paneId) {
+        // Restore in place = restore at the tail, where the seed appends anyway.
+        get().restorePaneAtIndex(paneId, get().layout.order.length);
+      },
+
+      restorePaneAtIndex(paneId, index) {
         // Re-seed a docked pane at its original id so its viewer re-mounts: a captured ref's ensureRun
         // resolves the kept run id (re-attach + PTY replay), a terminal opens a fresh PTY, a null ref
         // re-creates the demo card/ruler node from the id alone. A failed captured re-attach surfaces in
@@ -226,9 +231,11 @@ export const useCanvasLabStore = create<CanvasLabState>()(
         // persisted `minimized` flag so a reload after restore reopens it as a pane, not docked. Plain
         // panes declare no onRestore. Mirrors closeDockedPane's dispatch, zero kind=== branches here.
         invokeDockedPaneRestoreLifecycle(entry);
+        // Seed, splice to the index, and plan in one set: a single replan, so
+        // the pane never flashes at the tail before sliding to its slot.
         set((state) => ({
           docked: removeDockedPane(state.docked, paneId),
-          ...spawnPaneLayout(state, paneId, ref),
+          ...spawnPaneLayout(state, paneId, ref, index),
         }));
       },
 

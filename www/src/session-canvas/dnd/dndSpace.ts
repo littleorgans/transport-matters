@@ -62,9 +62,39 @@ export interface WorldCollisionDeps {
   getDeliveryTarget?(world: { x: number; y: number }, activeId: string): unknown | null;
 }
 
-// Pointer-within first (the pane directly under the drag point wins), closest
-// rect center as the fallback so releases over empty canvas still target the
-// nearest slot. All comparisons happen in world coordinates.
+// The shared pane-targeting core (doc 18): pointer-within first (the pane
+// directly under the point wins, distance 0), closest rect center as the
+// fallback so points over empty canvas still target the nearest slot. All
+// comparisons happen in world coordinates. Consumed by the live-drag
+// collision below and by the dock-drop index derivation (canvasDrop
+// handleDockDrop), so dock drops and pane-drag reorders share one targeting
+// feel.
+export function closestPaneAtWorldPoint(
+  orderedRects: ReadonlyArray<{
+    id: string;
+    rect: { x: number; y: number; width: number; height: number };
+  }>,
+  point: { x: number; y: number },
+): { id: string; distance: number } | null {
+  let closest: { id: string; distance: number } | null = null;
+  for (const { id, rect } of orderedRects) {
+    const inside =
+      point.x >= rect.x &&
+      point.x <= rect.x + rect.width &&
+      point.y >= rect.y &&
+      point.y <= rect.y + rect.height;
+    if (inside) return { id, distance: 0 };
+    const distance = Math.hypot(
+      point.x - (rect.x + rect.width / 2),
+      point.y - (rect.y + rect.height / 2),
+    );
+    if (closest === null || distance < closest.distance) {
+      closest = { id, distance };
+    }
+  }
+  return closest;
+}
+
 export function createWorldSpaceCollision(deps: WorldCollisionDeps): CollisionDetection {
   return ({ active, droppableContainers, droppableRects, pointerCoordinates }) => {
     if (pointerCoordinates === null) return [];
@@ -77,29 +107,22 @@ export function createWorldSpaceCollision(deps: WorldCollisionDeps): CollisionDe
       return [];
     }
 
-    let closest: { id: string | number; distance: number } | null = null;
+    const entries: Array<{
+      id: string;
+      rect: { x: number; y: number; width: number; height: number };
+    }> = [];
     for (const container of droppableContainers) {
       const rect = droppableRects.get(container.id);
       if (rect === undefined) continue;
-      const inside =
-        world.x >= rect.left &&
-        world.x <= rect.right &&
-        world.y >= rect.top &&
-        world.y <= rect.bottom;
-      if (inside) {
-        return [{ id: container.id, data: { droppableContainer: container, value: 0 } }];
-      }
-      const distance = Math.hypot(
-        world.x - (rect.left + rect.width / 2),
-        world.y - (rect.top + rect.height / 2),
-      );
-      if (closest === null || distance < closest.distance) {
-        closest = { id: container.id, distance };
-      }
+      entries.push({
+        id: String(container.id),
+        rect: { x: rect.left, y: rect.top, width: rect.width, height: rect.height },
+      });
     }
-    if (closest === null) return [];
-    const container = droppableContainers.find((entry) => entry.id === closest.id);
-    return [{ id: closest.id, data: { droppableContainer: container, value: closest.distance } }];
+    const hit = closestPaneAtWorldPoint(entries, world);
+    if (hit === null) return [];
+    const container = droppableContainers.find((entry) => String(entry.id) === hit.id);
+    return [{ id: hit.id, data: { droppableContainer: container, value: hit.distance } }];
   };
 }
 

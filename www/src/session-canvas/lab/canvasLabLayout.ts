@@ -1,4 +1,10 @@
-import { type EngineLayoutState, focusNode, type PaneId, type ViewportBounds } from "../../engine";
+import {
+  type EngineLayoutState,
+  focusNode,
+  movePaneOrder,
+  type PaneId,
+  type ViewportBounds,
+} from "../../engine";
 import type { LayoutParams } from "../../engine/layout";
 import { planExpandLayout } from "../model/expandLayout";
 import {
@@ -49,12 +55,17 @@ export function spawnPaneLayout(
   state: CanvasLabLayoutState,
   paneId: PaneId,
   ref: PaneContentRef | null,
+  orderIndex?: number,
 ): Pick<CanvasLabLayoutState, "contentRefs" | "layout"> {
   const seeded = seedPaneFromRecord(state, paneId, ref, SEED_RECT);
+  // Restore-at-index (doc 18): the seed appends, the splice moves, the plan
+  // packs, all in the same commit, so the pane never flashes at the tail.
+  const ordered =
+    orderIndex === undefined ? seeded.layout : movePaneOrder(seeded.layout, paneId, orderIndex);
   return {
     contentRefs: seeded.contentRefs,
     layout: planLayout(
-      focusNode(seeded.layout, paneId),
+      focusNode(ordered, paneId),
       state.bounds,
       state.activeStrategyId,
       state.params,

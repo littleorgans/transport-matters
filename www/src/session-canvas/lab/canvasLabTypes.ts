@@ -39,6 +39,8 @@ export interface CanvasLabState {
   closePane(paneId: PaneId): void;
   /** Restore a docked pane: re-seed it at its original id so its viewer re-mounts (captured re-attaches by run id). */
   restorePane(paneId: PaneId): void;
+  /** Dock drag-out (doc 18): the same restore, spliced to the order slot the drop point chose. */
+  restorePaneAtIndex(paneId: PaneId, index: number): void;
   /** Close/kill a docked pane WITHOUT restoring it: run its onClose hook (captured-run kills the run) and drop the dock entry. */
   closeDockedPane(paneId: PaneId): void;
   focusPane(paneId: PaneId): void;

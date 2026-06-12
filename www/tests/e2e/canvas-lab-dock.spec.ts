@@ -63,6 +63,57 @@ async function openAndRestore(page: Page) {
   await expect(dockChip(page)).toHaveCount(0);
 }
 
+// Dock drag-out (doc 18): a dock row is an HTML5 drag source; releasing it
+// over the canvas restores the pane at the slot under the drop point (the
+// target's slot), not at the append tail. Playwright's dragTo drives the
+// native dragstart/dragover/drop pipeline in Chromium.
+test("dragging a dock row onto a pane restores the entry at that pane's slot", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto("/canvas-lab");
+
+  await minimizeLabOne(page);
+
+  // The remaining first pane occupies slot 0; dropping on it must hand lab-1
+  // that slot, which a tail-append restore would never do.
+  const slotZeroPane = page.locator('[data-pane-frame="true"]').first();
+  await expect(slotZeroPane).toBeVisible();
+
+  await dockChip(page).click();
+  const row = page
+    .locator(".canvas-dock__row")
+    .filter({ has: page.getByRole("menuitem", { name: "lab-1", exact: true }) });
+  await row.dragTo(slotZeroPane);
+
+  // restored onto the canvas, dock empty again
+  await expect(page.getByRole("button", { name: "Close lab-1" })).toBeVisible();
+  await expect(dockChip(page)).toHaveCount(0);
+
+  // Slot 0 is first in reading order. After the settle, lab-1's frame must be
+  // the top-left-most pane: an append restore would land it last instead. The
+  // grid re-packs and the camera can refit on restore, so the assertion is
+  // relative to the other frames, never to pre-drop pixels.
+  const restored = page
+    .locator('[data-pane-frame="true"]')
+    .filter({ has: page.getByRole("button", { name: "Close lab-1" }) });
+  await expect
+    .poll(
+      async () => {
+        const restoredBox = await restored.boundingBox();
+        if (!restoredBox) return false;
+        const frames = page.locator('[data-pane-frame="true"]');
+        for (let index = 0; index < (await frames.count()); index += 1) {
+          const box = await frames.nth(index).boundingBox();
+          if (!box) return false;
+          if (box.y < restoredBox.y - 3) return false;
+          if (Math.abs(box.y - restoredBox.y) <= 3 && box.x < restoredBox.x - 3) return false;
+        }
+        return true;
+      },
+      { timeout: 5000 },
+    )
+    .toBe(true);
+});
+
 test("dock chip is hittable + restores a pane while the lab bar is SHOWN", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto("/canvas-lab");

@@ -1,6 +1,15 @@
-import { type SyntheticEvent, useCallback, useEffect, useRef, useState } from "react";
+import {
+  type DragEvent,
+  type SyntheticEvent,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import type { PaneId } from "../../engine";
 import { truncateMiddle } from "../../lib/formatting";
+import { clearActiveDockDrag, PANE_REF_MIME, setActiveDockDrag } from "../dnd/dockDragSource";
+import { clearDropTarget } from "../dnd/dropTargetStore";
 import type { DockedPane } from "../model/paneRecords";
 import { titleForRef } from "../viewers/registry";
 import "./pane-dock.css";
@@ -60,6 +69,43 @@ export function PaneDock({ docked, onRestore, onClose }: PaneDockProps) {
   // the canvas underneath it.
   const swallow = (event: SyntheticEvent) => event.stopPropagation();
 
+  // Dock drag-out (doc 18): each row is an HTML5 drag source riding the same
+  // surface dragover/drop pipeline as external file drags. The payload mime
+  // carries the restore address; the module-scoped holder mirrors it for the
+  // dragover resolver, which cannot read the payload in protected mode.
+  const rowDragStart = (pane: DockedPane) => (event: DragEvent<HTMLDivElement>) => {
+    // The kill button opts out: closing an entry is never read as the start of
+    // a drag. Backstop to the button's draggable={false} + pointer-down guard,
+    // for engines that surface the press target through the bubbled dragstart.
+    if (event.target instanceof HTMLElement && event.target.closest(".canvas-dock__kill")) {
+      event.preventDefault();
+      return;
+    }
+    event.dataTransfer.setData(
+      PANE_REF_MIME,
+      JSON.stringify({ paneId: pane.paneId, ref: pane.ref }),
+    );
+    // copyMove, not copy: the dragover resolver advertises move over the
+    // surface (restore) and copy over a terminal (paste); an effectAllowed
+    // narrower than the advertised dropEffect would veto the drop outright.
+    event.dataTransfer.effectAllowed = "copyMove";
+    setActiveDockDrag({ paneId: pane.paneId, ref: pane.ref });
+  };
+  // Fires with or without a drop, including Escape-cancel and releases outside
+  // any surface: never strand the holder or the overlay (the safe default is
+  // no state change, the entry stays docked).
+  const rowDragEnd = () => {
+    clearActiveDockDrag();
+    clearDropTarget();
+  };
+  // Native engines determine the drag source from the press, not the bubbled
+  // dragstart target: cancel the press default so a [×] grab never lifts the
+  // row (the click still fires), and keep it off the canvas like the root.
+  const killPointerDown = (event: SyntheticEvent) => {
+    event.stopPropagation();
+    event.preventDefault();
+  };
+
   return (
     <div className="canvas-viewport-dock" onPointerDown={swallow} onWheel={swallow} ref={rootRef}>
       <div className="canvas-dock__anchor">
@@ -79,7 +125,14 @@ export function PaneDock({ docked, onRestore, onClose }: PaneDockProps) {
             {docked.map((pane) => {
               const title = pane.record?.title ?? (pane.ref ? titleForRef(pane.ref) : pane.paneId);
               return (
-                <div className="canvas-dock__row" key={pane.paneId}>
+                // biome-ignore lint/a11y/noStaticElementInteractions: drag-out is a pointer-only affordance; the menuitem buttons inside own every keyboard interaction.
+                <div
+                  className="canvas-dock__row"
+                  draggable
+                  key={pane.paneId}
+                  onDragEnd={rowDragEnd}
+                  onDragStart={rowDragStart(pane)}
+                >
                   <button
                     className="canvas-dock__restore"
                     onClick={() => restore(pane.paneId)}
@@ -95,7 +148,9 @@ export function PaneDock({ docked, onRestore, onClose }: PaneDockProps) {
                     aria-label={`Close ${title}`}
                     className="canvas-dock__kill"
                     disabled={pane.closeDisabled}
+                    draggable={false}
                     onClick={() => close(pane.paneId)}
+                    onPointerDown={killPointerDown}
                     role="menuitem"
                     type="button"
                   >

@@ -244,6 +244,45 @@ describe("canvasLabStore captured runs", () => {
     }
   });
 
+  it("restorePaneAtIndex restores the docked pane into the order slot the drop chose", () => {
+    vi.useFakeTimers();
+    try {
+      resetCanvasLabStoreForTests();
+      store().addTerminal(); // lab-1
+      store().addTerminal(); // lab-2
+      store().addTerminal(); // lab-3
+      store().minimizePane("lab-2");
+      vi.runAllTimers();
+      expect(store().docked.map((docked) => docked.paneId)).toEqual(["lab-2"]);
+
+      store().restorePaneAtIndex("lab-2", 0);
+
+      expect(store().docked).toEqual([]);
+      expect(store().layout.order).toEqual(["lab-2", "lab-1", "lab-3"]);
+      expect(store().layout.nodes["lab-2"]?.lifecycle).toBe("open");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("restorePaneAtIndex clamps an out-of-range index to the tail", () => {
+    vi.useFakeTimers();
+    try {
+      resetCanvasLabStoreForTests();
+      store().addTerminal(); // lab-1
+      store().addTerminal(); // lab-2
+      store().minimizePane("lab-1");
+      vi.runAllTimers();
+
+      store().restorePaneAtIndex("lab-1", 99);
+
+      expect(store().layout.order).toEqual(["lab-2", "lab-1"]);
+      expect(store().docked).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("restorePane re-seeds a docked captured pane without spawning a new run", () => {
     vi.useFakeTimers();
     try {

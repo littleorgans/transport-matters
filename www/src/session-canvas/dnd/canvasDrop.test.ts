@@ -1,9 +1,16 @@
 import { describe, expect, it, vi } from "vitest";
 import { registerPasteHandle } from "../viewers/terminal/pasteRegistry";
-import { classifyDrop, handleCanvasDrop, paneIdAtPoint } from "./canvasDrop";
+import {
+  classifyDrop,
+  handleCanvasDrop,
+  handleDockDrop,
+  locatorForPaneRef,
+  paneIdAtPoint,
+} from "./canvasDrop";
 
 const layout = {
   viewport: { panX: 10, panY: 20, scale: 2 },
+  order: ["terminal:a", "resource:b"],
   nodes: {
     "terminal:a": {
       paneId: "terminal:a",
@@ -31,6 +38,31 @@ describe("paneIdAtPoint", () => {
 
   it("returns null on empty canvas space", () => {
     expect(paneIdAtPoint(layout, { x: 9999, y: 9999 })).toBeNull();
+  });
+});
+
+describe("locatorForPaneRef", () => {
+  it("maps resource path and url refs to their locators", () => {
+    expect(
+      locatorForPaneRef({ kind: "resource", owner: "local", source: "path", path: "/tmp/a.png" }),
+    ).toEqual({ source: "path", locator: "/tmp/a.png" });
+    expect(
+      locatorForPaneRef({
+        kind: "resource",
+        owner: "local",
+        source: "url",
+        url: "https://x.test/c.png",
+      }),
+    ).toEqual({ source: "url", locator: "https://x.test/c.png" });
+  });
+
+  it("maps everything else to null, the guard living in the one predicate", () => {
+    expect(locatorForPaneRef(null)).toBeNull();
+    expect(locatorForPaneRef(undefined)).toBeNull();
+    expect(locatorForPaneRef({ kind: "terminal", owner: "local" })).toBeNull();
+    expect(
+      locatorForPaneRef({ kind: "resource", owner: "local", sessionId: "s", resourceId: "r" }),
+    ).toBeNull();
   });
 });
 
@@ -134,5 +166,66 @@ describe("handleCanvasDrop", () => {
       "File drops need the desktop app. URL drags work here.",
     );
     expect(deps.spawnPane).not.toHaveBeenCalled();
+  });
+});
+
+describe("handleDockDrop", () => {
+  const dockDeps = () => ({ dockPane: vi.fn(), restorePaneAtIndex: vi.fn() });
+  const locatorPayload = {
+    paneId: "resource:path:/tmp/My Shot.png",
+    ref: { kind: "resource", owner: "local", source: "path", path: "/tmp/My Shot.png" } as const,
+  };
+
+  it("pastes a locator ref into a terminal and bumps the dock entry, no restore", () => {
+    const paste = vi.fn();
+    const unregister = registerPasteHandle("terminal:a", paste);
+    const deps = dockDeps();
+
+    handleDockDrop(layout, { x: 30, y: 60 }, locatorPayload, deps);
+
+    expect(paste).toHaveBeenCalledWith("/tmp/My\\ Shot.png");
+    // decision 4: a paste is a read, the entry STAYS DOCKED; dockPane de-dupes
+    // and bumps it to the dock front, same substrate as external-drop paste
+    expect(deps.dockPane).toHaveBeenCalledWith({
+      kind: "resource",
+      owner: "local",
+      source: "path",
+      path: "/tmp/My Shot.png",
+    });
+    expect(deps.restorePaneAtIndex).not.toHaveBeenCalled();
+    unregister();
+  });
+
+  it("restores a non-locator ref at the target pane's slot even over a paste handle", () => {
+    const paste = vi.fn();
+    const unregister = registerPasteHandle("terminal:a", paste);
+    const deps = dockDeps();
+
+    // null-ref demo pane: nothing to deliver, so it is not a paste target (decision 3)
+    handleDockDrop(layout, { x: 30, y: 60 }, { paneId: "lab-2", ref: null }, deps);
+
+    expect(paste).not.toHaveBeenCalled();
+    expect(deps.dockPane).not.toHaveBeenCalled();
+    expect(deps.restorePaneAtIndex).toHaveBeenCalledWith("lab-2", 0);
+    unregister();
+  });
+
+  it("restores at the nearest slot when dropped on canvas background", () => {
+    const deps = dockDeps();
+
+    // far corner: no containment, resource:b's center is nearer -> its slot
+    handleDockDrop(layout, { x: 9999, y: 9999 }, locatorPayload, deps);
+
+    expect(deps.restorePaneAtIndex).toHaveBeenCalledWith(locatorPayload.paneId, 1);
+    expect(deps.dockPane).not.toHaveBeenCalled();
+  });
+
+  it("appends when no panes are open", () => {
+    const empty = { viewport: { panX: 0, panY: 0, scale: 1 }, order: [], nodes: {} } as never;
+    const deps = dockDeps();
+
+    handleDockDrop(empty, { x: 10, y: 10 }, locatorPayload, deps);
+
+    expect(deps.restorePaneAtIndex).toHaveBeenCalledWith(locatorPayload.paneId, 0);
   });
 });

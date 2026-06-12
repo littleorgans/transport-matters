@@ -62,6 +62,7 @@ export function CanvasLabRoute() {
   const minimizePane = useCanvasLabStore((state) => state.minimizePane);
   const closePane = useCanvasLabStore((state) => state.closePane);
   const restorePane = useCanvasLabStore((state) => state.restorePane);
+  const restorePaneAtIndex = useCanvasLabStore((state) => state.restorePaneAtIndex);
   const closeDockedPane = useCanvasLabStore((state) => state.closeDockedPane);
   const focusPane = useCanvasLabStore((state) => state.focusPane);
   const expandPane = useCanvasLabStore((state) => state.expandPane);
@@ -110,6 +111,7 @@ export function CanvasLabRoute() {
     },
     spawnPane,
     dockPane,
+    restorePaneAtIndex,
   });
   const strategies = useMemo(() => listLayouts(), []);
   const [chromeHidden, setChromeHidden] = useState(false);

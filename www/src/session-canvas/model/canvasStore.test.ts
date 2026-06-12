@@ -176,6 +176,40 @@ describe("canvasStore", () => {
     expect(state.docked).toHaveLength(0);
   });
 
+  it("restorePaneAtIndex restores the docked pane into the order slot the drop chose", () => {
+    resetCanvasStoreForTests();
+    const refA = { kind: "resource", owner: "local", source: "path", path: "/t/a.png" } as const;
+    const refB = { kind: "resource", owner: "local", source: "path", path: "/t/b.png" } as const;
+    const refC = { kind: "resource", owner: "local", source: "path", path: "/t/c.png" } as const;
+    useCanvasStore.getState().spawnPane(refA);
+    useCanvasStore.getState().spawnPane(refB);
+    const orderBefore = useCanvasStore.getState().layout.order;
+    const paneId = useCanvasStore.getState().dockPane(refC);
+
+    useCanvasStore.getState().restorePaneAtIndex(paneId, 1);
+
+    const state = useCanvasStore.getState();
+    expect(state.docked).toEqual([]);
+    expect(state.layout.nodes[paneId]?.lifecycle).toBe("open");
+    // spliced into the chosen slot, not appended: the one path where the user names the position
+    expect(state.layout.order).toEqual([orderBefore[0], paneId, ...orderBefore.slice(1)]);
+    expectRectsToMatchStrategy(state);
+  });
+
+  it("restorePaneAtIndex clamps an out-of-range index to the tail", () => {
+    resetCanvasStoreForTests();
+    const refA = { kind: "resource", owner: "local", source: "path", path: "/t/a.png" } as const;
+    const refC = { kind: "resource", owner: "local", source: "path", path: "/t/c.png" } as const;
+    useCanvasStore.getState().spawnPane(refA);
+    const paneId = useCanvasStore.getState().dockPane(refC);
+
+    useCanvasStore.getState().restorePaneAtIndex(paneId, 99);
+
+    const order = useCanvasStore.getState().layout.order;
+    expect(order[order.length - 1]).toBe(paneId);
+    expect(useCanvasStore.getState().docked).toEqual([]);
+  });
+
   it("minimizes a pane into the dock and restores it with a planned rect", () => {
     vi.useFakeTimers();
     try {
