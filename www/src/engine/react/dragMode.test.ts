@@ -23,4 +23,21 @@ describe("dragModeForTarget", () => {
     const button = element(`<div><button data-probe type="button"></button></div>`);
     expect(dragModeForTarget(button, true)).toBeNull();
   });
+
+  it("lets image viewers lift from the drag-handled image inside the button stage", () => {
+    const image = element(`
+      <button type="button">
+        <img data-probe data-pane-drag-handle="true" draggable="false" alt="" />
+      </button>
+    `);
+    expect(dragModeForTarget(image, true)).toBe("move");
+    expect(dragModeForTarget(image, false)).toBe("move");
+
+    const stage = element(`
+      <button data-probe type="button">
+        <img data-pane-drag-handle="true" draggable="false" alt="" />
+      </button>
+    `);
+    expect(dragModeForTarget(stage, true)).toBeNull();
+  });
 });

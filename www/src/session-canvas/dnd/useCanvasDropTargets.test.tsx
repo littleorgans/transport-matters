@@ -91,7 +91,11 @@ describe("useCanvasDropTargets", () => {
     expect(useDropTargetStore.getState().target).toBeNull();
 
     fireDrag("dragover", surface, { clientX: 300, clientY: 300 });
-    fireDrag("drop", surface, { clientX: 300, clientY: 300 });
+    fireDrag("drop", surface, {
+      clientX: 300,
+      clientY: 300,
+      dataTransfer: makeDataTransfer({ files: [{} as File] }),
+    });
     expect(useDropTargetStore.getState().target).toBeNull();
     expect(
       screen.getByText("File drops need the desktop app. URL drags work here."),
@@ -102,7 +106,7 @@ describe("useCanvasDropTargets", () => {
 function fireDrag(
   type: "dragover" | "dragleave" | "drop",
   target: HTMLElement,
-  init: { clientX: number; clientY: number },
+  init: { clientX: number; clientY: number; dataTransfer?: DataTransfer },
 ): void {
   target.getBoundingClientRect = () =>
     ({ left: 0, top: 0, right: 400, bottom: 400, width: 400, height: 400 }) as DOMRect;
@@ -110,13 +114,18 @@ function fireDrag(
   Object.defineProperty(event, "clientX", { value: init.clientX });
   Object.defineProperty(event, "clientY", { value: init.clientY });
   Object.defineProperty(event, "dataTransfer", {
-    value: {
-      files: [{} as File],
-      getData: () => "",
-      dropEffect: "copy",
-    },
+    value: init.dataTransfer ?? makeDataTransfer(),
   });
   act(() => {
     target.dispatchEvent(event);
   });
+}
+
+function makeDataTransfer(init: { files?: File[]; types?: string[] } = {}): DataTransfer {
+  return {
+    files: init.files ?? [],
+    types: init.types ?? ["Files"],
+    getData: () => "",
+    dropEffect: "copy",
+  } as unknown as DataTransfer;
 }

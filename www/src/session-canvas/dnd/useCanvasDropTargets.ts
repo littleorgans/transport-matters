@@ -50,7 +50,8 @@ export function useCanvasDropTargets(
           label: current.titleFor(targetPaneId),
         });
       } else if (
-        event.dataTransfer?.files.length &&
+        event.dataTransfer !== null &&
+        dataTransferHasFiles(event.dataTransfer) &&
         !window.transportMattersDesktop?.getPathForFile
       ) {
         setDropTarget({ kind: "hint" });
@@ -93,4 +94,8 @@ export function useCanvasDropTargets(
   const dismissDropHint = useCallback(() => setDropHint(null), []);
 
   return { dropHint, dismissDropHint };
+}
+
+function dataTransferHasFiles(transfer: DataTransfer): boolean {
+  return Array.from(transfer.types).includes("Files");
 }
