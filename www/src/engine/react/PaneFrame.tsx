@@ -98,8 +98,7 @@ export function PaneFrame({
   // A dnd transform rides on top: world-space deltas from the sortable strategy (siblings) or the
   // converted pointer delta (the lifted pane).
   const renderRect = liveRect ?? node.rect;
-  const dndX = dnd?.transform?.x ?? 0;
-  const dndY = dnd?.transform?.y ?? 0;
+  const dndPosition = dndPanePosition(renderRect, dnd?.transform ?? null);
 
   const bindDrag = useDrag(
     ({ movement: [moveX, moveY], event, first, last, shiftKey }) => {
@@ -186,8 +185,8 @@ export function PaneFrame({
       animate={{
         opacity: closing ? 0 : 1,
         scale: closing ? 0.96 : 1,
-        x: renderRect.x + dndX,
-        y: renderRect.y + dndY,
+        x: dndPosition.x,
+        y: dndPosition.y,
       }}
     >
       <div
@@ -203,6 +202,19 @@ export function PaneFrame({
       </div>
     </motion.div>
   );
+}
+
+// Position the pane renders at. At rest the exact planner rect (fractions are
+// static, antialiasing handles them). While a dnd transform is live the
+// composed position quantizes to whole world pixels: per-tick subpixel
+// translates inside the scaled container leave compositor ghost trails (the
+// damage rect misses the moving pane's edges).
+export function dndPanePosition(
+  rect: { x: number; y: number },
+  transform: { x: number; y: number } | null,
+): { x: number; y: number } {
+  if (transform === null) return { x: rect.x, y: rect.y };
+  return { x: Math.round(rect.x + transform.x), y: Math.round(rect.y + transform.y) };
 }
 
 export function dragModeForTarget(target: EventTarget | null, bodyDrag: boolean): DragMode | null {
