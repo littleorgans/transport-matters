@@ -145,3 +145,36 @@
   padding: var(--canvas-pane-gap) var(--canvas-pane-padding);
   text-align: center;
 }
+
+.canvas-drop-target {
+  position: absolute;
+  z-index: 1950;
+  pointer-events: none;
+  border: 1px solid var(--color-accent);
+}
+
+.canvas-drop-target--surface {
+  inset: 0;
+  box-shadow: inset 0 0 0 1px rgb(var(--accent-rgb) / 0.5), var(--canvas-focus-ring);
+}
+
+.canvas-drop-target--terminal {
+  box-shadow: var(--canvas-focus-ring);
+}
+
+.canvas-drop-target__label {
+  position: absolute;
+  inset-block-start: calc(var(--canvas-pane-gap) * -1);
+  inset-inline-start: var(--canvas-pane-gap);
+  transform: translateY(-100%);
+  border: var(--canvas-pane-border);
+  background: rgb(var(--shadow-rgb) / 0.86);
+  box-shadow: var(--canvas-pane-shadow);
+  backdrop-filter: blur(16px);
+  color: var(--color-txt);
+  padding: calc(var(--canvas-pane-gap) * 0.5) var(--canvas-pane-padding);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+}
