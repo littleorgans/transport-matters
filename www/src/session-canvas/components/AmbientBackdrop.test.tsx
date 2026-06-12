@@ -123,24 +123,24 @@ describe("AmbientBackdrop", () => {
     expect(bg.setPhoto).not.toHaveBeenCalled();
   });
 
-  it("live day cycle pushes the local clock into the renderer without touching the store", () => {
+  it("live day cycle pushes the clock in the scene's sun domain without touching the store", () => {
     vi.useFakeTimers();
-    vi.setSystemTime(new Date(2026, 5, 13, 6, 0, 0)); // 06:00 -> 0.25
+    vi.setSystemTime(new Date(2026, 5, 13, 6, 0, 0)); // 06:00 -> scene dawn 0
     stubMatchMedia();
     const bg = fakeBackground();
     vi.mocked(createAmbientBackground).mockReturnValueOnce(bg);
     useThemeStore.setState({ theme: openWater });
     render(<AmbientBackdrop />);
 
-    expect(bg.setParam).toHaveBeenCalledWith("dayProgress", 0.25);
+    expect(bg.setParam).toHaveBeenCalledWith("dayProgress", 0);
     vi.mocked(bg.setParam).mockClear();
 
     act(() => {
-      // advanceTimersByTime moves the mocked clock too: 11:59:30 + 30s tick = noon
+      // advanceTimersByTime moves the mocked clock too: 11:59:30 + 30s tick = noon -> high sun 0.25
       vi.setSystemTime(new Date(2026, 5, 13, 11, 59, 30));
       vi.advanceTimersByTime(30_000);
     });
-    expect(bg.setParam).toHaveBeenCalledWith("dayProgress", 0.5);
+    expect(bg.setParam).toHaveBeenCalledWith("dayProgress", 0.25);
     // runtime-only: the stored theme keeps its baseline, no time of day baked in
     expect(useThemeStore.getState().theme?.settings.sceneParams.dayProgress).toBeUndefined();
   });

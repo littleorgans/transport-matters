@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { localDayProgress } from "./dayCycle";
+import { localDayProgress, sceneDayProgress } from "./dayCycle";
 
 describe("localDayProgress", () => {
   it("maps local midnight to 0", () => {
@@ -14,5 +14,19 @@ describe("localDayProgress", () => {
     const value = localDayProgress(new Date(2026, 5, 13, 23, 59, 59));
     expect(value).toBeGreaterThan(0.99);
     expect(value).toBeLessThan(1);
+  });
+});
+
+describe("sceneDayProgress", () => {
+  it("maps clock noon to the scene's high sun", () => {
+    expect(sceneDayProgress(new Date(2026, 5, 13, 12, 0, 0))).toBe(0.25);
+  });
+
+  it("maps clock midnight into the scene's night, not its dawn", () => {
+    expect(sceneDayProgress(new Date(2026, 5, 13, 0, 0, 0))).toBe(0.75);
+  });
+
+  it("maps 6am to the scene's dawn at 0", () => {
+    expect(sceneDayProgress(new Date(2026, 5, 13, 6, 0, 0))).toBe(0);
   });
 });

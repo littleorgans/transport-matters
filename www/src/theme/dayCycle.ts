@@ -15,8 +15,22 @@ export const LIVE_DAY_INTERVAL_MS = 30_000;
 
 const SECONDS_PER_DAY = 86_400;
 
-/** 0..1 position of `date` within its local day, the dayProgress domain. */
+/** 0..1 position of `date` within its local day: midnight 0, noon 0.5. */
 export function localDayProgress(date: Date): number {
   const seconds = date.getHours() * 3600 + date.getMinutes() * 60 + date.getSeconds();
   return seconds / SECONDS_PER_DAY;
+}
+
+/**
+ * The sea scenes' sun curve is phased with dawn at 0 and the high sun at 0.25
+ * (the scene default renders full day), while wall clock puts midnight at 0.
+ * Convert clock time into the scene's domain so noon renders the high sun and
+ * just-past-midnight renders night, not dawn. Host-side compensation observed
+ * from rendered output; drops to identity if the lab re-phases the scene.
+ */
+const SCENE_HIGH_SUN = 0.25;
+const CLOCK_NOON = 0.5;
+
+export function sceneDayProgress(date: Date): number {
+  return (localDayProgress(date) - (CLOCK_NOON - SCENE_HIGH_SUN) + 1) % 1;
 }

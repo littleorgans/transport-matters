@@ -6,7 +6,7 @@ import { useThemeStore } from "../../stores/themeStore";
 import {
   DAY_PROGRESS_PARAM_ID,
   LIVE_DAY_INTERVAL_MS,
-  localDayProgress,
+  sceneDayProgress,
 } from "../../theme/dayCycle";
 import { themeValidationDeps } from "../../theme/deps";
 import type { ThemeSettings } from "../../theme/types";
@@ -110,7 +110,9 @@ function AmbientCanvas({ settings }: { settings: ThemeSettings }) {
       driveSceneParams(bg, settings);
       return;
     }
-    const push = () => bg.setParam(DAY_PROGRESS_PARAM_ID, localDayProgress(new Date()));
+    // sceneDayProgress, not localDayProgress: the renderer wants the scene's
+    // sun-curve domain; the slider keeps showing wall-clock time.
+    const push = () => bg.setParam(DAY_PROGRESS_PARAM_ID, sceneDayProgress(new Date()));
     push();
     const timer = window.setInterval(push, LIVE_DAY_INTERVAL_MS);
     return () => window.clearInterval(timer);
