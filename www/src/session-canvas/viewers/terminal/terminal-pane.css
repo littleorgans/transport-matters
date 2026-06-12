@@ -10,7 +10,9 @@
   height: 100%;
   box-sizing: border-box;
   padding: var(--canvas-pane-padding);
-  background: var(--color-well);
+  /* No fill of its own: the pane window behind provides the themed veil
+     (rgb(--shadow-rgb / --pane-surface-alpha)), and xterm mounts with
+     allowTransparency, so the terminal darkens and frosts with the theme. */
   overflow: hidden;
 }
 
@@ -41,4 +43,11 @@
 .terminal-pane .xterm-viewport {
   height: 100%;
   background-color: transparent;
+}
+
+/* xterm 6 draws its own VS Code-style DOM scrollbar, untouched by the global
+   native-scrollbar hiding in index.css; hide it explicitly. Wheel and trackpad
+   scrollback still work, the chrome just never shows. */
+.terminal-pane .xterm .xterm-scrollable-element > .scrollbar {
+  display: none;
 }

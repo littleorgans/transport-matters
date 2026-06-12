@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { LayoutCanvas, type PaneId } from "../../engine";
 import { CANVAS_LAYOUT_MARGIN, listLayouts } from "../../engine/layout";
+import { AmbientBackdrop } from "../components/AmbientBackdrop";
 import { CanvasDropHint } from "../components/CanvasDropHint";
 import { CanvasDropTargetOverlay } from "../components/CanvasDropTargetOverlay";
 import { CommandBarSections } from "../components/CommandBarSections";
 import { PaneChrome } from "../components/PaneChrome";
 import { PaneDock } from "../components/PaneDock";
 import { RouteSwitcher } from "../components/RouteSwitcher";
+import { SceneParamControls } from "../components/SceneParamControls";
+import { ThemeCycleButton } from "../components/ThemeCycleButton";
 import { CanvasPaneDnd } from "../dnd/CanvasPaneDnd";
 import { createSortablePaneAdapter } from "../dnd/SortablePane";
 import { useCanvasDropTargets } from "../dnd/useCanvasDropTargets";
@@ -211,6 +214,7 @@ export function CanvasLabRoute() {
       // px): both read --canvas-layout-margin, set once here from the layout const.
       style={{ "--canvas-layout-margin": `${CANVAS_LAYOUT_MARGIN}px` } as React.CSSProperties}
     >
+      <AmbientBackdrop />
       {chromeHidden ? null : (
         <div
           aria-label="Canvas lab controls"
@@ -252,6 +256,7 @@ export function CanvasLabRoute() {
                     Spawn Codex
                   </button>
                 ) : null}
+                <ThemeCycleButton />
               </>
             }
             secondary={
@@ -276,6 +281,7 @@ export function CanvasLabRoute() {
                   ))}
                 </select>
                 <ControlsPanel />
+                <SceneParamControls />
               </>
             }
             secondaryLabel="Layout"

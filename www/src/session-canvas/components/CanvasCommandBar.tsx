@@ -1,5 +1,6 @@
 import type { CanvasLaunchContext } from "../route";
 import { RouteSwitcher } from "./RouteSwitcher";
+import { ThemeCycleButton } from "./ThemeCycleButton";
 
 export interface CanvasCommandBarProps {
   launch: CanvasLaunchContext;
@@ -29,6 +30,7 @@ export function CanvasCommandBar({
         <button className="canvas-button" onClick={onResetViewport} type="button">
           Reset view
         </button>
+        <ThemeCycleButton />
       </div>
       <p className="canvas-command-bar__status" aria-live="polite">
         Focus: {focusedTitle ?? "none"}

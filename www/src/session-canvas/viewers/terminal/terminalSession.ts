@@ -42,11 +42,15 @@ export function useTerminalSession({ buildUrl, onTextFrame, paneId }: TerminalSe
     if (!surface) return;
 
     const term = new Terminal({
+      // The terminal surface is transparent: the pane window behind it owns
+      // the fill through the themed veil (--pane-surface-alpha), so terminals
+      // pick up theme and glass changes live like every other pane interior.
+      allowTransparency: true,
       cursorBlink: true,
       fontFamily: readToken(surface, "--font-mono", "ui-monospace, monospace"),
       fontSize: 13,
       theme: {
-        background: readToken(surface, "--color-well", "#040404"),
+        background: "#00000000",
         foreground: readToken(surface, "--color-txt", "#dcdcdc"),
       },
     });

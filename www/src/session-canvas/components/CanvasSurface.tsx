@@ -9,6 +9,7 @@ import { useCanvasStore } from "../model/canvasStore";
 import { openPaneIds } from "../model/layoutPlanning";
 import type { CanvasLaunchContext } from "../route";
 import { bodyDragForRef, PICKER_PANE_ID, renderPaneContent } from "../viewers/registry";
+import { AmbientBackdrop } from "./AmbientBackdrop";
 import { CanvasCommandBar } from "./CanvasCommandBar";
 import { CanvasDropHint } from "./CanvasDropHint";
 import { CanvasDropTargetOverlay } from "./CanvasDropTargetOverlay";
@@ -166,6 +167,7 @@ export function CanvasSurface({ launch, launchStatus, launchSessionId }: CanvasS
 
   return (
     <main className="canvas-route-shell" ref={surfaceRef}>
+      <AmbientBackdrop />
       <CanvasCommandBar
         focusedTitle={focusedTitle}
         launch={launch}
