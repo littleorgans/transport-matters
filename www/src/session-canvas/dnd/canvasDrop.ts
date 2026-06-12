@@ -1,11 +1,24 @@
 import type { EngineLayoutState } from "../../engine";
-import type { PaneContentRef } from "../model/paneRecords";
+import type { CanvasPaneRef, PaneContentRef } from "../model/paneRecords";
 import {
   type DropLocator,
   escapeDropLocator,
   resolvePasteHandle,
 } from "../viewers/terminal/pasteRegistry";
-import { pointerToWorld } from "./dndSpace";
+import { closestPaneAtWorldPoint, pointerToWorld } from "./dndSpace";
+import type { DockDragEntry } from "./dockDragSource";
+
+// The one locator predicate (doc 18): does this ref carry a deliverable
+// locator, and which. Shared by the pane-drag delivery path
+// (paneDndCallbacks deliveryTargetAt), the dock dragover resolver, and
+// handleDockDrop; the null guard lives here, never at the call sites. It sits
+// beside its inverse, refForLocator, so the ref<->locator mapping has one home.
+export function locatorForPaneRef(ref: CanvasPaneRef | null | undefined): DropLocator | null {
+  if (ref == null || ref.kind !== "resource" || !("source" in ref)) return null;
+  return ref.source === "path"
+    ? { source: "path", locator: ref.path }
+    : { source: "url", locator: ref.url };
+}
 
 export const DROP_HINT_MESSAGE = "File drops need the desktop app. URL drags work here.";
 
@@ -104,4 +117,45 @@ function refForLocator(locator: DropLocator): PaneContentRef {
   return locator.source === "path"
     ? { kind: "resource", owner: "local", source: "path", path: locator.locator }
     : { kind: "resource", owner: "local", source: "url", url: locator.locator };
+}
+
+export interface DockDropDeps {
+  // Decision 4 paste branch: a paste is a read, the entry stays docked;
+  // dockPane (the runDockPaneFlow seam) de-dupes and bumps it to the front.
+  dockPane: (ref: PaneContentRef) => void;
+  restorePaneAtIndex: (paneId: string, index: number) => void;
+}
+
+// The dock-row drop branch (doc 18), beside handleCanvasDrop: a released dock
+// entry either delivers its locator to a paste-handle pane (and stays docked)
+// or restores at the order slot the drop point selects. `point` is surface
+// relative, the same convention as handleCanvasDrop.
+export function handleDockDrop(
+  layout: EngineLayoutState,
+  point: { x: number; y: number },
+  payload: DockDragEntry,
+  deps: DockDropDeps,
+): void {
+  const locator = locatorForPaneRef(payload.ref);
+  if (locator !== null) {
+    const targetPaneId = paneIdAtPoint(layout, point);
+    const paste = targetPaneId === null ? null : resolvePasteHandle(targetPaneId);
+    if (paste !== null) {
+      paste(escapeDropLocator(locator));
+      deps.dockPane(refForLocator(locator));
+      return;
+    }
+  }
+
+  // Restore at the insertion index: the drop TAKES THE TARGET'S SLOT, resolved
+  // with the same geometry live pane-drag reorder uses (closestPaneAtWorldPoint),
+  // so dock drops and reorders share one targeting feel. Appends on empty canvas.
+  const world = pointerToWorld(layout.viewport, point);
+  const entries = layout.order.flatMap((paneId) => {
+    const node = layout.nodes[paneId];
+    return node?.lifecycle === "open" ? [{ id: paneId, rect: node.rect }] : [];
+  });
+  const hit = closestPaneAtWorldPoint(entries, world);
+  const index = hit === null ? layout.order.length : layout.order.indexOf(hit.id);
+  deps.restorePaneAtIndex(payload.paneId, index);
 }

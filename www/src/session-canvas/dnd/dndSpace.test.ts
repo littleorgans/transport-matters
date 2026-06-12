@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { EngineLayoutState } from "../../engine";
 import {
+  closestPaneAtWorldPoint,
   createPlannerRectMeasure,
   createWorldSpaceCollision,
   pointerToWorld,
@@ -87,6 +88,27 @@ describe("createPlannerRectMeasure", () => {
       width: 0,
       height: 0,
     });
+  });
+});
+
+describe("closestPaneAtWorldPoint", () => {
+  const entries = [
+    { id: "a", rect: { x: 30, y: 30, width: 140, height: 90 } },
+    { id: "b", rect: { x: 186, y: 30, width: 140, height: 90 } },
+  ];
+
+  it("returns the containing pane at distance 0", () => {
+    expect(closestPaneAtWorldPoint(entries, { x: 190, y: 35 })).toEqual({ id: "b", distance: 0 });
+  });
+
+  it("falls back to the nearest rect center over empty canvas", () => {
+    const hit = closestPaneAtWorldPoint(entries, { x: 90, y: 200 });
+    expect(hit?.id).toBe("a");
+    expect(hit?.distance).toBeGreaterThan(0);
+  });
+
+  it("returns null with no panes", () => {
+    expect(closestPaneAtWorldPoint([], { x: 0, y: 0 })).toBeNull();
   });
 });
 

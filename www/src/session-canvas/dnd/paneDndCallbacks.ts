@@ -2,7 +2,7 @@ import type { DragEndEvent, DragMoveEvent, DragStartEvent } from "@dnd-kit/core"
 import { type EngineLayoutState, splicePaneOrder } from "../../engine";
 import type { CanvasPaneRef } from "../model/paneRecords";
 import { escapeDropLocator, resolvePasteHandle } from "../viewers/terminal/pasteRegistry";
-import { paneIdAtWorldPoint } from "./canvasDrop";
+import { locatorForPaneRef, paneIdAtWorldPoint } from "./canvasDrop";
 import { pointerToWorld } from "./dndSpace";
 import { clearDropTarget, setDropTarget, useDropTargetStore } from "./dropTargetStore";
 
@@ -30,15 +30,6 @@ export interface PaneDndResult {
   settle: boolean;
 }
 
-function locatorForRef(
-  ref: CanvasPaneRef | undefined,
-): { source: "path" | "url"; locator: string } | null {
-  if (ref === undefined || ref.kind !== "resource" || !("source" in ref)) return null;
-  return ref.source === "path"
-    ? { source: "path", locator: ref.path }
-    : { source: "url", locator: ref.url };
-}
-
 // The one delivery resolution every consumer shares: collision (suppressing
 // reorder targeting so the paste target does not shift away mid-hover), the
 // move-tick highlight, and the release handler. A delivery target exists only
@@ -50,7 +41,7 @@ export function deliveryTargetAt(
   activeId: string,
   contentRefFor: (paneId: string) => CanvasPaneRef | undefined,
 ): { targetPaneId: string; paste: (locator: string) => void } | null {
-  if (locatorForRef(contentRefFor(activeId)) === null) return null;
+  if (locatorForPaneRef(contentRefFor(activeId)) === null) return null;
   const targetPaneId = paneIdAtWorldPoint(layout, point, activeId);
   if (targetPaneId === null) return null;
   const paste = resolvePasteHandle(targetPaneId);
@@ -102,7 +93,7 @@ export function createPaneDndCallbacks(deps: PaneDndDeps) {
       const layout = deps.getLayout();
       let settle = false;
 
-      const locator = locatorForRef(deps.contentRefFor(activeId));
+      const locator = locatorForPaneRef(deps.contentRefFor(activeId));
       const point = dragWorldPoint(event);
       const terminal =
         point === null ? null : deliveryTargetAt(layout, point, activeId, deps.contentRefFor);
