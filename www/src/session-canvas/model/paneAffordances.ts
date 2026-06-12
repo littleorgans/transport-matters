@@ -251,12 +251,32 @@ export function finalizePaneDismissal(
       expandedPaneId,
       planExpandedLayout,
     );
-    if (isZoomedInPastOverview(state.layout.viewport, overviewLayout.viewport)) {
+    // Two reasons to land at the new overview: a camera zoomed in past it
+    // always resets (closing a zoomed pane restores the overview), and with
+    // fit-to-content on, ANY stale camera refits — removing panes shrinks
+    // the content box, so the new overview zooms IN relative to the old
+    // wide camera and the zoom-reset check alone never fires, leaving the
+    // replanned grid huddled at the stale zoom until a manual organize.
+    // With fit-to-content off, a wide camera is the user's choice: keep it.
+    const refit =
+      isZoomedInPastOverview(state.layout.viewport, overviewLayout.viewport) ||
+      (state.fitToContent && viewportDiffers(state.layout.viewport, overviewLayout.viewport));
+    if (refit) {
       if (openPaneIds(layout).length <= UNFRAME_FLY_PANE_LIMIT) fly = "camera";
       layout = overviewLayout;
     }
   }
   return { expandedPaneId, framing, layout, fly };
+}
+
+const VIEWPORT_PAN_EPSILON_PX = 0.5;
+
+function viewportDiffers(current: CanvasViewport, target: CanvasViewport): boolean {
+  return (
+    Math.abs(current.scale - target.scale) > CLOSE_ZOOM_RESET_EPSILON ||
+    Math.abs(current.panX - target.panX) > VIEWPORT_PAN_EPSILON_PX ||
+    Math.abs(current.panY - target.panY) > VIEWPORT_PAN_EPSILON_PX
+  );
 }
 
 export function isZoomedInPastOverview(current: CanvasViewport, overview: CanvasViewport): boolean {
