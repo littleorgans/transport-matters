@@ -164,8 +164,19 @@
   box-shadow: var(--canvas-focus-ring);
 }
 
-.canvas-drop-target--slot {
-  box-shadow: var(--canvas-focus-ring);
+/* Live pane drag cursor (dnd/dragCursor.ts drives the body attribute):
+   grabbing while moving, copy over a delivery target since the drop pastes
+   the pane's content rather than moving the pane in. The * + !important
+   hammer is deliberate: mid-drag the pointer crosses elements with their own
+   cursor styles. */
+body[data-pane-drag-cursor="move"],
+body[data-pane-drag-cursor="move"] * {
+  cursor: grabbing !important;
+}
+
+body[data-pane-drag-cursor="deliver"],
+body[data-pane-drag-cursor="deliver"] * {
+  cursor: copy !important;
 }
 
 .canvas-drop-target__label {

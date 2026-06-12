@@ -1,7 +1,9 @@
 import { DndContext, MeasuringStrategy, useSensor, useSensors } from "@dnd-kit/core";
 import { rectSortingStrategy, SortableContext } from "@dnd-kit/sortable";
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { createPlannerRectMeasure, createWorldSpaceCollision } from "./dndSpace";
+import { paneDragCursorMode, setPaneDragCursor } from "./dragCursor";
+import { useDropTargetStore } from "./dropTargetStore";
 import { createPaneDndCallbacks, deliveryTargetAt, type PaneDndDeps } from "./paneDndCallbacks";
 import { PaneDragPointerSensor } from "./paneDragPointerSensor";
 
@@ -49,6 +51,9 @@ export function CanvasPaneDnd({
       droppable: { strategy: MeasuringStrategy.WhileDragging, measure },
     };
   }, [deps]);
+  // Unmount safety: never strand the body cursor attribute mid-drag.
+  useEffect(() => () => setPaneDragCursor(null), []);
+
   const collisionDetection = useMemo(
     () =>
       createWorldSpaceCollision({
@@ -65,12 +70,23 @@ export function CanvasPaneDnd({
       autoScroll={false}
       collisionDetection={collisionDetection}
       measuring={measuring}
-      onDragCancel={() => onDragSettled(callbacks.onDragCancel().settle)}
-      onDragEnd={(event) => onDragSettled(callbacks.onDragEnd(event).settle)}
-      onDragMove={callbacks.onDragMove}
+      onDragCancel={() => {
+        setPaneDragCursor(null);
+        onDragSettled(callbacks.onDragCancel().settle);
+      }}
+      onDragEnd={(event) => {
+        setPaneDragCursor(null);
+        onDragSettled(callbacks.onDragEnd(event).settle);
+      }}
+      onDragMove={(event) => {
+        callbacks.onDragMove(event);
+        // the callbacks just wrote the drop target; project it onto the cursor
+        setPaneDragCursor(paneDragCursorMode(useDropTargetStore.getState().target));
+      }}
       onDragStart={(event) => {
         callbacks.onDragStart(event);
         onDragActiveChange(true);
+        setPaneDragCursor("move");
       }}
       sensors={sensors}
     >
