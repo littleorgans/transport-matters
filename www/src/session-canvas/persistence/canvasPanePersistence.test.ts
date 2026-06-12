@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   createInitialEngineLayoutState,
+  type EngineLayoutState,
   markNodeClosing,
   normalizeLayoutOrder,
   type PaneId,
 } from "../../engine";
-import { seedParams } from "../../engine/layout";
+import { type LayoutParams, seedParams } from "../../engine/layout";
 import { type DockedPane, isPaneContentRef, type PaneContentRef } from "../model/paneRecords";
 import { createCanvasPersistOptions } from "./canvasPersistOptions";
 import {
@@ -77,6 +78,16 @@ function seededSeedCanvasState() {
     fitToContent: false,
     expandedPaneId: "lab-1",
   };
+}
+
+interface TestCanvasState {
+  contentRefs: Record<PaneId, PaneContentRef>;
+  docked: DockedPane[];
+  activeStrategyId: string;
+  params: LayoutParams;
+  fitToContent: boolean;
+  expandedPaneId: PaneId | null;
+  layout: EngineLayoutState;
 }
 
 describe("canvas pane persistence", () => {
@@ -277,12 +288,13 @@ describe("canvas pane persistence", () => {
 
   it("round-trips the pane order and self-heals a stale one", () => {
     const base = seededSeedCanvasState();
-    const state = {
+    const state: TestCanvasState = {
       ...base,
+      contentRefs: base.contentRefs as Record<PaneId, PaneContentRef>,
       docked: [],
       layout: { ...base.layout, order: ["lab-2", "lab-1"] },
     };
-    const options = createCanvasPersistOptions<typeof state, PaneContentRef>({
+    const options = createCanvasPersistOptions<TestCanvasState, PaneContentRef>({
       name: "test-canvas-order",
       version: 1,
       isContentRef: isPaneContentRef,

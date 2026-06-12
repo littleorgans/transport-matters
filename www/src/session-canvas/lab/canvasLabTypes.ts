@@ -47,6 +47,12 @@ export interface CanvasLabState {
   setParam(key: string, value: ParamValue): void;
   setFitToContent(on: boolean): void;
   organize(): void;
+  /** Tentative reflow during a reorder drag; never commits the order. */
+  previewReorder(paneId: PaneId, index: number): void;
+  /** Release: splice the order and replan. */
+  commitReorder(paneId: PaneId, index: number): void;
+  /** Escape or terminal delivery: replan the committed order. */
+  cancelReorder(): void;
   setBounds(bounds: ViewportBounds): void;
   expandPane(paneId: PaneId): void;
   unexpand(): void;

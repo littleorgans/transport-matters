@@ -4,8 +4,10 @@ import {
   type CanvasViewport,
   createInitialEngineLayoutState,
   focusNode,
+  movePaneOrder,
   type PaneId,
   setViewport as setEngineViewport,
+  splicePaneOrder,
   updateNodeRect,
   type ViewportBounds,
   type WorldRect,
@@ -15,7 +17,7 @@ import type { CanvasLaunchContext } from "../route";
 import { PICKER_PANE_ID, paneIdForRef, titleForRef } from "../viewers/registry";
 import { createCanvasStorePersistOptions } from "./canvasStore.persistence";
 import { planExpandLayout } from "./expandLayout";
-import { DEFAULT_BOUNDS, INITIAL_STRATEGY_ID } from "./layoutPlanning";
+import { DEFAULT_BOUNDS, INITIAL_STRATEGY_ID, planLayout } from "./layoutPlanning";
 import {
   dismissPane,
   emptyFraming,
@@ -65,6 +67,9 @@ interface CanvasStoreState extends CanvasStoreModel {
   initializeCanvas(launch: CanvasLaunchContext): void;
   minimizePane(paneId: PaneId): void;
   movePane(paneId: PaneId, rect: WorldRect): void;
+  previewReorder(paneId: PaneId, index: number): void;
+  commitReorder(paneId: PaneId, index: number): void;
+  cancelReorder(): void;
   resizePane(paneId: PaneId, rect: WorldRect): void;
   resetViewport(): void;
   restorePane(paneId: PaneId): void;
@@ -142,6 +147,36 @@ export const useCanvasStore = create<CanvasStoreState>()(
 
       movePane(paneId, rect) {
         set((state) => ({ ...state, layout: updateNodeRect(state.layout, paneId, rect) }));
+      },
+
+      previewReorder(paneId, index) {
+        set((state) => {
+          const tentative = splicePaneOrder(state.layout.order, paneId, index);
+          const lifted = state.layout.nodes[paneId];
+          let layout = planLayout(
+            state.layout,
+            state.bounds,
+            state.activeStrategyId,
+            state.params,
+            false,
+            state.expandedPaneId,
+            planExpandLayout,
+            tentative,
+          );
+          if (lifted) layout = updateNodeRect(layout, paneId, lifted.rect);
+          return { layout };
+        });
+      },
+
+      commitReorder(paneId, index) {
+        set((state) => {
+          const ordered = movePaneOrder(state.layout, paneId, index);
+          return { layout: planCanvasLayout({ ...state, layout: ordered }) };
+        });
+      },
+
+      cancelReorder() {
+        set((state) => ({ layout: planCanvasLayout(state) }));
       },
 
       minimizePane(paneId) {

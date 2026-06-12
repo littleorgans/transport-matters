@@ -3,8 +3,10 @@ import { persist } from "zustand/middleware";
 import {
   createInitialEngineLayoutState,
   focusNode,
+  movePaneOrder,
   type PaneId,
   setViewport as setEngineViewport,
+  splicePaneOrder,
   updateNodeRect,
 } from "../../engine";
 import { sanitizeParam, seedParams } from "../../engine/layout";
@@ -27,6 +29,7 @@ import {
   stripPaneFlyIntent,
 } from "../model/paneAffordances";
 import { type CanvasPaneRef, cliLabel, type PaneContentRef } from "../model/paneRecords";
+import { planLayout as planSharedLayout } from "../model/layoutPlanning";
 import { paneIdForRef } from "../viewers/registry";
 import {
   DEFAULT_BOUNDS,
@@ -268,6 +271,34 @@ export const useCanvasLabStore = create<CanvasLabState>()(
             state.expandedPaneId,
           ),
         }));
+      },
+
+      previewReorder(paneId, index) {
+        set((state) => {
+          const tentative = splicePaneOrder(state.layout.order, paneId, index);
+          const lifted = state.layout.nodes[paneId];
+          let layout = planSharedLayout(
+            state.layout,
+            state.bounds,
+            state.activeStrategyId,
+            state.params,
+            false,
+            state.expandedPaneId,
+            planExpandLayout,
+            tentative,
+          );
+          if (lifted) layout = updateNodeRect(layout, paneId, lifted.rect);
+          return { layout };
+        });
+      },
+
+      commitReorder(paneId, index) {
+        set((state) => ({ layout: movePaneOrder(state.layout, paneId, index) }));
+        get().organize();
+      },
+
+      cancelReorder() {
+        get().organize();
       },
 
       setBounds(bounds) {
