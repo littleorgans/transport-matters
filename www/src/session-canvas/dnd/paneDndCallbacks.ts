@@ -1,0 +1,121 @@
+import type { DragEndEvent, DragMoveEvent, DragStartEvent } from "@dnd-kit/core";
+import { type EngineLayoutState, splicePaneOrder } from "../../engine";
+import type { CanvasPaneRef } from "../model/paneRecords";
+import { escapeDropLocator, resolvePasteHandle } from "../viewers/terminal/pasteRegistry";
+import { paneIdAtWorldPoint } from "./canvasDrop";
+import { pointerToWorld } from "./dndSpace";
+import { clearDropTarget, setDropTarget, useDropTargetStore } from "./dropTargetStore";
+
+// DndContext callbacks for the pane sortable (doc 19), the successor to the
+// hand-rolled reorder controller. The store stays frozen during the drag: the
+// callbacks write overlay feedback only, and a release either delivers a
+// locator to a paste-handle pane (doc 14 precedence, order untouched) or
+// commits the order once via movePaneOrder. dnd-kit owns activation, the
+// over target, Escape cancellation, and the in-drag visuals.
+export interface PaneDndDeps {
+  getLayout(): EngineLayoutState;
+  contentRefFor(paneId: string): CanvasPaneRef | undefined;
+  titleFor(paneId: string): string;
+  commitReorder(paneId: string, index: number): void;
+  getSurfaceOrigin(): { left: number; top: number };
+}
+
+export interface PaneDndResult {
+  // True when the release changed something and the canvas should run one
+  // settle window (paneMotion) so every pane springs to its new arrangement.
+  settle: boolean;
+}
+
+export function createPaneDndCallbacks(deps: PaneDndDeps) {
+  function locatorFor(paneId: string): { source: "path" | "url"; locator: string } | null {
+    const ref = deps.contentRefFor(paneId);
+    if (ref === undefined || ref.kind !== "resource" || !("source" in ref)) return null;
+    return ref.source === "path"
+      ? { source: "path", locator: ref.path }
+      : { source: "url", locator: ref.url };
+  }
+
+  function terminalUnder(
+    layout: EngineLayoutState,
+    point: { x: number; y: number },
+    excludePaneId: string,
+  ) {
+    const targetPaneId = paneIdAtWorldPoint(layout, point, excludePaneId);
+    if (targetPaneId === null) return null;
+    const paste = resolvePasteHandle(targetPaneId);
+    return paste === null ? null : { targetPaneId, paste };
+  }
+
+  function dragWorldPoint(event: DragMoveEvent | DragEndEvent): { x: number; y: number } | null {
+    const activator = event.activatorEvent as Partial<PointerEvent>;
+    if (typeof activator.clientX !== "number" || typeof activator.clientY !== "number") {
+      return null;
+    }
+    const origin = deps.getSurfaceOrigin();
+    return pointerToWorld(deps.getLayout().viewport, {
+      x: activator.clientX + event.delta.x - origin.left,
+      y: activator.clientY + event.delta.y - origin.top,
+    });
+  }
+
+  // Per-tick writes are change-guarded so a held pointer does not churn the
+  // overlay store with identical terminal targets.
+  function writeTerminalTarget(paneId: string | null): void {
+    const current = useDropTargetStore.getState().target;
+    if (paneId === null) {
+      if (current !== null) clearDropTarget();
+      return;
+    }
+    if (current?.kind === "terminal" && current.paneId === paneId) return;
+    setDropTarget({ kind: "terminal", paneId, label: deps.titleFor(paneId) });
+  }
+
+  return {
+    onDragStart(_event: DragStartEvent): void {
+      clearDropTarget();
+    },
+
+    onDragMove(event: DragMoveEvent): void {
+      const activeId = String(event.active.id);
+      if (locatorFor(activeId) === null) return;
+      const point = dragWorldPoint(event);
+      const terminal = point === null ? null : terminalUnder(deps.getLayout(), point, activeId);
+      writeTerminalTarget(terminal?.targetPaneId ?? null);
+    },
+
+    onDragEnd(event: DragEndEvent): PaneDndResult {
+      const activeId = String(event.active.id);
+      const layout = deps.getLayout();
+      let settle = false;
+
+      const locator = locatorFor(activeId);
+      const point = locator === null ? null : dragWorldPoint(event);
+      const terminal = point === null ? null : terminalUnder(layout, point, activeId);
+
+      if (terminal && locator) {
+        terminal.paste(escapeDropLocator(locator));
+      } else if (event.over !== null && event.over.id !== event.active.id) {
+        const index = layout.order.indexOf(String(event.over.id));
+        const spliced = index < 0 ? layout.order : splicePaneOrder(layout.order, activeId, index);
+        if (spliced !== layout.order && !sameOrder(spliced, layout.order)) {
+          deps.commitReorder(activeId, index);
+          settle = true;
+        }
+      }
+
+      clearDropTarget();
+      return { settle };
+    },
+
+    onDragCancel(): PaneDndResult {
+      clearDropTarget();
+      // Nothing was committed mid-drag; the lifted pane's transform clears and
+      // the settle window lets it spring home instead of snapping.
+      return { settle: true };
+    },
+  };
+}
+
+function sameOrder(a: readonly string[], b: readonly string[]): boolean {
+  return a.length === b.length && a.every((id, index) => id === b[index]);
+}
