@@ -93,7 +93,12 @@ function AttachedRunTerminal({
     if (frame) setErrorFrame(frame);
   }, []);
 
-  const { surfaceRef, closedCode } = useTerminalSession({ buildUrl, onTextFrame, paneId });
+  const { surfaceRef, closedCode } = useTerminalSession({
+    buildUrl,
+    onTextFrame,
+    paneId,
+    suppressColorQueryReplies: true,
+  });
   const status = runStatus(provider, errorFrame, closedCode);
 
   return (

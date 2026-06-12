@@ -14,6 +14,7 @@ const { terminals, MockTerminal, MockFitAddon } = vi.hoisted(() => {
   class MockTerminal {
     cols = 80;
     rows = 24;
+    parser = { registerOscHandler: vi.fn() };
     loadAddon = vi.fn();
     open = vi.fn();
     focus = vi.fn();

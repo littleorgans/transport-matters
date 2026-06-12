@@ -9,11 +9,15 @@ a terminal focus event triggers a requery. The bridge sees the bytes either
 way, so this module scans PTY output for the queries and writes the reply into
 PTY input, exactly like an attached terminal would, inside the window.
 
-The reply colors mirror what the canvas xterm reports today: the pane theme
-background is transparent, which xterm reports as pure black, and the
-foreground tracks --color-txt. Keeping the values identical makes a late
-xterm answer (attached viewers also respond) idempotent rather than a
-flicker. Theme-fed values belong here when that slice lands.
+The bridge is the only voice: captured-run viewers suppress xterm's own
+OSC 10/11 replies (terminalSession.ts), so what the CLI believes about its
+terminal colors is exactly what these constants say, and the lab toggle is a
+true A/B (off means the CLI never learns a background). Theme-fed values
+belong here when that slice lands.
+
+DEMO VALUES: the background is deliberately loud (red) so the lever is
+unmistakable in the lab; codex paints its prompt bands as a 12% white blend
+over this. Retune to a theme color before merge.
 """
 
 from __future__ import annotations
@@ -22,7 +26,7 @@ import re
 from typing import Final
 
 OSC_FOREGROUND_REPLY: Final = b"\x1b]10;rgb:dcdc/dcdc/dcdc\x1b\\"
-OSC_BACKGROUND_REPLY: Final = b"\x1b]11;rgb:0000/0000/0000\x1b\\"
+OSC_BACKGROUND_REPLY: Final = b"\x1b]11;rgb:ffff/0000/0000\x1b\\"
 
 # OSC 10 = foreground, OSC 11 = background; "?" asks, BEL or ST terminates.
 _QUERY: Final = re.compile(rb"\x1b\](1[01]);\?(?:\x07|\x1b\\)")

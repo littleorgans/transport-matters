@@ -52,6 +52,22 @@
   display: none;
 }
 
+/* DEMO (this branch): prove the indexed-palette lever loudly; retune to a
+   theme value before merge. Claude Code paints its bash-mode (! command) bar
+   with 256-color index 59, which the DOM renderer exposes as a class, so one
+   rule owns it. */
+.terminal-pane .xterm .xterm-bg-59 {
+  background-color: #ffd700;
+}
+
+/* DEMO (this branch): Claude's regular user-prompt band. Claude adapts its
+   escape codes to the terminal: under the pane PTY's TERM it emits 256-color
+   index 237 (in a truecolor terminal it would emit an unstylable inline
+   48;2 value), so in our panes the same class lever as the bash bar works. */
+.terminal-pane .xterm .xterm-bg-237 {
+  background-color: #ffd700;
+}
+
 /* The legibility experiment's winner (lab toggle, data-text-shadow on the
    route shell): a glyph halo that becomes the text's adjacent background
    (WCAG haloed-text treatment, the subtitle technique), so glyphs stay crisp
