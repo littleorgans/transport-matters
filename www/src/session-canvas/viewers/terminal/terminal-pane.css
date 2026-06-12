@@ -51,3 +51,22 @@
 .terminal-pane .xterm .xterm-scrollable-element > .scrollbar {
   display: none;
 }
+
+/* The legibility floor (lab experiment, data-legibility-floor on the route
+   shell): keeps terminal text readable over bright scenes no matter how low a
+   theme sets its veil. The scrim is the one sanctioned second fill in a pane:
+   it deliberately deepens the window's veil behind text, and the frame's paint
+   containment clips its square corners to the pane radius. */
+[data-legibility-floor="scrim"] .terminal-pane::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: rgb(var(--shadow-rgb) / 0.35);
+}
+
+/* Grounds the glyphs themselves instead of darkening the fill; xterm's DOM
+   renderer rows inherit it. */
+[data-legibility-floor="text-shadow"] .terminal-pane .xterm {
+  text-shadow: 0 1px 2px rgb(var(--shadow-rgb) / 0.85);
+}

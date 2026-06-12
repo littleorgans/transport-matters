@@ -54,19 +54,19 @@ function seedPersistedLab(
   );
 }
 
+function resetLabStores(): void {
+  resetCanvasLabStoreForTests();
+  resetCapabilitiesStoreForTests();
+  resetCapturedRunStoreForTests();
+}
+
 describe("CanvasLabRoute captured-run spawn buttons", () => {
   beforeEach(() => {
     localStorage.clear();
-    resetCanvasLabStoreForTests();
-    resetCapabilitiesStoreForTests();
-    resetCapturedRunStoreForTests();
+    resetLabStores();
   });
 
-  afterEach(() => {
-    resetCanvasLabStoreForTests();
-    resetCapabilitiesStoreForTests();
-    resetCapturedRunStoreForTests();
-  });
+  afterEach(resetLabStores);
 
   it("shows both spawn buttons when both CLIs are installed", () => {
     seedCapabilities({ claude: true, codex: true });
@@ -223,5 +223,44 @@ describe("CanvasLabRoute captured-run spawn buttons", () => {
 
     expect(screen.queryByRole("toolbar", { name: "Canvas lab controls" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Minimized panes, 1" })).toBeInTheDocument();
+  });
+});
+
+describe("CanvasLabRoute legibility floor", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    resetLabStores();
+  });
+
+  afterEach(resetLabStores);
+
+  it("cycles the shell's CSS hook through scrim, text-shadow, and back off", () => {
+    seedCapabilities({ claude: true, codex: true });
+    render(<CanvasLabRoute />);
+    const shell = screen.getByRole("main");
+    // The floor control lives in the secondary command-bar group behind the toggle.
+    fireEvent.click(screen.getByRole("button", { name: "Layout" }));
+    const select = screen.getByRole("combobox", { name: "Legibility floor" });
+    expect(shell).not.toHaveAttribute("data-legibility-floor");
+
+    fireEvent.change(select, { target: { value: "scrim" } });
+    expect(shell).toHaveAttribute("data-legibility-floor", "scrim");
+
+    fireEvent.change(select, { target: { value: "text-shadow" } });
+    expect(shell).toHaveAttribute("data-legibility-floor", "text-shadow");
+
+    fireEvent.change(select, { target: { value: "off" } });
+    expect(shell).not.toHaveAttribute("data-legibility-floor");
+  });
+
+  it("rehydrates a persisted floor and sanitizes junk values to off", async () => {
+    const labExtras = { contentRefs: {}, paneRects: {}, docked: [], paneCounters: {} };
+    seedPersistedLab({ ...labExtras, nextPaneIndex: 0, legibilityFloor: "scrim" }, {});
+    await useCanvasLabStore.persist.rehydrate();
+    expect(useCanvasLabStore.getState().legibilityFloor).toBe("scrim");
+
+    seedPersistedLab({ ...labExtras, nextPaneIndex: 0, legibilityFloor: "neon" }, {});
+    await useCanvasLabStore.persist.rehydrate();
+    expect(useCanvasLabStore.getState().legibilityFloor).toBe("off");
   });
 });

@@ -52,6 +52,7 @@ type CanvasLabValues = Pick<
   | "activeStrategyId"
   | "params"
   | "fitToContent"
+  | "legibilityFloor"
   | "framing"
   | "expandedPaneId"
   | "flying"
@@ -69,6 +70,7 @@ function createEmptyCanvasLabValues(): CanvasLabValues {
     activeStrategyId: INITIAL_STRATEGY_ID,
     params: seedParams(INITIAL_STRATEGY_ID),
     fitToContent: true,
+    legibilityFloor: "off",
     framing: emptyFraming(),
     expandedPaneId: null,
     flying: false,
@@ -272,6 +274,10 @@ export const useCanvasLabStore = create<CanvasLabState>()(
       setFitToContent(on) {
         set({ fitToContent: on });
         get().organize();
+      },
+
+      setLegibilityFloor(floor) {
+        set({ legibilityFloor: floor });
       },
 
       organize() {

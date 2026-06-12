@@ -10,12 +10,26 @@ import type { CliName } from "../../types";
 import type { FramingState } from "../model/paneAffordances";
 import type { DockedPane, PaneContentRef } from "../model/paneRecords";
 
+/**
+ * The legibility-floor experiment (lab toggle): keeps terminal/transcript text
+ * readable over bright scenes no matter how low a theme sets its veil. Scrim
+ * deepens the fill behind the text; text-shadow grounds the glyphs themselves.
+ * Applied via data-legibility-floor on the route shell.
+ */
+export const LEGIBILITY_FLOORS = ["off", "scrim", "text-shadow"] as const;
+export type LegibilityFloor = (typeof LEGIBILITY_FLOORS)[number];
+
+export function isLegibilityFloor(value: unknown): value is LegibilityFloor {
+  return LEGIBILITY_FLOORS.includes(value as LegibilityFloor);
+}
+
 export interface CanvasLabState {
   layout: EngineLayoutState;
   bounds: ViewportBounds;
   activeStrategyId: string;
   params: LayoutParams;
   fitToContent: boolean;
+  legibilityFloor: LegibilityFloor;
   framing: FramingState;
   expandedPaneId: PaneId | null;
   flying: boolean;
@@ -48,6 +62,7 @@ export interface CanvasLabState {
   setStrategy(strategyId: string): void;
   setParam(key: string, value: ParamValue): void;
   setFitToContent(on: boolean): void;
+  setLegibilityFloor(floor: LegibilityFloor): void;
   organize(): void;
   /** Terminal delivery: park a ref straight into the dock, no pane, no replan. Open panes minimize. */
   dockPane(ref: PaneContentRef): PaneId;

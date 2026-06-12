@@ -3,7 +3,7 @@ import { FRONTEND_STORAGE_KEYS } from "../../stores/persistence";
 import { isPaneContentRef, type PaneContentRef } from "../model/paneRecords";
 import type { RebuiltCanvasState } from "../persistence/canvasPanePersistence";
 import { createCanvasPersistOptions } from "../persistence/canvasPersistOptions";
-import type { CanvasLabState } from "./canvasLabTypes";
+import { type CanvasLabState, isLegibilityFloor } from "./canvasLabTypes";
 
 export const CANVAS_LAB_STORAGE_VERSION = 2;
 
@@ -18,10 +18,12 @@ export const canvasLabPersistOptions = createCanvasPersistOptions<CanvasLabState
   partializeExtras: (state) => ({
     paneCounters: state.paneCounters,
     nextPaneIndex: state.nextPaneIndex,
+    legibilityFloor: state.legibilityFloor,
   }),
   mergeExtras: (saved) => ({
     paneCounters: isPaneCounters(saved.paneCounters) ? saved.paneCounters : {},
     nextPaneIndex: typeof saved.nextPaneIndex === "number" ? saved.nextPaneIndex : 0,
+    legibilityFloor: isLegibilityFloor(saved.legibilityFloor) ? saved.legibilityFloor : "off",
   }),
 });
 
