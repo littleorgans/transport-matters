@@ -70,7 +70,12 @@
 }
 
 /* Grounds the glyphs themselves instead of darkening the fill; xterm's DOM
-   renderer rows inherit it. */
+   renderer rows inherit it. The two modes work by different mechanisms: the
+   scrim raises measurable AREA contrast (text vs fill, the WCAG sweep above),
+   while the shadow makes its own halo the adjacent background per WCAG's
+   haloed-text treatment, so glyphs stay crisp even where the fill stays
+   bright (the subtitle technique). Operator-confirmed effective in practice;
+   it just cannot darken the wash itself. */
 [data-legibility-floor="text-shadow"] .terminal-pane .xterm {
   text-shadow: 0 1px 2px rgb(var(--shadow-rgb) / 0.85);
 }
