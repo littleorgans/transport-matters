@@ -24,7 +24,6 @@ import {
 } from "../viewers/registry";
 import { ControlsPanel } from "./ControlsPanel";
 import { framedPaneId, useCanvasLabStore } from "./canvasLabStore";
-import { isLegibilityFloor, LEGIBILITY_FLOORS, type LegibilityFloor } from "./canvasLabTypes";
 import { cliInstalled, useCapabilitiesStore } from "./capabilitiesStore";
 // Side-effect import: registers the captured-run lifecycle hook (onClose -> stopRun) lab-side, so
 // capturedRunStore never reaches the prod bundle. Must run before any close dispatches through it.
@@ -55,7 +54,7 @@ export function CanvasLabRoute() {
   const expandedPane = useCanvasLabStore((state) => state.expandedPaneId);
   const activeStrategyId = useCanvasLabStore((state) => state.activeStrategyId);
   const fitToContent = useCanvasLabStore((state) => state.fitToContent);
-  const legibilityFloor = useCanvasLabStore((state) => state.legibilityFloor);
+  const textShadow = useCanvasLabStore((state) => state.textShadow);
   const contentRefs = useCanvasLabStore((state) => state.contentRefs);
   const docked = useCanvasLabStore((state) => state.docked);
   const addPane = useCanvasLabStore((state) => state.addPane);
@@ -76,7 +75,7 @@ export function CanvasLabRoute() {
   const commitReorder = useCanvasLabStore((state) => state.commitReorder);
   const setStrategy = useCanvasLabStore((state) => state.setStrategy);
   const setFitToContent = useCanvasLabStore((state) => state.setFitToContent);
-  const setLegibilityFloor = useCanvasLabStore((state) => state.setLegibilityFloor);
+  const setTextShadow = useCanvasLabStore((state) => state.setTextShadow);
   const setBounds = useCanvasLabStore((state) => state.setBounds);
   const setViewport = useCanvasLabStore((state) => state.setViewport);
 
@@ -213,8 +212,8 @@ export function CanvasLabRoute() {
   return (
     <main
       className="canvas-route-shell"
-      // CSS hook for the legibility-floor styles (terminal-pane.css); absent when off.
-      data-legibility-floor={legibilityFloor === "off" ? undefined : legibilityFloor}
+      // CSS hook for the glyph-halo styles (terminal-pane.css); absent when off.
+      data-text-shadow={textShadow ? "" : undefined}
       // Single source for the pane-grid top margin (world units) AND the dock-band height (screen
       // px): both read --canvas-layout-margin, set once here from the layout const.
       style={{ "--canvas-layout-margin": `${CANVAS_LAYOUT_MARGIN}px` } as React.CSSProperties}
@@ -275,21 +274,12 @@ export function CanvasLabRoute() {
                   Fit to content
                 </label>
                 <label className="canvas-lab-toggle">
-                  Legibility floor
-                  <select
-                    onChange={(event) =>
-                      setLegibilityFloor(
-                        isLegibilityFloor(event.target.value) ? event.target.value : "off",
-                      )
-                    }
-                    value={legibilityFloor}
-                  >
-                    {LEGIBILITY_FLOORS.map((floor) => (
-                      <option key={floor} value={floor}>
-                        {LEGIBILITY_FLOOR_LABELS[floor]}
-                      </option>
-                    ))}
-                  </select>
+                  <input
+                    checked={textShadow}
+                    onChange={(event) => setTextShadow(event.target.checked)}
+                    type="checkbox"
+                  />
+                  Text shadow
                 </label>
                 <select
                   aria-label="Layout strategy"
@@ -346,12 +336,6 @@ export function CanvasLabRoute() {
     </main>
   );
 }
-
-const LEGIBILITY_FLOOR_LABELS: Record<LegibilityFloor, string> = {
-  off: "Off",
-  scrim: "Scrim",
-  "text-shadow": "Text shadow",
-};
 
 function titleIdForPane(paneId: string): string {
   return `canvas-lab-title-${paneId.replace(/[^a-zA-Z0-9_-]/g, "_")}`;

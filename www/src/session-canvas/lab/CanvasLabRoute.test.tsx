@@ -226,7 +226,7 @@ describe("CanvasLabRoute captured-run spawn buttons", () => {
   });
 });
 
-describe("CanvasLabRoute legibility floor", () => {
+describe("CanvasLabRoute text shadow", () => {
   beforeEach(() => {
     localStorage.clear();
     resetLabStores();
@@ -234,33 +234,30 @@ describe("CanvasLabRoute legibility floor", () => {
 
   afterEach(resetLabStores);
 
-  it("cycles the shell's CSS hook through scrim, text-shadow, and back off", () => {
+  it("toggles the shell's CSS hook on and off", () => {
     seedCapabilities({ claude: true, codex: true });
     render(<CanvasLabRoute />);
     const shell = screen.getByRole("main");
-    // The floor control lives in the secondary command-bar group behind the toggle.
+    // The control lives in the secondary command-bar group behind the toggle.
     fireEvent.click(screen.getByRole("button", { name: "Layout" }));
-    const select = screen.getByRole("combobox", { name: "Legibility floor" });
-    expect(shell).not.toHaveAttribute("data-legibility-floor");
+    const checkbox = screen.getByRole("checkbox", { name: "Text shadow" });
+    expect(shell).not.toHaveAttribute("data-text-shadow");
 
-    fireEvent.change(select, { target: { value: "scrim" } });
-    expect(shell).toHaveAttribute("data-legibility-floor", "scrim");
+    fireEvent.click(checkbox);
+    expect(shell).toHaveAttribute("data-text-shadow");
 
-    fireEvent.change(select, { target: { value: "text-shadow" } });
-    expect(shell).toHaveAttribute("data-legibility-floor", "text-shadow");
-
-    fireEvent.change(select, { target: { value: "off" } });
-    expect(shell).not.toHaveAttribute("data-legibility-floor");
+    fireEvent.click(checkbox);
+    expect(shell).not.toHaveAttribute("data-text-shadow");
   });
 
-  it("rehydrates a persisted floor and sanitizes junk values to off", async () => {
+  it("rehydrates a persisted choice and sanitizes junk values to off", async () => {
     const labExtras = { contentRefs: {}, paneRects: {}, docked: [], paneCounters: {} };
-    seedPersistedLab({ ...labExtras, nextPaneIndex: 0, legibilityFloor: "scrim" }, {});
+    seedPersistedLab({ ...labExtras, nextPaneIndex: 0, textShadow: true }, {});
     await useCanvasLabStore.persist.rehydrate();
-    expect(useCanvasLabStore.getState().legibilityFloor).toBe("scrim");
+    expect(useCanvasLabStore.getState().textShadow).toBe(true);
 
-    seedPersistedLab({ ...labExtras, nextPaneIndex: 0, legibilityFloor: "neon" }, {});
+    seedPersistedLab({ ...labExtras, nextPaneIndex: 0, textShadow: "scrim" }, {});
     await useCanvasLabStore.persist.rehydrate();
-    expect(useCanvasLabStore.getState().legibilityFloor).toBe("off");
+    expect(useCanvasLabStore.getState().textShadow).toBe(false);
   });
 });

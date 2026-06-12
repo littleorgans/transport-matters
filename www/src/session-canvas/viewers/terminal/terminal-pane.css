@@ -52,30 +52,12 @@
   display: none;
 }
 
-/* The legibility floor (lab experiment, data-legibility-floor on the route
-   shell): keeps terminal text readable over bright scenes no matter how low a
-   theme sets its veil. The scrim is the one sanctioned second fill in a pane:
-   it deliberately deepens the window's veil behind text, and the frame's paint
-   containment clips its square corners to the pane radius.
-   0.45 is measured, not eyeballed: the minimum constant alpha that holds
-   #dcdcdc text at WCAG AA 4.5:1 against the p95-brightest fill at the worst
-   case (noon high sun, reference-sea-ii, veil 0) is 0.40; 0.45 adds margin
-   for background-patch variance. Lab owns any curated override. */
-[data-legibility-floor="scrim"] .terminal-pane::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background: rgb(var(--shadow-rgb) / 0.45);
-}
-
-/* Grounds the glyphs themselves instead of darkening the fill; xterm's DOM
-   renderer rows inherit it. The two modes work by different mechanisms: the
-   scrim raises measurable AREA contrast (text vs fill, the WCAG sweep above),
-   while the shadow makes its own halo the adjacent background per WCAG's
-   haloed-text treatment, so glyphs stay crisp even where the fill stays
-   bright (the subtitle technique). Operator-confirmed effective in practice;
-   it just cannot darken the wash itself. */
-[data-legibility-floor="text-shadow"] .terminal-pane .xterm {
+/* The legibility experiment's winner (lab toggle, data-text-shadow on the
+   route shell): a glyph halo that becomes the text's adjacent background
+   (WCAG haloed-text treatment, the subtitle technique), so glyphs stay crisp
+   over bright scenes while the scene stays visible through the veil. A scrim
+   variant cleared WCAG area contrast but lost the live comparison: darkening
+   the fill enough to measure well repaints the default look over the theme. */
+[data-text-shadow] .terminal-pane .xterm {
   text-shadow: 0 1px 2px rgb(var(--shadow-rgb) / 0.85);
 }
