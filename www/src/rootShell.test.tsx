@@ -1,5 +1,5 @@
 import { fireEvent, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { clearThemeTokens } from "./hooks/useThemeTokens";
 import { RootShell } from "./rootShell";
 import {
@@ -16,6 +16,12 @@ const findThemeButton = () =>
   screen.findByRole("button", { name: "Theme: none" }, { timeout: 10_000 });
 
 describe("RootShell", () => {
+  beforeEach(() => {
+    // Tests drive the cycle from the unthemed state; the shipped default is
+    // open-water (covered by themeStore tests).
+    useThemeStore.setState({ theme: null });
+  });
+
   afterEach(() => {
     restoreTransport();
     useThemeStore.setState({ theme: null });

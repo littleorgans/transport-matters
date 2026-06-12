@@ -12,6 +12,11 @@ beforeEach(() => {
 });
 
 describe("themeStore", () => {
+  it("boots with open-water as the out-of-the-box theme", () => {
+    expect(useThemeStore.getInitialState().theme?.id).toBe("open-water");
+    expect(useThemeStore.getInitialState().liveDayCycle).toBe(true);
+  });
+
   it("setTheme stores the active theme", () => {
     useThemeStore.getState().setTheme(littleorgans);
     expect(useThemeStore.getState().theme?.id).toBe("littleorgans");

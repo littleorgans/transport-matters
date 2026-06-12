@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { presetTheme } from "../theme/presets";
 import type { ThemeDefinition } from "../theme/types";
 import { createFrontendPersistStorage, FRONTEND_STORAGE_KEYS } from "./persistence";
 
@@ -30,7 +31,9 @@ interface ThemeState {
 export const useThemeStore = create<ThemeState>()(
   persist(
     (set) => ({
-      theme: null,
+      // Open water is the out-of-the-box look; a persisted choice (including
+      // an explicit "none") rehydrates over this and wins.
+      theme: presetTheme("open-water") ?? null,
       setTheme: (theme) => set({ theme }),
       clearTheme: () => set({ theme: null }),
       setSceneParam: (paramId, value) =>
