@@ -2,7 +2,7 @@ import { DndContext, MeasuringStrategy, useSensor, useSensors } from "@dnd-kit/c
 import { rectSortingStrategy, SortableContext } from "@dnd-kit/sortable";
 import { useMemo } from "react";
 import { createPlannerRectMeasure, createWorldSpaceCollision } from "./dndSpace";
-import { createPaneDndCallbacks, type PaneDndDeps } from "./paneDndCallbacks";
+import { createPaneDndCallbacks, deliveryTargetAt, type PaneDndDeps } from "./paneDndCallbacks";
 import { PaneDragPointerSensor } from "./paneDragPointerSensor";
 
 // The pane reorder DndContext (doc 19): Stuart's sortable-container-in-a-grid
@@ -54,6 +54,8 @@ export function CanvasPaneDnd({
       createWorldSpaceCollision({
         getViewport: () => deps.getLayout().viewport,
         getSurfaceOrigin: deps.getSurfaceOrigin,
+        getDeliveryTarget: (world, activeId) =>
+          deliveryTargetAt(deps.getLayout(), world, activeId, deps.contentRefFor),
       }),
     [deps],
   );

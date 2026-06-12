@@ -30,26 +30,34 @@ export interface PaneDndResult {
   settle: boolean;
 }
 
+function locatorForRef(
+  ref: CanvasPaneRef | undefined,
+): { source: "path" | "url"; locator: string } | null {
+  if (ref === undefined || ref.kind !== "resource" || !("source" in ref)) return null;
+  return ref.source === "path"
+    ? { source: "path", locator: ref.path }
+    : { source: "url", locator: ref.url };
+}
+
+// The one delivery resolution every consumer shares: collision (suppressing
+// reorder targeting so the paste target does not shift away mid-hover), the
+// move-tick highlight, and the release handler. A delivery target exists only
+// when the dragged pane carries a locator AND the topmost pane under the
+// point has a registered paste handle.
+export function deliveryTargetAt(
+  layout: EngineLayoutState,
+  point: { x: number; y: number },
+  activeId: string,
+  contentRefFor: (paneId: string) => CanvasPaneRef | undefined,
+): { targetPaneId: string; paste: (locator: string) => void } | null {
+  if (locatorForRef(contentRefFor(activeId)) === null) return null;
+  const targetPaneId = paneIdAtWorldPoint(layout, point, activeId);
+  if (targetPaneId === null) return null;
+  const paste = resolvePasteHandle(targetPaneId);
+  return paste === null ? null : { targetPaneId, paste };
+}
+
 export function createPaneDndCallbacks(deps: PaneDndDeps) {
-  function locatorFor(paneId: string): { source: "path" | "url"; locator: string } | null {
-    const ref = deps.contentRefFor(paneId);
-    if (ref === undefined || ref.kind !== "resource" || !("source" in ref)) return null;
-    return ref.source === "path"
-      ? { source: "path", locator: ref.path }
-      : { source: "url", locator: ref.url };
-  }
-
-  function terminalUnder(
-    layout: EngineLayoutState,
-    point: { x: number; y: number },
-    excludePaneId: string,
-  ) {
-    const targetPaneId = paneIdAtWorldPoint(layout, point, excludePaneId);
-    if (targetPaneId === null) return null;
-    const paste = resolvePasteHandle(targetPaneId);
-    return paste === null ? null : { targetPaneId, paste };
-  }
-
   function dragWorldPoint(event: DragMoveEvent | DragEndEvent): { x: number; y: number } | null {
     const activator = event.activatorEvent as Partial<PointerEvent>;
     if (typeof activator.clientX !== "number" || typeof activator.clientY !== "number") {
@@ -81,9 +89,11 @@ export function createPaneDndCallbacks(deps: PaneDndDeps) {
 
     onDragMove(event: DragMoveEvent): void {
       const activeId = String(event.active.id);
-      if (locatorFor(activeId) === null) return;
       const point = dragWorldPoint(event);
-      const terminal = point === null ? null : terminalUnder(deps.getLayout(), point, activeId);
+      const terminal =
+        point === null
+          ? null
+          : deliveryTargetAt(deps.getLayout(), point, activeId, deps.contentRefFor);
       writeTerminalTarget(terminal?.targetPaneId ?? null);
     },
 
@@ -92,9 +102,10 @@ export function createPaneDndCallbacks(deps: PaneDndDeps) {
       const layout = deps.getLayout();
       let settle = false;
 
-      const locator = locatorFor(activeId);
-      const point = locator === null ? null : dragWorldPoint(event);
-      const terminal = point === null ? null : terminalUnder(layout, point, activeId);
+      const locator = locatorForRef(deps.contentRefFor(activeId));
+      const point = dragWorldPoint(event);
+      const terminal =
+        point === null ? null : deliveryTargetAt(layout, point, activeId, deps.contentRefFor);
 
       const overId = event.over === null ? null : String(event.over.id);
       if (terminal && locator) {

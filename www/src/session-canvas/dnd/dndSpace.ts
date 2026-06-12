@@ -55,19 +55,27 @@ export interface WorldCollisionDeps {
   // The canvas surface element's client origin: dnd-kit reports pointer
   // coordinates in client space, the viewport transform is surface-relative.
   getSurfaceOrigin(): { left: number; top: number };
+  // When the drag point sits on a delivery target (a locator pane over a
+  // paste-handle pane), there is no reorder target at all: returning no
+  // collisions clears `over`, the sortable strategy stops shifting siblings,
+  // and the paste target stays put under the cursor instead of dodging it.
+  getDeliveryTarget?(world: { x: number; y: number }, activeId: string): unknown | null;
 }
 
 // Pointer-within first (the pane directly under the drag point wins), closest
 // rect center as the fallback so releases over empty canvas still target the
 // nearest slot. All comparisons happen in world coordinates.
 export function createWorldSpaceCollision(deps: WorldCollisionDeps): CollisionDetection {
-  return ({ droppableContainers, droppableRects, pointerCoordinates }) => {
+  return ({ active, droppableContainers, droppableRects, pointerCoordinates }) => {
     if (pointerCoordinates === null) return [];
     const origin = deps.getSurfaceOrigin();
     const world = pointerToWorld(deps.getViewport(), {
       x: pointerCoordinates.x - origin.left,
       y: pointerCoordinates.y - origin.top,
     });
+    if (active !== null && deps.getDeliveryTarget?.(world, String(active.id)) != null) {
+      return [];
+    }
 
     let closest: { id: string | number; distance: number } | null = null;
     for (const container of droppableContainers) {

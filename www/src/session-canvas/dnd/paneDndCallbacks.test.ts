@@ -3,7 +3,7 @@ import type { EngineLayoutState } from "../../engine";
 import type { CanvasPaneRef } from "../model/paneRecords";
 import { registerPasteHandle } from "../viewers/terminal/pasteRegistry";
 import { useDropTargetStore } from "./dropTargetStore";
-import { createPaneDndCallbacks } from "./paneDndCallbacks";
+import { createPaneDndCallbacks, deliveryTargetAt } from "./paneDndCallbacks";
 
 const RECT_A = { x: 0, y: 0, width: 100, height: 100 };
 const RECT_B = { x: 120, y: 0, width: 100, height: 100 };
@@ -53,6 +53,32 @@ function dragEvent(activeId: string, at: { x: number; y: number }, overId: strin
     delta: { x: 0, y: 0 },
   } as never;
 }
+
+describe("deliveryTargetAt", () => {
+  beforeEach(() => useDropTargetStore.setState({ target: null }));
+
+  it("resolves the topmost paste-handle pane under the point for a locator pane", () => {
+    const paste = vi.fn();
+    const unregister = registerPasteHandle("a", paste);
+
+    const target = deliveryTargetAt(layout(), { x: 50, y: 50 }, "b", () => RESOURCE_REF);
+
+    expect(target?.targetPaneId).toBe("a");
+    unregister();
+  });
+
+  it("returns null for panes without a locator ref", () => {
+    const unregister = registerPasteHandle("a", vi.fn());
+    expect(deliveryTargetAt(layout(), { x: 50, y: 50 }, "b", () => undefined)).toBeNull();
+    unregister();
+  });
+
+  it("never targets the dragged pane itself", () => {
+    const unregister = registerPasteHandle("a", vi.fn());
+    expect(deliveryTargetAt(layout(), { x: 50, y: 50 }, "a", () => RESOURCE_REF)).toBeNull();
+    unregister();
+  });
+});
 
 describe("createPaneDndCallbacks", () => {
   beforeEach(() => useDropTargetStore.setState({ target: null }));

@@ -138,6 +138,30 @@ describe("createWorldSpaceCollision", () => {
     } as never);
     expect(result).toEqual([]);
   });
+
+  it("suppresses reorder targeting while the drag point sits on a delivery target", () => {
+    // delivery wins over reorder: with no `over`, the sortable strategy stops
+    // shifting siblings, so the paste target stays put under the cursor
+    const deliveryAware = createWorldSpaceCollision({
+      getViewport: () => VIEWPORT,
+      getSurfaceOrigin: () => ({ left: 10, top: 20 }),
+      getDeliveryTarget: (world, activeId) =>
+        activeId === "drag-me" && world.x >= 186 && world.x <= 326 ? "b" : null,
+    });
+    const args = (world: { x: number; y: number }) =>
+      ({
+        pointerCoordinates: clientAt(world.x, world.y),
+        droppableRects: worldRects,
+        droppableContainers: containers,
+        active: { id: "drag-me" },
+        collisionRect: null,
+      }) as never;
+
+    // over the paste-handle pane: no reorder target at all
+    expect(deliveryAware(args({ x: 190, y: 35 }))).toEqual([]);
+    // off the delivery target: normal reorder targeting resumes
+    expect(deliveryAware(args({ x: 40, y: 35 })).map((c) => c.id)).toEqual(["a"]);
+  });
 });
 
 describe("sortableTransformToWorld", () => {
