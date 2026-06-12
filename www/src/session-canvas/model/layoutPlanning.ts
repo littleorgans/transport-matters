@@ -43,9 +43,7 @@ export type ExpandedLayoutPlanner = (
 ) => CameraPlanResult;
 
 export function openPaneIds(layout: EngineLayoutState): PaneId[] {
-  return Object.values(layout.nodes)
-    .filter((node) => node.lifecycle === "open")
-    .map((node) => node.paneId);
+  return layout.order.filter((paneId) => layout.nodes[paneId]?.lifecycle === "open");
 }
 
 export function seedPaneLayout(layout: EngineLayoutState, paneId: PaneId): EngineLayoutState {
@@ -79,8 +77,9 @@ export function planLayout(
   fitToContent: boolean,
   expandedPaneId: PaneId | null = null,
   planExpandedLayout?: ExpandedLayoutPlanner,
+  paneIdsOverride?: readonly PaneId[],
 ): EngineLayoutState {
-  const paneIds = openPaneIds(layout);
+  const paneIds = paneIdsOverride ? [...paneIdsOverride] : openPaneIds(layout);
   const planned: CameraPlanResult =
     expandedPaneId && paneIds.includes(expandedPaneId) && planExpandedLayout
       ? planExpandedLayout({ paneIds, expandedPaneId, viewport: bounds })
