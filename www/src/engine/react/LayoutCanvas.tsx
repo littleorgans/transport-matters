@@ -8,10 +8,12 @@ export interface LayoutCanvasProps extends CanvasViewportActions {
   label: string;
   onFocusPane(paneId: PaneId): void;
   onMovePane(paneId: PaneId, rect: WorldRect): void;
+  onMovePaneCancel?(paneId: PaneId): void;
   onMovePaneEnd?(paneId: PaneId, rect: WorldRect): void;
   onResizePane(paneId: PaneId, rect: WorldRect): void;
   titleIdForPane(paneId: PaneId): string;
   renderPane(paneId: PaneId): React.ReactNode;
+  paneBodyDrag?(paneId: PaneId): boolean;
   // Optional: when true, the world layer gets a transform transition (the lab's camera "fly").
   // Omitted by /canvas, so production behaviour is unchanged.
   framing?: boolean;
@@ -29,10 +31,12 @@ interface PaneLayerProps {
   paneMotion: boolean;
   onFocusPane(paneId: PaneId): void;
   onMovePane(paneId: PaneId, rect: WorldRect): void;
+  onMovePaneCancel?(paneId: PaneId): void;
   onMovePaneEnd?(paneId: PaneId, rect: WorldRect): void;
   onResizePane(paneId: PaneId, rect: WorldRect): void;
   titleIdForPane(paneId: PaneId): string;
   renderPane(paneId: PaneId): React.ReactNode;
+  paneBodyDrag?(paneId: PaneId): boolean;
 }
 
 // The pane subtree, split out and memoized so a pan/zoom (which writes a new viewport every tick and
@@ -50,15 +54,18 @@ const PaneLayer = memo(function PaneLayer({
   paneMotion,
   onFocusPane,
   onMovePane,
+  onMovePaneCancel,
   onMovePaneEnd,
   onResizePane,
   titleIdForPane,
   renderPane,
+  paneBodyDrag,
 }: PaneLayerProps) {
   return (
     <>
       {nodes.map((node) => (
         <PaneFrame
+          bodyDrag={paneBodyDrag?.(node.paneId) ?? false}
           focused={focusedPaneId === node.paneId}
           instant={instant}
           key={node.paneId}
@@ -66,6 +73,7 @@ const PaneLayer = memo(function PaneLayer({
           node={node}
           onFocus={onFocusPane}
           onMove={onMovePane}
+          onMoveCancel={onMovePaneCancel}
           onMoveEnd={onMovePaneEnd}
           onResize={onResizePane}
           titleId={titleIdForPane(node.paneId)}
@@ -84,11 +92,13 @@ export function LayoutCanvas({
   setViewport,
   onFocusPane,
   onMovePane,
+  onMovePaneCancel,
   onMovePaneEnd,
   onResizePane,
   titleIdForPane,
   framing = false,
   paneMotion = false,
+  paneBodyDrag,
   overlay,
 }: LayoutCanvasProps) {
   const { bindViewport, handleWheel, handleKeyDown, panReady, panning, zooming } =
@@ -139,8 +149,10 @@ export function LayoutCanvas({
           instant={instant}
           nodes={nodes}
           paneMotion={paneMotion}
+          paneBodyDrag={paneBodyDrag}
           onFocusPane={onFocusPane}
           onMovePane={onMovePane}
+          onMovePaneCancel={onMovePaneCancel}
           onMovePaneEnd={onMovePaneEnd}
           onResizePane={onResizePane}
           renderPane={renderPane}

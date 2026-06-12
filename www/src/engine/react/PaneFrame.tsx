@@ -1,6 +1,6 @@
 import { useDrag } from "@use-gesture/react";
 import { motion, type Transition, useReducedMotion } from "framer-motion";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { CLOSE_DELAY_MS } from "../reducers/layoutState";
 import { moveRect, resizeRect } from "../reducers/paneLifecycle";
 import type { PaneNode, WorldRect } from "../types";
@@ -14,8 +14,10 @@ export interface PaneFrameProps {
   instant?: boolean;
   // Opt-in for layout mode changes where the pane's world rect should visibly transform.
   layoutMotion?: boolean;
+  bodyDrag?: boolean;
   onFocus(paneId: string): void;
   onMove(paneId: string, rect: WorldRect): void;
+  onMoveCancel?(paneId: string): void;
   onMoveEnd?(paneId: string, rect: WorldRect): void;
   onResize(paneId: string, rect: WorldRect): void;
   children: React.ReactNode;
@@ -38,8 +40,10 @@ export function PaneFrame({
   titleId,
   instant = false,
   layoutMotion = false,
+  bodyDrag = false,
   onFocus,
   onMove,
+  onMoveCancel,
   onMoveEnd,
   onResize,
   children,
@@ -59,6 +63,7 @@ export function PaneFrame({
   const [liveRect, setLiveRect] = useState<WorldRect | null>(null);
   const moveBase = useRef<WorldRect | null>(null);
   const resizeBase = useRef<WorldRect | null>(null);
+  const cancelledRef = useRef(false);
 
   const closing = node.lifecycle === "closing";
   const baseTransition =
@@ -77,13 +82,35 @@ export function PaneFrame({
   // otherwise. children always read the store rect, so they hold pre-drag layout until commit.
   const renderRect = liveRect ?? node.rect;
 
+  useEffect(() => {
+    if (!dragging) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || dragMode.current !== "move") return;
+      cancelledRef.current = true;
+      onMoveCancel?.(node.paneId);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [dragging, node.paneId, onMoveCancel]);
+
   const bindDrag = useDrag(
     ({ movement: [moveX, moveY], event, first, last, shiftKey }) => {
       // Shift+drag belongs to the canvas (pan), not the pane: leave the pane where it is.
       if (shiftKey) return;
       const target = event.target;
-      if (first) dragMode.current = dragModeForTarget(target);
+      if (first) dragMode.current = dragModeForTarget(target, bodyDrag);
       if (!dragMode.current) return;
+      if (cancelledRef.current) {
+        if (last) {
+          cancelledRef.current = false;
+          dragMode.current = null;
+          moveBase.current = null;
+          resizeBase.current = null;
+          setLiveRect(null);
+          setDragging(false);
+        }
+        return;
+      }
       event.stopPropagation();
       const scale = currentWorldScale(target);
       if (first) {
@@ -165,10 +192,13 @@ export function PaneFrame({
   );
 }
 
-function dragModeForTarget(target: EventTarget | null): DragMode | null {
+export function dragModeForTarget(target: EventTarget | null, bodyDrag: boolean): DragMode | null {
   if (!(target instanceof Element)) return null;
   if (target.closest("[data-pane-resize-handle='true']")) return "resize";
   if (target.closest("[data-pane-drag-handle='true']")) return "move";
+  if (bodyDrag && !target.closest("button, a, input, textarea, select, [data-pane-no-drag='true']")) {
+    return "move";
+  }
   return null;
 }
 
