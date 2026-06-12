@@ -18,6 +18,13 @@ interface ThemeState {
    * canonical export format like any other theme field. No-op while unthemed.
    */
   setSceneParam: (paramId: string, value: number) => void;
+  /**
+   * When true (the default), scenes with a dayProgress param track the real
+   * local clock instead of the stored baseline. A runtime preference, not
+   * theme data: the live value never enters settings.sceneParams.
+   */
+  liveDayCycle: boolean;
+  setLiveDayCycle: (value: boolean) => void;
 }
 
 export const useThemeStore = create<ThemeState>()(
@@ -39,11 +46,13 @@ export const useThemeStore = create<ThemeState>()(
             },
           };
         }),
+      liveDayCycle: true,
+      setLiveDayCycle: (value) => set({ liveDayCycle: value }),
     }),
     {
       name: FRONTEND_STORAGE_KEYS.themeStore,
       storage: createFrontendPersistStorage(),
-      partialize: (state) => ({ theme: state.theme }),
+      partialize: (state) => ({ theme: state.theme, liveDayCycle: state.liveDayCycle }),
     },
   ),
 );

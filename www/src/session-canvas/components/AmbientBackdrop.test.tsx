@@ -29,12 +29,25 @@ const openWater = presetTheme("open-water");
 if (!openWater) throw new Error("expected bundled preset");
 
 beforeEach(() => {
-  useThemeStore.setState({ theme: null });
+  useThemeStore.setState({ theme: null, liveDayCycle: true });
 });
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.useRealTimers();
 });
+
+// jsdom implements neither WebGL nor matchMedia; with a real (fake) engine
+// the mount effect reaches the reduced-motion media query, so stub it.
+const stubMatchMedia = () =>
+  vi.stubGlobal(
+    "matchMedia",
+    vi.fn(() => ({
+      matches: false,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    })),
+  );
 
 describe("driveAmbientScene", () => {
   it("keys every scene param by id and fills defaults the theme omits", () => {
@@ -90,19 +103,10 @@ describe("AmbientBackdrop", () => {
   });
 
   it("live-applies a param scrub without re-sending the scene", () => {
-    // jsdom implements neither WebGL nor matchMedia; with a real (fake) engine
-    // the mount effect reaches the reduced-motion media query, so stub it.
-    vi.stubGlobal(
-      "matchMedia",
-      vi.fn(() => ({
-        matches: false,
-        addEventListener: vi.fn(),
-        removeEventListener: vi.fn(),
-      })),
-    );
+    stubMatchMedia();
     const bg = fakeBackground();
     vi.mocked(createAmbientBackground).mockReturnValueOnce(bg);
-    useThemeStore.setState({ theme: openWater });
+    useThemeStore.setState({ theme: openWater, liveDayCycle: false });
     render(<AmbientBackdrop />);
 
     expect(bg.setScene).toHaveBeenCalledTimes(1);
@@ -117,5 +121,45 @@ describe("AmbientBackdrop", () => {
     expect(bg.setParam).toHaveBeenCalledWith("dayProgress", 0.9);
     expect(bg.setScene).not.toHaveBeenCalled();
     expect(bg.setPhoto).not.toHaveBeenCalled();
+  });
+
+  it("live day cycle pushes the local clock into the renderer without touching the store", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 5, 13, 6, 0, 0)); // 06:00 -> 0.25
+    stubMatchMedia();
+    const bg = fakeBackground();
+    vi.mocked(createAmbientBackground).mockReturnValueOnce(bg);
+    useThemeStore.setState({ theme: openWater });
+    render(<AmbientBackdrop />);
+
+    expect(bg.setParam).toHaveBeenCalledWith("dayProgress", 0.25);
+    vi.mocked(bg.setParam).mockClear();
+
+    act(() => {
+      // advanceTimersByTime moves the mocked clock too: 11:59:30 + 30s tick = noon
+      vi.setSystemTime(new Date(2026, 5, 13, 11, 59, 30));
+      vi.advanceTimersByTime(30_000);
+    });
+    expect(bg.setParam).toHaveBeenCalledWith("dayProgress", 0.5);
+    // runtime-only: the stored theme keeps its baseline, no time of day baked in
+    expect(useThemeStore.getState().theme?.settings.sceneParams.dayProgress).toBeUndefined();
+  });
+
+  it("leaving live mode restores the stored baseline params", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 5, 13, 12, 0, 0));
+    stubMatchMedia();
+    const bg = fakeBackground();
+    vi.mocked(createAmbientBackground).mockReturnValueOnce(bg);
+    useThemeStore.setState({ theme: openWater });
+    render(<AmbientBackdrop />);
+    vi.mocked(bg.setParam).mockClear();
+
+    act(() => {
+      useThemeStore.getState().setLiveDayCycle(false);
+    });
+
+    // back to the scene default baseline (open-water stores no override)
+    expect(bg.setParam).toHaveBeenCalledWith("dayProgress", 0.25);
   });
 });

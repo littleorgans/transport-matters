@@ -1,5 +1,13 @@
+import { useEffect, useState } from "react";
+import type { AmbientSceneParamMetadata } from "../../ambient/sceneRegistry";
 import { sceneRegistry } from "../../ambient/sceneRegistry";
 import { useThemeStore } from "../../stores/themeStore";
+import {
+  DAY_PROGRESS_PARAM_ID,
+  LIVE_DAY_INTERVAL_MS,
+  localDayProgress,
+} from "../../theme/dayCycle";
+import type { ThemeSettings } from "../../theme/types";
 
 /**
  * Data-driven tuning sliders for the active theme's scene, one per param in
@@ -7,29 +15,87 @@ import { useThemeStore } from "../../stores/themeStore";
  * cycle). Scrubbing writes settings.sceneParams through the store, which the
  * ambient backdrop live-applies per frame. Renders nothing while unthemed or
  * when the scene has no params, so paramless scenes cost no chrome.
+ *
+ * The dayProgress param additionally carries a Live toggle (default on): in
+ * live mode the slider mirrors the real local clock and dragging it drops
+ * back to manual. The live value never enters the stored theme.
  */
 export function SceneParamControls() {
   const settings = useThemeStore((state) => state.theme?.settings ?? null);
-  const setSceneParam = useThemeStore((state) => state.setSceneParam);
   if (!settings) return null;
   const params = sceneRegistry.paramsFor(settings.sceneId);
   if (params.length === 0) return null;
   return (
     <>
       {params.map((param) => (
-        <label className="canvas-lab-toggle canvas-scene-param" key={param.id}>
-          {param.label}
-          <input
-            aria-label={`Scene ${param.label}`}
-            max={param.max}
-            min={param.min}
-            onChange={(event) => setSceneParam(param.id, Number(event.target.value))}
-            step={param.step}
-            type="range"
-            value={settings.sceneParams[param.id] ?? param.defaultValue}
-          />
-        </label>
+        <SceneParamRow key={param.id} param={param} settings={settings} />
       ))}
     </>
   );
+}
+
+function SceneParamRow({
+  param,
+  settings,
+}: {
+  param: AmbientSceneParamMetadata;
+  settings: ThemeSettings;
+}) {
+  const setSceneParam = useThemeStore((state) => state.setSceneParam);
+  const liveDayCycle = useThemeStore((state) => state.liveDayCycle);
+  const setLiveDayCycle = useThemeStore((state) => state.setLiveDayCycle);
+
+  const isDayParam = param.id === DAY_PROGRESS_PARAM_ID;
+  const live = isDayParam && liveDayCycle;
+  const clockValue = useClockDayProgress(live);
+
+  const value = live
+    ? (clockValue ?? localDayProgress(new Date()))
+    : (settings.sceneParams[param.id] ?? param.defaultValue);
+
+  return (
+    <>
+      <label className="canvas-lab-toggle canvas-scene-param">
+        {param.label}
+        <input
+          aria-label={`Scene ${param.label}`}
+          max={param.max}
+          min={param.min}
+          onChange={(event) => {
+            if (live) setLiveDayCycle(false);
+            setSceneParam(param.id, Number(event.target.value));
+          }}
+          step={param.step}
+          type="range"
+          value={value}
+        />
+      </label>
+      {isDayParam ? (
+        <label className="canvas-lab-toggle">
+          <input
+            checked={liveDayCycle}
+            onChange={(event) => setLiveDayCycle(event.target.checked)}
+            type="checkbox"
+          />
+          Live
+        </label>
+      ) : null}
+    </>
+  );
+}
+
+/** Mirrors the local clock while active so the live slider position is honest. */
+function useClockDayProgress(active: boolean): number | null {
+  const [value, setValue] = useState<number | null>(null);
+  useEffect(() => {
+    if (!active) {
+      setValue(null);
+      return;
+    }
+    const tick = () => setValue(localDayProgress(new Date()));
+    tick();
+    const timer = window.setInterval(tick, LIVE_DAY_INTERVAL_MS);
+    return () => window.clearInterval(timer);
+  }, [active]);
+  return value;
 }

@@ -8,7 +8,7 @@ if (!littleorgans) throw new Error("expected bundled presets");
 
 beforeEach(() => {
   localStorage.clear();
-  useThemeStore.setState({ theme: null });
+  useThemeStore.setState({ theme: null, liveDayCycle: true });
 });
 
 describe("themeStore", () => {
@@ -35,6 +35,13 @@ describe("themeStore", () => {
   it("setSceneParam is a no-op while unthemed", () => {
     useThemeStore.getState().setSceneParam("dayProgress", 0.8);
     expect(useThemeStore.getState().theme).toBeNull();
+  });
+
+  it("liveDayCycle defaults on and persists as a runtime preference", () => {
+    expect(useThemeStore.getState().liveDayCycle).toBe(true);
+    useThemeStore.getState().setLiveDayCycle(false);
+    const raw = localStorage.getItem(FRONTEND_STORAGE_KEYS.themeStore);
+    expect(raw).toContain('"liveDayCycle":false');
   });
 
   it("persists the full definition under the theme storage key", () => {

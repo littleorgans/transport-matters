@@ -3,8 +3,17 @@ import { createAmbientBackground } from "../../ambient/createAmbientBackground";
 import { sceneRegistry } from "../../ambient/sceneRegistry";
 import type { AmbientBackground } from "../../ambient/types";
 import { useThemeStore } from "../../stores/themeStore";
+import {
+  DAY_PROGRESS_PARAM_ID,
+  LIVE_DAY_INTERVAL_MS,
+  localDayProgress,
+} from "../../theme/dayCycle";
 import { themeValidationDeps } from "../../theme/deps";
 import type { ThemeSettings } from "../../theme/types";
+
+export function sceneHasDayProgress(sceneId: string): boolean {
+  return sceneRegistry.paramsFor(sceneId).some((param) => param.id === DAY_PROGRESS_PARAM_ID);
+}
 
 /**
  * Pushes one theme's scene into a running ambient renderer. setParam keys by
@@ -88,6 +97,24 @@ function AmbientCanvas({ settings }: { settings: ThemeSettings }) {
       driveSceneParams(bg, settings);
     }
   }, [settings]);
+
+  // The live day clock. Declared after the drive effect so each clock push
+  // lands on top of whatever baseline the drive just re-applied. Pushes go
+  // straight to the renderer, never into the store: the stored baseline must
+  // not absorb a time of day. Leaving live mode restores the baseline params.
+  const liveDayCycle = useThemeStore((state) => state.liveDayCycle);
+  useEffect(() => {
+    const bg = bgRef.current;
+    if (!bg || !sceneHasDayProgress(settings.sceneId)) return;
+    if (!liveDayCycle) {
+      driveSceneParams(bg, settings);
+      return;
+    }
+    const push = () => bg.setParam(DAY_PROGRESS_PARAM_ID, localDayProgress(new Date()));
+    push();
+    const timer = window.setInterval(push, LIVE_DAY_INTERVAL_MS);
+    return () => window.clearInterval(timer);
+  }, [liveDayCycle, settings]);
 
   return <canvas aria-hidden className="canvas-ambient-backdrop" ref={canvasRef} />;
 }
