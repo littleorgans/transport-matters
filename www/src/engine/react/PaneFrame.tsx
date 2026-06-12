@@ -1,6 +1,7 @@
 import { useDrag } from "@use-gesture/react";
 import { motion, type Transition, useReducedMotion } from "framer-motion";
 import { useRef, useState } from "react";
+import { roundWorldPoint } from "../layout/geometry";
 import { CLOSE_DELAY_MS } from "../reducers/layoutState";
 import { moveRect, resizeRect } from "../reducers/paneLifecycle";
 import type { PaneNode, WorldRect } from "../types";
@@ -204,17 +205,18 @@ export function PaneFrame({
   );
 }
 
-// Position the pane renders at. At rest the exact planner rect (fractions are
-// static, antialiasing handles them). While a dnd transform is live the
-// composed position quantizes to whole world pixels: per-tick subpixel
-// translates inside the scaled container leave compositor ghost trails (the
-// damage rect misses the moving pane's edges).
+// Position the pane renders at. At rest the rect passes through untouched
+// (planner output is already quantized at the planLayout chokepoint). While
+// a dnd transform is live, the composed position quantizes through the shared
+// world-geometry primitive: per-tick subpixel translates inside the scaled
+// container leave compositor ghost trails (the damage rect misses the moving
+// pane's edges).
 export function dndPanePosition(
   rect: { x: number; y: number },
   transform: { x: number; y: number } | null,
 ): { x: number; y: number } {
   if (transform === null) return { x: rect.x, y: rect.y };
-  return { x: Math.round(rect.x + transform.x), y: Math.round(rect.y + transform.y) };
+  return roundWorldPoint({ x: rect.x + transform.x, y: rect.y + transform.y });
 }
 
 export function dragModeForTarget(target: EventTarget | null, bodyDrag: boolean): DragMode | null {

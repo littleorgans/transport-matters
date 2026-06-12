@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { PaneId, WorldRect } from "../../engine";
-import { resolveLayout } from "../../engine/layout";
+import { resolveLayout, roundWorldRect } from "../../engine/layout";
 import { makeSessionSummary } from "../testUtils";
 import { PICKER_PANE_ID } from "../viewers/registry";
 import { resetCanvasStoreForTests, useCanvasStore } from "./canvasStore";
@@ -9,12 +9,17 @@ import { openPaneIds } from "./layoutPlanning";
 
 type CanvasStoreSnapshot = ReturnType<typeof useCanvasStore.getState>;
 
+// Store rects are the strategy plan quantized at the planLayout chokepoint,
+// so the expectation rounds through the same shared primitive.
 function plannedRects(state: CanvasStoreSnapshot): Record<PaneId, WorldRect> {
   const paneIds = openPaneIds(state.layout);
-  return resolveLayout(state.activeStrategyId).plan(
+  const planned = resolveLayout(state.activeStrategyId).plan(
     { paneIds, viewport: state.bounds },
     state.params,
   ).rects;
+  return Object.fromEntries(
+    Object.entries(planned).map(([paneId, rect]) => [paneId, roundWorldRect(rect)]),
+  );
 }
 
 function expectRectsToMatchStrategy(state: CanvasStoreSnapshot): void {
@@ -173,7 +178,7 @@ describe("canvasStore", () => {
     });
     expect(expanded.expandedPaneId).toBe("transcript:abc");
     for (const [paneId, rect] of Object.entries(expected.rects)) {
-      expect(expanded.layout.nodes[paneId]?.rect).toEqual(rect);
+      expect(expanded.layout.nodes[paneId]?.rect).toEqual(roundWorldRect(rect));
     }
     expect(expanded.layout.viewport).toEqual(expected.camera);
 

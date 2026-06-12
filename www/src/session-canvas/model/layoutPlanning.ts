@@ -19,6 +19,7 @@ import {
   type PlanInput,
   type PlanResult,
   resolveLayout,
+  roundWorldRect,
 } from "../../engine/layout";
 
 export const DEFAULT_BOUNDS: ViewportBounds = { width: 1600, height: 1000 };
@@ -83,9 +84,15 @@ export function planLayout(
     expandedPaneId && paneIds.includes(expandedPaneId) && planExpandedLayout
       ? planExpandedLayout({ paneIds, expandedPaneId, viewport: bounds })
       : resolveLayout(activeStrategyId).plan({ paneIds, viewport: bounds }, params);
-  let next = updateNodeRects(layout, planned.rects);
+  // One quantization chokepoint for every strategy and the expand planner:
+  // panes render at whole world pixels (engine/layout/geometry.ts). The
+  // camera/frame may stay fractional; a single static transform cannot trail.
+  const rects = Object.fromEntries(
+    Object.entries(planned.rects).map(([paneId, rect]) => [paneId, roundWorldRect(rect)]),
+  );
+  let next = updateNodeRects(layout, rects);
   if (fitToContent) {
-    const fitted = planned.camera ?? fitViewport(planned.rects, bounds, planned.frame);
+    const fitted = planned.camera ?? fitViewport(rects, bounds, planned.frame);
     if (fitted) next = setEngineViewport(next, fitted);
   }
   return next;
