@@ -24,6 +24,7 @@ import {
   planPaneUnexpand,
   planPaneUnframe,
   removeDockedPane,
+  runDockPaneFlow,
   runSpawnPaneFlow,
   stripPaneFlyIntent,
 } from "../model/paneAffordances";
@@ -165,6 +166,14 @@ export const useCanvasLabStore = create<CanvasLabState>()(
               label,
             }),
           };
+        });
+      },
+
+      dockPane(ref) {
+        return runDockPaneFlow(paneIdForRef(ref), {
+          isOpen: (paneId) => get().contentRefs[paneId] !== undefined,
+          minimizePane: (paneId) => get().minimizePane(paneId),
+          park: (paneId) => set((state) => ({ docked: parkDockedPane(state.docked, paneId, ref) })),
         });
       },
 

@@ -17,7 +17,7 @@ export interface CanvasDropTargetDeps {
   contentRefFor(paneId: string): CanvasPaneRef | undefined;
   titleFor(paneId: string): string;
   spawnPane(ref: PaneContentRef, options?: { focus: boolean }): string;
-  minimizePane(paneId: string): void;
+  dockPane(ref: PaneContentRef): string;
 }
 
 export function useCanvasDropTargets(
@@ -75,7 +75,7 @@ export function useCanvasDropTargets(
         {
           resolvePath: window.transportMattersDesktop?.getPathForFile ?? null,
           spawnPane: current.spawnPane,
-          minimizePane: current.minimizePane,
+          dockPane: current.dockPane,
           showHint: setDropHint,
         },
       );

@@ -47,6 +47,8 @@ export interface CanvasLabState {
   setParam(key: string, value: ParamValue): void;
   setFitToContent(on: boolean): void;
   organize(): void;
+  /** Terminal delivery: park a ref straight into the dock, no pane, no replan. Open panes minimize. */
+  dockPane(ref: PaneContentRef): PaneId;
   /** Release: splice the order and replan. */
   commitReorder(paneId: PaneId, index: number): void;
   setBounds(bounds: ViewportBounds): void;

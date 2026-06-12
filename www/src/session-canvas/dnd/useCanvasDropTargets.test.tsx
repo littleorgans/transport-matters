@@ -37,7 +37,7 @@ function Harness({ bridge = false }: { bridge?: boolean }) {
     contentRefFor: () => undefined,
     titleFor: (paneId) => (paneId === "terminal" ? "Claude-1" : paneId),
     spawnPane: vi.fn((ref: PaneContentRef) => `resource:${ref.kind}`),
-    minimizePane: vi.fn(),
+    dockPane: vi.fn((ref: PaneContentRef) => `resource:${ref.kind}`),
   });
   if (bridge) {
     window.transportMattersDesktop = {

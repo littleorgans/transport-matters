@@ -48,6 +48,23 @@ describe("canvasLabStore terminals", () => {
     expect(Object.keys(store().layout.nodes).sort()).toEqual(["lab-1", "lab-2", "lab-3"]);
   });
 
+  it("dockPane parks a ref in the dock without touching the layout", () => {
+    resetCanvasLabStoreForTests();
+    const ref = {
+      kind: "resource",
+      owner: "local",
+      source: "path",
+      path: "/t/x.png",
+    } as const;
+    const layoutBefore = store().layout;
+
+    const paneId = store().dockPane(ref);
+
+    expect(store().layout).toBe(layoutBefore);
+    expect(store().contentRefs[paneId]).toBeUndefined();
+    expect(store().docked[0]).toMatchObject({ paneId, ref });
+  });
+
   it("commitReorder splices the order and replans", () => {
     resetCanvasLabStoreForTests();
     store().addTerminal();

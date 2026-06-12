@@ -49,6 +49,7 @@ export function CanvasSurface({ launch, launchStatus, launchSessionId }: CanvasS
   const expandPane = useCanvasStore((state) => state.expandPane);
   const framePane = useCanvasStore((state) => state.framePane);
   const minimizePane = useCanvasStore((state) => state.minimizePane);
+  const dockPane = useCanvasStore((state) => state.dockPane);
   const commitReorder = useCanvasStore((state) => state.commitReorder);
   const spawnPane = useCanvasStore((state) => state.spawnPane);
   const resizePane = useCanvasStore((state) => state.resizePane);
@@ -102,7 +103,7 @@ export function CanvasSurface({ launch, launchStatus, launchSessionId }: CanvasS
     contentRefFor: (paneId) => useCanvasStore.getState().panes[paneId]?.contentRef,
     titleFor: (paneId) => useCanvasStore.getState().panes[paneId]?.title ?? paneId,
     spawnPane,
-    minimizePane,
+    dockPane,
   });
 
   // Stable across viewport-only renders so the memoized PaneLayer skips the pane subtree on pan/zoom.

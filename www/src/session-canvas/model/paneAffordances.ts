@@ -340,3 +340,26 @@ export function runSpawnPaneFlow(paneId: PaneId, focus: boolean, flow: SpawnPane
   flow.seed(paneId);
   return paneId;
 }
+
+/**
+ * The shared dock contract (terminal delivery parks the resource without
+ * opening a pane): an OPEN pane minimizes through the dismiss flow, since it
+ * is leaving the canvas and should animate and replan once; anything else
+ * parks straight into the dock with NO layout mutation, so the grid never
+ * resizes. parkDockedPane de-dupes and moves to front, which also covers the
+ * already-docked case.
+ */
+export interface DockPaneFlow {
+  isOpen(paneId: PaneId): boolean;
+  minimizePane(paneId: PaneId): void;
+  park(paneId: PaneId): void;
+}
+
+export function runDockPaneFlow(paneId: PaneId, flow: DockPaneFlow): PaneId {
+  if (flow.isOpen(paneId)) {
+    flow.minimizePane(paneId);
+    return paneId;
+  }
+  flow.park(paneId);
+  return paneId;
+}

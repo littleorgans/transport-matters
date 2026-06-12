@@ -80,11 +80,11 @@ describe("handleCanvasDrop", () => {
   const baseDeps = () => ({
     resolvePath: () => "/tmp/My Shot.png",
     spawnPane: vi.fn(() => "resource:path:/tmp/My Shot.png"),
-    minimizePane: vi.fn(),
+    dockPane: vi.fn(),
     showHint: vi.fn(),
   });
 
-  it("pastes the escaped locator into a terminal target and parks a docked pane", () => {
+  it("pastes the escaped locator into a terminal target and docks the resource directly", () => {
     const paste = vi.fn();
     const unregister = registerPasteHandle("terminal:a", paste);
     const deps = baseDeps();
@@ -95,11 +95,15 @@ describe("handleCanvasDrop", () => {
       deps,
     );
     expect(paste).toHaveBeenCalledWith("/tmp/My\\ Shot.png");
-    expect(deps.spawnPane).toHaveBeenCalledWith(
-      { kind: "resource", owner: "local", source: "path", path: "/tmp/My Shot.png" },
-      { focus: false },
-    );
-    expect(deps.minimizePane).toHaveBeenCalledWith("resource:path:/tmp/My Shot.png");
+    // straight to the dock: never spawn a pane just to minimize it, which
+    // resized the layout twice in quick succession
+    expect(deps.dockPane).toHaveBeenCalledWith({
+      kind: "resource",
+      owner: "local",
+      source: "path",
+      path: "/tmp/My Shot.png",
+    });
+    expect(deps.spawnPane).not.toHaveBeenCalled();
     unregister();
   });
 
@@ -115,7 +119,7 @@ describe("handleCanvasDrop", () => {
       { kind: "resource", owner: "local", source: "path", path: "/tmp/My Shot.png" },
       undefined,
     );
-    expect(deps.minimizePane).not.toHaveBeenCalled();
+    expect(deps.dockPane).not.toHaveBeenCalled();
   });
 
   it("shows the hint for file drops without a bridge", () => {

@@ -123,6 +123,59 @@ describe("canvasStore", () => {
     expect(state.layout.focusedPaneId).toBe("resource:abc:r1");
   });
 
+  it("dockPane parks a resource in the dock without touching the layout", () => {
+    resetCanvasStoreForTests();
+    const ref = { kind: "resource", owner: "local", source: "path", path: "/t/x.png" } as const;
+    const layoutBefore = useCanvasStore.getState().layout;
+
+    const paneId = useCanvasStore.getState().dockPane(ref);
+
+    const state = useCanvasStore.getState();
+    // the no-double-resize contract: the layout object is untouched
+    expect(state.layout).toBe(layoutBefore);
+    expect(state.panes[paneId]).toBeUndefined();
+    expect(state.docked[0]?.paneId).toBe(paneId);
+    expect(state.docked[0]?.ref).toEqual(ref);
+    expect(state.docked[0]?.record?.contentRef).toEqual(ref);
+  });
+
+  it("dockPane keeps a single entry per ref, bumped to the front", () => {
+    resetCanvasStoreForTests();
+    const refA = { kind: "resource", owner: "local", source: "path", path: "/t/a.png" } as const;
+    const refB = { kind: "resource", owner: "local", source: "path", path: "/t/b.png" } as const;
+
+    useCanvasStore.getState().dockPane(refA);
+    useCanvasStore.getState().dockPane(refB);
+    const paneId = useCanvasStore.getState().dockPane(refA);
+
+    const docked = useCanvasStore.getState().docked;
+    expect(docked).toHaveLength(2);
+    expect(docked[0]?.paneId).toBe(paneId);
+  });
+
+  it("dockPane of an open pane minimizes it through the dismiss flow", () => {
+    resetCanvasStoreForTests();
+    const ref = { kind: "resource", owner: "local", source: "path", path: "/t/x.png" } as const;
+    const paneId = useCanvasStore.getState().spawnPane(ref);
+
+    useCanvasStore.getState().dockPane(ref);
+
+    expect(useCanvasStore.getState().layout.nodes[paneId]?.lifecycle).toBe("closing");
+  });
+
+  it("a never-opened docked resource restores into a planned pane", () => {
+    resetCanvasStoreForTests();
+    const ref = { kind: "resource", owner: "local", source: "path", path: "/t/x.png" } as const;
+    const paneId = useCanvasStore.getState().dockPane(ref);
+
+    useCanvasStore.getState().restorePane(paneId);
+
+    const state = useCanvasStore.getState();
+    expect(state.panes[paneId]?.contentRef).toEqual(ref);
+    expect(state.layout.nodes[paneId]?.lifecycle).toBe("open");
+    expect(state.docked).toHaveLength(0);
+  });
+
   it("minimizes a pane into the dock and restores it with a planned rect", () => {
     vi.useFakeTimers();
     try {

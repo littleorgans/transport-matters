@@ -33,6 +33,7 @@ import {
   planPaneUnframe,
   planSpawnedAffordancePaneLayout,
   removeDockedPane,
+  runDockPaneFlow,
   runSpawnPaneFlow,
   stripPaneFlyIntent,
 } from "./paneAffordances";
@@ -66,6 +67,9 @@ interface CanvasStoreState extends CanvasStoreModel {
   initializeCanvas(launch: CanvasLaunchContext): void;
   minimizePane(paneId: PaneId): void;
   movePane(paneId: PaneId, rect: WorldRect): void;
+  // Terminal delivery parks a resource straight into the dock: no pane is
+  // opened, the layout never replans. An already-open pane minimizes instead.
+  dockPane(ref: SpawnablePaneRef): PaneId;
   commitReorder(paneId: PaneId, index: number): void;
   resizePane(paneId: PaneId, rect: WorldRect): void;
   resetViewport(): void;
@@ -207,6 +211,23 @@ export const useCanvasStore = create<CanvasStoreState>()(
           bounds,
           layout: planCanvasLayout({ ...state, bounds }),
         }));
+      },
+
+      dockPane(ref) {
+        const normalized = normalizeRef(ref);
+        const pane = createPaneRecord(
+          normalized,
+          titleForRef(normalized),
+          new Date().toISOString(),
+        );
+        return runDockPaneFlow(pane.paneId, {
+          isOpen: (paneId) => get().panes[paneId] !== undefined,
+          minimizePane: (paneId) => get().minimizePane(paneId),
+          park: (paneId) =>
+            set((state) => ({
+              docked: parkDockedPane(state.docked, paneId, normalized, pane),
+            })),
+        });
       },
 
       spawnPane(ref, options) {

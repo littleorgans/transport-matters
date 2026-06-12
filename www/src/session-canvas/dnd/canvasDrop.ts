@@ -12,7 +12,9 @@ export const DROP_HINT_MESSAGE = "File drops need the desktop app. URL drags wor
 export interface CanvasDropDeps {
   resolvePath: ((file: File) => string) | null;
   spawnPane: (ref: PaneContentRef, options?: { focus: boolean }) => string;
-  minimizePane: (paneId: string) => void;
+  // Terminal delivery: the resource goes straight to the dock, never through
+  // a spawned pane (which would replan the grid twice in quick succession).
+  dockPane: (ref: PaneContentRef) => void;
   showHint: (message: string) => void;
 }
 
@@ -89,10 +91,7 @@ export function handleCanvasDrop(
 
   if (paste !== null) {
     paste(locators.map(escapeDropLocator).join(" "));
-    for (const locator of locators) {
-      const paneId = deps.spawnPane(refForLocator(locator), { focus: false });
-      deps.minimizePane(paneId);
-    }
+    for (const locator of locators) deps.dockPane(refForLocator(locator));
     return;
   }
 
