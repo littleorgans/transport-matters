@@ -155,20 +155,18 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* ── Scrollbar styling — square, whisper-thin ── */
+/* ── Scrollbars: none, anywhere ──
+   Content still scrolls (wheel, trackpad, keys); only the chrome is hidden.
+   scrollbar-width covers modern engines; the -webkit pseudo covers engines
+   that only honor the legacy pseudo-element styling. Widgets that draw their
+   own DOM scrollbars hide them in their co-located CSS. ── */
+* {
+  scrollbar-width: none;
+}
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-::-webkit-scrollbar-thumb {
-  background: var(--color-edge-strong);
-  border-radius: 0;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: var(--color-hover);
+  display: none;
+  width: 0;
+  height: 0;
 }
 
 /* ── Button press feedback ── */
