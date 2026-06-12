@@ -148,13 +148,16 @@
   min-height: 0;
   flex-direction: column;
   border: var(--canvas-pane-border);
-  background: rgb(var(--shadow-rgb) / 0.74);
+  border-radius: var(--pane-radius);
+  background: rgb(var(--shadow-rgb) / var(--pane-surface-alpha));
   box-shadow: var(--canvas-pane-shadow);
   outline: 1px solid rgb(var(--highlight-rgb) / 0.04);
-  /* Deliberately NO backdrop-filter: a per-pane blur promotes one compositor layer per pane, and at
+  /* backdrop-filter defaults to none: a per-pane blur promotes one compositor layer per pane, and at
      scale<1 with many panes the browser evicts those layer tiles on tab-hide and fails to re-raster
-     them on restore, so panes go blank until a repaint (confirmed by A/B). The 0.74 background above
-     keeps panes opaque without it. */
+     them on restore, so panes go blank until a repaint (confirmed by A/B). The 0.74 default
+     surface alpha keeps panes opaque without it. Glass themes opt in via --pane-blur and accept
+     that compositor cost knowingly. */
+  backdrop-filter: var(--pane-blur);
 }
 .canvas-pane-window[data-focused="true"] {
   border-color: rgb(var(--accent-rgb) / 0.78);

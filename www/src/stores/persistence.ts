@@ -2,6 +2,7 @@ import { createJSONStorage, type PersistStorage, type StateStorage } from "zusta
 
 export const FRONTEND_STORAGE_KEYS = {
   uiStore: "transport-matters-ui",
+  themeStore: "transport-matters-theme",
   overlaysStore: "transport-matters-overlays",
   capturedRunStore: "transport-matters-captured-run",
   canvasStore: "transport-matters-canvas",

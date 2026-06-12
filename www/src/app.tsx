@@ -5,6 +5,7 @@ import { useExchangeStream } from "./hooks/useExchangeStream";
 import { useExchanges } from "./hooks/useExchanges";
 import { useMeta } from "./hooks/useMeta";
 import { useRouteHotkeys } from "./hooks/useRouteHotkeys";
+import { useThemeTokens } from "./hooks/useThemeTokens";
 import { RouteLayout } from "./routeLayout";
 import { useUIStore } from "./stores/uiStore";
 import type { ExchangeTrackStub, PausedFlow } from "./types";
@@ -112,5 +113,6 @@ export function BrowserAppShell() {
 }
 
 export function App() {
+  useThemeTokens();
   return <BrowserAppShell />;
 }
