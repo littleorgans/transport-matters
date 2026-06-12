@@ -75,14 +75,7 @@ describe("createPlannerRectMeasure", () => {
 
   it("returns a plain object with own enumerable fields (a live DOMRect breaks dnd-kit)", () => {
     const rect = measure(paneElement("a"));
-    expect(Object.keys(rect).sort()).toEqual([
-      "bottom",
-      "height",
-      "left",
-      "right",
-      "top",
-      "width",
-    ]);
+    expect(Object.keys(rect).sort()).toEqual(["bottom", "height", "left", "right", "top", "width"]);
   });
 
   it("returns a zero rect for an unknown pane id", () => {
@@ -153,7 +146,11 @@ describe("sortableTransformToWorld", () => {
   });
 
   it("applies sibling strategy deltas raw: they are already world pixels", () => {
-    const applied = sortableTransformToWorld({ x: 156, y: -106, scaleX: 1, scaleY: 1 }, 0.78, false);
+    const applied = sortableTransformToWorld(
+      { x: 156, y: -106, scaleX: 1, scaleY: 1 },
+      0.78,
+      false,
+    );
     expect(applied).toEqual({ x: 156, y: -106 });
   });
 

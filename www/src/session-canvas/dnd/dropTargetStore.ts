@@ -1,13 +1,13 @@
 import { create } from "zustand";
-import type { WorldRect } from "../../engine";
 
 // One active drop target for the whole canvas, written by both drag systems
 // (HTML5 dragover for external/dock drags, pane-lift move ticks) and read by
 // CanvasDropTargetOverlay. Module-scoped like pasteRegistry: drags span trees.
+// Pane reorder needs no slot indicator: the sortable sibling shift IS the
+// insertion feedback (doc 19 amendment to doc 17 decision 2).
 export type DropTarget =
   | { kind: "surface" }
   | { kind: "hint" }
-  | { kind: "slot"; rect: WorldRect }
   | { kind: "terminal"; paneId: string; label: string };
 
 interface DropTargetState {

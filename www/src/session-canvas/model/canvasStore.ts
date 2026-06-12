@@ -67,7 +67,6 @@ interface CanvasStoreState extends CanvasStoreModel {
   minimizePane(paneId: PaneId): void;
   movePane(paneId: PaneId, rect: WorldRect): void;
   commitReorder(paneId: PaneId, index: number): void;
-  cancelReorder(): void;
   resizePane(paneId: PaneId, rect: WorldRect): void;
   resetViewport(): void;
   restorePane(paneId: PaneId): void;
@@ -152,10 +151,6 @@ export const useCanvasStore = create<CanvasStoreState>()(
           const ordered = movePaneOrder(state.layout, paneId, index);
           return { layout: planCanvasLayout({ ...state, layout: ordered }) };
         });
-      },
-
-      cancelReorder() {
-        set((state) => ({ layout: planCanvasLayout(state) }));
       },
 
       minimizePane(paneId) {

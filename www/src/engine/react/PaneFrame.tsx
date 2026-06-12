@@ -1,9 +1,20 @@
 import { useDrag } from "@use-gesture/react";
 import { motion, type Transition, useReducedMotion } from "framer-motion";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { CLOSE_DELAY_MS } from "../reducers/layoutState";
 import { moveRect, resizeRect } from "../reducers/paneLifecycle";
 import type { PaneNode, WorldRect } from "../types";
+
+// Prop bundle from a dnd adapter (session-canvas SortablePane): the engine
+// stays dnd-kit-free and consumes plain values. `transform` is WORLD pixels,
+// already through the sortableTransformToWorld seam; PaneFrame applies it
+// 1:1 on top of the committed rect.
+export interface PaneDndHandle {
+  setNodeRef(element: HTMLElement | null): void;
+  listeners?: React.HTMLAttributes<HTMLElement>;
+  transform: { x: number; y: number } | null;
+  isDragging: boolean;
+}
 
 export interface PaneFrameProps {
   node: PaneNode;
@@ -15,9 +26,13 @@ export interface PaneFrameProps {
   // Opt-in for layout mode changes where the pane's world rect should visibly transform.
   layoutMotion?: boolean;
   bodyDrag?: boolean;
+  // Present when a dnd adapter owns this pane's move gesture; the use-gesture
+  // move path then stays inert and only resize binds.
+  dnd?: PaneDndHandle | null;
   onFocus(paneId: string): void;
-  onMove(paneId: string, rect: WorldRect): void;
-  onMoveCancel?(paneId: string): void;
+  // Plain free move (floating consumers such as the stress route). Reorder on
+  // strategy canvases goes through `dnd` instead.
+  onMove?(paneId: string, rect: WorldRect): void;
   onMoveEnd?(paneId: string, rect: WorldRect): void;
   onResize(paneId: string, rect: WorldRect): void;
   children: React.ReactNode;
@@ -45,9 +60,9 @@ export function PaneFrame({
   instant = false,
   layoutMotion = false,
   bodyDrag = false,
+  dnd = null,
   onFocus,
   onMove,
-  onMoveCancel,
   onMoveEnd,
   onResize,
   children,
@@ -59,16 +74,15 @@ export function PaneFrame({
   // and position spring rubber-band behind the cursor).
   const [dragging, setDragging] = useState(false);
   // Local drag override. During move and resize drags the box follows the pointer off this live rect,
-  // but the store is left untouched until release. Reorder can then freeze layout completely while
-  // still moving the lifted pane visually, and resize content still reflows exactly once on commit.
+  // but the store is left untouched until release, so content reflows exactly once on commit.
   const [liveRect, setLiveRect] = useState<WorldRect | null>(null);
   const moveBase = useRef<WorldRect | null>(null);
   const resizeBase = useRef<WorldRect | null>(null);
-  const cancelledRef = useRef(false);
 
   const closing = node.lifecycle === "closing";
+  const directDrag = dragging || (dnd?.isDragging ?? false);
   const baseTransition =
-    prefersReducedMotion || instant || dragging
+    prefersReducedMotion || instant || directDrag
       ? REDUCED_TRANSITION
       : layoutMotion
         ? LAYOUT_MOTION_TRANSITION
@@ -79,39 +93,25 @@ export function PaneFrame({
   let revealTransition: Transition = baseTransition;
   if (closing && !prefersReducedMotion) revealTransition = EXIT_TRANSITION;
 
-  // The box renders off the live resize rect while one is in flight, off the committed store rect
-  // otherwise. children always read the store rect, so they hold pre-drag layout until commit.
+  // The box renders off the live resize/move rect while one is in flight, off the committed store
+  // rect otherwise. children always read the store rect, so they hold pre-drag layout until commit.
+  // A dnd transform rides on top: world-space deltas from the sortable strategy (siblings) or the
+  // converted pointer delta (the lifted pane).
   const renderRect = liveRect ?? node.rect;
-
-  useEffect(() => {
-    if (!dragging) return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || dragMode.current !== "move") return;
-      cancelledRef.current = true;
-      onMoveCancel?.(node.paneId);
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [dragging, node.paneId, onMoveCancel]);
+  const dndX = dnd?.transform?.x ?? 0;
+  const dndY = dnd?.transform?.y ?? 0;
 
   const bindDrag = useDrag(
     ({ movement: [moveX, moveY], event, first, last, shiftKey }) => {
       // Shift+drag belongs to the canvas (pan), not the pane: leave the pane where it is.
       if (shiftKey) return;
       const target = event.target;
-      if (first) dragMode.current = dragModeForTarget(target, bodyDrag);
-      if (!dragMode.current) return;
-      if (cancelledRef.current) {
-        if (last) {
-          cancelledRef.current = false;
-          dragMode.current = null;
-          moveBase.current = null;
-          resizeBase.current = null;
-          setLiveRect(null);
-          setDragging(false);
-        }
-        return;
+      if (first) {
+        const mode = dragModeForTarget(target, bodyDrag);
+        // A dnd adapter owns the move gesture; use-gesture keeps resize only.
+        dragMode.current = dnd !== null && mode === "move" ? null : mode;
       }
+      if (!dragMode.current) return;
       event.stopPropagation();
       const scale = currentWorldScale(target);
       if (first) {
@@ -121,19 +121,18 @@ export function PaneFrame({
         if (dragMode.current === "resize") resizeBase.current = node.rect;
       }
       if (dragMode.current === "move") {
-        // Move tracks locally while the controller computes reorder feedback from the same rect. The
-        // store stays frozen during drag, so other panes and hidden layout geometry never feed back.
+        // Plain free move for floating consumers: track locally, commit on release.
         const base = moveBase.current ?? node.rect;
         const next = moveRect(base, moveX / scale, moveY / scale);
         if (last) onMoveEnd?.(node.paneId, next);
         else {
           setLiveRect(next);
-          onMove(node.paneId, next);
+          onMove?.(node.paneId, next);
         }
       } else {
         // Resize tracks locally (liveRect drives the box 1:1) and commits to the store only on
         // release, so content holds its pre-drag layout and reflows once. Off cumulative movement
-        // from the drag-start base, not per-tick deltas, since the store rect is now frozen.
+        // from the drag-start base, not per-tick deltas, since the store rect is frozen mid-drag.
         const base = resizeBase.current ?? node.rect;
         const next = resizeRect(base, moveX / scale, moveY / scale, MINIMUM_PANE_RECT);
         if (last) onResize(node.paneId, next);
@@ -150,11 +149,15 @@ export function PaneFrame({
     { pointer: { capture: false } },
   );
 
+  const gestureProps = bindDrag();
+  const dndPointerDown = dnd?.listeners?.onPointerDown;
+
   return (
     <motion.div
       aria-labelledby={titleId}
       aria-selected={focused}
       className="absolute outline-none"
+      data-pane-body-drag={bodyDrag ? "true" : "false"}
       data-pane-frame="true"
       data-pane-id={node.paneId}
       // layout="size" FLIPs width/height only and leaves position to animate x/y below, so the
@@ -163,17 +166,18 @@ export function PaneFrame({
       layout="size"
       onFocus={() => onFocus(node.paneId)}
       onPointerDown={() => onFocus(node.paneId)}
+      ref={dnd?.setNodeRef}
       role="region"
       style={{ height: renderRect.height, width: renderRect.width, zIndex: node.z }}
       tabIndex={0}
       // Per-axis transitions: size (layout) + reveal (default) spring. Position normally snaps so a
       // reflow does not fly panes across the screen; explicit layoutMotion lets mode changes such as
-      // E/uE transform the pane rects.
+      // E/uE transform the pane rects, and makes the sortable sibling shift animate mid-drag.
       transition={{
         default: revealTransition,
         layout: baseTransition,
-        x: positionTransition,
-        y: positionTransition,
+        x: directDrag ? SNAP_TRANSITION : positionTransition,
+        y: directDrag ? SNAP_TRANSITION : positionTransition,
       }}
       // x/y MUST be in initial and equal the mount rect (framer zeroes any transform prop absent from
       // initial, which would fly the pane in from the origin). Born-at-slot keeps node.rect final on
@@ -182,11 +186,19 @@ export function PaneFrame({
       animate={{
         opacity: closing ? 0 : 1,
         scale: closing ? 0.96 : 1,
-        x: renderRect.x,
-        y: renderRect.y,
+        x: renderRect.x + dndX,
+        y: renderRect.y + dndY,
       }}
     >
-      <div {...bindDrag()} className="h-full" style={{ touchAction: "none" }}>
+      <div
+        {...gestureProps}
+        className="h-full"
+        onPointerDown={(event: React.PointerEvent<HTMLDivElement>) => {
+          (dndPointerDown as React.PointerEventHandler<HTMLDivElement> | undefined)?.(event);
+          gestureProps.onPointerDown?.(event);
+        }}
+        style={{ touchAction: "none" }}
+      >
         {children}
       </div>
     </motion.div>

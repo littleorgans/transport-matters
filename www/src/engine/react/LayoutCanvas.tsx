@@ -1,19 +1,33 @@
 import { memo, useMemo } from "react";
 import type { EngineLayoutState, PaneId, PaneNode, WorldRect } from "../types";
-import { PaneFrame } from "./PaneFrame";
+import { type PaneDndHandle, PaneFrame } from "./PaneFrame";
 import { type CanvasViewportActions, useCanvasViewport } from "./useCanvasViewport";
+
+// Per-pane dnd adapter seam: a session-canvas component (SortablePane) calls
+// its drag-and-drop hooks and hands PaneFrame a plain handle, keeping the
+// engine free of dnd-kit. Must be a module-stable component so the memoized
+// PaneLayer keeps bailing on viewport-only renders.
+export type PaneDndAdapter = React.ComponentType<{
+  paneId: PaneId;
+  children(handle: PaneDndHandle): React.ReactElement;
+}>;
 
 export interface LayoutCanvasProps extends CanvasViewportActions {
   layout: EngineLayoutState;
   label: string;
   onFocusPane(paneId: PaneId): void;
-  onMovePane(paneId: PaneId, rect: WorldRect): void;
-  onMovePaneCancel?(paneId: PaneId): void;
+  // Plain free move for floating consumers (stress route). Strategy canvases
+  // reorder through paneDndAdapter instead and omit these.
+  onMovePane?(paneId: PaneId, rect: WorldRect): void;
   onMovePaneEnd?(paneId: PaneId, rect: WorldRect): void;
   onResizePane(paneId: PaneId, rect: WorldRect): void;
   titleIdForPane(paneId: PaneId): string;
   renderPane(paneId: PaneId): React.ReactNode;
   paneBodyDrag?(paneId: PaneId): boolean;
+  paneDndAdapter?: PaneDndAdapter;
+  // While a pane drag is live, scale changes are refused: the active pane's
+  // screen->world delta conversion divides by one scale for the whole drag.
+  zoomLocked?: boolean;
   // Optional: when true, the world layer gets a transform transition (the lab's camera "fly").
   // Omitted by /canvas, so production behaviour is unchanged.
   framing?: boolean;
@@ -30,23 +44,23 @@ interface PaneLayerProps {
   instant: boolean;
   paneMotion: boolean;
   onFocusPane(paneId: PaneId): void;
-  onMovePane(paneId: PaneId, rect: WorldRect): void;
-  onMovePaneCancel?(paneId: PaneId): void;
+  onMovePane?(paneId: PaneId, rect: WorldRect): void;
   onMovePaneEnd?(paneId: PaneId, rect: WorldRect): void;
   onResizePane(paneId: PaneId, rect: WorldRect): void;
   titleIdForPane(paneId: PaneId): string;
   renderPane(paneId: PaneId): React.ReactNode;
   paneBodyDrag?(paneId: PaneId): boolean;
+  paneDndAdapter?: PaneDndAdapter;
 }
 
 // The pane subtree, split out and memoized so a pan/zoom (which writes a new viewport every tick and
 // re-renders LayoutCanvas) does NOT re-render every pane and its content. The memo bails while its
 // props are referentially stable: `nodes` is memoized on layout.nodes (untouched by viewport writes),
-// the callbacks are stable store actions, and `renderPane` MUST be a useCallback in the caller. It
-// re-renders only when nodes change (add/close/move/resize/focus z-bump), focus moves (focusedPaneId,
-// drives the focus ring), or motion mode flips (zoom/fly, drives the size-FLIP snap or expand
-// transform). focus and organize still re-render the whole layer; per-pane memo is a possible future
-// step.
+// the callbacks are stable store actions, and `renderPane` MUST be a useCallback in the caller (the
+// dnd adapter a module-level component). It re-renders only when nodes change (add/close/move/resize/
+// focus z-bump), focus moves (focusedPaneId, drives the focus ring), or motion mode flips (zoom/fly,
+// drives the size-FLIP snap or expand transform). focus and organize still re-render the whole layer;
+// per-pane memo is a possible future step.
 const PaneLayer = memo(function PaneLayer({
   nodes,
   focusedPaneId,
@@ -54,33 +68,42 @@ const PaneLayer = memo(function PaneLayer({
   paneMotion,
   onFocusPane,
   onMovePane,
-  onMovePaneCancel,
   onMovePaneEnd,
   onResizePane,
   titleIdForPane,
   renderPane,
   paneBodyDrag,
+  paneDndAdapter: DndAdapter,
 }: PaneLayerProps) {
+  const paneFrame = (node: PaneNode, dnd: PaneDndHandle | null) => (
+    <PaneFrame
+      bodyDrag={paneBodyDrag?.(node.paneId) ?? false}
+      dnd={dnd}
+      focused={focusedPaneId === node.paneId}
+      instant={instant}
+      key={DndAdapter ? undefined : node.paneId}
+      layoutMotion={paneMotion}
+      node={node}
+      onFocus={onFocusPane}
+      onMove={onMovePane}
+      onMoveEnd={onMovePaneEnd}
+      onResize={onResizePane}
+      titleId={titleIdForPane(node.paneId)}
+    >
+      {renderPane(node.paneId)}
+    </PaneFrame>
+  );
   return (
     <>
-      {nodes.map((node) => (
-        <PaneFrame
-          bodyDrag={paneBodyDrag?.(node.paneId) ?? false}
-          focused={focusedPaneId === node.paneId}
-          instant={instant}
-          key={node.paneId}
-          layoutMotion={paneMotion}
-          node={node}
-          onFocus={onFocusPane}
-          onMove={onMovePane}
-          onMoveCancel={onMovePaneCancel}
-          onMoveEnd={onMovePaneEnd}
-          onResize={onResizePane}
-          titleId={titleIdForPane(node.paneId)}
-        >
-          {renderPane(node.paneId)}
-        </PaneFrame>
-      ))}
+      {nodes.map((node) =>
+        DndAdapter ? (
+          <DndAdapter key={node.paneId} paneId={node.paneId}>
+            {(handle) => paneFrame(node, handle)}
+          </DndAdapter>
+        ) : (
+          paneFrame(node, null)
+        ),
+      )}
     </>
   );
 });
@@ -92,17 +115,18 @@ export function LayoutCanvas({
   setViewport,
   onFocusPane,
   onMovePane,
-  onMovePaneCancel,
   onMovePaneEnd,
   onResizePane,
   titleIdForPane,
   framing = false,
   paneMotion = false,
   paneBodyDrag,
+  paneDndAdapter,
+  zoomLocked = false,
   overlay,
 }: LayoutCanvasProps) {
   const { bindViewport, handleWheel, handleKeyDown, panReady, panning, zooming } =
-    useCanvasViewport(layout.viewport, { setViewport });
+    useCanvasViewport(layout.viewport, { setViewport }, { zoomLocked });
   // Memoized on layout.nodes so a viewport-only update (setViewport preserves the nodes ref) keeps the
   // same array and the memoized PaneLayer below skips re-rendering the panes.
   const nodes = useMemo(
@@ -150,9 +174,9 @@ export function LayoutCanvas({
           nodes={nodes}
           paneMotion={paneMotion}
           paneBodyDrag={paneBodyDrag}
+          paneDndAdapter={paneDndAdapter}
           onFocusPane={onFocusPane}
           onMovePane={onMovePane}
-          onMovePaneCancel={onMovePaneCancel}
           onMovePaneEnd={onMovePaneEnd}
           onResizePane={onResizePane}
           renderPane={renderPane}

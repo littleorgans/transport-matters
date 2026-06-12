@@ -276,10 +276,6 @@ export const useCanvasLabStore = create<CanvasLabState>()(
         get().organize();
       },
 
-      cancelReorder() {
-        get().organize();
-      },
-
       setBounds(bounds) {
         set({ bounds });
         get().organize();

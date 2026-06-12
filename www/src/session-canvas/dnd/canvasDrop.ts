@@ -1,11 +1,11 @@
 import type { EngineLayoutState } from "../../engine";
 import type { PaneContentRef } from "../model/paneRecords";
-import { pointerToWorld } from "./dndSpace";
 import {
   type DropLocator,
   escapeDropLocator,
   resolvePasteHandle,
 } from "../viewers/terminal/pasteRegistry";
+import { pointerToWorld } from "./dndSpace";
 
 export const DROP_HINT_MESSAGE = "File drops need the desktop app. URL drags work here.";
 

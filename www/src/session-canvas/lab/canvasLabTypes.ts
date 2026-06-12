@@ -49,8 +49,6 @@ export interface CanvasLabState {
   organize(): void;
   /** Release: splice the order and replan. */
   commitReorder(paneId: PaneId, index: number): void;
-  /** Escape or terminal delivery: replan the committed order. */
-  cancelReorder(): void;
   setBounds(bounds: ViewportBounds): void;
   expandPane(paneId: PaneId): void;
   unexpand(): void;

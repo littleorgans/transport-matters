@@ -16,22 +16,6 @@ export function CanvasDropTargetOverlay({
   if (target.kind === "surface") {
     return <div aria-hidden="true" className="canvas-drop-target canvas-drop-target--surface" />;
   }
-  if (target.kind === "slot") {
-    const { panX, panY, scale } = layout.viewport;
-    const style = {
-      left: target.rect.x * scale + panX,
-      top: target.rect.y * scale + panY,
-      width: target.rect.width * scale,
-      height: target.rect.height * scale,
-    };
-    return (
-      <div
-        aria-hidden="true"
-        className="canvas-drop-target canvas-drop-target--slot"
-        style={style}
-      />
-    );
-  }
   const node = layout.nodes[target.paneId];
   if (!node) return null;
   const { panX, panY, scale } = layout.viewport;

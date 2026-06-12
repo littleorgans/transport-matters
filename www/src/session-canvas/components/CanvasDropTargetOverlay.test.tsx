@@ -41,16 +41,6 @@ describe("CanvasDropTargetOverlay", () => {
     expect(container.firstElementChild).toHaveClass("canvas-drop-target--surface");
   });
 
-  it("maps a slot target through the viewport camera", () => {
-    setDropTarget({ kind: "slot", rect: { x: 50, y: 15, width: 0, height: 40 } });
-
-    const { container } = render(<CanvasDropTargetOverlay layout={LAYOUT} />);
-
-    const target = container.firstElementChild;
-    expect(target).toHaveClass("canvas-drop-target--slot");
-    expect(target).toHaveStyle({ left: "110px", top: "50px", width: "0px", height: "80px" });
-  });
-
   it("renders nothing for null, hint, and missing terminal targets", () => {
     const { container, rerender } = render(<CanvasDropTargetOverlay layout={LAYOUT} />);
     expect(container).toBeEmptyDOMElement();

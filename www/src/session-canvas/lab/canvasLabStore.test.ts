@@ -48,18 +48,13 @@ describe("canvasLabStore terminals", () => {
     expect(Object.keys(store().layout.nodes).sort()).toEqual(["lab-1", "lab-2", "lab-3"]);
   });
 
-  it("commitReorder splices the order and replans; cancelReorder replans the committed order", () => {
+  it("commitReorder splices the order and replans", () => {
     resetCanvasLabStoreForTests();
     store().addTerminal();
     store().addTerminal();
 
     store().commitReorder("lab-2", 0);
     expect(store().layout.order).toEqual(["lab-2", "lab-1"]);
-
-    store().updatePaneRect("lab-1", { x: 900, y: 900, width: 300, height: 220 });
-    store().cancelReorder();
-    expect(store().layout.order).toEqual(["lab-2", "lab-1"]);
-    expect(store().layout.nodes["lab-1"]?.rect.x).not.toBe(900);
   });
 
   it("spawnPane opens a locator resource pane keyed by its registry pane id", () => {
