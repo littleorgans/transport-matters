@@ -3,7 +3,10 @@ import {
   createInitialEngineLayoutState,
   focusNode,
   markNodeClosing,
+  movePaneOrder,
+  normalizeLayoutOrder,
   removeNode,
+  splicePaneOrder,
   updateNodeRects,
   upsertNode,
 } from "./layoutState";
@@ -61,5 +64,41 @@ describe("closing the focused pane clears the selection", () => {
 
     expect(removeNode(state, "a").focusedPaneId).toBeNull(); // focused pane gone -> no auto-hop to a neighbour
     expect(removeNode(state, "b").focusedPaneId).toBe("a"); // removing another keeps focus
+  });
+});
+
+describe("pane order", () => {
+  it("appends on first upsert and not on re-upsert", () => {
+    let state = twoPaneState();
+    expect(state.order).toEqual(["a", "b"]);
+    state = upsertNode(state, createPaneNode("a", RECT, 3));
+    expect(state.order).toEqual(["a", "b"]);
+  });
+
+  it("splices on remove", () => {
+    const state = removeNode(twoPaneState(), "a");
+    expect(state.order).toEqual(["b"]);
+  });
+
+  it("movePaneOrder splices to a clamped index and ignores unknown panes", () => {
+    let state = twoPaneState();
+    state = upsertNode(state, createPaneNode("c", RECT, 3));
+    expect(movePaneOrder(state, "c", 0).order).toEqual(["c", "a", "b"]);
+    expect(movePaneOrder(state, "a", 99).order).toEqual(["b", "c", "a"]);
+    expect(movePaneOrder(state, "ghost", 0).order).toEqual(["a", "b", "c"]);
+  });
+
+  it("normalizeLayoutOrder drops unknown and duplicate ids and appends missing ones", () => {
+    const state = twoPaneState();
+    expect(normalizeLayoutOrder(state, ["b", "ghost"]).order).toEqual(["b", "a"]);
+    expect(normalizeLayoutOrder(state, ["b", "b", "ghost"]).order).toEqual(["b", "a"]);
+    expect(normalizeLayoutOrder(state, undefined).order).toEqual(["a", "b"]);
+  });
+
+  it("splicePaneOrder clamps and is pure", () => {
+    const order = ["a", "b", "c"];
+    expect(splicePaneOrder(order, "c", 0)).toEqual(["c", "a", "b"]);
+    expect(splicePaneOrder(order, "a", 99)).toEqual(["b", "c", "a"]);
+    expect(order).toEqual(["a", "b", "c"]);
   });
 });

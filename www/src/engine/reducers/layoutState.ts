@@ -26,6 +26,7 @@ export function createInitialEngineLayoutState(): EngineLayoutState {
     mode: "floating",
     viewport: DEFAULT_CANVAS_VIEWPORT,
     nodes: {},
+    order: [],
     focusedPaneId: null,
   };
 }
@@ -43,6 +44,9 @@ export function upsertNode(state: EngineLayoutState, node: PaneNode): EngineLayo
   return {
     ...state,
     nodes: { ...state.nodes, [node.paneId]: node },
+    // Insert-or-replace: append to the order only when the id is new, or a
+    // re-upsert would duplicate the entry and break order === nodes ids.
+    order: state.order.includes(node.paneId) ? state.order : [...state.order, node.paneId],
   };
 }
 
@@ -113,8 +117,39 @@ export function removeNode(state: EngineLayoutState, paneId: PaneId): EngineLayo
   return {
     ...state,
     nodes,
+    order: state.order.filter((id) => id !== paneId),
     focusedPaneId: state.focusedPaneId === paneId ? null : state.focusedPaneId,
   };
+}
+
+/** Splice paneId to a clamped index; pure, shared by movePaneOrder and tentative planning. */
+export function splicePaneOrder(order: readonly PaneId[], paneId: PaneId, index: number): PaneId[] {
+  const next = order.filter((id) => id !== paneId);
+  next.splice(Math.max(0, Math.min(index, next.length)), 0, paneId);
+  return next;
+}
+
+/** The only mutation through which user intent edits the committed sequence. */
+export function movePaneOrder(
+  state: EngineLayoutState,
+  paneId: PaneId,
+  index: number,
+): EngineLayoutState {
+  if (!state.nodes[paneId]) return state;
+  return { ...state, order: splicePaneOrder(state.order, paneId, index) };
+}
+
+/** Self-heal a persisted order: drop unknown and duplicate ids, append missing ones. */
+export function normalizeLayoutOrder(
+  state: EngineLayoutState,
+  persisted: readonly PaneId[] | undefined,
+): EngineLayoutState {
+  const known: PaneId[] = [];
+  for (const id of persisted ?? []) {
+    if (state.nodes[id] !== undefined && !known.includes(id)) known.push(id);
+  }
+  const missing = Object.keys(state.nodes).filter((id) => !known.includes(id));
+  return { ...state, order: [...known, ...missing] };
 }
 
 export function setViewport(state: EngineLayoutState, viewport: CanvasViewport): EngineLayoutState {
