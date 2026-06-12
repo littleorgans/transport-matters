@@ -8,6 +8,7 @@ import { CommandBarSections } from "../components/CommandBarSections";
 import { PaneChrome } from "../components/PaneChrome";
 import { PaneDock } from "../components/PaneDock";
 import { RouteSwitcher } from "../components/RouteSwitcher";
+import { SceneParamControls } from "../components/SceneParamControls";
 import { ThemeCycleButton } from "../components/ThemeCycleButton";
 import { CanvasPaneDnd } from "../dnd/CanvasPaneDnd";
 import { createSortablePaneAdapter } from "../dnd/SortablePane";
@@ -280,6 +281,7 @@ export function CanvasLabRoute() {
                   ))}
                 </select>
                 <ControlsPanel />
+                <SceneParamControls />
               </>
             }
             secondaryLabel="Layout"

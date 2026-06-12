@@ -1,10 +1,15 @@
-import { render } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { act, render } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createAmbientBackground } from "../../ambient/createAmbientBackground";
 import { sceneRegistry } from "../../ambient/sceneRegistry";
 import type { AmbientBackground } from "../../ambient/types";
 import { useThemeStore } from "../../stores/themeStore";
 import { presetTheme } from "../../theme/presets";
 import { AmbientBackdrop, driveAmbientScene } from "./AmbientBackdrop";
+
+vi.mock("../../ambient/createAmbientBackground", () => ({
+  createAmbientBackground: vi.fn(() => null),
+}));
 
 function fakeBackground(): AmbientBackground {
   return {
@@ -25,6 +30,10 @@ if (!openWater) throw new Error("expected bundled preset");
 
 beforeEach(() => {
   useThemeStore.setState({ theme: null });
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
 });
 
 describe("driveAmbientScene", () => {
@@ -74,9 +83,39 @@ describe("AmbientBackdrop", () => {
   it("mounts the scene canvas for a themed session and survives missing WebGL", () => {
     useThemeStore.setState({ theme: openWater });
     const { container } = render(<AmbientBackdrop />);
-    // jsdom has no WebGL: createAmbientBackground returns null and the CSS
+    // With no engine (jsdom has no WebGL, the mock mirrors that) the CSS
     // gradient stays the background. The canvas element must still mount
     // without crashing so real browsers get the scene.
     expect(container.querySelector(".canvas-ambient-backdrop")).not.toBeNull();
+  });
+
+  it("live-applies a param scrub without re-sending the scene", () => {
+    // jsdom implements neither WebGL nor matchMedia; with a real (fake) engine
+    // the mount effect reaches the reduced-motion media query, so stub it.
+    vi.stubGlobal(
+      "matchMedia",
+      vi.fn(() => ({
+        matches: false,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      })),
+    );
+    const bg = fakeBackground();
+    vi.mocked(createAmbientBackground).mockReturnValueOnce(bg);
+    useThemeStore.setState({ theme: openWater });
+    render(<AmbientBackdrop />);
+
+    expect(bg.setScene).toHaveBeenCalledTimes(1);
+    vi.mocked(bg.setScene).mockClear();
+    vi.mocked(bg.setParam).mockClear();
+    vi.mocked(bg.setPhoto).mockClear();
+
+    act(() => {
+      useThemeStore.getState().setSceneParam("dayProgress", 0.9);
+    });
+
+    expect(bg.setParam).toHaveBeenCalledWith("dayProgress", 0.9);
+    expect(bg.setScene).not.toHaveBeenCalled();
+    expect(bg.setPhoto).not.toHaveBeenCalled();
   });
 });

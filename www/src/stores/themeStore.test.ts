@@ -23,6 +23,20 @@ describe("themeStore", () => {
     expect(useThemeStore.getState().theme).toBeNull();
   });
 
+  it("setSceneParam writes through to the persisted theme settings", () => {
+    useThemeStore.getState().setTheme(littleorgans);
+    useThemeStore.getState().setSceneParam("dayProgress", 0.8);
+
+    expect(useThemeStore.getState().theme?.settings.sceneParams.dayProgress).toBe(0.8);
+    const raw = localStorage.getItem(FRONTEND_STORAGE_KEYS.themeStore);
+    expect(raw).toContain('"dayProgress":0.8');
+  });
+
+  it("setSceneParam is a no-op while unthemed", () => {
+    useThemeStore.getState().setSceneParam("dayProgress", 0.8);
+    expect(useThemeStore.getState().theme).toBeNull();
+  });
+
   it("persists the full definition under the theme storage key", () => {
     useThemeStore.getState().setTheme(littleorgans);
     const raw = localStorage.getItem(FRONTEND_STORAGE_KEYS.themeStore);

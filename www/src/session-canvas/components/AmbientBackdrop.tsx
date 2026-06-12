@@ -15,12 +15,21 @@ import type { ThemeSettings } from "../../theme/types";
  */
 export function driveAmbientScene(bg: AmbientBackground, settings: ThemeSettings): void {
   bg.setScene(settings.sceneId);
-  for (const param of sceneRegistry.paramsFor(settings.sceneId)) {
-    bg.setParam(param.id, settings.sceneParams[param.id] ?? param.defaultValue);
-  }
+  driveSceneParams(bg, settings);
   if (sceneRegistry.metadataFor(settings.sceneId)?.usesPhoto) {
     const photo = themeValidationDeps.photoLookup.getPhoto(settings.photoKey);
     if (photo) bg.setPhoto(photo.imageUrl);
+  }
+}
+
+/**
+ * The live tuning path: applies only param values, which the render loop reads
+ * every frame. Scrubbing a slider goes through here so the sky moves on the
+ * next frame without re-sending the scene or re-fetching the photo.
+ */
+export function driveSceneParams(bg: AmbientBackground, settings: ThemeSettings): void {
+  for (const param of sceneRegistry.paramsFor(settings.sceneId)) {
+    bg.setParam(param.id, settings.sceneParams[param.id] ?? param.defaultValue);
   }
 }
 
@@ -63,9 +72,21 @@ function AmbientCanvas({ settings }: { settings: ThemeSettings }) {
     };
   }, []);
 
+  const drivenSettings = useRef<ThemeSettings | null>(null);
   useEffect(() => {
     const bg = bgRef.current;
-    if (bg) driveAmbientScene(bg, settings);
+    if (!bg) return;
+    const previous = drivenSettings.current;
+    drivenSettings.current = settings;
+    if (
+      !previous ||
+      previous.sceneId !== settings.sceneId ||
+      previous.photoKey !== settings.photoKey
+    ) {
+      driveAmbientScene(bg, settings);
+    } else if (previous.sceneParams !== settings.sceneParams) {
+      driveSceneParams(bg, settings);
+    }
   }, [settings]);
 
   return <canvas aria-hidden className="canvas-ambient-backdrop" ref={canvasRef} />;

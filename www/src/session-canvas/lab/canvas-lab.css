@@ -52,3 +52,10 @@
   min-width: 2.5rem;
   color: var(--color-txt);
 }
+
+/* Scene tuning sliders (SceneParamControls): same row chrome as the toggles,
+   with a bounded track so a param never stretches the secondary bar. */
+.canvas-scene-param input[type="range"] {
+  width: 140px;
+  accent-color: var(--color-accent);
+}
