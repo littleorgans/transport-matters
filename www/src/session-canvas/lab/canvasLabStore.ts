@@ -11,6 +11,7 @@ import {
 } from "../../engine";
 import { sanitizeParam, seedParams } from "../../engine/layout";
 import { planExpandLayout } from "../model/expandLayout";
+import { planLayout as planSharedLayout } from "../model/layoutPlanning";
 import {
   dismissPane,
   emptyFraming,
@@ -29,7 +30,6 @@ import {
   stripPaneFlyIntent,
 } from "../model/paneAffordances";
 import { type CanvasPaneRef, cliLabel, type PaneContentRef } from "../model/paneRecords";
-import { planLayout as planSharedLayout } from "../model/layoutPlanning";
 import { paneIdForRef } from "../viewers/registry";
 import {
   DEFAULT_BOUNDS,

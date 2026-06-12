@@ -1,11 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { registerPasteHandle } from "../viewers/terminal/pasteRegistry";
-import {
-  classifyDrop,
-  deliverPaneDropToTerminal,
-  handleCanvasDrop,
-  paneIdAtPoint,
-} from "./canvasDrop";
+import { classifyDrop, handleCanvasDrop, paneIdAtPoint } from "./canvasDrop";
 
 const layout = {
   viewport: { panX: 10, panY: 20, scale: 2 },
@@ -135,52 +130,5 @@ describe("handleCanvasDrop", () => {
       "File drops need the desktop app. URL drags work here.",
     );
     expect(deps.spawnPane).not.toHaveBeenCalled();
-  });
-});
-
-describe("deliverPaneDropToTerminal", () => {
-  const rectOver = (x: number, y: number) => ({ x, y, width: 40, height: 40 });
-  const pathRef = {
-    kind: "resource",
-    owner: "local",
-    source: "path",
-    path: "/tmp/My Shot.png",
-  } as const;
-
-  it("pastes the moved locator pane's locator into the terminal under its center", () => {
-    const paste = vi.fn();
-    const unregister = registerPasteHandle("terminal:a", paste);
-    deliverPaneDropToTerminal(layout, pathRef, "resource:path:/tmp/My Shot.png", rectOver(10, 10));
-    expect(paste).toHaveBeenCalledWith("/tmp/My\\ Shot.png");
-    unregister();
-  });
-
-  it("does nothing when a non-terminal pane is stacked over a terminal", () => {
-    const paste = vi.fn();
-    const unregister = registerPasteHandle("terminal:a", paste);
-    deliverPaneDropToTerminal(layout, pathRef, "resource:path:/tmp/My Shot.png", rectOver(30, 30));
-    expect(paste).not.toHaveBeenCalled();
-    unregister();
-  });
-
-  it("does nothing for non-locator panes", () => {
-    const paste = vi.fn();
-    const unregister = registerPasteHandle("terminal:a", paste);
-    deliverPaneDropToTerminal(
-      layout,
-      { kind: "resource", owner: "local", sessionId: "s", resourceId: "r" },
-      "resource:s:r",
-      rectOver(30, 30),
-    );
-    expect(paste).not.toHaveBeenCalled();
-    unregister();
-  });
-
-  it("never targets the moved pane itself", () => {
-    const paste = vi.fn();
-    const unregister = registerPasteHandle("terminal:a", paste);
-    deliverPaneDropToTerminal(layout, pathRef, "terminal:a", rectOver(30, 30));
-    expect(paste).not.toHaveBeenCalled();
-    unregister();
   });
 });

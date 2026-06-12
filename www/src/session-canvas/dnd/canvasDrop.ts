@@ -1,5 +1,5 @@
-import type { EngineLayoutState, WorldRect } from "../../engine";
-import type { CanvasPaneRef, PaneContentRef } from "../model/paneRecords";
+import type { EngineLayoutState } from "../../engine";
+import type { PaneContentRef } from "../model/paneRecords";
 import {
   type DropLocator,
   escapeDropLocator,
@@ -102,34 +102,6 @@ export function handleCanvasDrop(
   for (const locator of locators) {
     deps.spawnPane(refForLocator(locator), undefined);
   }
-}
-
-export function deliverPaneDropToTerminal(
-  layout: EngineLayoutState,
-  contentRef: CanvasPaneRef | undefined,
-  movedPaneId: string,
-  rect: WorldRect,
-): void {
-  const locator = locatorForPaneRef(contentRef);
-  if (locator === null) return;
-
-  const targetPaneId = paneIdAtWorldPoint(
-    layout,
-    { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 },
-    movedPaneId,
-  );
-  if (targetPaneId === null) return;
-
-  const paste = resolvePasteHandle(targetPaneId);
-  if (paste === null) return;
-  paste(escapeDropLocator(locator));
-}
-
-function locatorForPaneRef(contentRef: CanvasPaneRef | undefined): DropLocator | null {
-  if (contentRef?.kind !== "resource" || !("source" in contentRef)) return null;
-  return contentRef.source === "path"
-    ? { source: "path", locator: contentRef.path }
-    : { source: "url", locator: contentRef.url };
 }
 
 function refForLocator(locator: DropLocator): PaneContentRef {

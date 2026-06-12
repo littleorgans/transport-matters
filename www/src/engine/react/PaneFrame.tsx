@@ -196,7 +196,10 @@ export function dragModeForTarget(target: EventTarget | null, bodyDrag: boolean)
   if (!(target instanceof Element)) return null;
   if (target.closest("[data-pane-resize-handle='true']")) return "resize";
   if (target.closest("[data-pane-drag-handle='true']")) return "move";
-  if (bodyDrag && !target.closest("button, a, input, textarea, select, [data-pane-no-drag='true']")) {
+  if (
+    bodyDrag &&
+    !target.closest("button, a, input, textarea, select, [data-pane-no-drag='true']")
+  ) {
     return "move";
   }
   return null;

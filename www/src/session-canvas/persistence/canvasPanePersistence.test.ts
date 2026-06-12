@@ -8,7 +8,6 @@ import {
 } from "../../engine";
 import { type LayoutParams, seedParams } from "../../engine/layout";
 import { type DockedPane, isPaneContentRef, type PaneContentRef } from "../model/paneRecords";
-import { createCanvasPersistOptions } from "./canvasPersistOptions";
 import {
   collectOpenPaneRects,
   type PersistedCanvasPanes,
@@ -18,6 +17,7 @@ import {
   rebuildPersistedPanes,
   seedPaneFromRecord,
 } from "./canvasPanePersistence";
+import { createCanvasPersistOptions } from "./canvasPersistOptions";
 
 const terminalRef = {
   kind: "terminal",
@@ -420,5 +420,7 @@ function orderFromRebuiltCanvas(
   canvas: RebuiltCanvasState<PaneContentRef>,
 ): readonly PaneId[] | undefined {
   const order = (canvas as RebuiltCanvasState<PaneContentRef> & { order?: unknown }).order;
-  return Array.isArray(order) ? order.filter((id): id is PaneId => typeof id === "string") : undefined;
+  return Array.isArray(order)
+    ? order.filter((id): id is PaneId => typeof id === "string")
+    : undefined;
 }

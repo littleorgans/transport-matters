@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { createInitialEngineLayoutState, type PaneNode, upsertNode } from "../../engine";
-import { createPaneNode } from "../../engine/reducers/paneLifecycle";
+import {
+  createInitialEngineLayoutState,
+  createPaneNode,
+  type PaneNode,
+  upsertNode,
+} from "../../engine";
 import { openPaneIds, planLayout } from "./layoutPlanning";
 
 const RECT = { x: 0, y: 0, width: 100, height: 100 };
