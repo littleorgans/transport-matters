@@ -51,3 +51,29 @@
 .terminal-pane .xterm .xterm-scrollable-element > .scrollbar {
   display: none;
 }
+
+/* DEMO (this branch): prove the indexed-palette lever loudly; retune to a
+   theme value before merge. Claude Code paints its bash-mode (! command) bar
+   with 256-color index 59, which the DOM renderer exposes as a class, so one
+   rule owns it. */
+.terminal-pane .xterm .xterm-bg-59 {
+  background-color: #ffd700;
+}
+
+/* DEMO (this branch): Claude's regular user-prompt band. Claude adapts its
+   escape codes to the terminal: under the pane PTY's TERM it emits 256-color
+   index 237 (in a truecolor terminal it would emit an unstylable inline
+   48;2 value), so in our panes the same class lever as the bash bar works. */
+.terminal-pane .xterm .xterm-bg-237 {
+  background-color: #ffd700;
+}
+
+/* The legibility experiment's winner (lab toggle, data-text-shadow on the
+   route shell): a glyph halo that becomes the text's adjacent background
+   (WCAG haloed-text treatment, the subtitle technique), so glyphs stay crisp
+   over bright scenes while the scene stays visible through the veil. A scrim
+   variant cleared WCAG area contrast but lost the live comparison: darkening
+   the fill enough to measure well repaints the default look over the theme. */
+[data-text-shadow] .terminal-pane .xterm {
+  text-shadow: 0 1px 2px rgb(var(--shadow-rgb) / 0.85);
+}

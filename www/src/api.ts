@@ -387,8 +387,14 @@ export async function fetchCapabilities(): Promise<CapabilitiesResponse> {
  * survives a detach. `cwd` is an absolute workspace dir; omitting it lets the
  * backend resolve its launch workspace.
  */
-export async function createCapturedRun(cli: CliName, cwd?: string): Promise<string> {
-  const body = cwd === undefined ? { cli } : { cli, cwd };
+export async function createCapturedRun(
+  cli: CliName,
+  cwd?: string,
+  // When false the bridge stays silent on the CLI's OSC color queries
+  // (api: osc_color_responder); true is the terminal-faithful default.
+  oscColorReplies = true,
+): Promise<string> {
+  const body = { cli, ...(cwd === undefined ? {} : { cwd }), oscColorReplies };
   const response = await requestJson<{ run: { runId: string } }>(
     "/api/runs",
     {

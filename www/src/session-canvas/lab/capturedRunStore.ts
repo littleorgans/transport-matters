@@ -51,7 +51,13 @@ export interface CapturedRunState {
   /** Live run id per captured pane. Persisted so a reload re-attaches instead of re-spawning. */
   runs: Record<CapturedRunKey, CapturedRunRecord>;
   /** Resolve this pane's run id: reuse a persisted/in-flight run, else spawn one. */
-  ensureRun(runKey: CapturedRunKey, provider: CliName, cwd?: string): Promise<string>;
+  ensureRun(
+    runKey: CapturedRunKey,
+    provider: CliName,
+    cwd?: string,
+    /** Bridge answers the CLI's OSC color queries (default true; spawn-time only). */
+    oscColorReplies?: boolean,
+  ): Promise<string>;
   /**
    * Stop this pane's run on an explicit KILL ([X] close): forget the mapping AND DELETE the
    * run. A run id that exists is stopped on the server; a close that races an in-flight spawn
@@ -83,7 +89,7 @@ export const useCapturedRunStore = create<CapturedRunState>()(
     (set, get) => ({
       runs: {},
 
-      ensureRun(runKey, provider, cwd) {
+      ensureRun(runKey, provider, cwd, oscColorReplies = true) {
         const existing = get().runs[runKey]?.runId;
         if (existing !== undefined) return Promise.resolve(existing);
         const inFlight = pendingSpawns.get(runKey);
@@ -92,7 +98,7 @@ export const useCapturedRunStore = create<CapturedRunState>()(
         // a retry after a failed spawn): the user is opening it anew, so it persists open by default.
         cancelledKeys.delete(runKey);
         minimizedPendingKeys.delete(runKey);
-        const spawn = createCapturedRun(provider, cwd)
+        const spawn = createCapturedRun(provider, cwd, oscColorReplies)
           .then((runId) => {
             pendingSpawns.delete(runKey);
             // Closed mid-spawn: stop the just-born run and do NOT persist it. .delete

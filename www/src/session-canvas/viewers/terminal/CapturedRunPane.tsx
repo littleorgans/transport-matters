@@ -1,5 +1,6 @@
 import { type ReactElement, useCallback, useEffect, useState } from "react";
 import type { CliName } from "../../../types";
+import { useCanvasLabStore } from "../../lab/canvasLabStore";
 import { useCapturedRunStore } from "../../lab/capturedRunStore";
 import { cliLabel } from "../../model/paneRecords";
 import { parseRunErrorFrame, type RunErrorFrame } from "./runTerminalFrames";
@@ -38,7 +39,10 @@ export function CapturedRunPane({ runKey, provider, cwd }: CapturedRunPaneProps)
 
   useEffect(() => {
     let cancelled = false;
-    ensureRun(runKey, provider, cwd).then(
+    // Read at spawn time, not reactively: the OSC reply window is the CLI's
+    // startup, so the toggle can only ever apply to the next spawned run.
+    const oscColorReplies = useCanvasLabStore.getState().oscColorReplies;
+    ensureRun(runKey, provider, cwd, oscColorReplies).then(
       (id) => {
         if (!cancelled) setRunId(id);
       },
@@ -89,7 +93,12 @@ function AttachedRunTerminal({
     if (frame) setErrorFrame(frame);
   }, []);
 
-  const { surfaceRef, closedCode } = useTerminalSession({ buildUrl, onTextFrame, paneId });
+  const { surfaceRef, closedCode } = useTerminalSession({
+    buildUrl,
+    onTextFrame,
+    paneId,
+    suppressColorQueryReplies: true,
+  });
   const status = runStatus(provider, errorFrame, closedCode);
 
   return (

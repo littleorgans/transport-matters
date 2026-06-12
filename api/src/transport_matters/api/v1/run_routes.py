@@ -66,9 +66,13 @@ class TerminalSizeModel(BaseModel):
 
 
 class CreateRunRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     cli: str
     cwd: str | None = None
     terminal: TerminalSizeModel | None = None
+    # Bridge answers the CLI's OSC 10/11 color queries (see osc_color_responder).
+    osc_color_replies: bool = Field(default=True, alias="oscColorReplies")
 
 
 class RunViewModel(BaseModel):
@@ -223,6 +227,7 @@ def _spawn_request(body: CreateRunRequest, settings: Settings) -> SpawnRun:
         passthrough=settings.default_client_passthrough,
         home_dir=settings.agent_home_dir,
         debug=settings.debug,
+        osc_color_replies=body.osc_color_replies,
     )
 
 

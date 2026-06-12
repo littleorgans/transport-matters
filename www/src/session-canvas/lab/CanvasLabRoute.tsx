@@ -54,6 +54,8 @@ export function CanvasLabRoute() {
   const expandedPane = useCanvasLabStore((state) => state.expandedPaneId);
   const activeStrategyId = useCanvasLabStore((state) => state.activeStrategyId);
   const fitToContent = useCanvasLabStore((state) => state.fitToContent);
+  const textShadow = useCanvasLabStore((state) => state.textShadow);
+  const oscColorReplies = useCanvasLabStore((state) => state.oscColorReplies);
   const contentRefs = useCanvasLabStore((state) => state.contentRefs);
   const docked = useCanvasLabStore((state) => state.docked);
   const addPane = useCanvasLabStore((state) => state.addPane);
@@ -74,6 +76,8 @@ export function CanvasLabRoute() {
   const commitReorder = useCanvasLabStore((state) => state.commitReorder);
   const setStrategy = useCanvasLabStore((state) => state.setStrategy);
   const setFitToContent = useCanvasLabStore((state) => state.setFitToContent);
+  const setTextShadow = useCanvasLabStore((state) => state.setTextShadow);
+  const setOscColorReplies = useCanvasLabStore((state) => state.setOscColorReplies);
   const setBounds = useCanvasLabStore((state) => state.setBounds);
   const setViewport = useCanvasLabStore((state) => state.setViewport);
 
@@ -210,6 +214,8 @@ export function CanvasLabRoute() {
   return (
     <main
       className="canvas-route-shell"
+      // CSS hook for the glyph-halo styles (terminal-pane.css); absent when off.
+      data-text-shadow={textShadow ? "" : undefined}
       // Single source for the pane-grid top margin (world units) AND the dock-band height (screen
       // px): both read --canvas-layout-margin, set once here from the layout const.
       style={{ "--canvas-layout-margin": `${CANVAS_LAYOUT_MARGIN}px` } as React.CSSProperties}
@@ -268,6 +274,22 @@ export function CanvasLabRoute() {
                     type="checkbox"
                   />
                   Fit to content
+                </label>
+                <label className="canvas-lab-toggle">
+                  <input
+                    checked={textShadow}
+                    onChange={(event) => setTextShadow(event.target.checked)}
+                    type="checkbox"
+                  />
+                  Text shadow
+                </label>
+                <label className="canvas-lab-toggle">
+                  <input
+                    checked={oscColorReplies}
+                    onChange={(event) => setOscColorReplies(event.target.checked)}
+                    type="checkbox"
+                  />
+                  CLI color replies
                 </label>
                 <select
                   aria-label="Layout strategy"

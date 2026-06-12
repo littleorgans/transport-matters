@@ -54,19 +54,19 @@ function seedPersistedLab(
   );
 }
 
+function resetLabStores(): void {
+  resetCanvasLabStoreForTests();
+  resetCapabilitiesStoreForTests();
+  resetCapturedRunStoreForTests();
+}
+
 describe("CanvasLabRoute captured-run spawn buttons", () => {
   beforeEach(() => {
     localStorage.clear();
-    resetCanvasLabStoreForTests();
-    resetCapabilitiesStoreForTests();
-    resetCapturedRunStoreForTests();
+    resetLabStores();
   });
 
-  afterEach(() => {
-    resetCanvasLabStoreForTests();
-    resetCapabilitiesStoreForTests();
-    resetCapturedRunStoreForTests();
-  });
+  afterEach(resetLabStores);
 
   it("shows both spawn buttons when both CLIs are installed", () => {
     seedCapabilities({ claude: true, codex: true });
@@ -223,5 +223,72 @@ describe("CanvasLabRoute captured-run spawn buttons", () => {
 
     expect(screen.queryByRole("toolbar", { name: "Canvas lab controls" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Minimized panes, 1" })).toBeInTheDocument();
+  });
+});
+
+describe("CanvasLabRoute text shadow", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    resetLabStores();
+  });
+
+  afterEach(resetLabStores);
+
+  it("toggles the shell's CSS hook on and off", () => {
+    seedCapabilities({ claude: true, codex: true });
+    render(<CanvasLabRoute />);
+    const shell = screen.getByRole("main");
+    // The control lives in the secondary command-bar group behind the toggle.
+    fireEvent.click(screen.getByRole("button", { name: "Layout" }));
+    const checkbox = screen.getByRole("checkbox", { name: "Text shadow" });
+    expect(shell).not.toHaveAttribute("data-text-shadow");
+
+    fireEvent.click(checkbox);
+    expect(shell).toHaveAttribute("data-text-shadow");
+
+    fireEvent.click(checkbox);
+    expect(shell).not.toHaveAttribute("data-text-shadow");
+  });
+
+  it("rehydrates a persisted choice and sanitizes junk values to off", async () => {
+    const labExtras = { contentRefs: {}, paneRects: {}, docked: [], paneCounters: {} };
+    seedPersistedLab({ ...labExtras, nextPaneIndex: 0, textShadow: true }, {});
+    await useCanvasLabStore.persist.rehydrate();
+    expect(useCanvasLabStore.getState().textShadow).toBe(true);
+
+    seedPersistedLab({ ...labExtras, nextPaneIndex: 0, textShadow: "scrim" }, {});
+    await useCanvasLabStore.persist.rehydrate();
+    expect(useCanvasLabStore.getState().textShadow).toBe(false);
+  });
+});
+
+describe("CanvasLabRoute CLI color replies", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    resetLabStores();
+  });
+
+  afterEach(resetLabStores);
+
+  it("defaults on and unchecking writes the store", () => {
+    seedCapabilities({ claude: true, codex: true });
+    render(<CanvasLabRoute />);
+    fireEvent.click(screen.getByRole("button", { name: "Layout" }));
+    const checkbox = screen.getByRole("checkbox", { name: "CLI color replies" });
+    expect(checkbox).toBeChecked();
+
+    fireEvent.click(checkbox);
+    expect(useCanvasLabStore.getState().oscColorReplies).toBe(false);
+  });
+
+  it("rehydrates an explicit off and defaults junk values to on", async () => {
+    const labExtras = { contentRefs: {}, paneRects: {}, docked: [], paneCounters: {} };
+    seedPersistedLab({ ...labExtras, nextPaneIndex: 0, oscColorReplies: false }, {});
+    await useCanvasLabStore.persist.rehydrate();
+    expect(useCanvasLabStore.getState().oscColorReplies).toBe(false);
+
+    seedPersistedLab({ ...labExtras, nextPaneIndex: 0, oscColorReplies: "maybe" }, {});
+    await useCanvasLabStore.persist.rehydrate();
+    expect(useCanvasLabStore.getState().oscColorReplies).toBe(true);
   });
 });

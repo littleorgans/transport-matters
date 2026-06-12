@@ -52,6 +52,8 @@ type CanvasLabValues = Pick<
   | "activeStrategyId"
   | "params"
   | "fitToContent"
+  | "textShadow"
+  | "oscColorReplies"
   | "framing"
   | "expandedPaneId"
   | "flying"
@@ -69,6 +71,8 @@ function createEmptyCanvasLabValues(): CanvasLabValues {
     activeStrategyId: INITIAL_STRATEGY_ID,
     params: seedParams(INITIAL_STRATEGY_ID),
     fitToContent: true,
+    textShadow: false,
+    oscColorReplies: true,
     framing: emptyFraming(),
     expandedPaneId: null,
     flying: false,
@@ -272,6 +276,14 @@ export const useCanvasLabStore = create<CanvasLabState>()(
       setFitToContent(on) {
         set({ fitToContent: on });
         get().organize();
+      },
+
+      setTextShadow(on) {
+        set({ textShadow: on });
+      },
+
+      setOscColorReplies(on) {
+        set({ oscColorReplies: on });
       },
 
       organize() {

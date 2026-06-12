@@ -19,6 +19,13 @@ export interface TerminalSessionOptions {
   onTextFrame?: (text: string) => void;
   /** Registers a drop-paste handle for this pane while mounted. */
   paneId?: string;
+  /**
+   * Captured runs: the backend bridge answers the CLI's OSC 10/11 color
+   * queries (api: osc_color_responder), so xterm must not answer too or a
+   * focus-event requery lets the viewer shout over the bridge. Set-color
+   * payloads still reach xterm; only the "?" queries are swallowed.
+   */
+  suppressColorQueryReplies?: boolean;
 }
 
 /**
@@ -27,7 +34,12 @@ export interface TerminalSessionOptions {
  * socket is refused/lost; a deliberate unmount close detaches the handler so it
  * never lands here).
  */
-export function useTerminalSession({ buildUrl, onTextFrame, paneId }: TerminalSessionOptions) {
+export function useTerminalSession({
+  buildUrl,
+  onTextFrame,
+  paneId,
+  suppressColorQueryReplies,
+}: TerminalSessionOptions) {
   const surfaceRef = useRef<HTMLDivElement>(null);
   const [closedCode, setClosedCode] = useState<number | null>(null);
   // The socket is created once on mount; read the latest callbacks off refs so
@@ -36,6 +48,8 @@ export function useTerminalSession({ buildUrl, onTextFrame, paneId }: TerminalSe
   buildUrlRef.current = buildUrl;
   const onTextFrameRef = useRef(onTextFrame);
   onTextFrameRef.current = onTextFrame;
+  const suppressColorRef = useRef(suppressColorQueryReplies);
+  suppressColorRef.current = suppressColorQueryReplies;
 
   useEffect(() => {
     const surface = surfaceRef.current;
@@ -54,6 +68,12 @@ export function useTerminalSession({ buildUrl, onTextFrame, paneId }: TerminalSe
         foreground: readToken(surface, "--color-txt", "#dcdcdc"),
       },
     });
+    if (suppressColorRef.current) {
+      // True swallows the query (the bridge answers it); false on anything
+      // else lets xterm's default handler apply real set-color payloads.
+      term.parser.registerOscHandler(10, (data) => data === "?");
+      term.parser.registerOscHandler(11, (data) => data === "?");
+    }
     const fit = new FitAddon();
     term.loadAddon(fit);
     term.open(surface);

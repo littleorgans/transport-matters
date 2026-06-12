@@ -5,6 +5,7 @@ import asyncio
 import contextlib
 import os
 import threading
+import tty
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 from uuid import uuid4
@@ -451,4 +452,112 @@ async def test_slow_viewer_is_closed_without_stopping_run(
     first_item = attached.attachment.queue.get_nowait()
     assert isinstance(first_item, PtyChunk)
 
+    await manager.close()
+
+
+class OpenPtyHarness:
+    """PtyHarness's pipes cannot observe what the manager writes back into PTY
+    input, so the OSC responder tests use a real openpty pair: the test plays
+    the CLI on the slave side, writing queries and reading the bridge's
+    replies."""
+
+    def __init__(self) -> None:
+        self.slave_fds: dict[int, int] = {}
+        self.processes: dict[int, FakeProcess] = {}
+
+    def spawn(
+        self,
+        *,
+        argv: Sequence[str],
+        env: Mapping[str, str],
+        cwd: Path,
+        cols: int,
+        rows: int,
+    ) -> TerminalPty:
+        _ = (argv, env, cwd, cols, rows)
+        master_fd, slave_fd = os.openpty()
+        # Raw mode, as a real CLI sets it: without it the slave's canonical
+        # input buffering holds the newline-less reply forever.
+        tty.setraw(slave_fd)
+        os.set_blocking(slave_fd, False)
+        process = FakeProcess()
+        self.slave_fds[master_fd] = slave_fd
+        self.processes[master_fd] = process
+        return TerminalPty(master_fd=master_fd, process=cast("Any", process))
+
+    def child_write(self, terminal: TerminalPty, data: bytes) -> None:
+        os.write(self.slave_fds[terminal.master_fd], data)
+
+    def child_read(self, terminal: TerminalPty) -> bytes:
+        try:
+            return os.read(self.slave_fds[terminal.master_fd], 4096)
+        except BlockingIOError:
+            return b""
+
+    def terminate(self, terminal: TerminalPty) -> None:
+        self.processes[terminal.master_fd].returncode = -15
+        self.close_master(terminal)
+
+    def close_master(self, terminal: TerminalPty) -> None:
+        if not terminal.closed:
+            with contextlib.suppress(OSError):
+                os.close(terminal.master_fd)
+            terminal.closed = True
+        slave_fd = self.slave_fds.pop(terminal.master_fd, None)
+        if slave_fd is not None:
+            with contextlib.suppress(OSError):
+                os.close(slave_fd)
+
+
+async def test_bridge_answers_cli_osc_color_queries(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from transport_matters.osc_color_responder import OSC_BACKGROUND_REPLY
+
+    pty = OpenPtyHarness()
+    monkeypatch.setattr(run_manager_module, "terminate_terminal_pty", pty.terminate)
+    monkeypatch.setattr(run_manager_module, "close_terminal_master", pty.close_master)
+    prepared = PreparedRunHarness(tmp_path)
+    manager = RunManager(
+        dependencies=fake_dependencies(),
+        prepare_run=prepared.prepare,
+        spawn_pty=pty.spawn,
+        scrollback_bytes=4096,
+        attachment_queue_size=8,
+    )
+
+    run = await spawn_run(manager, tmp_path)
+    pty.child_write(run.terminal, b"\x1b]11;?\x07")
+
+    received = bytearray()
+
+    def reply_arrived() -> bool:
+        received.extend(pty.child_read(run.terminal))
+        return OSC_BACKGROUND_REPLY in received
+
+    await wait_until(reply_arrived)
+    await manager.close()
+
+
+async def test_disabled_osc_color_replies_stay_silent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    pty = OpenPtyHarness()
+    monkeypatch.setattr(run_manager_module, "terminate_terminal_pty", pty.terminate)
+    monkeypatch.setattr(run_manager_module, "close_terminal_master", pty.close_master)
+    prepared = PreparedRunHarness(tmp_path)
+    manager = RunManager(
+        dependencies=fake_dependencies(),
+        prepare_run=prepared.prepare,
+        spawn_pty=pty.spawn,
+        scrollback_bytes=4096,
+        attachment_queue_size=8,
+    )
+
+    run = await manager.spawn(SpawnRun(cli="claude", cwd=tmp_path, osc_color_replies=False))
+    pty.child_write(run.terminal, b"\x1b]11;?\x07")
+    # Give the drain loop time to swallow the query, then prove no reply came.
+    await wait_until(lambda: run.scrollback.total_bytes > 0)
+    await asyncio.sleep(0.05)
+    assert pty.child_read(run.terminal) == b""
     await manager.close()
