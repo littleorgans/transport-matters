@@ -10,7 +10,9 @@
   height: 100%;
   box-sizing: border-box;
   padding: var(--canvas-pane-padding);
-  background: var(--color-well);
+  /* No fill of its own: the pane window behind provides the themed veil
+     (rgb(--shadow-rgb / --pane-surface-alpha)), and xterm mounts with
+     allowTransparency, so the terminal darkens and frosts with the theme. */
   overflow: hidden;
 }
 
