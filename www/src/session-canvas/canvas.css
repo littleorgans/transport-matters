@@ -68,6 +68,10 @@
      clips descendant painting to the frame bounds, so a shadow on the window can never escape. The
      frame's own box decorations are exempt from its own containment. */
   box-shadow: var(--canvas-pane-shadow);
+  /* The frame must carry the same radius as the window it hosts: its shadow and focus ring follow
+     its own corners, and its paint-containment clip rounds the square-cornered children (header,
+     terminal body) that would otherwise poke past the window's rounded border. */
+  border-radius: var(--pane-radius);
 }
 [data-pane-frame="true"]:has(.canvas-pane-window[data-focused="true"]) {
   box-shadow: var(--canvas-pane-shadow), var(--canvas-focus-ring);
