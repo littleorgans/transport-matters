@@ -13,6 +13,7 @@ from transport_matters.index.adapters.base import (
 )
 from transport_matters.index.sessions import SESSION_NS, synth_session_id
 from transport_matters.index.tailer import (
+    CompleteRecord,
     TailCursor,
     TranscriptTailer,
     ingest_records,
@@ -22,6 +23,7 @@ from transport_matters.index.tailer import (
 
 __all__ = [
     "SESSION_NS",
+    "CompleteRecord",
     "FileTailSource",
     "NormalizedTurn",
     "PullSource",

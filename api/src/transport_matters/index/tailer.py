@@ -16,7 +16,7 @@ import logging
 import threading
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Protocol, Self
 
 from transport_matters.index.adapters.base import (
     FileTailSource,
@@ -46,26 +46,56 @@ _log = logging.getLogger(__name__)
 _DEFAULT_FILE_INTERVAL_S = 0.25
 
 
-def iter_complete_records(data: bytes) -> tuple[list[RawRecord], int]:
+class _ProvenanceWrite(Protocol):
+    def model_copy(self, *, update: dict[str, object]) -> Self: ...
+
+
+@dataclass(frozen=True, slots=True)
+class CompleteRecord:
+    """One parsed complete record with a span relative to the current read buffer."""
+
+    record: RawRecord
+    byte_start: int
+    byte_end: int
+    line_index: int
+
+
+def iter_complete_records(data: bytes) -> tuple[list[CompleteRecord], int]:
     """Parse complete (newline-terminated) JSON records from a byte buffer.
 
-    Returns ``(records, consumed)`` where ``consumed`` is the offset just past the LAST newline;
-    bytes after it (a half-written trailing line) are NOT consumed and wait for the next read
-    (§9.3 / §15 risk 6 crash-safety). Malformed complete lines are skipped, not fatal. This is the
-    single record-iterate seam shared by live-tail (growing file) and §11 backfill (closed file).
+    Returns ``(records, consumed)`` where each ``CompleteRecord`` byte span is relative to this
+    buffer. Callers that need absolute offsets add the cursor byte offset exactly once.
+    ``consumed`` is the offset just past the LAST newline; bytes after it (a half-written trailing
+    line) are NOT consumed and wait for the next read (§9.3 / §15 risk 6 crash-safety). Malformed
+    complete lines are skipped, not fatal. This is the single record-iterate seam shared by live-tail
+    (growing file) and §11 backfill (closed file).
     """
     last_newline = data.rfind(b"\n")
     if last_newline == -1:
         return [], 0
-    records: list[RawRecord] = []
-    for line in data[: last_newline + 1].split(b"\n"):
+    records: list[CompleteRecord] = []
+    complete = data[: last_newline + 1]
+    byte_start = 0
+    line_index = 0
+    while byte_start < len(complete):
+        newline = complete.find(b"\n", byte_start)
+        byte_end = newline + 1
+        line = complete[byte_start:newline]
         stripped = line.strip()
-        if not stripped:
-            continue
-        try:
-            records.append(json.loads(stripped))
-        except json.JSONDecodeError:
-            _log.warning("skipping malformed transcript record")
+        if stripped:
+            try:
+                records.append(
+                    CompleteRecord(
+                        record=json.loads(stripped),
+                        byte_start=byte_start,
+                        byte_end=byte_end,
+                        line_index=line_index,
+                    )
+                )
+            except json.JSONDecodeError:
+                _log.warning("skipping malformed transcript record")
+            line_index += 1
+        byte_start = byte_end
     return records, last_newline + 1
 
 
@@ -91,8 +121,8 @@ class TailCursor:
     pending_codex_spawn_calls: dict[str, SubagentSpawnLink] = field(default_factory=dict)
 
 
-def ingest_records[RecordWrite](
-    records: Iterable[RawRecord],
+def ingest_records[RecordWrite: _ProvenanceWrite](
+    records: Iterable[CompleteRecord],
     cursor: TailCursor,
     source_path: str,
     *,
@@ -114,7 +144,10 @@ def ingest_records[RecordWrite](
     parent_seq = cursor.parent_seq
     model = cursor.model
     writes: list[RecordWrite] = []
-    for record in records:
+    from transport_matters.session.ingest import RecordProvenance
+
+    for complete in records:
+        record = complete.record
         if cursor.skip_until_user_text is not None and not cursor.skip_until_seen:
             cursor.skip_until_seen = is_replay_anchor(record, cursor.skip_until_user_text)
             if not cursor.skip_until_seen:
@@ -133,7 +166,16 @@ def ingest_records[RecordWrite](
             model=model,
         )
         turn = cursor.adapter.normalize(record, ctx)
-        writes.append(build_record(record, turn, ctx))
+        writes.append(
+            build_record(record, turn, ctx).model_copy(
+                update={
+                    "provenance": RecordProvenance(
+                        byte_start=cursor.byte_offset + complete.byte_start,
+                        byte_end=cursor.byte_offset + complete.byte_end,
+                    )
+                }
+            )
+        )
         seq += 1
         source_line += 1
         if turn is not None:
@@ -233,7 +275,7 @@ class TranscriptTailer:
         with path.open("rb") as handle:
             handle.seek(cursor.byte_offset)
             data = handle.read()
-        records, consumed = iter_complete_records(data)
+        complete, consumed = iter_complete_records(data)
         # Tee the consumed bytes into tier-1 BEFORE normalize (slice 8b-i): the raw prefix keeps ALL
         # records byte-faithfully, including the non-conversational ones normalize drops, so a
         # rebuild owns the transcript. Off the §7.1 wire hot path (tailer thread). A snapshot error
@@ -243,9 +285,10 @@ class TranscriptTailer:
         if self._snapshot_writer is not None and consumed:
             self._snapshot_writer(cursor.binding.session_id, cursor.byte_offset, data[:consumed])
         # The ONE record→turn loop, shared verbatim with §11 replay, see ingest_records.
-        if records:
+        if complete:
             if self._build_record is None or self._submit_batch is None:
                 raise RuntimeError("TranscriptTailer requires build_record and submit_batch")
+            records = [cr.record for cr in complete]
             record_subagent_spawn_links(
                 provider=cursor.binding.provider,
                 records=records,
@@ -254,7 +297,7 @@ class TranscriptTailer:
                 pending_codex_calls=cursor.pending_codex_spawn_calls,
             )
             ingest_records(
-                records,
+                complete,
                 cursor,
                 source.path,
                 build_record=self._build_record,

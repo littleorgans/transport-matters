@@ -208,7 +208,8 @@ def test_backfill_preserves_codex_items_subagent_source_lines(tmp_path: Path) ->
     child_session_id = synth_session_id(run_id, "codex", _CHILD_CODEX_ITEMS)
     child_rows = [row for row in rows if row[0].session_id == child_session_id]
     assert [
-        (source_line, record["type"]) for _binding, record, source_line, _source in child_rows
+        (source_line, record["type"])
+        for _binding, record, source_line, _source, _span in child_rows
     ] == [
         (3, "response_item"),
         (4, "response_item"),

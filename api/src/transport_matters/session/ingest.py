@@ -31,6 +31,15 @@ SEARCH_TEXT_MAX_BYTES = 262_144
 SEARCH_TEXT_TRUNCATION_MARKER = "\n[search_text truncated]"
 
 
+class RecordProvenance(BaseModel):
+    """Absolute byte span for a source transcript record, not persisted."""
+
+    model_config = ConfigDict(frozen=True)
+
+    byte_start: int
+    byte_end: int
+
+
 class EventWrite(BaseModel):
     """One event row plus inline artifacts decoded from that event's normalized IR."""
 
@@ -38,6 +47,7 @@ class EventWrite(BaseModel):
 
     event: EventRow
     artifacts: tuple[InlineArtifact, ...] = Field(default_factory=tuple)
+    provenance: RecordProvenance | None = None
 
 
 class EventBatch(BaseModel):

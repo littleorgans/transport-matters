@@ -21,14 +21,15 @@ from transport_matters.index.subagents import (
     iter_without_replayed_prefix_with_source_lines,
     record_subagent_spawn_links,
 )
-from transport_matters.index.tailer import iter_complete_records
+from transport_matters.index.tailer import CompleteRecord, iter_complete_records
+from transport_matters.session.ingest import RecordProvenance
 from transport_matters.storage.disk_layout import DiskStorageLayout
 from transport_matters.storage.session_facts import OwnedSessionFacts, read_run_session_facts
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
-ReplayRecord = tuple[SessionBinding, RawRecord, int, FileTailSource]
+ReplayRecord = tuple[SessionBinding, RawRecord, int, FileTailSource, RecordProvenance | None]
 _RUN_INDEX_GLOB = "*/*/*/index.jsonl"
 
 
@@ -74,7 +75,8 @@ def _replay_owned(root: Path, owned: OwnedSessionFacts) -> Iterator[ReplayRecord
     snapshot = DiskStorageLayout(root).transcript_snapshot_path(session_id)
     if not snapshot.exists():
         return
-    records, _consumed = iter_complete_records(snapshot.read_bytes())
+    complete, _consumed = iter_complete_records(snapshot.read_bytes())
+    records = [cr.record for cr in complete]
     binding = _binding(
         root,
         owned,
@@ -83,8 +85,8 @@ def _replay_owned(root: Path, owned: OwnedSessionFacts) -> Iterator[ReplayRecord
         _started_at(records, snapshot),
         _cwd(records),
     )
-    for seq, record in enumerate(records):
-        yield binding, record, seq, source
+    for seq, complete_record in enumerate(complete):
+        yield binding, complete_record.record, seq, source, _provenance(complete_record)
     links: dict[str, SubagentSpawnLink] = {}
     pending_codex_calls: dict[str, SubagentSpawnLink] = {}
     record_subagent_spawn_links(
@@ -102,12 +104,23 @@ def _replay_owned(root: Path, owned: OwnedSessionFacts) -> Iterator[ReplayRecord
         child_path = Path(child.source.path)
         if not child_path.exists():
             continue
-        child_records, _child_consumed = iter_complete_records(child_path.read_bytes())
+        child_complete, _child_consumed = iter_complete_records(child_path.read_bytes())
+        child_records = [cr.record for cr in child_complete]
         filtered = iter_without_replayed_prefix_with_source_lines(
             child_records, child.skip_until_user_text
         )
         for source_line, record in filtered:
-            yield child.binding, record, source_line, child.source
+            yield (
+                child.binding,
+                record,
+                source_line,
+                child.source,
+                _provenance(child_complete[source_line]),
+            )
+
+
+def _provenance(record: CompleteRecord) -> RecordProvenance:
+    return RecordProvenance(byte_start=record.byte_start, byte_end=record.byte_end)
 
 
 def _session_id(owned: OwnedSessionFacts, provider: str) -> str:

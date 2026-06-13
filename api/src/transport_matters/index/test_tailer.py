@@ -13,12 +13,13 @@ from transport_matters.index.adapters.codex import CodexAdapter
 from transport_matters.index.conftest import make_binding
 from transport_matters.index.sessions import synth_session_id
 from transport_matters.index.tailer import (
+    CompleteRecord,
     TailCursor,
     TranscriptTailer,
     iter_complete_records,
     register_session_cursor,
 )
-from transport_matters.session.ingest import EventWrite, build_event
+from transport_matters.session.ingest import EventWrite, RecordProvenance, build_event
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -136,7 +137,10 @@ class TestIterateSeam:
     def test_complete_records_only_leaves_trailing_partial(self) -> None:
         data = b'{"a":1}\n{"b":2}\n{"partial'
         records, consumed = iter_complete_records(data)
-        assert records == [{"a": 1}, {"b": 2}]
+        assert records == [
+            CompleteRecord(record={"a": 1}, byte_start=0, byte_end=8, line_index=0),
+            CompleteRecord(record={"b": 2}, byte_start=8, byte_end=16, line_index=1),
+        ]
         assert consumed == data.rfind(b"\n") + 1  # past the LAST newline; partial NOT consumed
 
     def test_no_newline_consumes_nothing(self) -> None:
@@ -144,20 +148,25 @@ class TestIterateSeam:
 
     def test_skips_malformed_complete_lines(self) -> None:
         records, _ = iter_complete_records(b'{"ok":1}\nnot json\n{"ok":2}\n')
-        assert records == [{"ok": 1}, {"ok": 2}]
+        assert records == [
+            CompleteRecord(record={"ok": 1}, byte_start=0, byte_end=9, line_index=0),
+            CompleteRecord(record={"ok": 2}, byte_start=18, byte_end=27, line_index=2),
+        ]
 
     def test_shared_seam_drives_closed_file_backfill(self) -> None:
         # The SAME fn serves a closed-file backfill pass: a file ending in \n yields all records.
         data = b'{"a":1}\n{"b":2}\n'
         records, consumed = iter_complete_records(data)
-        assert records == [{"a": 1}, {"b": 2}]
+        assert [record.record for record in records] == [{"a": 1}, {"b": 2}]
         assert consumed == len(data)
 
 
 class TestTailerPoll:
     def test_poll_submits_complete_and_leaves_partial(self, tmp_path: Path) -> None:
         path = tmp_path / "t.jsonl"
-        path.write_text(_user_line("u1", "hi") + "\n" + '{"type":"user","uuid":"u2"')
+        first_line = _user_line("u1", "hi") + "\n"
+        partial = '{"type":"user","uuid":"u2"'
+        path.write_text(first_line + partial)
         submitted: list[EventWrite] = []
         tailer = _event_tailer(submitted)
         tailer.register(_cursor(str(path)))
@@ -165,17 +174,24 @@ class TestTailerPoll:
         assert [write.event.native_turn_id for write in submitted] == [
             "u1"
         ]  # only the complete record
+        first_end = len(first_line.encode())
+        assert submitted[0].provenance == RecordProvenance(byte_start=0, byte_end=first_end)
 
         with path.open("a", encoding="utf-8") as handle:
-            handle.write(
+            completed = (
                 f',"parentUuid":null,"sessionId":"{_SESSION}","isSidechain":false,'
                 '"timestamp":"t","message":{"role":"user","content":"x"}}\n'
             )
+            handle.write(completed)
         tailer.poll()
         assert [write.event.native_turn_id for write in submitted] == [
             "u1",
             "u2",
         ]  # partial completed → consumed
+        assert submitted[1].provenance == RecordProvenance(
+            byte_start=first_end,
+            byte_end=first_end + len((partial + completed).encode()),
+        )
 
     def test_parent_seq_uses_prior_turn_seq_across_meta_record(self, tmp_path: Path) -> None:
         path = tmp_path / "t.jsonl"
