@@ -9,20 +9,17 @@ import type { AmbientFragmentSceneDefinition } from "../types.ts";
  * Screen-space by design: a horizon scene reads as the room the canvas sits
  * in, so it deliberately ignores pan/zoom.
  *
- * Variant II lifts the sun's arc out of frame (sunLift) and scales all
- * direct sun contributions (sunDim) — same sea, no glare.
+ * The sun is a brightness dial (uSun, 0..1), not a position: the sun keeps
+ * its normal arc and only its strength scales. sun=0 gates every direct sun
+ * term to zero (no disc, glare, or glow — a calm, sky-lit sea); sun=1 is full
+ * midday glare. With no lift the night sun stays below the horizon, so there
+ * is no phantom sun and the lower half stays alive across the whole dial.
  */
-const buildReferenceSeaScene = (options: {
-  id: string;
-  label: string;
-  description: string;
-  sunLift: number;
-  sunDim: number;
-}): AmbientFragmentSceneDefinition => ({
-  id: options.id,
+export const referenceSeaScene: AmbientFragmentSceneDefinition = {
+  id: "reference-sea",
   kind: "fragment",
-  label: options.label,
-  description: options.description,
+  label: "Reference sea",
+  description: "Raymarched ocean, full day cycle, with a sun-glare control",
   params: [
     {
       id: "dayProgress",
@@ -33,8 +30,19 @@ const buildReferenceSeaScene = (options: {
       step: 0.001,
       defaultValue: 0.25,
     },
+    {
+      id: "sun",
+      uniform: "uSun",
+      label: "sun",
+      min: 0,
+      max: 1,
+      step: 0.01,
+      defaultValue: 0,
+    },
   ],
   fragmentShaderSource: `${scenePrelude}
+
+uniform float uSun;
 
 #define MARCH_STEPS 22
 #define REFINE_STEPS 5
@@ -193,10 +201,19 @@ void main() {
     vec3(0.12, 0.14, 0.18)
   );
 
-  float sunProgress = clamp(s / 0.58, 0.0, 1.0);
-  float sunAngle = sunProgress * PI;
+  /* sun (0..1) is a brightness dial, not a position: 0 = no sun at all (calm,
+     sky-lit sea), 1 = full midday glare. The sun keeps its arc and only its
+     strength scales, so every part of the dial reads, and with no lift the
+     night sun stays below the horizon (no phantom). At 0 every sun term gates
+     to zero — no disc, no glare, no glow. */
+  float sunDim = clamp01(uSun);
+
+  /* The sun rides a full closed circle: above the horizon over s in [0, 0.58]
+     (the old arc), then onward beneath it back to the dawn point, so position
+     and glow stay continuous across the wrap. */
+  float sunAngle = s < 0.58 ? s * (PI / 0.58) : PI + (s - 0.58) * (PI / 0.42);
   float sunArcX = cos(sunAngle) * -0.75;
-  float sunArcY = sin(sunAngle) * 0.38 - 0.08 + ${options.sunLift.toFixed(2)};
+  float sunArcY = sin(sunAngle) * 0.38 - 0.08;
 
   vec3 sunDir = normalize(vec3(sunArcX, sunArcY, -1.0));
   vec3 moonDir = normalize(vec3(-0.14, 0.42, -1.0));
@@ -207,8 +224,10 @@ void main() {
   float fogDen = sF(0.020, 0.010, 0.022, 0.034, 0.046);
   float moonAmt = sF(0.0, 0.0, 0.05, 0.92, 0.06);
 
-  float sunAbove = step(0.0, sunDir.y) * ${options.sunDim.toFixed(2)};
-  float sunGlow = smoothstep(-0.10, 0.06, sunDir.y) * ${options.sunDim.toFixed(2)};
+  // Sun visibility gates on its own (unlifted) height: below the horizon at
+  // night → no contribution, so no phantom. sunDim then scales the strength.
+  float sunAbove = step(0.0, sunDir.y) * sunDim;
+  float sunGlow = smoothstep(-0.10, 0.06, sunDir.y) * sunDim;
 
   vec3 col;
 
@@ -368,20 +387,4 @@ void main() {
   gl_FragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
 }
 `,
-});
-
-export const referenceSeaScene = buildReferenceSeaScene({
-  id: "reference-sea",
-  label: "Reference sea",
-  description: "Raymarched ocean with a full day cycle",
-  sunDim: 1,
-  sunLift: 0,
-});
-
-export const referenceSeaTwoScene = buildReferenceSeaScene({
-  id: "reference-sea-ii",
-  label: "Reference sea II",
-  description: "The same sea, sun held offscreen — no glare",
-  sunDim: 0.45,
-  sunLift: 1.15,
-});
+};

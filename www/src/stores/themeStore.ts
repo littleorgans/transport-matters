@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { normalizeLegacyTheme } from "../theme/migrate";
 import { presetTheme } from "../theme/presets";
 import type { ThemeDefinition } from "../theme/types";
 import { createFrontendPersistStorage, FRONTEND_STORAGE_KEYS } from "./persistence";
@@ -55,6 +56,18 @@ export const useThemeStore = create<ThemeState>()(
     {
       name: FRONTEND_STORAGE_KEYS.themeStore,
       storage: createFrontendPersistStorage(),
+      // The persisted store trusts its record verbatim (no re-validation on
+      // load), so a stored theme on a collapsed scene id would reach the
+      // renderer unrewritten. Normalize it here, the third persistence seam
+      // alongside validateThemeDefinition's two.
+      version: 1,
+      migrate: (persisted) => {
+        const state = persisted as { theme: ThemeDefinition | null; liveDayCycle: boolean };
+        return {
+          ...state,
+          theme: normalizeLegacyTheme(state.theme) as ThemeDefinition | null,
+        };
+      },
       partialize: (state) => ({ theme: state.theme, liveDayCycle: state.liveDayCycle }),
     },
   ),

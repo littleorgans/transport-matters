@@ -1,6 +1,6 @@
 import { photoStudyScene } from "./scenes/photo-study.ts";
 import { proofGridScene } from "./scenes/proof-grid.ts";
-import { referenceSeaScene, referenceSeaTwoScene } from "./scenes/reference-sea.ts";
+import { referenceSeaScene } from "./scenes/reference-sea.ts";
 import { solidScene } from "./scenes/solid.ts";
 import type { AmbientFragmentSceneDefinition, AmbientSceneDefinition } from "./types.ts";
 
@@ -48,24 +48,9 @@ export interface AmbientSceneRegistry {
   fragmentUniformFor(sceneId: string, paramId: string): string | undefined;
 }
 
-const registeredScenes = [
-  referenceSeaTwoScene,
-  referenceSeaScene,
-  photoStudyScene,
-  proofGridScene,
-  solidScene,
-] as const;
+const registeredScenes = [referenceSeaScene, photoStudyScene, proofGridScene, solidScene] as const;
 
 const sceneSwatches: Record<string, AmbientSceneSwatch> = {
-  "reference-sea-ii": {
-    kind: "gradient",
-    label: "Muted night sea",
-    stops: [
-      { color: "rgb(4 11 19)", at: 0 },
-      { color: "rgb(25 52 74)", at: 0.62 },
-      { color: "rgb(169 184 162)", at: 1 },
-    ],
-  },
   "reference-sea": {
     kind: "gradient",
     label: "Sea glare",

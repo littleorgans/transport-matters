@@ -4,7 +4,7 @@
   "name": "Open water",
   "source": "curated",
   "settings": {
-    "sceneId": "reference-sea-ii",
+    "sceneId": "reference-sea",
     "sceneParams": {},
     "photoKey": "picsum:102",
     "accent": {
