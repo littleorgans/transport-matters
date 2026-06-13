@@ -83,4 +83,25 @@ describe("SceneParamControls", () => {
     fireEvent.click(screen.getByRole("checkbox", { name: "Live" }));
     expect(useThemeStore.getState().liveDayCycle).toBe(false);
   });
+
+  it("surfaces the sun dial for the sea scene, calm by default and with no Live toggle", () => {
+    useThemeStore.setState({ theme: openWater, liveDayCycle: false });
+    render(<SceneParamControls />);
+
+    expect(screen.getByRole("slider", { name: "Scene sun" })).toHaveValue("0");
+    // Only the day param carries a Live toggle; the sun dial is a plain slider.
+    expect(screen.getAllByRole("checkbox", { name: "Live" })).toHaveLength(1);
+  });
+
+  it("scrubbing the sun dial stores its raw 0..1 value with no clock conversion", () => {
+    useThemeStore.setState({ theme: openWater, liveDayCycle: false });
+    render(<SceneParamControls />);
+
+    fireEvent.change(screen.getByRole("slider", { name: "Scene sun" }), {
+      target: { value: "1" },
+    });
+
+    expect(useThemeStore.getState().theme?.settings.sceneParams.sun).toBe(1);
+    expect(screen.getByRole("slider", { name: "Scene sun" })).toHaveValue("1");
+  });
 });
