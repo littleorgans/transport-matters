@@ -17,9 +17,25 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
 
 
+def strip_decoded_nuls(value: Any) -> Any:
+    # Any: provider JSON can carry arbitrary nested scalar shapes at this boundary.
+    if isinstance(value, str):
+        return value.replace("\x00", "")
+    if isinstance(value, dict):
+        return {
+            key.replace("\x00", "") if isinstance(key, str) else key: strip_decoded_nuls(nested)
+            for key, nested in value.items()
+        }
+    if isinstance(value, list):
+        return [strip_decoded_nuls(nested) for nested in value]
+    if isinstance(value, tuple):
+        return tuple(strip_decoded_nuls(nested) for nested in value)
+    return value
+
+
 def jsonb(value: dict[str, Any] | None) -> Jsonb | None:
     # Any: provider and IR JSON are intentionally opaque at this DAO boundary.
-    return None if value is None else Jsonb(value)
+    return None if value is None else Jsonb(strip_decoded_nuls(value))
 
 
 def one_session(row: Mapping[str, Any] | None) -> SessionRow | None:
@@ -66,14 +82,24 @@ def events_with_artifacts(
 
 def session_params(session: SessionRow) -> dict[str, Any]:
     # Any: psycopg parameter maps accept scalars plus Jsonb wrappers.
-    data = session.model_dump(mode="python", exclude={"created_at", "updated_at"})
-    data["source_descriptor"] = jsonb(session.source_descriptor)
+    data = {
+        key: strip_decoded_nuls(value)
+        for key, value in session.model_dump(
+            mode="python", exclude={"created_at", "updated_at"}
+        ).items()
+    }
+    data["source_descriptor"] = jsonb(data["source_descriptor"])
     return data
 
 
 def event_params(event: EventRow) -> dict[str, Any]:
     # Any: psycopg parameter maps accept scalars plus Jsonb wrappers.
-    data = event.model_dump(mode="python", exclude={"artifacts", "created_at"})
-    data["raw"] = Jsonb(event.raw)
-    data["ir"] = jsonb(event.ir)
+    data = {
+        key: strip_decoded_nuls(value)
+        for key, value in event.model_dump(
+            mode="python", exclude={"artifacts", "created_at"}
+        ).items()
+    }
+    data["raw"] = Jsonb(data["raw"])
+    data["ir"] = jsonb(data["ir"])
     return data
