@@ -2,11 +2,11 @@ import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FRONTEND_STORAGE_KEYS } from "../../stores/persistence";
 import type { CliCapability, CliName } from "../../types";
+import { resetCapturedRunStoreForTests, useCapturedRunStore } from "../model/capturedRunStore";
 import { CanvasLabRoute } from "./CanvasLabRoute";
 import { resetCanvasLabStoreForTests, useCanvasLabStore } from "./canvasLabStore";
 import { CANVAS_LAB_STORAGE_VERSION } from "./canvasLabStore.persistence";
 import { resetCapabilitiesStoreForTests, useCapabilitiesStore } from "./capabilitiesStore";
-import { resetCapturedRunStoreForTests, useCapturedRunStore } from "./capturedRunStore";
 
 vi.mock("../../api", () => ({
   createCapturedRun: vi.fn(),

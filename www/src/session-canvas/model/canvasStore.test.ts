@@ -1,11 +1,23 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { PaneId, WorldRect } from "../../engine";
 import { resolveLayout, roundWorldRect } from "../../engine/layout";
+import { FRONTEND_STORAGE_KEYS } from "../../stores/persistence";
 import { makeSessionSummary } from "../testUtils";
 import { PICKER_PANE_ID } from "../viewers/registry";
 import { resetCanvasStoreForTests, useCanvasStore } from "./canvasStore";
+import { resetCapturedRunStoreForTests, useCapturedRunStore } from "./capturedRunStore";
 import { planExpandLayout } from "./expandLayout";
 import { openPaneIds } from "./layoutPlanning";
+
+const { createCapturedRunMock, deleteRunMock } = vi.hoisted(() => ({
+  createCapturedRunMock: vi.fn(),
+  deleteRunMock: vi.fn(),
+}));
+
+vi.mock("../../api", () => ({
+  createCapturedRun: createCapturedRunMock,
+  deleteRun: deleteRunMock,
+}));
 
 type CanvasStoreSnapshot = ReturnType<typeof useCanvasStore.getState>;
 
@@ -43,7 +55,23 @@ function rectsFor(state: CanvasStoreSnapshot): Record<PaneId, WorldRect> {
   return rects;
 }
 
+function capturedRunRef(runKey = "claude:k1") {
+  return { kind: "captured-run", owner: "local", provider: "claude", runKey } as const;
+}
+
+function seedCapturedRun(runKey = "claude:k1", runId = "run-1"): void {
+  useCapturedRunStore.setState({ runs: { [runKey]: { provider: "claude", runId } } });
+}
+
 describe("canvasStore", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    resetCapturedRunStoreForTests();
+    createCapturedRunMock.mockReset();
+    deleteRunMock.mockReset();
+    deleteRunMock.mockResolvedValue(undefined);
+  });
+
   it("starts with a stable picker pane", () => {
     resetCanvasStoreForTests();
 
@@ -174,6 +202,59 @@ describe("canvasStore", () => {
     expect(state.panes[paneId]?.contentRef).toEqual(ref);
     expect(state.layout.nodes[paneId]?.lifecycle).toBe("open");
     expect(state.docked).toHaveLength(0);
+  });
+
+  it("closePane stops an established captured run through the core lifecycle policy", () => {
+    vi.useFakeTimers();
+    try {
+      resetCanvasStoreForTests();
+      seedCapturedRun();
+      useCanvasStore.getState().spawnPane(capturedRunRef());
+
+      useCanvasStore.getState().closePane("claude:k1");
+      vi.runAllTimers();
+
+      expect(deleteRunMock).toHaveBeenCalledWith("run-1");
+      expect(deleteRunMock).toHaveBeenCalledTimes(1);
+      expect(useCapturedRunStore.getState().runs["claude:k1"]).toBeUndefined();
+      expect(useCanvasStore.getState().panes["claude:k1"]).toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("closeDockedPane stops a docked captured run through the core lifecycle policy", () => {
+    resetCanvasStoreForTests();
+    seedCapturedRun();
+    const paneId = useCanvasStore.getState().dockPane(capturedRunRef());
+
+    useCanvasStore.getState().closeDockedPane(paneId);
+
+    expect(deleteRunMock).toHaveBeenCalledWith("run-1");
+    expect(deleteRunMock).toHaveBeenCalledTimes(1);
+    expect(useCapturedRunStore.getState().runs["claude:k1"]).toBeUndefined();
+    expect(useCanvasStore.getState().docked).toEqual([]);
+  });
+
+  it("closeDockedPane stops a persisted captured run after reload without spawning or mounting the viewer", async () => {
+    resetCanvasStoreForTests();
+    const runKey = "claude:rehydrated";
+    localStorage.setItem(
+      FRONTEND_STORAGE_KEYS.capturedRunStore,
+      JSON.stringify({
+        version: 3,
+        state: { runs: { [runKey]: { provider: "claude", runId: "run-rehydrated" } } },
+      }),
+    );
+    await useCapturedRunStore.persist.rehydrate();
+    const paneId = useCanvasStore.getState().dockPane(capturedRunRef(runKey));
+
+    useCanvasStore.getState().closeDockedPane(paneId);
+
+    expect(createCapturedRunMock).not.toHaveBeenCalled();
+    expect(deleteRunMock).toHaveBeenCalledWith("run-rehydrated");
+    expect(useCapturedRunStore.getState().runs[runKey]).toBeUndefined();
+    expect(useCanvasStore.getState().docked).toEqual([]);
   });
 
   it("restorePaneAtIndex restores the docked pane into the order slot the drop chose", () => {

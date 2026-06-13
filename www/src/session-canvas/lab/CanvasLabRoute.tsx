@@ -25,9 +25,6 @@ import {
 import { ControlsPanel } from "./ControlsPanel";
 import { framedPaneId, useCanvasLabStore } from "./canvasLabStore";
 import { cliInstalled, useCapabilitiesStore } from "./capabilitiesStore";
-// Side-effect import: registers the captured-run lifecycle hook (onClose -> stopRun) lab-side, so
-// capturedRunStore never reaches the prod bundle. Must run before any close dispatches through it.
-import "./labLifecycle";
 import "./canvas-lab.css";
 import { LabCardPane } from "./viewers/LabCardPane";
 import { LabRulerPane } from "./viewers/LabRulerPane";

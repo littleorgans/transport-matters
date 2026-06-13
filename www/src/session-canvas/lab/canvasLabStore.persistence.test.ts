@@ -1,14 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { resolveLayout } from "../../engine/layout";
 import { FRONTEND_STORAGE_KEYS } from "../../stores/persistence";
+import { resetCapturedRunStoreForTests, useCapturedRunStore } from "../model/capturedRunStore";
 import { titleForRef } from "../viewers/registry";
 import { resetCanvasLabStoreForTests, useCanvasLabStore } from "./canvasLabStore";
 import { CANVAS_LAB_STORAGE_VERSION } from "./canvasLabStore.persistence";
 import { capturedPaneIds } from "./canvasLabStore.testSupport";
-import { resetCapturedRunStoreForTests, useCapturedRunStore } from "./capturedRunStore";
-// Register the captured-run lifecycle hook (onMinimize/onRestore/onClose) the same way production does
-// (via CanvasLabRoute's side-effect import), so minimize-docks and reload-attach ride the real wiring.
-import "./labLifecycle";
 
 const { createCapturedRunMock, deleteRunMock } = vi.hoisted(() => ({
   createCapturedRunMock: vi.fn(),

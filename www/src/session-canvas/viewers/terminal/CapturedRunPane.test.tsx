@@ -1,6 +1,6 @@
 import { act, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { resetCapturedRunStoreForTests, useCapturedRunStore } from "../../lab/capturedRunStore";
+import { resetCapturedRunStoreForTests, useCapturedRunStore } from "../../model/capturedRunStore";
 import { CapturedRunPane } from "./CapturedRunPane";
 import { resolvePasteHandle } from "./pasteRegistry";
 

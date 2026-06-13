@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { resolveLayout } from "../../engine/layout";
+import { resetCapturedRunStoreForTests, useCapturedRunStore } from "../model/capturedRunStore";
 import {
   framedPaneId,
   resetCanvasLabStoreForTests,
@@ -7,10 +8,6 @@ import {
   useCanvasLabStore,
 } from "./canvasLabStore";
 import { capturedPaneIds } from "./canvasLabStore.testSupport";
-import { resetCapturedRunStoreForTests, useCapturedRunStore } from "./capturedRunStore";
-// Register the captured-run lifecycle hook (onClose -> stopRun) the same way production does (via
-// CanvasLabRoute's side-effect import), so close-kills-run is exercised through the real wiring.
-import "./labLifecycle";
 
 const { createCapturedRunMock, deleteRunMock } = vi.hoisted(() => ({
   createCapturedRunMock: vi.fn(),

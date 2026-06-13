@@ -9,6 +9,7 @@ import {
   updateNodeRect,
 } from "../../engine";
 import { sanitizeParam, seedParams } from "../../engine/layout";
+import { createCapturedRunKey } from "../model/capturedRunStore";
 import { planExpandLayout } from "../model/expandLayout";
 import {
   dismissPane,
@@ -38,7 +39,6 @@ import {
 } from "./canvasLabLayout";
 import { canvasLabPersistOptions } from "./canvasLabStore.persistence";
 import type { CanvasLabState } from "./canvasLabTypes";
-import { createCapturedRunKey } from "./capturedRunStore";
 
 const FRAME_MS = 320;
 const INITIAL_DEMO_PANE_COUNT = 4;

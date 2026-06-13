@@ -1,3 +1,4 @@
+import { capturedRunLifecyclePolicy } from "./capturedRunLifecycle";
 import type { CanvasPaneRef } from "./paneRecords";
 
 export type PaneLifecycleKind = CanvasPaneRef["kind"];
@@ -15,16 +16,14 @@ export interface PaneLifecyclePolicy<TRef extends CanvasPaneRef = CanvasPaneRef>
   onClose?(ref: TRef): void;
 }
 
-/** Static defaults: every kind is plain (no hooks). The lab augments captured-run at runtime. */
-const PANE_LIFECYCLE_POLICIES: Partial<Record<PaneLifecycleKind, PaneLifecyclePolicy>> = {};
+/** Static defaults: core owns resource cleanup hooks that every route must see. */
+const PANE_LIFECYCLE_POLICIES: Partial<Record<PaneLifecycleKind, PaneLifecyclePolicy>> = {
+  "captured-run": capturedRunLifecyclePolicy,
+};
 
-/** Runtime overrides registered lab-side so capturedRunStore stays out of model/ + prod. */
+/** Runtime overrides for tests and future route-specific policy experiments. */
 const overrides: Partial<Record<PaneLifecycleKind, PaneLifecyclePolicy>> = {};
 
-/**
- * Lab-side attach point. Keeps capturedRunStore (the only ref with a close side effect) out of
- * model/ and the prod bundle: model/ ships an empty table, the lab registers its hooks on import.
- */
 export function registerLifecycle(kind: PaneLifecycleKind, policy: PaneLifecyclePolicy): void {
   overrides[kind] = policy;
 }
