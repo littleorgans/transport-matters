@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+import shutil
 from contextlib import ExitStack
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from importlib.resources import as_file
 from typing import TYPE_CHECKING
@@ -21,6 +22,7 @@ from transport_matters.launch_manifest import write_workspace_manifest
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
     from importlib.resources.abc import Traversable
+    from pathlib import Path
 
     from transport_matters.cli.launch_profile import LaunchProfile, ManagedSession
     from transport_matters.cli.launch_runtime import LaunchPreparation
@@ -39,6 +41,7 @@ class CapturedRunContext:
         tuple[list[str], dict[str, str], ManagedClient | None],
     ]
     resource_stack: ExitStack
+    runtime_home_dir: Path | None = None
 
 
 def build_captured_run_context(
@@ -85,18 +88,43 @@ def build_captured_run_context(
         validate_after_client_resolution=validate_after_client_resolution,
         web_required=request.web_runtime == WEB_RUNTIME_EMBEDDED,
     )
-    managed_session = prepare_managed_session(
-        launch_profile,
-        client_path=prepared.client_path,
-        passthrough=prepared.passthrough_user,
-        working_dir=prepared.working_dir,
-        home_dir=request.home_dir,
-        env=env,
-        now=now or datetime.now().astimezone(),
-        write=write,
-    )
     stack = ExitStack()
+    effective_request = request
+    runtime_home_dir = None
     try:
+        if write and prepared.client_path is not None:
+            from transport_matters.cli.home_seed import (
+                prepare_runtime_home_overlay,
+                resolve_source_home_dir,
+            )
+
+            source_home_dir = resolve_source_home_dir(
+                request.client_name,
+                home_dir=request.home_dir,
+                env=env,
+            )
+            runtime_home_root = prepared.resolved_storage / "runtime-home"
+            runtime_home_dir = runtime_home_root / request.client_name
+            prepare_runtime_home_overlay(
+                request.client_name,
+                source_home_dir=source_home_dir,
+                runtime_home_dir=runtime_home_dir,
+                working_dir=prepared.working_dir,
+                env=env,
+            )
+            stack.callback(shutil.rmtree, runtime_home_root, ignore_errors=True)
+            effective_request = replace(request, home_dir=source_home_dir)
+
+        managed_session = prepare_managed_session(
+            launch_profile,
+            client_path=prepared.client_path,
+            passthrough=prepared.passthrough_user,
+            working_dir=prepared.working_dir,
+            home_dir=effective_request.home_dir,
+            env=env,
+            now=now or datetime.now().astimezone(),
+            write=write,
+        )
         addon_path = stack.enter_context(as_file(prepared.addon_traversable))
         if request.client_name == CLAUDE_CLIENT_NAME:
             build_invocation = build_claude_captured_invocation(
@@ -106,7 +134,8 @@ def build_captured_run_context(
                 working_dir=prepared.working_dir,
                 resolved_storage=prepared.resolved_storage,
                 run_id=prepared.run_id,
-                home_dir=request.home_dir,
+                home_dir=effective_request.home_dir,
+                runtime_home_dir=runtime_home_dir,
                 claude_path=prepared.client_path,
                 claude_passthrough_user=prepared.passthrough_user,
                 no_claude=request.client_disabled,
@@ -129,7 +158,8 @@ def build_captured_run_context(
                 working_dir=prepared.working_dir,
                 resolved_storage=prepared.resolved_storage,
                 run_id=prepared.run_id,
-                home_dir=request.home_dir,
+                home_dir=effective_request.home_dir,
+                runtime_home_dir=runtime_home_dir,
                 codex_path=prepared.client_path,
                 codex_passthrough_user=prepared.passthrough_user,
                 debug=request.debug,
@@ -143,12 +173,13 @@ def build_captured_run_context(
         stack.close()
         raise
     return CapturedRunContext(
-        request=request,
+        request=effective_request,
         profile=launch_profile,
         prepared=prepared,
         managed_session=managed_session,
         build_invocation=build_invocation,
         resource_stack=stack,
+        runtime_home_dir=runtime_home_dir,
     )
 
 

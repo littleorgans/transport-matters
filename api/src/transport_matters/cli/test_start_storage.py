@@ -204,14 +204,18 @@ def test_start_home_dir_sets_claude_config_dir_and_manifest(
         ],
     )
     assert result.exit_code == 0, result.output
-    expected_home = (tmp_path / "homes" / "claude").resolve()
-    assert expected_home.is_dir()
+    expected_source_home = (tmp_path / "homes" / "claude").resolve()
     client_env = spy_run_client_children.call_args.kwargs["client"].env
-    assert client_env["CLAUDE_CONFIG_DIR"] == str(expected_home)
-    assert captured["raw"]["home_dir"] == str(expected_home)
+    storage_dir = Path(client_env["TRANSPORT_MATTERS_STORAGE_DIR"])
+    overlay_home = storage_dir / "runtime-home" / "claude"
+    # --agent-home-dir is the source home; the child runs from the per-run overlay built
+    # from it, so daemon background workers inherit the overlay settings-env route.
+    assert client_env["CLAUDE_CONFIG_DIR"] == str(overlay_home)
+    # The manifest records the operator's source home, never the run-scoped overlay.
+    assert captured["raw"]["home_dir"] == str(expected_source_home)
 
 
-def test_start_unset_home_dir_omits_claude_config_dir(
+def test_start_unset_home_dir_runs_from_runtime_overlay(
     tmp_storage: Path,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -220,13 +224,20 @@ def test_start_unset_home_dir_omits_claude_config_dir(
     monkeypatch.setattr("transport_matters.cli.shutil.which", _which_all())
     monkeypatch.setattr("transport_matters.cli.port_in_use", lambda _: False)
     monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)
+    # Native source home resolves to ~/.claude; pin it to a hermetic tmp home.
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    (tmp_path / ".claude").mkdir()
 
     workdir = tmp_path / "project"
     workdir.mkdir()
     result = runner.invoke(main, ["claude", "--work-dir", str(workdir), "--no-system-prompt"])
     assert result.exit_code == 0, result.output
     client_env = spy_run_client_children.call_args.kwargs["client"].env
-    assert "CLAUDE_CONFIG_DIR" not in client_env
+    storage_dir = Path(client_env["TRANSPORT_MATTERS_STORAGE_DIR"])
+    overlay_home = storage_dir / "runtime-home" / "claude"
+    # Even with no --agent-home-dir, the captured run launches from a per-run overlay
+    # (source = native ~/.claude) so daemon background workers inherit the route.
+    assert client_env["CLAUDE_CONFIG_DIR"] == str(overlay_home)
 
 
 def test_start_print_command_home_dir_does_not_create_dir(

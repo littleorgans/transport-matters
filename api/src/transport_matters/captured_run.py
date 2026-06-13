@@ -86,9 +86,7 @@ def run_captured_run_on_local_tty(
     now: datetime | None = None,
 ) -> None:
     """Run the captured Claude launch on the local terminal using the shared seam."""
-    from transport_matters.cli.home_seed import seed_home_dir
     from transport_matters.cli.launch_runtime import print_invocation
-    from transport_matters.launch_environment import CLIENT_NAME_CLAUDE
 
     ctx = build_captured_run_context(
         request,
@@ -114,13 +112,6 @@ def run_captured_run_on_local_tty(
                 web_port=web_port,
             )
             return
-
-        if request.home_dir is not None and ctx.prepared.client_path is not None:
-            seed_home_dir(
-                CLIENT_NAME_CLAUDE,
-                home_dir=request.home_dir,
-                working_dir=ctx.prepared.working_dir,
-            )
 
         wslock = WorkspaceLock(run_root(ctx.prepared.working_dir, ctx.prepared.run_id)).__enter__()
         try:

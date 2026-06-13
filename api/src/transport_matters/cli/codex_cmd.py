@@ -166,6 +166,7 @@ def build_codex_invocation(
     debug: bool,
     web_runtime: str = "embedded",
     default_client_passthrough: Sequence[str] = (),
+    runtime_home_dir: Path | None = None,
 ) -> Callable[[int, int | None], tuple[list[str], dict[str, str], ManagedClient | None]]:
     """Build the retry-safe invocation factory for `transport-matters codex`.
 
@@ -218,7 +219,7 @@ def build_codex_invocation(
             client_env = build_managed_child_env(
                 env,
                 client_name=CLIENT_NAME_CODEX,
-                home_dir=home_dir,
+                home_dir=runtime_home_dir or home_dir,
                 proxy_url=proxy_url,
                 codex_ca_certificate=codex_ca_certificate,
             )
