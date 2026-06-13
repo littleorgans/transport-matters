@@ -180,6 +180,15 @@ def test_event_insert_strips_decoded_nuls_from_payload_boundaries(
     assert persisted[3].search_text == "searchpayload"
 
 
+def test_artifact_upsert_strips_decoded_nuls_from_media_type(dao: SessionDao) -> None:
+    artifact = dao.upsert_artifact(b"poison-image", media_type="image/p\x00ng")
+    persisted = dao.get_artifact(artifact.hash)
+
+    assert artifact.media_type == "image/png"
+    assert persisted is not None
+    assert persisted.media_type == "image/png"
+
+
 def test_schema_round_trips_session_event_and_artifact(dao: SessionDao) -> None:
     inserted_session = dao.upsert_session(root_session())
     inserted_event = dao.insert_event(event(search_text="generated microscope image"))
@@ -326,6 +335,20 @@ async def test_async_dao_round_trips_session_and_event(test_db: TestDb) -> None:
         rows = await dao.get_events("async-s1")
 
     assert [row.seq for row in rows] == [1]
+
+
+async def test_async_artifact_upsert_strips_decoded_nuls_from_media_type(
+    test_db: TestDb,
+) -> None:
+    async with await async_connect(test_db.database_url, autocommit=True) as conn:
+        dao = AsyncSessionDao(conn)
+
+        artifact = await dao.upsert_artifact(b"async-poison-image", media_type="image/p\x00ng")
+        persisted = await dao.get_artifact(artifact.hash)
+
+    assert artifact.media_type == "image/png"
+    assert persisted is not None
+    assert persisted.media_type == "image/png"
 
 
 async def test_async_pool_and_transaction_lifecycle(test_db: TestDb) -> None:

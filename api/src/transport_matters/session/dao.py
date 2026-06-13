@@ -16,6 +16,7 @@ from transport_matters.session.dao_rows import (
     jsonb,
     one_session,
     session_params,
+    strip_decoded_nuls,
 )
 from transport_matters.session.dao_statements import (
     GET_ARTIFACT_SQL,
@@ -181,7 +182,12 @@ class SessionDao:
         hash_ = artifact_hash(data)
         row = self._conn.execute(
             UPSERT_ARTIFACT_SQL,
-            {"hash": hash_, "media_type": media_type, "size_bytes": len(data), "bytes": data},
+            {
+                "hash": hash_,
+                "media_type": strip_decoded_nuls(media_type),
+                "size_bytes": len(data),
+                "bytes": data,
+            },
         ).fetchone()
         if row is not None:
             return artifact_row(row)
