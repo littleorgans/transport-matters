@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-from collections.abc import Mapping
 from concurrent.futures import TimeoutError as FutureTimeoutError
 from typing import TYPE_CHECKING
 
@@ -116,7 +115,9 @@ class SessionWriter:
             except psycopg.Error as exc:
                 if classify(exc) == "poison":
                     for item in batch.events:
-                        await dao.insert_dead_letter(_dead_letter_from_event(item, exc))
+                        await dao.insert_dead_letter(
+                            _dead_letter_from_event(item, exc, batch.session.native_session_id)
+                        )
                     return CommitResult(
                         ok=True,
                         session_id=batch.session.session_id,
@@ -145,7 +146,9 @@ class SessionWriter:
                         continue
                     raise
             for item, error in rejected:
-                await dao.insert_dead_letter(_dead_letter_from_event(item, error))
+                await dao.insert_dead_letter(
+                    _dead_letter_from_event(item, error, batch.session.native_session_id)
+                )
             await conn.execute(
                 "SELECT pg_notify(%s, %s)",
                 (self._notify_channel, _notify_payload(batch)),
@@ -193,7 +196,9 @@ def _notify_payload(batch: EventBatch) -> str:
     return json.dumps(payload, separators=(",", ":"), sort_keys=True)
 
 
-def _dead_letter_from_event(item: EventWrite, exc: psycopg.Error) -> DeadLetterWrite:
+def _dead_letter_from_event(
+    item: EventWrite, exc: psycopg.Error, native_session_id: str | None
+) -> DeadLetterWrite:
     provenance = item.provenance
     if provenance is None:
         raise RuntimeError("cannot quarantine event without byte provenance")
@@ -202,7 +207,7 @@ def _dead_letter_from_event(item: EventWrite, exc: psycopg.Error) -> DeadLetterW
         seq=item.event.seq,
         scope="record",
         run_id=item.event.run_id,
-        native_session_id=_native_session_id(item.event.raw),
+        native_session_id=native_session_id,
         provider=item.event.provider,
         cli=item.event.cli,
         source_path=item.event.source_path,
@@ -221,19 +226,6 @@ def _raw_excerpt(item: EventWrite) -> bytes:
     return json.dumps(
         item.event.raw, ensure_ascii=False, separators=(",", ":"), sort_keys=True
     ).encode()
-
-
-def _native_session_id(raw: Mapping[str, object]) -> str | None:
-    for key in ("sessionId", "session_id", "native_session_id"):
-        value = raw.get(key)
-        if isinstance(value, str):
-            return value
-    payload = raw.get("payload")
-    if isinstance(payload, Mapping):
-        value = payload.get("id")
-        if isinstance(value, str):
-            return value
-    return None
 
 
 def _sqlstate(exc: BaseException) -> str | None:

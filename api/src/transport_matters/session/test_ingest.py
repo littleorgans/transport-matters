@@ -6,7 +6,7 @@ import json
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
-from psycopg import errors
+import psycopg
 
 from transport_matters.index.adapters.base import (
     FileTailSource,
@@ -199,9 +199,10 @@ async def test_session_writer_commits_raw_ir_meta_artifacts_and_reingest(
 async def test_tailer_quarantines_program_limit_poison_and_advances(
     test_db: TestDb, tmp_path: Path, monkeypatch: Any
 ) -> None:
+    poison_text = " ".join(f"oversized{i}" for i in range(140_000))
     records = [
         _plain_turn_record("good1", "before"),
-        _plain_turn_record("poison1", "middle"),
+        _plain_turn_record("poison1", poison_text),
         _plain_turn_record("good2", "after"),
     ]
     lines = [json.dumps(record, separators=(",", ":")) + "\n" for record in records]
@@ -209,16 +210,10 @@ async def test_tailer_quarantines_program_limit_poison_and_advances(
     path.write_text("".join(lines), encoding="utf-8")
     poison_start = len(lines[0].encode())
     poison_end = poison_start + len(lines[1].encode())
-    original_insert_event = AsyncSessionDao.insert_event
+    poison_raw_len = len(lines[1].removesuffix("\n").encode())
+    monkeypatch.setattr(ingest, "_cap_search_text", lambda text: text)
 
-    async def insert_event_with_program_limit(self: AsyncSessionDao, event: EventRow) -> EventRow:
-        if event.seq == 1:
-            raise errors.ProgramLimitExceeded("tsvector too large")
-        return await original_insert_event(self, event)
-
-    monkeypatch.setattr(AsyncSessionDao, "insert_event", insert_event_with_program_limit)
-
-    binding = _binding()
+    binding = _binding().model_copy(update={"native_session_id": "native-authority"})
     loop = asyncio.get_running_loop()
     writer = SessionWriter(
         create_async_pool(test_db.database_url, min_size=1, max_size=1), loop=loop
@@ -255,8 +250,9 @@ async def test_tailer_quarantines_program_limit_poison_and_advances(
             dead = await (
                 await conn.execute(
                     """
-                    SELECT scope, seq, error_sqlstate, byte_start, byte_end, attempts,
-                           raw_byte_len, octet_length(raw_excerpt) AS excerpt_len
+                    SELECT scope, seq, native_session_id, error_sqlstate, byte_start,
+                           byte_end, attempts, raw_byte_len,
+                           octet_length(raw_excerpt) AS excerpt_len
                     FROM event_dead_letter
                     WHERE session_id = %s
                     """,
@@ -266,10 +262,12 @@ async def test_tailer_quarantines_program_limit_poison_and_advances(
             assert dead is not None
             assert dead["scope"] == "record"
             assert dead["seq"] == 1
+            assert dead["native_session_id"] == "native-authority"
             assert dead["error_sqlstate"] == "54000"
             assert (dead["byte_start"], dead["byte_end"]) == (poison_start, poison_end)
             assert dead["attempts"] == 1
-            assert dead["raw_byte_len"] == dead["excerpt_len"]
+            assert dead["raw_byte_len"] == poison_raw_len
+            assert dead["excerpt_len"] == DEAD_LETTER_RAW_MAX_BYTES
     finally:
         await writer.aclose()
 
@@ -314,6 +312,83 @@ async def test_session_writer_quarantines_decoded_nul_poison(
             assert dead is not None
             assert (dead["seq"], dead["error_sqlstate"]) == (1, "22P05")
             assert (dead["byte_start"], dead["byte_end"]) == (10, 19)
+    finally:
+        await writer.aclose()
+
+
+async def test_tailer_dead_letter_failure_aborts_batch_and_holds_cursor(
+    test_db: TestDb, tmp_path: Path, monkeypatch: Any
+) -> None:
+    monkeypatch.setattr(dao_rows, "strip_decoded_nuls", lambda value: value)
+    dead_letter_attempts: list[int | None] = []
+
+    async def fail_dead_letter(_self: AsyncSessionDao, letter: DeadLetterWrite) -> None:
+        dead_letter_attempts.append(letter.seq)
+        raise psycopg.OperationalError("dead-letter store unavailable")
+
+    monkeypatch.setattr(AsyncSessionDao, "insert_dead_letter", fail_dead_letter)
+
+    records = [
+        _plain_turn_record("good1", "before"),
+        _plain_turn_record("poison1", "middle"),
+        _plain_turn_record("good2", "after"),
+    ]
+    records[1]["poison"] = "\x00"
+    path = tmp_path / "transcript.jsonl"
+    path.write_text(
+        "".join(json.dumps(record, separators=(",", ":")) + "\n" for record in records),
+        encoding="utf-8",
+    )
+
+    binding = _binding()
+    loop = asyncio.get_running_loop()
+    writer = SessionWriter(
+        create_async_pool(test_db.database_url, min_size=1, max_size=1), loop=loop
+    )
+
+    def submit_batch(batch_binding: SessionBinding, events: list[EventWrite]) -> None:
+        writer.submit_blocking(build_event_batch(batch_binding, events))
+
+    tailer = TranscriptTailer(
+        build_record=build_event,
+        submit_batch=submit_batch,
+        quarantine_window=writer.quarantine_window_blocking,
+    )
+    cursor = TailCursor(
+        binding=binding,
+        source=FileTailSource(path=str(path), format="claude_jsonl"),
+        adapter=ClaudeAdapter(),
+    )
+    tailer.register(cursor)
+
+    try:
+        await loop.run_in_executor(None, tailer.poll)
+
+        assert dead_letter_attempts == [1]
+        assert cursor.byte_offset == 0
+        assert cursor.stat_signature is None
+        async with await async_connect(test_db.database_url, autocommit=True) as conn:
+            event_count = await (
+                await conn.execute(
+                    'SELECT count(*) AS n FROM "event" WHERE session_id = %s',
+                    (_SESSION,),
+                )
+            ).fetchone()
+            assert event_count is not None
+            assert event_count["n"] == 0
+
+            dead_letter_count = await (
+                await conn.execute(
+                    """
+                    SELECT count(*) AS n
+                    FROM event_dead_letter
+                    WHERE session_id = %s
+                    """,
+                    (_SESSION,),
+                )
+            ).fetchone()
+            assert dead_letter_count is not None
+            assert dead_letter_count["n"] == 0
     finally:
         await writer.aclose()
 
