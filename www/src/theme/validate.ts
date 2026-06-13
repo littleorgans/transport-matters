@@ -1,3 +1,4 @@
+import { normalizeLegacyTheme } from "./migrate";
 import type { AmbientSceneRegistry, SceneParamId, ThemePhotoLookup } from "./types";
 import {
   ACCENT_IDS,
@@ -9,6 +10,7 @@ import {
   cloneThemeDefinition,
   type ImportErrorCause,
   type ImportResult,
+  isRecord,
   type OklchAccent,
   SHADOW_IDS,
   type ShadowId,
@@ -28,9 +30,6 @@ export interface ThemeValidationDeps {
 }
 
 const hasOwn = (value: object, key: string): boolean => Object.hasOwn(value, key);
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
 
 export const validationError = (cause: ImportErrorCause): ThemeValidationResult => ({
   ok: false,
@@ -151,9 +150,12 @@ const normalizeTheme = (
 };
 
 export const validateThemeDefinition = (
-  value: unknown,
+  input: unknown,
   deps: ThemeValidationDeps,
 ): ThemeValidationResult => {
+  // Rewrite legacy sceneIds before any field check, so both seams that funnel
+  // here (preset load, JSON import) accept a theme on a collapsed scene id.
+  const value = normalizeLegacyTheme(input);
   if (!isRecord(value)) return validationError("invalid theme object");
   if (!hasOwn(value, "schema")) return missing("schema");
   if (value.schema !== THEME_SCHEMA_VERSION) return validationError("unsupported schema version");

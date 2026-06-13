@@ -10,7 +10,7 @@
     "accent": {
       "id": "ivory"
     },
-    "cornerId": "none",
+    "cornerId": "medium",
     "veil": 0.74,
     "borderId": "standard",
     "glass": false,

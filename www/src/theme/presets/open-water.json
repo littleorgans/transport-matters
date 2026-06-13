@@ -4,7 +4,7 @@
   "name": "Open water",
   "source": "curated",
   "settings": {
-    "sceneId": "reference-sea-ii",
+    "sceneId": "reference-sea",
     "sceneParams": {},
     "photoKey": "picsum:102",
     "accent": {
@@ -12,7 +12,7 @@
     },
     "cornerId": "medium",
     "veil": 0.5,
-    "borderId": "hairline",
+    "borderId": "strong",
     "glass": true,
     "glassAmount": 18,
     "shadowId": "deep"

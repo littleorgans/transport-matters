@@ -54,8 +54,8 @@ describe("driveAmbientScene", () => {
     const bg = fakeBackground();
     driveAmbientScene(bg, openWater.settings);
 
-    expect(bg.setScene).toHaveBeenCalledWith("reference-sea-ii");
-    const params = sceneRegistry.paramsFor("reference-sea-ii");
+    expect(bg.setScene).toHaveBeenCalledWith(openWater.settings.sceneId);
+    const params = sceneRegistry.paramsFor(openWater.settings.sceneId);
     expect(params.length).toBeGreaterThan(0);
     for (const param of params) {
       expect(bg.setParam).toHaveBeenCalledWith(param.id, param.defaultValue);
@@ -64,7 +64,7 @@ describe("driveAmbientScene", () => {
 
   it("pushes a theme override over the scene default", () => {
     const bg = fakeBackground();
-    const params = sceneRegistry.paramsFor("reference-sea-ii");
+    const params = sceneRegistry.paramsFor(openWater.settings.sceneId);
     const first = params[0];
     if (!first) throw new Error("expected scene params");
     driveAmbientScene(bg, {
@@ -78,7 +78,7 @@ describe("driveAmbientScene", () => {
   it("only sends a photo to scenes that use one", () => {
     const bg = fakeBackground();
     driveAmbientScene(bg, openWater.settings);
-    const usesPhoto = sceneRegistry.metadataFor("reference-sea-ii")?.usesPhoto ?? false;
+    const usesPhoto = sceneRegistry.metadataFor(openWater.settings.sceneId)?.usesPhoto ?? false;
     if (usesPhoto) {
       expect(bg.setPhoto).toHaveBeenCalled();
     } else {
