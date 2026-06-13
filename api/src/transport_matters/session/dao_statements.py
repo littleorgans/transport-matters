@@ -161,6 +161,20 @@ INSERT INTO event_dead_letter (
 ON CONFLICT (session_id, byte_start, byte_end) DO NOTHING
 """
 
+COUNT_DEAD_LETTERS_BY_RUN_SQL = """
+SELECT run_id, count(*)::integer AS dead_letter_count
+FROM event_dead_letter
+WHERE run_id = ANY(%(run_ids)s::text[])
+GROUP BY run_id
+"""
+
+COUNT_DEAD_LETTERS_BY_SESSION_SQL = """
+SELECT session_id, count(*)::integer AS dead_letter_count
+FROM event_dead_letter
+WHERE session_id = ANY(%(session_ids)s::text[])
+GROUP BY session_id
+"""
+
 GET_EVENTS_SQL = f"""
 SELECT {EVENT_COLUMNS}
 FROM "event"

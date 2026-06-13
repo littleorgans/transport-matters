@@ -20,6 +20,8 @@ from transport_matters.session.dao_rows import (
     strip_decoded_nuls,
 )
 from transport_matters.session.dao_statements import (
+    COUNT_DEAD_LETTERS_BY_RUN_SQL,
+    COUNT_DEAD_LETTERS_BY_SESSION_SQL,
     GET_ARTIFACT_SQL,
     GET_EVENT_ARTIFACTS_FOR_SEQS_SQL,
     GET_EVENTS_FOR_OWNER_SQL,
@@ -48,6 +50,8 @@ from transport_matters.session.models import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from psycopg import AsyncConnection
     from psycopg.rows import DictRow
 
@@ -121,6 +125,22 @@ class AsyncSessionDao:
 
     async def insert_dead_letter(self, letter: DeadLetterWrite) -> None:
         await self._conn.execute(INSERT_DEAD_LETTER_SQL, dead_letter_params(letter))
+
+    async def count_dead_letters_by_run(self, run_ids: Sequence[str]) -> dict[str, int]:
+        if not run_ids:
+            return {}
+        cursor = await self._conn.execute(COUNT_DEAD_LETTERS_BY_RUN_SQL, {"run_ids": list(run_ids)})
+        rows = await cursor.fetchall()
+        return {str(row["run_id"]): int(row["dead_letter_count"]) for row in rows}
+
+    async def count_dead_letters_by_session(self, session_ids: Sequence[str]) -> dict[str, int]:
+        if not session_ids:
+            return {}
+        cursor = await self._conn.execute(
+            COUNT_DEAD_LETTERS_BY_SESSION_SQL, {"session_ids": list(session_ids)}
+        )
+        rows = await cursor.fetchall()
+        return {str(row["session_id"]): int(row["dead_letter_count"]) for row in rows}
 
     async def get_events(
         self, session_id: str, *, from_seq: int | None = None, to_seq: int | None = None

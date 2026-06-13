@@ -5,13 +5,14 @@ from __future__ import annotations
 import asyncio
 import logging
 from datetime import datetime
-from typing import TYPE_CHECKING, Annotated, Any, cast
+from typing import TYPE_CHECKING, Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict
 
 from transport_matters.api.v1.exchanges import exchange_detail_route
+from transport_matters.api.v1.session_store import require_session_pool
 from transport_matters.session.async_dao import AsyncSessionDao
 from transport_matters.session.listen import SessionEventHub
 from transport_matters.session.resource_content import load_resource_content
@@ -69,10 +70,13 @@ class SessionSummary(BaseModel):
     started_at: datetime
     created_at: datetime | None
     updated_at: datetime | None
+    dead_letter_count: int = 0
 
     @classmethod
-    def from_row(cls, row: SessionRow) -> SessionSummary:
-        return cls.model_validate(row.model_dump())
+    def from_row(cls, row: SessionRow, *, dead_letter_count: int = 0) -> SessionSummary:
+        data = row.model_dump()
+        data["dead_letter_count"] = dead_letter_count
+        return cls.model_validate(data)
 
 
 class SessionEventView(BaseModel):
@@ -111,10 +115,7 @@ class SessionEventListResponse(BaseModel):
 
 
 async def _session_pool(request: Request) -> AsyncConnectionPool[AsyncConnection[DictRow]]:
-    pool = getattr(request.app.state, "session_pool", None)
-    if pool is None:
-        raise HTTPException(status_code=503, detail="session store unavailable")
-    return cast("AsyncConnectionPool[AsyncConnection[DictRow]]", pool)
+    return require_session_pool(request)
 
 
 def _session_hub(request: Request) -> SessionEventHub:
@@ -146,7 +147,13 @@ async def list_sessions(
             limit=limit,
             offset=offset,
         )
-    return [SessionSummary.from_row(row) for row in rows]
+        dead_letter_counts = await dao.count_dead_letters_by_session(
+            [row.session_id for row in rows]
+        )
+    return [
+        SessionSummary.from_row(row, dead_letter_count=dead_letter_counts.get(row.session_id, 0))
+        for row in rows
+    ]
 
 
 @router.get("/sessions/{session_id}/events")
