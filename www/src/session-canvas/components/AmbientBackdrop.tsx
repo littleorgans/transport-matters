@@ -61,6 +61,13 @@ function AmbientCanvas({ settings }: { settings: ThemeSettings }) {
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
+    // Headless automation (Playwright/Selenium set navigator.webdriver) runs on
+    // a software GL backend, where the per-frame raymarch pegs the GPU process
+    // and the canvas-lab stops responding — every pointer-driven e2e then times
+    // out. No behavioral or visual test depends on the backdrop, so skip the
+    // WebGL engine under automation and let the route shell's CSS gradient show,
+    // the same fallback as a browser without WebGL.
+    if (navigator.webdriver) return;
     const bg = createAmbientBackground(canvas, sceneRegistry.all(), initialSceneId.current);
     if (!bg) return;
     bgRef.current = bg;
