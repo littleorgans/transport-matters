@@ -12,7 +12,7 @@
     },
     "cornerId": "medium",
     "veil": 0.5,
-    "borderId": "hairline",
+    "borderId": "strong",
     "glass": true,
     "glassAmount": 18,
     "shadowId": "deep"
