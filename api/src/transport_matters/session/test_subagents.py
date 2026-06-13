@@ -214,6 +214,16 @@ def test_backfill_preserves_codex_items_subagent_source_lines(tmp_path: Path) ->
         (3, "response_item"),
         (4, "response_item"),
     ]
+    line_lengths = [len(line) for line in child_rollout.read_bytes().splitlines(keepends=True)]
+    expected_spans = []
+    for source_line in (3, 4):
+        byte_start = sum(line_lengths[:source_line])
+        expected_spans.append((byte_start, byte_start + line_lengths[source_line]))
+    spans = []
+    for _binding, _record, _source_line, _source, span in child_rows:
+        assert span is not None
+        spans.append((span.byte_start, span.byte_end))
+    assert spans == expected_spans
 
 
 def test_session_schema_allows_n_child_sessions_per_parent(test_db: TestDb) -> None:

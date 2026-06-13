@@ -22,11 +22,13 @@ _TIER1_EVENT_INDEXES = frozenset(
         "event_session_raw_type_expr_ix",
     }
 )
+_DEAD_LETTER_INDEXES = frozenset({"event_dead_letter_run_ix", "event_dead_letter_span_uq"})
 _REDUNDANT_SESSION_SEQ_INDEX = "event_session_seq_ix"
 
 
 def _reset_to_unmigrated(database_url: str) -> None:
     with connect(database_url, autocommit=True) as conn:
+        conn.execute("DROP TABLE IF EXISTS event_dead_letter CASCADE")
         conn.execute("DROP TABLE IF EXISTS event_artifact CASCADE")
         conn.execute("DROP TABLE IF EXISTS event CASCADE")
         conn.execute("DROP TABLE IF EXISTS artifact CASCADE")
@@ -57,6 +59,27 @@ def _assert_tier1_indexes_present(database_url: str) -> None:
     assert index_names >= _FOUNDATION_EVENT_INDEXES
     assert _REDUNDANT_SESSION_SEQ_INDEX not in index_names
     assert "(session_id, seq)" in indexes["event_pkey"]
+
+
+def _dead_letter_indexes(database_url: str) -> frozenset[str]:
+    with connect(database_url, autocommit=True) as conn:
+        rows = conn.execute(
+            """
+            SELECT indexname
+            FROM pg_indexes
+            WHERE schemaname = 'public'
+              AND tablename = 'event_dead_letter'
+            """
+        ).fetchall()
+    return frozenset(row["indexname"] for row in rows)
+
+
+def _assert_dead_letter_present(database_url: str) -> None:
+    with connect(database_url, autocommit=True) as conn:
+        exists = conn.execute("SELECT to_regclass('public.event_dead_letter')").fetchone()
+    assert exists is not None
+    assert exists["to_regclass"] == "event_dead_letter"
+    assert _dead_letter_indexes(database_url) >= _DEAD_LETTER_INDEXES
 
 
 def test_migration_head_is_defined() -> None:
@@ -91,18 +114,19 @@ def test_alembic_upgrade_and_downgrade_smoke(test_db: TestDb) -> None:
 
     assert migrate.current_revision(test_db.database_url) == migrate.migration_head()
     _assert_tier1_indexes_present(test_db.database_url)
+    _assert_dead_letter_present(test_db.database_url)
 
     command.downgrade(migrate.alembic_config(test_db.database_url), "-1")
 
-    assert migrate.current_revision(test_db.database_url) == "0001_session_store"
-    downgraded_indexes = frozenset(_event_indexes(test_db.database_url))
-    assert not _TIER1_EVENT_INDEXES & downgraded_indexes
-    assert downgraded_indexes >= _FOUNDATION_EVENT_INDEXES
+    assert migrate.current_revision(test_db.database_url) == "0002_event_tier1_indexes"
+    assert not _dead_letter_indexes(test_db.database_url)
+    _assert_tier1_indexes_present(test_db.database_url)
 
     migrate.apply_migrations(test_db.database_url)
 
     assert migrate.current_revision(test_db.database_url) == migrate.migration_head()
     _assert_tier1_indexes_present(test_db.database_url)
+    _assert_dead_letter_present(test_db.database_url)
 
 
 def test_apply_migrations_raises_migration_error_on_failure(

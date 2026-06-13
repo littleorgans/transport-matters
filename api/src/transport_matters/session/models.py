@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import StrEnum
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -86,6 +86,30 @@ class EventRow(BaseModel):
     search_text: str | None = None
     created_at: datetime | None = None
     artifacts: tuple[EventArtifactRow, ...] = ()
+
+
+class DeadLetterWrite(BaseModel):
+    """Dead-letter row to persist for a quarantined transcript record or window."""
+
+    model_config = ConfigDict(frozen=True)
+
+    session_id: str
+    seq: int | None = None
+    scope: Literal["record", "window"] = "record"
+    run_id: str
+    native_session_id: str | None = None
+    provider: str | None = None
+    cli: str | None = None
+    source_path: str | None = None
+    source_line: int | None = None
+    event_kind: str | None = None
+    byte_start: int
+    byte_end: int
+    error_sqlstate: str | None = None
+    error_class: str
+    error_message: str
+    raw_excerpt: bytes | None = None
+    attempts: int = 1
 
 
 class EventReadRow(BaseModel):

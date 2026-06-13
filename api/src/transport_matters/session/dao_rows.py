@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from hashlib import sha256
 from typing import TYPE_CHECKING, Any
 
 from psycopg.types.json import Jsonb
@@ -12,9 +13,12 @@ from transport_matters.session.models import (
     EventRow,
     SessionRow,
 )
+from transport_matters.session.quarantine import DEAD_LETTER_RAW_MAX_BYTES
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
+
+    from transport_matters.session.models import DeadLetterWrite
 
 
 def strip_decoded_nuls(value: Any) -> Any:
@@ -102,4 +106,18 @@ def event_params(event: EventRow) -> dict[str, Any]:
     }
     data["raw"] = Jsonb(data["raw"])
     data["ir"] = jsonb(data["ir"])
+    return data
+
+
+def dead_letter_params(letter: DeadLetterWrite) -> dict[str, Any]:
+    # Any: psycopg parameter maps accept scalars and byte payloads.
+    raw_excerpt = letter.raw_excerpt
+    raw_byte_len = len(raw_excerpt) if raw_excerpt is not None else None
+    raw_sha256 = sha256(raw_excerpt).hexdigest() if raw_excerpt is not None else None
+    capped_excerpt = raw_excerpt[:DEAD_LETTER_RAW_MAX_BYTES] if raw_excerpt is not None else None
+    data = letter.model_dump(mode="python", exclude={"raw_excerpt"})
+    data["error_message"] = strip_decoded_nuls(data["error_message"])
+    data["raw_excerpt"] = capped_excerpt
+    data["raw_sha256"] = raw_sha256
+    data["raw_byte_len"] = raw_byte_len
     return data

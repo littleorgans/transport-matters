@@ -4,6 +4,7 @@ from transport_matters.session.dao import SessionDao
 from transport_matters.session.models import (
     ArtifactRow,
     ChildSessionRow,
+    DeadLetterWrite,
     EventArtifactRow,
     EventKind,
     EventReadRow,
@@ -26,6 +27,7 @@ __all__ = [
     "ArtifactRow",
     "AsyncSessionDao",
     "ChildSessionRow",
+    "DeadLetterWrite",
     "EventArtifactRow",
     "EventKind",
     "EventReadRow",

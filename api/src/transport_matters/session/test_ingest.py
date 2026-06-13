@@ -6,6 +6,8 @@ import json
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
+from psycopg import errors
+
 from transport_matters.index.adapters.base import (
     FileTailSource,
     SessionBinding,
@@ -13,14 +15,22 @@ from transport_matters.index.adapters.base import (
     encode_source_descriptor,
 )
 from transport_matters.index.adapters.claude import ClaudeAdapter
+from transport_matters.index.tailer import TailCursor, TranscriptTailer
 from transport_matters.index.test_replay_support import _seed_claude_run, _seed_codex_run
-from transport_matters.session import ingest
+from transport_matters.session import dao_rows, ingest
 from transport_matters.session.artifacts import artifact_hash
 from transport_matters.session.async_dao import AsyncSessionDao
 from transport_matters.session.backfill import replay_transcript_run
-from transport_matters.session.ingest import EventWrite, build_event, build_event_batch
+from transport_matters.session.ingest import (
+    EventWrite,
+    RecordProvenance,
+    build_event,
+    build_event_batch,
+)
+from transport_matters.session.models import DeadLetterWrite, EventKind, EventRow
 from transport_matters.session.pool import async_connect, create_async_pool
-from transport_matters.session.writer import SessionWriter
+from transport_matters.session.quarantine import DEAD_LETTER_RAW_MAX_BYTES
+from transport_matters.session.writer import CommitResult, SessionWriter
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -83,6 +93,37 @@ def _meta_record() -> dict[str, Any]:
         "type": "session_meta",
         "payload": {"id": "native1", "timestamp": "2026-06-06T00:00:02Z"},
     }
+
+
+def _plain_turn_record(uuid: str, text: str) -> dict[str, Any]:
+    # Any: native transcript record JSON carries provider scoped fields.
+    return {
+        "type": "assistant",
+        "uuid": uuid,
+        "parentUuid": None,
+        "sessionId": _SESSION,
+        "isSidechain": False,
+        "timestamp": "2026-06-06T00:00:01Z",
+        "message": {"role": "assistant", "content": [{"type": "text", "text": text}]},
+    }
+
+
+def _event_row(seq: int, raw: dict[str, Any]) -> EventWrite:
+    return EventWrite(
+        event=EventRow(
+            session_id=_SESSION,
+            seq=seq,
+            kind=EventKind.TURN,
+            native_turn_id=f"turn{seq}",
+            run_id="run1",
+            provider="anthropic",
+            cli="claude",
+            raw=raw,
+            source_path="/tmp/transcript.jsonl",
+            source_line=seq,
+        ),
+        provenance=RecordProvenance(byte_start=seq * 10, byte_end=seq * 10 + 9),
+    )
 
 
 def _event_writes() -> tuple[SessionBinding, list[EventWrite]]:
@@ -153,6 +194,167 @@ async def test_session_writer_commits_raw_ir_meta_artifacts_and_reingest(
             assert row["n"] == 1
     finally:
         await writer.aclose()
+
+
+async def test_tailer_quarantines_program_limit_poison_and_advances(
+    test_db: TestDb, tmp_path: Path, monkeypatch: Any
+) -> None:
+    records = [
+        _plain_turn_record("good1", "before"),
+        _plain_turn_record("poison1", "middle"),
+        _plain_turn_record("good2", "after"),
+    ]
+    lines = [json.dumps(record, separators=(",", ":")) + "\n" for record in records]
+    path = tmp_path / "transcript.jsonl"
+    path.write_text("".join(lines), encoding="utf-8")
+    poison_start = len(lines[0].encode())
+    poison_end = poison_start + len(lines[1].encode())
+    original_insert_event = AsyncSessionDao.insert_event
+
+    async def insert_event_with_program_limit(self: AsyncSessionDao, event: EventRow) -> EventRow:
+        if event.seq == 1:
+            raise errors.ProgramLimitExceeded("tsvector too large")
+        return await original_insert_event(self, event)
+
+    monkeypatch.setattr(AsyncSessionDao, "insert_event", insert_event_with_program_limit)
+
+    binding = _binding()
+    loop = asyncio.get_running_loop()
+    writer = SessionWriter(
+        create_async_pool(test_db.database_url, min_size=1, max_size=1), loop=loop
+    )
+    results: list[CommitResult] = []
+
+    def submit_batch(batch_binding: SessionBinding, events: list[EventWrite]) -> None:
+        results.append(writer.submit_blocking(build_event_batch(batch_binding, events)))
+
+    tailer = TranscriptTailer(
+        build_record=build_event,
+        submit_batch=submit_batch,
+        quarantine_window=writer.quarantine_window_blocking,
+    )
+    cursor = TailCursor(
+        binding=binding,
+        source=FileTailSource(path=str(path), format="claude_jsonl"),
+        adapter=ClaudeAdapter(),
+    )
+    tailer.register(cursor)
+
+    try:
+        await loop.run_in_executor(None, tailer.poll)
+
+        assert cursor.byte_offset == len(path.read_bytes())
+        assert [
+            (result.committed, result.quarantined, result.quarantine_sqlstates)
+            for result in results
+        ] == [(2, 1, ("54000",))]
+        async with await async_connect(test_db.database_url, autocommit=True) as conn:
+            dao = AsyncSessionDao(conn)
+            events = await dao.get_events(_SESSION)
+            assert [event.seq for event in events] == [0, 2]
+            dead = await (
+                await conn.execute(
+                    """
+                    SELECT scope, seq, error_sqlstate, byte_start, byte_end, attempts,
+                           raw_byte_len, octet_length(raw_excerpt) AS excerpt_len
+                    FROM event_dead_letter
+                    WHERE session_id = %s
+                    """,
+                    (_SESSION,),
+                )
+            ).fetchone()
+            assert dead is not None
+            assert dead["scope"] == "record"
+            assert dead["seq"] == 1
+            assert dead["error_sqlstate"] == "54000"
+            assert (dead["byte_start"], dead["byte_end"]) == (poison_start, poison_end)
+            assert dead["attempts"] == 1
+            assert dead["raw_byte_len"] == dead["excerpt_len"]
+    finally:
+        await writer.aclose()
+
+
+async def test_session_writer_quarantines_decoded_nul_poison(
+    test_db: TestDb, monkeypatch: Any
+) -> None:
+    monkeypatch.setattr(dao_rows, "strip_decoded_nuls", lambda value: value)
+    binding = _binding()
+    writes = [
+        _event_row(0, {"ok": "before"}),
+        _event_row(1, {"bad": "\x00"}),
+        _event_row(2, {"ok": "after"}),
+    ]
+    loop = asyncio.get_running_loop()
+    writer = SessionWriter(
+        create_async_pool(test_db.database_url, min_size=1, max_size=1), loop=loop
+    )
+    try:
+        result = await loop.run_in_executor(
+            None, writer.submit_blocking, build_event_batch(binding, writes)
+        )
+        assert (result.committed, result.quarantined, result.quarantine_sqlstates) == (
+            2,
+            1,
+            ("22P05",),
+        )
+        async with await async_connect(test_db.database_url, autocommit=True) as conn:
+            dao = AsyncSessionDao(conn)
+            events = await dao.get_events(_SESSION)
+            assert [event.seq for event in events] == [0, 2]
+            dead = await (
+                await conn.execute(
+                    """
+                    SELECT seq, error_sqlstate, byte_start, byte_end
+                    FROM event_dead_letter
+                    WHERE session_id = %s
+                    """,
+                    (_SESSION,),
+                )
+            ).fetchone()
+            assert dead is not None
+            assert (dead["seq"], dead["error_sqlstate"]) == (1, "22P05")
+            assert (dead["byte_start"], dead["byte_end"]) == (10, 19)
+    finally:
+        await writer.aclose()
+
+
+async def test_dead_letter_insert_is_idempotent_and_caps_excerpt(test_db: TestDb) -> None:
+    raw_excerpt = b"x" * (DEAD_LETTER_RAW_MAX_BYTES + 7)
+    letter = DeadLetterWrite(
+        session_id=_SESSION,
+        scope="window",
+        run_id="run1",
+        native_session_id=_SESSION,
+        provider="anthropic",
+        cli="claude",
+        byte_start=0,
+        byte_end=10,
+        error_class="UniqueViolation",
+        error_message="constraint failed\x00",
+        raw_excerpt=raw_excerpt,
+        attempts=5,
+    )
+    async with await async_connect(test_db.database_url, autocommit=True) as conn:
+        dao = AsyncSessionDao(conn)
+        await dao.insert_dead_letter(letter)
+        await dao.insert_dead_letter(letter)
+        row = await (
+            await conn.execute(
+                """
+                SELECT count(*) AS n, max(raw_byte_len) AS raw_byte_len,
+                       max(octet_length(raw_excerpt)) AS excerpt_len,
+                       max(error_message) AS error_message
+                FROM event_dead_letter
+                WHERE session_id = %s
+                """,
+                (_SESSION,),
+            )
+        ).fetchone()
+        assert row is not None
+        assert row["n"] == 1
+        assert row["raw_byte_len"] == len(raw_excerpt)
+        assert row["excerpt_len"] == DEAD_LETTER_RAW_MAX_BYTES
+        assert row["error_message"] == "constraint failed"
 
 
 async def test_session_writer_commits_oversized_search_text_with_tsv_budget(

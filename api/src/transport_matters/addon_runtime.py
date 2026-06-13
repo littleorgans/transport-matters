@@ -179,15 +179,28 @@ def load_capture_runtime(settings: Settings | None = None) -> CaptureRuntime:
         snapshot_writer = (
             make_transcript_snapshot_writer(storage_root) if storage_root is not None else None
         )
+        quarantined_records = 0
 
         def submit_events(binding: SessionBinding, events: list[EventWrite]) -> None:
+            nonlocal quarantined_records
             result = writer.submit_blocking(build_event_batch(binding, events))
             if not result.ok:
                 raise RuntimeError("session writer commit failed")
+            if result.quarantined:
+                quarantined_records += result.quarantined
+                for sqlstate in result.quarantine_sqlstates:
+                    logger.warning(
+                        "quarantined transcript record run=%s session=%s sqlstate=%s total=%d",
+                        binding.run_id,
+                        binding.session_id,
+                        sqlstate,
+                        quarantined_records,
+                    )
 
         index_tailer = TranscriptTailer(
             build_record=build_event,
             submit_batch=submit_events,
+            quarantine_window=writer.quarantine_window_blocking,
             snapshot=snapshot_writer,
         )
         index_tailer.start()
