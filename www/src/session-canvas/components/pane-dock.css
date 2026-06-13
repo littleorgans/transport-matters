@@ -29,12 +29,12 @@
 .canvas-dock__chip {
   display: flex;
   align-items: center;
-  gap: var(--canvas-pane-gap);
-  border: var(--canvas-pane-border);
+  gap: var(--canvas-gap);
+  border: var(--pane-border);
   background: rgb(var(--shadow-rgb) / 0.6);
-  box-shadow: var(--canvas-pane-shadow);
+  box-shadow: var(--pane-shadow);
   backdrop-filter: blur(16px);
-  padding: calc(var(--canvas-pane-gap) * 0.75) var(--canvas-pane-padding);
+  padding: calc(var(--canvas-gap) * 0.75) var(--pane-padding);
   color: var(--color-txt);
 }
 .canvas-dock__chip:hover {
@@ -42,7 +42,7 @@
 }
 .canvas-dock__chip:focus-visible {
   outline: none;
-  box-shadow: var(--canvas-pane-shadow), var(--canvas-focus-ring);
+  box-shadow: var(--pane-shadow), var(--canvas-focus-ring);
 }
 .canvas-dock__label {
   font-size: 0.75rem;
@@ -53,7 +53,7 @@
   min-inline-size: 1.25rem;
   border: 1px solid rgb(var(--accent-rgb) / 0.5);
   color: var(--color-accent);
-  padding: 0 calc(var(--canvas-pane-gap) * 0.5);
+  padding: 0 calc(var(--canvas-gap) * 0.5);
   font-size: 0.72rem;
   font-variant-numeric: tabular-nums;
   text-align: center;
@@ -70,14 +70,14 @@
   max-inline-size: 28rem;
   display: flex;
   flex-direction: column;
-  gap: calc(var(--canvas-pane-gap) * 0.5);
+  gap: calc(var(--canvas-gap) * 0.5);
   min-inline-size: 14rem;
   max-block-size: 60vh;
-  margin: calc(var(--canvas-pane-gap) * 0.5) 0 0;
-  padding: var(--canvas-pane-gap);
-  border: var(--canvas-pane-border);
+  margin: calc(var(--canvas-gap) * 0.5) 0 0;
+  padding: var(--canvas-gap);
+  border: var(--pane-border);
   background: rgb(var(--shadow-rgb) / 0.92);
-  box-shadow: var(--canvas-pane-shadow);
+  box-shadow: var(--pane-shadow);
   backdrop-filter: blur(16px);
   overflow-y: auto;
 }
@@ -113,7 +113,7 @@
   border-inline-start: 1px solid var(--color-edge);
   background: transparent;
   color: var(--color-txt-3);
-  padding: 0 calc(var(--canvas-pane-padding) * 0.85);
+  padding: 0 calc(var(--pane-padding) * 0.85);
   font-size: 1rem;
   line-height: 1;
 }
@@ -137,12 +137,12 @@
   max-inline-size: min(36rem, calc(100% - var(--canvas-command-inset) * 2));
   margin: 0;
   transform: translateX(-50%);
-  border: var(--canvas-pane-border);
+  border: var(--pane-border);
   background: rgb(var(--shadow-rgb) / 0.86);
-  box-shadow: var(--canvas-pane-shadow);
+  box-shadow: var(--pane-shadow);
   backdrop-filter: blur(16px);
   color: var(--color-txt);
-  padding: var(--canvas-pane-gap) var(--canvas-pane-padding);
+  padding: var(--canvas-gap) var(--pane-padding);
   text-align: center;
 }
 
@@ -181,15 +181,15 @@ body[data-pane-drag-cursor="deliver"] * {
 
 .canvas-drop-target__label {
   position: absolute;
-  inset-block-start: calc(var(--canvas-pane-gap) * -1);
-  inset-inline-start: var(--canvas-pane-gap);
+  inset-block-start: calc(var(--canvas-gap) * -1);
+  inset-inline-start: var(--canvas-gap);
   transform: translateY(-100%);
-  border: var(--canvas-pane-border);
+  border: var(--pane-border);
   background: rgb(var(--shadow-rgb) / 0.86);
-  box-shadow: var(--canvas-pane-shadow);
+  box-shadow: var(--pane-shadow);
   backdrop-filter: blur(16px);
   color: var(--color-txt);
-  padding: calc(var(--canvas-pane-gap) * 0.5) var(--canvas-pane-padding);
+  padding: calc(var(--canvas-gap) * 0.5) var(--pane-padding);
   font-size: 0.75rem;
   text-transform: uppercase;
   letter-spacing: 0.08em;

@@ -26,7 +26,7 @@
 }
 .canvas-json-summary {
   display: flex;
-  gap: calc(var(--canvas-pane-gap) * 0.5);
+  gap: calc(var(--canvas-gap) * 0.5);
   align-items: baseline;
   padding: 1px 0;
   cursor: pointer;
@@ -45,7 +45,7 @@
 }
 .canvas-json-leaf {
   display: flex;
-  gap: calc(var(--canvas-pane-gap) * 0.5);
+  gap: calc(var(--canvas-gap) * 0.5);
   align-items: baseline;
   padding: 1px 0;
 }

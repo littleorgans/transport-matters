@@ -4,7 +4,7 @@
 .canvas-route-switcher {
   display: flex;
   align-items: center;
-  gap: calc(var(--canvas-pane-gap) * 0.5);
+  gap: calc(var(--canvas-gap) * 0.5);
 }
 .canvas-route-switcher__link[data-active="true"] {
   background: var(--color-hover);

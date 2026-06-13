@@ -8,13 +8,13 @@
   min-height: 0;
   flex: 1;
   flex-direction: column;
-  gap: var(--canvas-pane-gap);
+  gap: var(--canvas-gap);
 }
 .canvas-jsonview__toolbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--canvas-pane-gap);
+  gap: var(--canvas-gap);
 }
 .canvas-jsonview__toggle {
   display: inline-flex;

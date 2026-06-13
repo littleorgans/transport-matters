@@ -6,12 +6,12 @@
   min-height: 0;
   flex: 1;
   flex-direction: column;
-  gap: var(--canvas-pane-gap);
+  gap: var(--canvas-gap);
 }
 .canvas-image__controls {
   display: flex;
   align-items: center;
-  gap: var(--canvas-pane-gap);
+  gap: var(--canvas-gap);
 }
 .canvas-image__button {
   border: 1px solid var(--color-edge);
