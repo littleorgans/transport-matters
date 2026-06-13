@@ -10,7 +10,7 @@ from transport_matters.session import async_connect, connect, dao_rows
 from transport_matters.session.artifacts import artifact_hash
 from transport_matters.session.async_dao import AsyncSessionDao
 from transport_matters.session.dao import SessionDao
-from transport_matters.session.models import EventRow, SessionRow
+from transport_matters.session.models import DeadLetterWrite, EventRow, SessionRow
 from transport_matters.session.pool import (
     async_transaction,
     create_async_pool,
@@ -47,6 +47,33 @@ def root_session(
         home_dir="/tmp/home",
         owner="local",
         started_at=datetime(2026, 6, 6, tzinfo=UTC),
+    )
+
+
+def dead_letter(
+    byte_start: int = 0,
+    *,
+    session_id: str = "s1",
+    run_id: str = "run1",
+    native_session_id: str | None = "native1",
+) -> DeadLetterWrite:
+    return DeadLetterWrite(
+        session_id=session_id,
+        seq=byte_start,
+        scope="record",
+        run_id=run_id,
+        native_session_id=native_session_id,
+        provider="anthropic",
+        cli="claude",
+        source_path="/tmp/s1.jsonl",
+        source_line=byte_start,
+        event_kind="turn",
+        byte_start=byte_start,
+        byte_end=byte_start + 1,
+        error_sqlstate="54000",
+        error_class="ProgramLimitExceeded",
+        error_message="tsvector too large",
+        raw_excerpt=b"{}",
     )
 
 

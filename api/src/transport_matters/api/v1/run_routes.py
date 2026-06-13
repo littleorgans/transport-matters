@@ -13,6 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from starlette.websockets import WebSocketDisconnect
 
 from transport_matters.api.v1 import terminal_bridge
+from transport_matters.api.v1.session_store import optional_session_pool
 from transport_matters.captured_run import CLAUDE_CLIENT_NAME, CODEX_CLIENT_NAME
 from transport_matters.captured_run_models import CapturedRunCli
 from transport_matters.config import Settings, get_settings
@@ -33,6 +34,7 @@ from transport_matters.run_terminal import (
     AttachmentClosed,
     PtyChunk,
 )
+from transport_matters.session.async_dao import AsyncSessionDao
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -85,6 +87,7 @@ class RunViewModel(BaseModel):
     proxy_port: int = Field(serialization_alias="proxyPort")
     web_port: int | None = Field(default=None, serialization_alias="webPort")
     native_session_id: str | None = Field(default=None, serialization_alias="nativeSessionId")
+    dead_letter_count: int = Field(default=0, serialization_alias="deadLetterCount")
     state: RunState
     viewer_count: int = Field(serialization_alias="viewerCount")
     created_at: str = Field(serialization_alias="createdAt")
@@ -217,6 +220,16 @@ def _request_cwd(cwd: str | None, settings: Settings) -> Path | None:
     return _validated_existing_dir(str(settings.cwd))
 
 
+async def _dead_letter_counts_by_run(request: Request, run_ids: list[str]) -> dict[str, int]:
+    if not run_ids:
+        return {}
+    pool = optional_session_pool(request)
+    if pool is None:
+        return {}
+    async with pool.connection() as conn:
+        return await AsyncSessionDao(conn).count_dead_letters_by_run(run_ids)
+
+
 def _spawn_request(body: CreateRunRequest, settings: Settings) -> SpawnRun:
     terminal = body.terminal or TerminalSizeModel()
     return SpawnRun(
@@ -231,7 +244,7 @@ def _spawn_request(body: CreateRunRequest, settings: Settings) -> SpawnRun:
     )
 
 
-def run_view_model(view: ManagedRunView) -> RunViewModel:
+def run_view_model(view: ManagedRunView, *, dead_letter_count: int = 0) -> RunViewModel:
     return RunViewModel(
         run_id=view.run_id,
         cli=view.cli,
@@ -240,6 +253,7 @@ def run_view_model(view: ManagedRunView) -> RunViewModel:
         proxy_port=view.proxy_port,
         web_port=view.web_port,
         native_session_id=view.native_session_id,
+        dead_letter_count=dead_letter_count,
         state=view.state,
         viewer_count=view.viewer_count,
         created_at=view.created_at.isoformat(),
@@ -294,8 +308,30 @@ async def list_runs(
         states=frozenset({_validated_state(state)}) if state is not None else None,
     )
     manager = _run_manager(request)
+    views = manager.list(filters)
+    dead_letter_counts = await _dead_letter_counts_by_run(request, [view.run_id for view in views])
     return _response_payload(
-        ListRunsResponse(runs=[run_view_model(view) for view in manager.list(filters)])
+        ListRunsResponse(
+            runs=[
+                run_view_model(view, dead_letter_count=dead_letter_counts.get(view.run_id, 0))
+                for view in views
+            ]
+        )
+    )
+
+
+@router.get(RUNS_ROUTE_PREFIX + "/{run_id}")
+async def get_run(run_id: str, request: Request) -> dict[str, object]:
+    manager = _run_manager(request)
+    try:
+        view = manager.get(run_id).view()
+    except RunNotFoundError:
+        _not_found(run_id)
+    dead_letter_counts = await _dead_letter_counts_by_run(request, [run_id])
+    return _response_payload(
+        CreateRunResponse(
+            run=run_view_model(view, dead_letter_count=dead_letter_counts.get(run_id, 0))
+        )
     )
 
 

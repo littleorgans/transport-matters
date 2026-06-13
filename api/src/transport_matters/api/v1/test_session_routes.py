@@ -17,7 +17,7 @@ from transport_matters.session.listen import (
     SessionEventSignal,
 )
 from transport_matters.session.pool import async_connect, create_async_pool
-from transport_matters.session.test_foundation import event, root_session
+from transport_matters.session.test_foundation import dead_letter, event, root_session
 from transport_matters.session.timeline import project_timeline
 
 from .session_routes import _event_stream, _timeline_stream
@@ -49,10 +49,12 @@ async def test_session_routes_are_owner_scoped_and_omit_raw(test_db: TestDb) -> 
         sessions = await client.get("/api/sessions")
         assert sessions.status_code == 200
         assert [item["session_id"] for item in sessions.json()] == ["s1"]
+        assert [item["dead_letter_count"] for item in sessions.json()] == [2]
 
         other = await client.get("/api/sessions", params={"owner": "other"})
         assert other.status_code == 200
         assert [item["session_id"] for item in other.json()] == ["s2"]
+        assert [item["dead_letter_count"] for item in other.json()] == [0]
 
         events = await client.get("/api/sessions/s1/events", params={"limit": 1})
         assert events.status_code == 200
@@ -411,6 +413,8 @@ async def _seed_sessions(conn: AsyncConnection[DictRow]) -> None:
         )
     )
     await dao.insert_event(event(0, session_id="s2", search_text="other"))
+    await dao.insert_dead_letter(dead_letter(0, session_id="s1", run_id="run1"))
+    await dao.insert_dead_letter(dead_letter(10, session_id="s1", run_id="run1"))
 
 
 def _frame_payload(frame: str) -> dict[str, object]:

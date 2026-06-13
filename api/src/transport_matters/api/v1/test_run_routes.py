@@ -24,6 +24,9 @@ from transport_matters.config import Settings
 from transport_matters.main import create_app
 from transport_matters.pty_session import TerminalPty, spawn_pty_process
 from transport_matters.run_manager import RunManager, RunManagerErrorCode, RunState
+from transport_matters.session.dao import SessionDao
+from transport_matters.session.pool import connect
+from transport_matters.session.test_foundation import dead_letter
 from transport_matters.test_run_manager import (
     PreparedRunHarness,
     PtyHarness,
@@ -33,6 +36,8 @@ from transport_matters.test_run_manager import (
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
+
+    from transport_matters.session.testing import TestDb
 
 BACKEND_ORIGIN = "http://localhost:8788"
 
@@ -99,6 +104,45 @@ def test_post_get_attach_detach_and_delete(monkeypatch: pytest.MonkeyPatch, tmp_
             "state": "exited",
             "stopReason": "explicit-stop",
         }
+
+
+def test_run_views_surface_dead_letter_counts(
+    test_db: TestDb, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    ManagedRunHarness(tmp_path, monkeypatch)
+    monkeypatch.setenv("TRANSPORT_MATTERS_DATABASE_URL", test_db.database_url)
+    client = _client(monkeypatch, tmp_path)
+
+    with client:
+        create_response = client.post(
+            "/api/runs",
+            json={"cli": "claude", "cwd": str(tmp_path)},
+            headers=_http_headers(BACKEND_ORIGIN),
+        )
+        assert create_response.status_code == 201
+        run_id = create_response.json()["run"]["runId"]
+
+        listed_zero = client.get("/api/runs", headers=_http_headers(BACKEND_ORIGIN))
+        assert listed_zero.status_code == 200
+        assert listed_zero.json()["runs"][0]["deadLetterCount"] == 0
+
+        single_zero = client.get(f"/api/runs/{run_id}", headers=_http_headers(BACKEND_ORIGIN))
+        assert single_zero.status_code == 200
+        assert single_zero.json()["run"]["deadLetterCount"] == 0
+
+        with connect(test_db.database_url, autocommit=True) as conn:
+            dao = SessionDao(conn)
+            dao.insert_dead_letter(dead_letter(0, session_id="run-session", run_id=run_id))
+            dao.insert_dead_letter(dead_letter(10, session_id="run-session", run_id=run_id))
+            dao.insert_dead_letter(dead_letter(20, session_id="other-session", run_id="other-run"))
+
+        listed = client.get("/api/runs", headers=_http_headers(BACKEND_ORIGIN))
+        assert listed.status_code == 200
+        assert listed.json()["runs"][0]["deadLetterCount"] == 2
+
+        single = client.get(f"/api/runs/{run_id}", headers=_http_headers(BACKEND_ORIGIN))
+        assert single.status_code == 200
+        assert single.json()["run"]["deadLetterCount"] == 2
 
 
 def test_delete_run_is_idempotent(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
