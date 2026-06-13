@@ -225,16 +225,18 @@ def test_replay_transcript_run_yields_snapshot_records_without_wire_index(tmp_pa
 
     rows = list(replay_transcript_run(root))
 
-    assert [(seq, record["type"]) for _binding, record, seq, _source in rows] == [
+    assert [(seq, record["type"]) for _binding, record, seq, _source, _span in rows] == [
         (0, "session_meta"),
         (1, "response_item"),
     ]
-    binding, _record, _seq, source = rows[0]
+    binding, _record, _seq, source, provenance = rows[0]
     assert binding.session_id == session_id
     assert binding.provider == "codex"
     assert binding.cli == "codex"
     assert binding.cwd == "/w"
     assert source.path.endswith("rollout.jsonl")
+    assert provenance is not None
+    assert provenance.byte_start == 0
 
 
 def test_replay_transcript_run_recovers_claude_record_cwd(tmp_path: Path) -> None:
@@ -248,5 +250,5 @@ def test_replay_transcript_run_recovers_claude_record_cwd(tmp_path: Path) -> Non
 
     rows = list(replay_transcript_run(root))
 
-    binding, _record, _seq, _source = rows[0]
+    binding, _record, _seq, _source, _span = rows[0]
     assert binding.cwd == "/claude"
