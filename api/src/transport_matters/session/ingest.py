@@ -27,6 +27,10 @@ if TYPE_CHECKING:
     )
 
 
+SEARCH_TEXT_MAX_BYTES = 262_144
+SEARCH_TEXT_TRUNCATION_MARKER = "\n[search_text truncated]"
+
+
 class EventWrite(BaseModel):
     """One event row plus inline artifacts decoded from that event's normalized IR."""
 
@@ -205,7 +209,20 @@ def _search_text(parts: list[Any]) -> str | None:
     chunks: list[str] = []
     for part in parts:
         _append_search_text(part, chunks)
-    return "\n".join(chunks) or None
+    text = "\n".join(chunks)
+    return _cap_search_text(text) if text else None
+
+
+def _cap_search_text(text: str) -> str:
+    encoded = text.encode("utf-8")
+    if len(encoded) <= SEARCH_TEXT_MAX_BYTES:
+        return text
+
+    marker = SEARCH_TEXT_TRUNCATION_MARKER.encode("utf-8")
+    content_budget = SEARCH_TEXT_MAX_BYTES - len(marker)
+    if content_budget <= 0:
+        return marker[:SEARCH_TEXT_MAX_BYTES].decode("utf-8", errors="ignore")
+    return encoded[:content_budget].decode("utf-8", errors="ignore") + SEARCH_TEXT_TRUNCATION_MARKER
 
 
 def _append_search_text(part: Any, chunks: list[str]) -> None:

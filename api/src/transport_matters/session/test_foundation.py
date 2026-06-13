@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 import pytest
 from psycopg.errors import CheckViolation, ForeignKeyViolation, UniqueViolation
 
-from transport_matters.session import async_connect, connect
+from transport_matters.session import async_connect, connect, dao_rows
 from transport_matters.session.artifacts import artifact_hash
 from transport_matters.session.async_dao import AsyncSessionDao
 from transport_matters.session.dao import SessionDao
@@ -50,6 +50,28 @@ def root_session(
     )
 
 
+def test_strip_decoded_nuls_recurses_json_compatible_values() -> None:
+    sentinel = object()
+
+    assert dao_rows.strip_decoded_nuls("a\x00b\x00c") == "abc"
+    assert dao_rows.strip_decoded_nuls(
+        {
+            "ke\x00y": [
+                "li\x00st",
+                {"nested": ("tu\x00ple", 7, False, None)},
+            ],
+            "scalar": 42,
+        }
+    ) == {
+        "key": [
+            "list",
+            {"nested": ("tuple", 7, False, None)},
+        ],
+        "scalar": 42,
+    }
+    assert dao_rows.strip_decoded_nuls(sentinel) is sentinel
+
+
 def event(seq: int = 1, *, session_id: str = "s1", search_text: str = "alpha beta") -> EventRow:
     return EventRow(
         session_id=session_id,
@@ -86,6 +108,76 @@ def tool_result_event(
             "search_text": text,
         }
     )
+
+
+def test_session_upsert_strips_decoded_nuls(dao: SessionDao) -> None:
+    session = root_session().model_copy(
+        update={
+            "title": "bad\x00title",
+            "source_descriptor": {
+                "kind": "file_tail",
+                "path": "/tmp/s\x001.jsonl",
+                "nested": ["x\x00y"],
+            },
+        }
+    )
+
+    inserted = dao.upsert_session(session)
+    persisted = dao.get_session("s1")
+
+    assert inserted.title == "badtitle"
+    assert persisted is not None
+    assert persisted.title == "badtitle"
+    assert persisted.source_descriptor == {
+        "kind": "file_tail",
+        "path": "/tmp/s1.jsonl",
+        "nested": ["xy"],
+    }
+
+
+def test_event_insert_strips_decoded_nuls_from_payload_boundaries(
+    dao: SessionDao,
+) -> None:
+    dao.upsert_session(root_session())
+    rows = [
+        event(1, search_text="raw ok").model_copy(
+            update={"raw": {"message": {"content": "raw\x00payload"}}}
+        ),
+        event(2, search_text="ir ok").model_copy(
+            update={"ir": {"parts": [{"type": "text", "text": "ir\x00payload"}]}}
+        ),
+        tool_result_event(3, text="stdout\x00payload").model_copy(
+            update={
+                "raw": {"toolUseResult": {"stdout": "stdout\x00payload"}},
+                "search_text": "tool ok",
+            }
+        ),
+        event(4, search_text="search\x00payload").model_copy(
+            update={
+                "raw": {"message": {"content": "raw ok"}},
+                "ir": {"parts": [{"type": "text", "text": "ir ok"}]},
+            }
+        ),
+    ]
+
+    for row in rows:
+        dao.insert_event(row)
+
+    persisted = dao.get_events_with_raw_for_owner("s1", owner="local")
+
+    assert persisted[0].raw["message"]["content"] == "rawpayload"
+    assert persisted[1].ir == {"parts": [{"type": "text", "text": "irpayload"}]}
+    assert persisted[2].raw["toolUseResult"]["stdout"] == "stdoutpayload"
+    assert persisted[2].ir == {
+        "parts": [
+            {
+                "type": "tool_result",
+                "tool_use_id": "tool-3",
+                "content": [{"type": "text", "text": "stdoutpayload"}],
+            }
+        ]
+    }
+    assert persisted[3].search_text == "searchpayload"
 
 
 def test_schema_round_trips_session_event_and_artifact(dao: SessionDao) -> None:

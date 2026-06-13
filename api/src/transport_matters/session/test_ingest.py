@@ -14,6 +14,7 @@ from transport_matters.index.adapters.base import (
 )
 from transport_matters.index.adapters.claude import ClaudeAdapter
 from transport_matters.index.test_replay_support import _seed_claude_run, _seed_codex_run
+from transport_matters.session import ingest
 from transport_matters.session.artifacts import artifact_hash
 from transport_matters.session.async_dao import AsyncSessionDao
 from transport_matters.session.backfill import replay_transcript_run
@@ -152,6 +153,67 @@ async def test_session_writer_commits_raw_ir_meta_artifacts_and_reingest(
             assert row["n"] == 1
     finally:
         await writer.aclose()
+
+
+async def test_session_writer_commits_oversized_search_text_with_tsv_budget(
+    test_db: TestDb,
+) -> None:
+    binding = _binding()
+    record = _turn_record()
+    record["message"]["content"] = [
+        {"type": "text", "text": " ".join(f"oversized{i}" for i in range(140_000))}
+    ]
+    ctx = TurnContext(binding=binding, source_path="/tmp/transcript.jsonl", seq=0, source_line=0)
+    turn = ClaudeAdapter().normalize(record, ctx)
+    assert turn is not None
+    batch = build_event_batch(binding, [build_event(record, turn, ctx)])
+    loop = asyncio.get_running_loop()
+    writer = SessionWriter(
+        create_async_pool(test_db.database_url, min_size=1, max_size=1), loop=loop
+    )
+    try:
+        result = await loop.run_in_executor(None, writer.submit_blocking, batch)
+        assert (result.ok, result.committed, result.last_seq) == (True, 1, 0)
+
+        async with await async_connect(test_db.database_url, autocommit=True) as conn:
+            cursor = await conn.execute(
+                """
+                SELECT
+                    search_text,
+                    octet_length(search_text) AS search_text_bytes,
+                    content_tsv IS NOT NULL AS has_content_tsv
+                FROM event
+                WHERE session_id = %s AND seq = %s
+                """,
+                (_SESSION, 0),
+            )
+            row = await cursor.fetchone()
+            assert row is not None
+            assert row["search_text"].endswith(ingest.SEARCH_TEXT_TRUNCATION_MARKER)
+            assert row["search_text_bytes"] <= ingest.SEARCH_TEXT_MAX_BYTES
+            assert row["has_content_tsv"] is True
+
+            events = await AsyncSessionDao(conn).get_events(_SESSION)
+            assert len(events) == 1
+            persisted = events[0]
+            assert (
+                len(persisted.raw["message"]["content"][0]["text"].encode("utf-8"))
+                > ingest.SEARCH_TEXT_MAX_BYTES
+            )
+            assert persisted.ir is not None
+            assert (
+                len(persisted.ir["parts"][0]["text"].encode("utf-8")) > ingest.SEARCH_TEXT_MAX_BYTES
+            )
+    finally:
+        await writer.aclose()
+
+
+def test_search_text_budget_truncates_on_utf8_boundary() -> None:
+    capped = ingest._cap_search_text("\U0001f642" * ingest.SEARCH_TEXT_MAX_BYTES)
+
+    assert capped.endswith(ingest.SEARCH_TEXT_TRUNCATION_MARKER)
+    assert len(capped.encode("utf-8")) <= ingest.SEARCH_TEXT_MAX_BYTES
+    assert "\ufffd" not in capped
 
 
 def test_replay_transcript_run_yields_snapshot_records_without_wire_index(tmp_path: Path) -> None:
