@@ -8,12 +8,13 @@ batch to the injected writer.
 
 ``iter_complete_records`` is the ONE record-iterate path and ``ingest_records`` the ONE
 record→turn loop, both shared with §11 replay (closed snapshot), there is no second iteration to
-drift (DRY). DAG: imports ``index`` + ``adapters`` only.
+drift (DRY). The writer and storage layers remain injected.
 """
 
 import json
 import logging
 import threading
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol, Self
@@ -30,6 +31,7 @@ from transport_matters.index.subagents import (
     is_replay_anchor,
     record_subagent_spawn_links,
 )
+from transport_matters.session.quarantine import QUARANTINE_MAX_ATTEMPTS, classify
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable
@@ -44,6 +46,7 @@ if TYPE_CHECKING:
 
 _log = logging.getLogger(__name__)
 _DEFAULT_FILE_INTERVAL_S = 0.25
+_FAIL_LOG_INTERVAL_S = 30.0
 
 
 class _ProvenanceWrite(Protocol):
@@ -117,6 +120,9 @@ class TailCursor:
     stat_signature: tuple[int, float] | None = None  # (size, mtime) to skip unchanged files
     skip_until_user_text: str | None = None
     skip_until_seen: bool = False
+    quarantine_attempts: int = 0
+    last_fail_log_monotonic: float | None = None
+    suppressed_fail_count: int = 0
     subagent_spawn_links: dict[str, SubagentSpawnLink] = field(default_factory=dict)
     pending_codex_spawn_calls: dict[str, SubagentSpawnLink] = field(default_factory=dict)
 
@@ -198,11 +204,16 @@ class TranscriptTailer:
         *,
         build_record: Callable[[RawRecord, NormalizedTurn | None, TurnContext], Any] | None = None,
         submit_batch: Callable[[SessionBinding, list[Any]], None] | None = None,
+        quarantine_window: Callable[
+            [SessionBinding, str, int, int, bytes, BaseException, int], bool
+        ]
+        | None = None,
         snapshot: Callable[[str, int, bytes], None] | None = None,
         interval_s: float = _DEFAULT_FILE_INTERVAL_S,
     ) -> None:
         self._build_record = build_record
         self._submit_batch = submit_batch
+        self._quarantine_window_writer = quarantine_window
         # Injected tier-1 transcript snapshot writer (§7.1/§11, slice 8b-i): tee the consumed bytes
         # so tier-1 owns the transcript. A plain callable keeps the storage write API OUT of the
         # index-layer tailer (DAG); built + injected at load_runtime, None when no disk backend.
@@ -247,7 +258,7 @@ class TranscriptTailer:
             try:
                 self._poll_cursor(cursor)
             except Exception:
-                _log.exception("tailer poll failed for session %s", cursor.binding.session_id)
+                self._log_poll_failure(cursor)
 
     def _run(self) -> None:
         while not self._stop.wait(self._interval_s):
@@ -296,18 +307,88 @@ class TranscriptTailer:
                 links=cursor.subagent_spawn_links,
                 pending_codex_calls=cursor.pending_codex_spawn_calls,
             )
-            ingest_records(
-                complete,
-                cursor,
-                source.path,
-                build_record=self._build_record,
-                submit_batch=self._submit_batch,
-            )
-            self._register_child_cursors(cursor)
+            try:
+                ingest_records(
+                    complete,
+                    cursor,
+                    source.path,
+                    build_record=self._build_record,
+                    submit_batch=self._submit_batch,
+                )
+            except Exception as exc:
+                if classify(exc) == "transient":
+                    cursor.quarantine_attempts = 0
+                    raise
+                cursor.quarantine_attempts += 1
+                if cursor.quarantine_attempts < QUARANTINE_MAX_ATTEMPTS:
+                    raise
+                if not self._quarantine_window(cursor, source.path, data, consumed, exc):
+                    raise
+                _log.warning(
+                    "quarantined transcript window run=%s session=%s span=%d..%d attempts=%d",
+                    cursor.binding.run_id,
+                    cursor.binding.session_id,
+                    cursor.byte_offset,
+                    cursor.byte_offset + consumed,
+                    cursor.quarantine_attempts,
+                )
+                cursor.quarantine_attempts = 0
+            else:
+                cursor.quarantine_attempts = 0
+                self._register_child_cursors(cursor)
         cursor.byte_offset += consumed
+        if consumed:
+            cursor.quarantine_attempts = 0
+            self._reset_poll_failures(cursor)
         # Mark this stat consumed LAST (mirroring byte_offset): only a fully-successful poll skips the
         # next unchanged read. A mid-poll raise leaves the old signature so the stat guard re-enters.
         cursor.stat_signature = signature
+
+    def _quarantine_window(
+        self,
+        cursor: TailCursor,
+        source_path: str,
+        data: bytes,
+        consumed: int,
+        exc: BaseException,
+    ) -> bool:
+        if self._quarantine_window_writer is None:
+            return False
+        return self._quarantine_window_writer(
+            cursor.binding,
+            source_path,
+            cursor.byte_offset,
+            cursor.byte_offset + consumed,
+            data[:consumed],
+            exc,
+            cursor.quarantine_attempts,
+        )
+
+    def _log_poll_failure(self, cursor: TailCursor) -> None:
+        now = time.monotonic()
+        if (
+            cursor.last_fail_log_monotonic is not None
+            and now - cursor.last_fail_log_monotonic < _FAIL_LOG_INTERVAL_S
+        ):
+            cursor.suppressed_fail_count += 1
+            return
+        self._log_suppressed_failures(cursor)
+        _log.exception("tailer poll failed for session %s", cursor.binding.session_id)
+        cursor.last_fail_log_monotonic = now
+
+    def _reset_poll_failures(self, cursor: TailCursor) -> None:
+        self._log_suppressed_failures(cursor)
+        cursor.last_fail_log_monotonic = None
+
+    def _log_suppressed_failures(self, cursor: TailCursor) -> None:
+        if cursor.suppressed_fail_count == 0:
+            return
+        _log.warning(
+            "suppressed %d repeated tailer poll failure(s) for session %s",
+            cursor.suppressed_fail_count,
+            cursor.binding.session_id,
+        )
+        cursor.suppressed_fail_count = 0
 
     def _register_child_cursors(self, cursor: TailCursor) -> None:
         source = cursor.source

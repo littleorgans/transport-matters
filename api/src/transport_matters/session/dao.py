@@ -8,6 +8,7 @@ from transport_matters.session.artifacts import artifact_hash
 from transport_matters.session.dao_rows import (
     artifact_row,
     child_session_row,
+    dead_letter_params,
     event_artifact_row,
     event_params,
     event_read_row,
@@ -26,6 +27,7 @@ from transport_matters.session.dao_statements import (
     GET_EVENTS_WITH_RAW_FOR_OWNER_SQL,
     GET_SESSION_FOR_OWNER_SQL,
     GET_SESSION_SQL,
+    INSERT_DEAD_LETTER_SQL,
     INSERT_EVENT_SQL,
     IR_SEARCH_SQL,
     LINK_ARTIFACT_SQL,
@@ -47,6 +49,8 @@ from transport_matters.session.models import (
 if TYPE_CHECKING:
     from psycopg import Connection
     from psycopg.rows import DictRow
+
+    from transport_matters.session.models import DeadLetterWrite
 
 
 class SessionDao:
@@ -107,6 +111,9 @@ class SessionDao:
         row = self._conn.execute(INSERT_EVENT_SQL, event_params(event)).fetchone()
         assert row is not None
         return event_row(row)
+
+    def insert_dead_letter(self, letter: DeadLetterWrite) -> None:
+        self._conn.execute(INSERT_DEAD_LETTER_SQL, dead_letter_params(letter))
 
     def get_events(
         self, session_id: str, *, from_seq: int | None = None, to_seq: int | None = None

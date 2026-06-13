@@ -53,6 +53,7 @@ def test_db_upgrade_brings_unmigrated_db_to_head(
     fresh_db: TestDb, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     with connect(fresh_db.database_url, autocommit=True) as conn:
+        conn.execute("DROP TABLE IF EXISTS event_dead_letter CASCADE")
         conn.execute("DROP TABLE IF EXISTS event_artifact CASCADE")
         conn.execute("DROP TABLE IF EXISTS event CASCADE")
         conn.execute("DROP TABLE IF EXISTS artifact CASCADE")

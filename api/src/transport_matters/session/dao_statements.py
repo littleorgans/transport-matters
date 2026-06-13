@@ -147,6 +147,20 @@ ON CONFLICT (session_id, seq) DO UPDATE SET
 RETURNING {EVENT_COLUMNS}
 """
 
+INSERT_DEAD_LETTER_SQL = """
+INSERT INTO event_dead_letter (
+    session_id, seq, scope, run_id, native_session_id, provider, cli, source_path,
+    source_line, event_kind, byte_start, byte_end, error_sqlstate, error_class,
+    error_message, raw_excerpt, raw_sha256, raw_byte_len, attempts
+) VALUES (
+    %(session_id)s, %(seq)s, %(scope)s, %(run_id)s, %(native_session_id)s, %(provider)s,
+    %(cli)s, %(source_path)s, %(source_line)s, %(event_kind)s, %(byte_start)s,
+    %(byte_end)s, %(error_sqlstate)s, %(error_class)s, %(error_message)s,
+    %(raw_excerpt)s, %(raw_sha256)s, %(raw_byte_len)s, %(attempts)s
+)
+ON CONFLICT (session_id, byte_start, byte_end) DO NOTHING
+"""
+
 GET_EVENTS_SQL = f"""
 SELECT {EVENT_COLUMNS}
 FROM "event"
