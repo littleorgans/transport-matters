@@ -6,12 +6,12 @@
   min-height: 0;
   flex: 1;
   flex-direction: column;
-  gap: var(--canvas-pane-gap);
+  gap: var(--canvas-gap);
 }
 .canvas-binary__meta {
   display: grid;
   grid-template-columns: max-content 1fr;
-  gap: calc(var(--canvas-pane-gap) * 0.4) var(--canvas-pane-gap);
+  gap: calc(var(--canvas-gap) * 0.4) var(--canvas-gap);
   margin: 0;
   border: 1px solid var(--color-edge-subtle);
   background: var(--color-surface);
@@ -40,7 +40,7 @@
 .canvas-binary__actions {
   display: flex;
   align-items: center;
-  gap: var(--canvas-pane-gap);
+  gap: var(--canvas-gap);
   border-top: 1px solid var(--color-edge);
-  padding-top: var(--canvas-pane-gap);
+  padding-top: var(--canvas-gap);
 }

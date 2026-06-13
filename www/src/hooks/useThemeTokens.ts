@@ -15,7 +15,7 @@ const THEME_TOKEN_NAMES = [
   "--pane-surface-alpha",
   "--pane-border-color",
   "--pane-blur",
-  "--canvas-pane-shadow",
+  "--pane-shadow",
 ] as const;
 
 export const clearThemeTokens = (): void => {

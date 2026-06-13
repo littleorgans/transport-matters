@@ -33,7 +33,7 @@
   display: flex;
   flex-wrap: wrap;
   gap: var(--canvas-command-gap);
-  padding: var(--canvas-pane-gap) 0 0;
+  padding: var(--canvas-gap) 0 0;
   margin: 0;
   border: 0;
   min-inline-size: 0;
@@ -42,7 +42,7 @@
 .canvas-lab-toggle {
   display: flex;
   align-items: center;
-  gap: calc(var(--canvas-pane-gap) * 0.6);
+  gap: calc(var(--canvas-gap) * 0.6);
   color: var(--color-txt-2);
   font-size: 0.72rem;
   text-transform: uppercase;

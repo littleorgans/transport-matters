@@ -15,14 +15,14 @@
   /* The pane drop shadow lives on the frame, not on .canvas-pane-window inside it: paint containment
      clips descendant painting to the frame bounds, so a shadow on the window can never escape. The
      frame's own box decorations are exempt from its own containment. */
-  box-shadow: var(--canvas-pane-shadow);
+  box-shadow: var(--pane-shadow);
   /* The frame must carry the same radius as the window it hosts: its shadow and focus ring follow
      its own corners, and its paint-containment clip rounds the square-cornered children (header,
      terminal body) that would otherwise poke past the window's rounded border. */
   border-radius: var(--pane-radius);
 }
 [data-pane-frame="true"]:has(.canvas-pane-window[data-focused="true"]) {
-  box-shadow: var(--canvas-pane-shadow), var(--canvas-focus-ring);
+  box-shadow: var(--pane-shadow), var(--canvas-focus-ring);
 }
 
 .canvas-pane-window {
@@ -30,7 +30,7 @@
   height: 100%;
   min-height: 0;
   flex-direction: column;
-  border: var(--canvas-pane-border);
+  border: var(--pane-border);
   border-radius: var(--pane-radius);
   background: rgb(var(--shadow-rgb) / var(--pane-surface-alpha));
   outline: 1px solid rgb(var(--highlight-rgb) / 0.04);
@@ -46,13 +46,13 @@
 }
 .canvas-pane-window__header {
   display: flex;
-  min-height: var(--canvas-pane-header);
+  min-height: var(--pane-header);
   align-items: center;
   justify-content: space-between;
-  gap: var(--canvas-pane-gap);
+  gap: var(--canvas-gap);
   border-bottom: 1px solid var(--color-edge-subtle);
   background: linear-gradient(180deg, rgb(var(--highlight-rgb) / 0.06), transparent);
-  padding: var(--canvas-pane-gap) var(--canvas-pane-padding);
+  padding: var(--canvas-gap) var(--pane-padding);
   cursor: grab;
   touch-action: none;
   user-select: none;
@@ -80,13 +80,13 @@
   display: flex;
   flex-shrink: 0;
   align-items: center;
-  gap: var(--canvas-pane-gap);
+  gap: var(--canvas-gap);
 }
 .canvas-pane-window__close {
   border: 1px solid var(--color-edge);
   background: var(--color-surface);
   color: var(--color-txt-2);
-  padding: calc(var(--canvas-pane-gap) * 0.6) var(--canvas-pane-gap);
+  padding: calc(var(--canvas-gap) * 0.6) var(--canvas-gap);
   font-size: 0.75rem;
   text-transform: uppercase;
 }

@@ -69,5 +69,5 @@ export const applyThemeTokens = (settings: ThemeSettings) => {
     "--pane-blur",
     settings.glass ? `blur(${settings.glassAmount}px) saturate(120%)` : "none",
   );
-  root.setProperty("--canvas-pane-shadow", SHADOWS[settings.shadowId].value);
+  root.setProperty("--pane-shadow", SHADOWS[settings.shadowId].value);
 };

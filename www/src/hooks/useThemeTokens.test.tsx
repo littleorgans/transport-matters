@@ -29,7 +29,7 @@ describe("useThemeTokens", () => {
     expect(rootStyle().getPropertyValue("--pane-surface-alpha")).toBe("0.5");
     expect(rootStyle().getPropertyValue("--pane-border-color")).not.toBe("");
     expect(rootStyle().getPropertyValue("--pane-blur")).toBe("blur(18px) saturate(120%)");
-    expect(rootStyle().getPropertyValue("--canvas-pane-shadow")).not.toBe("");
+    expect(rootStyle().getPropertyValue("--pane-shadow")).not.toBe("");
   });
 
   it("maps glass off to a none blur", () => {

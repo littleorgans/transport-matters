@@ -9,7 +9,7 @@
   width: 100%;
   height: 100%;
   box-sizing: border-box;
-  padding: var(--canvas-pane-padding);
+  padding: var(--pane-padding);
   /* No fill of its own: the pane window behind provides the themed veil
      (rgb(--shadow-rgb / --pane-surface-alpha)), and xterm mounts with
      allowTransparency, so the terminal darkens and frosts with the theme. */
@@ -20,9 +20,9 @@
    terminal so the pane never just freezes blank. */
 .terminal-pane__status {
   position: absolute;
-  inset: auto var(--canvas-pane-padding) var(--canvas-pane-padding);
+  inset: auto var(--pane-padding) var(--pane-padding);
   margin: 0;
-  padding: calc(var(--canvas-pane-gap) * 0.75) var(--canvas-pane-gap);
+  padding: calc(var(--canvas-gap) * 0.75) var(--canvas-gap);
   border: 1px solid var(--color-rose);
   border-radius: var(--radius-sm);
   background: var(--color-surface);
