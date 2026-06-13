@@ -1,5 +1,4 @@
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
+import { isRecord } from "./types";
 
 /**
  * Legacy sceneId remap for scene collapses that keep the same schema version.
