@@ -69,6 +69,49 @@ def test_doctor_reports_session_store_unconfigured(
     assert "TRANSPORT_MATTERS_DATABASE_URL" in result.output
 
 
+def test_doctor_reports_session_store_unreachable_cleanly(
+    tmp_storage: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An unreachable DB shows a one-line reason, not the psycopg/SQLAlchemy wall."""
+
+    class _Orig(Exception):
+        pass
+
+    noisy = (
+        "(psycopg.OperationalError) connection failed: connection to server at "
+        '"127.0.0.1", port 55432 failed: Connection refused\n'
+        "Multiple connection attempts failed. All failures were:\n"
+        "(Background on this error at: https://sqlalche.me/e/20/e3q8)"
+    )
+
+    def _raise(_url: object) -> str:
+        err = Exception(noisy)
+        err.orig = _Orig("connection to server at 127.0.0.1 failed: Connection refused")  # type: ignore[attr-defined]
+        raise err
+
+    monkeypatch.setattr("transport_matters.cli.shutil.which", _which_all())
+    monkeypatch.setattr("transport_matters.cli.diagnose.port_in_use", lambda _: False)
+    monkeypatch.setattr(
+        "transport_matters.cli.diagnose.resolve_database_url",
+        lambda _s: "postgresql+psycopg://user:secret@127.0.0.1:55432/tm",
+    )
+    monkeypatch.setattr("transport_matters.cli.diagnose.current_revision", _raise)
+
+    result = runner.invoke(main, ["doctor"])
+
+    assert result.exit_code == 1
+    assert "cannot reach the session store at 127.0.0.1:55432" in result.output
+    assert "connection refused" in result.output
+    # The driver wall is gone.
+    assert "Multiple connection attempts failed" not in result.output
+    assert "Background on this error" not in result.output
+    assert "sqlalche.me" not in result.output
+    # The URL password is never echoed.
+    assert "secret" not in result.output
+    # Actionable guidance is retained.
+    assert "TRANSPORT_MATTERS_DATABASE_URL" in result.output
+
+
 def test_doctor_uses_transport_matters_storage_probe(
     tmp_storage: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -206,3 +249,98 @@ def test_doctor_help_renders() -> None:
     result = runner.invoke(main, ["doctor", "--help"])
     assert result.exit_code == 0
     assert "diagnose" in _plain(result.output).lower()
+
+
+# ---------------------------------------------------------------------------
+# Orphan-sweep integration tests
+# ---------------------------------------------------------------------------
+
+_VIEWERLESS_RUN: dict[str, object] = {
+    "runId": "run-orphan",
+    "cli": "claude",
+    "cwd": "/home/user/project",
+    "state": "running",
+    "viewerCount": 0,
+    "viewerlessSince": "2026-06-14T11:50:00+00:00",
+    "proxyPort": 9001,
+}
+
+
+def test_doctor_api_down_is_silent_exits_zero(
+    tmp_storage: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """When the API is not running fetch_runs returns None; the runs section stays silent."""
+    monkeypatch.setattr("transport_matters.cli.shutil.which", _which_all())
+    monkeypatch.setattr("transport_matters.cli.diagnose.port_in_use", lambda _: False)
+    monkeypatch.setattr("transport_matters.cli.diagnose.fetch_runs", lambda _base: None)
+
+    result = runner.invoke(main, ["doctor"])
+
+    assert result.exit_code == 0
+    assert "runs:" not in result.output
+    assert "--deep" not in result.output
+    assert "all checks passed" in result.output
+
+
+def test_doctor_api_up_with_candidate_lists_and_exits_zero(
+    tmp_storage: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """When the API has an orphan candidate, it is listed but exit code stays 0."""
+    monkeypatch.setattr("transport_matters.cli.shutil.which", _which_all())
+    monkeypatch.setattr("transport_matters.cli.diagnose.port_in_use", lambda _: False)
+    monkeypatch.setattr(
+        "transport_matters.cli.diagnose.fetch_runs", lambda _base: [_VIEWERLESS_RUN]
+    )
+
+    result = runner.invoke(main, ["doctor"])
+
+    assert result.exit_code == 0
+    assert "run-orphan" in result.output
+    assert "reap only if the renderer is gone" in result.output
+    assert "--reap-orphans" in result.output
+
+
+def test_doctor_reap_orphans_yes_calls_reap(
+    tmp_storage: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """--reap-orphans --yes reaps each candidate without prompting."""
+    monkeypatch.setattr("transport_matters.cli.shutil.which", _which_all())
+    monkeypatch.setattr("transport_matters.cli.diagnose.port_in_use", lambda _: False)
+    monkeypatch.setattr(
+        "transport_matters.cli.diagnose.fetch_runs", lambda _base: [_VIEWERLESS_RUN]
+    )
+
+    reaped: list[str] = []
+
+    def _fake_reap(base_url: str, run_id: str, **_kw: object) -> bool:
+        reaped.append(run_id)
+        return True
+
+    monkeypatch.setattr("transport_matters.cli.diagnose.reap_run", _fake_reap)
+
+    result = runner.invoke(main, ["doctor", "--reap-orphans", "--yes"])
+
+    assert result.exit_code == 0
+    assert reaped == ["run-orphan"]
+    assert "reaped" in result.output
+
+
+def test_doctor_reap_orphans_no_candidates_skips_reap(
+    tmp_storage: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """When no candidates exist, --reap-orphans does nothing."""
+    monkeypatch.setattr("transport_matters.cli.shutil.which", _which_all())
+    monkeypatch.setattr("transport_matters.cli.diagnose.port_in_use", lambda _: False)
+    # Healthy run: has a viewer
+    healthy_run: dict[str, object] = {**_VIEWERLESS_RUN, "viewerCount": 1}
+    monkeypatch.setattr("transport_matters.cli.diagnose.fetch_runs", lambda _base: [healthy_run])
+
+    reaped: list[str] = []
+    monkeypatch.setattr(
+        "transport_matters.cli.diagnose.reap_run", lambda _base, rid, **_kw: reaped.append(rid)
+    )
+
+    result = runner.invoke(main, ["doctor", "--reap-orphans", "--yes"])
+
+    assert result.exit_code == 0
+    assert reaped == []
