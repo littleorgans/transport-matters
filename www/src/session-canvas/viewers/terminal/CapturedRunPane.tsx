@@ -1,7 +1,7 @@
 import { type ReactElement, useCallback, useEffect, useState } from "react";
 import type { CliName } from "../../../types";
 import { useCanvasLabStore } from "../../lab/canvasLabStore";
-import { useCapturedRunStore } from "../../lab/capturedRunStore";
+import { useCapturedRunStore } from "../../model/capturedRunStore";
 import { cliLabel } from "../../model/paneRecords";
 import { parseRunErrorFrame, type RunErrorFrame } from "./runTerminalFrames";
 import { closedMessage, useTerminalSession } from "./terminalSession";
