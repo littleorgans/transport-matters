@@ -60,6 +60,7 @@ export function CanvasSurface({ launch, launchStatus, launchSessionId }: CanvasS
   const setViewport = useCanvasStore((state) => state.setViewport);
   const resetViewport = useCanvasStore((state) => state.resetViewport);
   const spawnOrFocusTranscript = useCanvasStore((state) => state.spawnOrFocusTranscript);
+  const addCapturedRun = useCanvasStore((state) => state.addCapturedRun);
   const surfaceRef = useRef<HTMLElement>(null);
   const focusedPaneId = layout.focusedPaneId;
   const focusedTitle = focusedPaneId ? (panes[focusedPaneId]?.title ?? null) : null;
@@ -173,6 +174,7 @@ export function CanvasSurface({ launch, launchStatus, launchSessionId }: CanvasS
         launch={launch}
         onFocusPicker={() => focusPane(PICKER_PANE_ID)}
         onResetViewport={resetViewport}
+        onSpawnCapturedRun={addCapturedRun}
       />
       {dropHint === null ? null : <CanvasDropHint message={dropHint} onDismiss={dismissDropHint} />}
       <CanvasPaneDnd

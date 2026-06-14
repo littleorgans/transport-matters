@@ -75,6 +75,13 @@
   box-shadow: var(--pane-shadow);
   padding: var(--canvas-gap) var(--pane-padding);
   backdrop-filter: blur(16px);
+  /* The command bar spans the top canvas band. Keep its empty chrome
+     click-through so pane controls and dock affordances underneath remain
+     reachable when layout places pane chrome near the top edge. */
+  pointer-events: none;
+}
+.canvas-command-bar :is(button, a, select, input, label) {
+  pointer-events: auto;
 }
 .canvas-command-bar__identity,
 .canvas-command-bar__status {

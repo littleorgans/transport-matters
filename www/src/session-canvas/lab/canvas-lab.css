@@ -13,16 +13,6 @@
   backdrop-filter: none;
   border-color: transparent;
   box-shadow: none;
-  /* The lab bar shares the top band with the dock (a permanent canvas primitive). Its stretched
-     section containers (.canvas-command-bar__sections, flex:1) would otherwise capture pointer
-     events across the full width and occlude the dock chip beneath them (bar z2000 > dock z1900),
-     so the chip can't be opened while the bar is shown. Make the bar itself click-through and
-     re-enable only its real controls — which are leading (left), leaving the trailing end free for
-     the dock — so the chip + menu stay hittable whether the bar is shown or TAB-hidden. */
-  pointer-events: none;
-}
-.canvas-command-bar--lab :is(button, a, select, input, label) {
-  pointer-events: auto;
 }
 .canvas-lab-stage {
   position: absolute;

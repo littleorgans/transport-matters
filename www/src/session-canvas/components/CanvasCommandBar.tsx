@@ -1,12 +1,17 @@
+import type { CliName } from "../../types";
+import { cliLabel } from "../model/paneRecords";
 import type { CanvasLaunchContext } from "../route";
 import { RouteSwitcher } from "./RouteSwitcher";
 import { ThemeCycleButton } from "./ThemeCycleButton";
+
+const CAPTURED_RUN_PROVIDERS = ["claude", "codex"] as const satisfies readonly CliName[];
 
 export interface CanvasCommandBarProps {
   launch: CanvasLaunchContext;
   focusedTitle: string | null;
   onFocusPicker(): void;
   onResetViewport(): void;
+  onSpawnCapturedRun(provider: CliName): void;
 }
 
 export function CanvasCommandBar({
@@ -14,6 +19,7 @@ export function CanvasCommandBar({
   focusedTitle,
   onFocusPicker,
   onResetViewport,
+  onSpawnCapturedRun,
 }: CanvasCommandBarProps) {
   const workspaceLabel = launch.workspaceHash ?? "all local workspaces";
   return (
@@ -30,6 +36,20 @@ export function CanvasCommandBar({
         <button className="canvas-button" onClick={onResetViewport} type="button">
           Reset view
         </button>
+        {CAPTURED_RUN_PROVIDERS.map((provider) => {
+          const label = `Spawn ${cliLabel(provider)}`;
+          return (
+            <button
+              aria-label={label}
+              className="canvas-button"
+              key={provider}
+              onClick={() => onSpawnCapturedRun(provider)}
+              type="button"
+            >
+              {label}
+            </button>
+          );
+        })}
         <ThemeCycleButton />
       </div>
       <p className="canvas-command-bar__status" aria-live="polite">
