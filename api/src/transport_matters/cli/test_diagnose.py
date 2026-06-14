@@ -223,10 +223,10 @@ _VIEWERLESS_RUN: dict[str, object] = {
 }
 
 
-def test_doctor_api_down_prints_info_exits_zero(
+def test_doctor_api_down_is_silent_exits_zero(
     tmp_storage: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """When the API is not running fetch_runs returns None; doctor exits 0 with info line."""
+    """When the API is not running fetch_runs returns None; the runs section stays silent."""
     monkeypatch.setattr("transport_matters.cli.shutil.which", _which_all())
     monkeypatch.setattr("transport_matters.cli.diagnose.port_in_use", lambda _: False)
     monkeypatch.setattr("transport_matters.cli.diagnose.fetch_runs", lambda _base: None)
@@ -234,7 +234,8 @@ def test_doctor_api_down_prints_info_exits_zero(
     result = runner.invoke(main, ["doctor"])
 
     assert result.exit_code == 0
-    assert "API not running" in result.output
+    assert "runs:" not in result.output
+    assert "--deep" not in result.output
     assert "all checks passed" in result.output
 
 

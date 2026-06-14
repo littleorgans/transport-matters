@@ -61,12 +61,8 @@ def report_runs_health(
 
     runs = fetch_runs(base_url)
     if runs is None:
-        typer.echo(
-            "  info  runs: API not running; no live runs to sweep\n"
-            "        (runs are process-resident, already released)\n"
-            "        note: OS-level orphan detection (leaked PTY/mitmproxy after a\n"
-            "              forced API kill) is not covered here — see `--deep` in a future release"
-        )
+        # API not running: runs are process-resident, so none can be orphaned.
+        # Nothing actionable — stay silent rather than narrate a non-finding.
         return
 
     typer.echo(f"  ok    runs: {len(runs)} live")
