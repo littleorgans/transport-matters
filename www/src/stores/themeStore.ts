@@ -2,7 +2,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { normalizeLegacyTheme } from "../theme/migrate";
 import { presetTheme } from "../theme/presets";
-import type { ThemeDefinition } from "../theme/types";
+import { isRecord, type ThemeDefinition } from "../theme/types";
 import { createFrontendPersistStorage, FRONTEND_STORAGE_KEYS } from "./persistence";
 
 /**
@@ -29,12 +29,52 @@ interface ThemeState {
   setLiveDayCycle: (value: boolean) => void;
 }
 
+/** The slice the store persists: theme data plus the runtime day-cycle flag. */
+type PersistedThemeSlice = Pick<ThemeState, "theme" | "liveDayCycle">;
+
+/** Out-of-the-box default, reused for boot and for resetting bad payloads. */
+const defaultPersistedSlice = (): PersistedThemeSlice => ({
+  theme: presetTheme("open-water") ?? null,
+  liveDayCycle: true,
+});
+
+/**
+ * Resolves the persisted `theme` field. `null` is a real choice (explicit
+ * unthemed) and survives; a record is trusted verbatim (matching the store's
+ * no-revalidation contract) after legacy sceneId collapses are rewritten (e.g.
+ * reference-sea-ii -> reference-sea). Anything else — `undefined`, an absent
+ * key, or a primitive — is not a usable theme, so it resets to the default
+ * rather than letting `theme: undefined` (an invalid state value) reach the UI.
+ */
+const migrateTheme = (value: unknown): ThemeDefinition | null => {
+  if (value === null) return null;
+  if (isRecord(value)) return normalizeLegacyTheme(value) as ThemeDefinition;
+  return defaultPersistedSlice().theme;
+};
+
+/**
+ * Rehydration migrate for the persisted theme slice. The persisted store
+ * trusts its record verbatim, so a payload that is absent (first load after a
+ * version bump) or malformed (corrupted, hand-edited, or written by an
+ * incompatible build) must not crash rehydration by reaching into nested
+ * fields, nor surface an invalid `theme`. A non-record payload resets wholesale
+ * to the out-of-the-box default; a record has its theme and day-cycle flag
+ * each resolved and defaulted independently.
+ */
+export const migrateThemeState = (persisted: unknown): PersistedThemeSlice => {
+  if (!isRecord(persisted)) return defaultPersistedSlice();
+  return {
+    theme: migrateTheme(persisted.theme),
+    liveDayCycle: typeof persisted.liveDayCycle === "boolean" ? persisted.liveDayCycle : true,
+  };
+};
+
 export const useThemeStore = create<ThemeState>()(
   persist(
     (set) => ({
       // Open water is the out-of-the-box look; a persisted choice (including
       // an explicit "none") rehydrates over this and wins.
-      theme: presetTheme("open-water") ?? null,
+      theme: defaultPersistedSlice().theme,
       setTheme: (theme) => set({ theme }),
       clearTheme: () => set({ theme: null }),
       setSceneParam: (paramId, value) =>
@@ -58,16 +98,11 @@ export const useThemeStore = create<ThemeState>()(
       storage: createFrontendPersistStorage(),
       // The persisted store trusts its record verbatim (no re-validation on
       // load), so a stored theme on a collapsed scene id would reach the
-      // renderer unrewritten. Normalize it here, the third persistence seam
-      // alongside validateThemeDefinition's two.
+      // renderer unrewritten. migrateThemeState normalizes it here, the third
+      // persistence seam alongside validateThemeDefinition's two, and guards
+      // absent or malformed payloads so rehydration never throws.
       version: 1,
-      migrate: (persisted) => {
-        const state = persisted as { theme: ThemeDefinition | null; liveDayCycle: boolean };
-        return {
-          ...state,
-          theme: normalizeLegacyTheme(state.theme) as ThemeDefinition | null,
-        };
-      },
+      migrate: migrateThemeState,
       partialize: (state) => ({ theme: state.theme, liveDayCycle: state.liveDayCycle }),
     },
   ),
