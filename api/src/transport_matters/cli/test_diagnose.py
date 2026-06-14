@@ -69,6 +69,49 @@ def test_doctor_reports_session_store_unconfigured(
     assert "TRANSPORT_MATTERS_DATABASE_URL" in result.output
 
 
+def test_doctor_reports_session_store_unreachable_cleanly(
+    tmp_storage: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An unreachable DB shows a one-line reason, not the psycopg/SQLAlchemy wall."""
+
+    class _Orig(Exception):
+        pass
+
+    noisy = (
+        "(psycopg.OperationalError) connection failed: connection to server at "
+        '"127.0.0.1", port 55432 failed: Connection refused\n'
+        "Multiple connection attempts failed. All failures were:\n"
+        "(Background on this error at: https://sqlalche.me/e/20/e3q8)"
+    )
+
+    def _raise(_url: object) -> str:
+        err = Exception(noisy)
+        err.orig = _Orig("connection to server at 127.0.0.1 failed: Connection refused")  # type: ignore[attr-defined]
+        raise err
+
+    monkeypatch.setattr("transport_matters.cli.shutil.which", _which_all())
+    monkeypatch.setattr("transport_matters.cli.diagnose.port_in_use", lambda _: False)
+    monkeypatch.setattr(
+        "transport_matters.cli.diagnose.resolve_database_url",
+        lambda _s: "postgresql+psycopg://user:secret@127.0.0.1:55432/tm",
+    )
+    monkeypatch.setattr("transport_matters.cli.diagnose.current_revision", _raise)
+
+    result = runner.invoke(main, ["doctor"])
+
+    assert result.exit_code == 1
+    assert "cannot reach the session store at 127.0.0.1:55432" in result.output
+    assert "connection refused" in result.output
+    # The driver wall is gone.
+    assert "Multiple connection attempts failed" not in result.output
+    assert "Background on this error" not in result.output
+    assert "sqlalche.me" not in result.output
+    # The URL password is never echoed.
+    assert "secret" not in result.output
+    # Actionable guidance is retained.
+    assert "TRANSPORT_MATTERS_DATABASE_URL" in result.output
+
+
 def test_doctor_uses_transport_matters_storage_probe(
     tmp_storage: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

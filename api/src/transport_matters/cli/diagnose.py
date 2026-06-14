@@ -18,6 +18,7 @@ from datetime import UTC, timedelta
 from importlib.resources import files
 from pathlib import Path
 from typing import TYPE_CHECKING
+from urllib.parse import urlsplit
 
 import typer
 
@@ -41,6 +42,33 @@ if TYPE_CHECKING:
     from datetime import datetime
 
 __all__ = ["report_runs_health", "run_doctor"]
+
+
+def _session_store_failure(database_url: str, exc: Exception) -> str:
+    """One concise line for an unreachable session store, no driver stack dump.
+
+    A raw SQLAlchemy/psycopg ``OperationalError`` is a multi-line wall (every
+    connection attempt, the sqlalche.me link). Classify the root cause and show
+    only host:port, never the URL itself (it may carry a password).
+    """
+    root = getattr(exc, "orig", exc)
+    text = str(root).lower()
+    if "connection refused" in text:
+        reason = "connection refused (is Postgres running?)"
+    elif "authentication" in text or "password" in text:
+        reason = "authentication failed"
+    elif "does not exist" in text:
+        reason = "database does not exist"
+    elif "timeout" in text or "timed out" in text:
+        reason = "connection timed out"
+    else:
+        reason = str(root).splitlines()[0].strip() or "connection failed"
+    try:
+        parts = urlsplit(database_url)
+        target = f" at {parts.hostname}:{parts.port}" if parts.hostname else ""
+    except ValueError:
+        target = ""
+    return f"cannot reach the session store{target} — {reason}"
 
 
 def report_runs_health(
@@ -241,7 +269,7 @@ def run_doctor(
         except Exception as exc:
             _fail(
                 "session store",
-                f"cannot reach the configured database: {exc}\n{DATABASE_URL_GUIDANCE}",
+                f"{_session_store_failure(database_url, exc)}\n{DATABASE_URL_GUIDANCE}",
             )
         else:
             head = migration_head()
