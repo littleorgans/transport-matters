@@ -185,6 +185,9 @@ def test_claude_runtime_overlay_symlinks_state_and_keeps_control_files_local(
     # Daemon dispatch state: queued jobs must never be shared with the source home.
     (source / "jobs").mkdir()
     (source / "jobs" / "job-1.json").write_text("{}\n", encoding="utf-8")
+    # A source home that is (or contains) a git repo must not leak its .git into the overlay.
+    (source / ".git").mkdir()
+    (source / ".git" / "HEAD").write_text("ref: refs/heads/main\n", encoding="utf-8")
     _write_json(source / ".claude.json", {"userID": "user-source"})
     source_settings = {"theme": "dark", "env": {"KEEP": "1"}}
     _write_json(source / "settings.json", source_settings)
@@ -212,6 +215,9 @@ def test_claude_runtime_overlay_symlinks_state_and_keeps_control_files_local(
     assert not (runtime / "daemon").exists()
     assert not (runtime / "jobs").exists()
     assert not (runtime / "jobs").is_symlink()
+    # .git is on the global never-symlink ignore list (no repo leak into the overlay).
+    assert not (runtime / ".git").exists()
+    assert not (runtime / ".git").is_symlink()
     assert not (runtime / "settings.json").is_symlink()
     assert not (runtime / ".claude.json").is_symlink()
     assert _read_json(source / "settings.json") == source_settings
