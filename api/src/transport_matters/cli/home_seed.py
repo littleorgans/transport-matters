@@ -37,6 +37,10 @@ _TRUSTED = "trusted"
 _TRUST_LEVEL_LINE = 'trust_level = "trusted"'
 _TRUST_LEVEL_RE = re.compile(r"^\s*trust_level\s*=")
 _TOML_TABLE_RE = re.compile(r"^\s*\[")
+# Codex keys ``[hooks.state."<abs hooks-file path>:<event>:<i>:<j>"]`` trust by the absolute
+# path of the hooks file under ``CODEX_HOME``. The capture matches the quoted TOML basic-string
+# key (escaped ``"``/``\`` honoured) so the overlay can repoint its source-home prefix.
+_CODEX_HOOKS_STATE_HEADER_RE = re.compile(r'(?m)^\[hooks\.state\."(?P<key>(?:[^"\\]|\\.)*)"\]')
 _JSON_FILE_MODE = 0o600
 _DIRECTORY_MODE = 0o700
 _CLAUDE_ROUTE_ENV_KEY = "ANTHROPIC_BASE_URL"
@@ -139,6 +143,11 @@ class CodexSeeder:
         _copy_secret_file_if_missing(
             source_home / _CODEX_AUTH_FILENAME,
             home_dir / _CODEX_AUTH_FILENAME,
+        )
+        _relocate_codex_hook_trust_state(
+            config_path=home_dir / _CODEX_CONFIG_FILENAME,
+            source_home=source_home,
+            overlay_home=home_dir,
         )
         _merge_codex_project_trust(
             home_dir / _CODEX_CONFIG_FILENAME,
@@ -477,6 +486,47 @@ def _write_atomic_secret(path: Path, body: bytes) -> None:
         with contextlib.suppress(FileNotFoundError):
             tmp.unlink()
         raise
+
+
+def _relocate_codex_hook_trust_state(
+    *,
+    config_path: Path,
+    source_home: Path,
+    overlay_home: Path,
+) -> None:
+    """Repoint copied Codex hook trust-state keys at the overlay home.
+
+    Codex keys ``[hooks.state]`` trust by the absolute path of the hooks file it loads from
+    ``CODEX_HOME``. The overlay copies ``config.toml`` (carrying source-home keys) yet serves
+    ``hooks.json`` from the overlay home, so without this the child recomputes every hook as
+    untrusted and shows the startup "hooks need review" prompt. Only the table-header key
+    prefixes move; the unchanged, symlinked hook definitions still hash to their stored
+    ``trusted_hash`` under the overlay path, so trust carries over silently.
+    """
+    if source_home == overlay_home:
+        return
+    try:
+        current = config_path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return
+
+    src = _toml_basic_string(str(source_home))[1:-1]
+    dst = _toml_basic_string(str(overlay_home))[1:-1]
+    if src == dst:
+        return
+    prefix = f"{src}/"
+
+    def _repoint(match: re.Match[str]) -> str:
+        key = match.group("key")
+        if not key.startswith(prefix):
+            return match.group(0)
+        return f'[hooks.state."{dst}/{key[len(prefix) :]}"]'
+
+    updated = _CODEX_HOOKS_STATE_HEADER_RE.sub(_repoint, current)
+    if updated == current:
+        return
+    _parse_codex_config(updated, config_path)
+    _write_atomic_secret(config_path, updated.encode("utf-8"))
 
 
 def _merge_codex_project_trust(config_path: Path, *, cwd: str) -> None:

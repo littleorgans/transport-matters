@@ -504,6 +504,48 @@ def test_codex_runtime_overlay_copies_auth_config_and_symlinks_state(
     assert runtime_config["projects"][str(workdir)]["trust_level"] == "trusted"
 
 
+def test_codex_overlay_repoints_hook_trust_state_to_overlay_home(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "source-codex"
+    source.mkdir()
+    (source / "hooks.json").write_text("{}\n", encoding="utf-8")
+    # A home-relative hook key must follow the overlay; an absolute key outside the home stays.
+    (source / "config.toml").write_text(
+        'model = "gpt-5-codex"\n\n'
+        f'[hooks.state."{source}/hooks.json:session_start:0:0"]\n'
+        'trusted_hash = "sha256:home"\n\n'
+        '[hooks.state."/opt/shared/hooks.json:stop:0:0"]\n'
+        'trusted_hash = "sha256:shared"\n',
+        encoding="utf-8",
+    )
+    runtime = tmp_path / "runtime" / "codex"
+    workdir = tmp_path / "project"
+    workdir.mkdir()
+
+    prepare_runtime_home_overlay(
+        CLIENT_NAME_CODEX,
+        source_home_dir=source,
+        runtime_home_dir=runtime,
+        working_dir=workdir,
+        env={"CODEX_HOME": str(source)},
+    )
+
+    runtime_state = tomllib.loads((runtime / "config.toml").read_text(encoding="utf-8"))["hooks"][
+        "state"
+    ]
+    # The hooks.json key now points at the overlay path where codex loads it, hash preserved.
+    assert runtime_state[f"{runtime}/hooks.json:session_start:0:0"]["trusted_hash"] == "sha256:home"
+    assert f"{source}/hooks.json:session_start:0:0" not in runtime_state
+    # A key that did not live under the source home is left untouched.
+    assert runtime_state["/opt/shared/hooks.json:stop:0:0"]["trusted_hash"] == "sha256:shared"
+    # The operator's source config is never mutated.
+    source_state = tomllib.loads((source / "config.toml").read_text(encoding="utf-8"))["hooks"][
+        "state"
+    ]
+    assert f"{source}/hooks.json:session_start:0:0" in source_state
+
+
 def test_claude_launch_runs_from_overlay_seeded_from_agent_home_dir(
     tmp_storage: Path,
     tmp_path: Path,
