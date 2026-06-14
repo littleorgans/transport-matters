@@ -448,9 +448,36 @@ def desktop(
     cls=PlainCommand,
     context_settings={"help_option_names": ["-h", "--help"]},
 )
-def doctor() -> None:
+def doctor(
+    reap_orphans: Annotated[
+        bool,
+        typer.Option(
+            "--reap-orphans",
+            help="Stop orphan captured runs (viewerless longer than --older-than seconds).",
+        ),
+    ] = False,
+    older_than: Annotated[
+        int,
+        typer.Option(
+            "--older-than",
+            help="Age threshold in seconds for orphan candidates (default 300).",
+        ),
+    ] = 300,
+    yes: Annotated[
+        bool,
+        typer.Option(
+            "--yes",
+            "-y",
+            help="Skip per-run confirmation prompts when reaping orphans.",
+        ),
+    ] = False,
+) -> None:
     """Diagnose the local environment."""
-    run_doctor()
+    run_doctor(
+        reap_orphans=reap_orphans,
+        older_than_seconds=older_than,
+        confirm=(lambda _run: True) if yes else None,
+    )
 
 
 @main.command(
