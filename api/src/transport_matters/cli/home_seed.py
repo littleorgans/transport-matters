@@ -11,10 +11,17 @@ import os
 import re
 import tomllib
 import uuid
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol
 
-from transport_matters.launch_environment import CLIENT_NAME_CLAUDE, CLIENT_NAME_CODEX
+from transport_matters import env_keys
+from transport_matters.launch_environment import (
+    CLIENT_NAME_CLAUDE,
+    CLIENT_NAME_CODEX,
+    HOME_DIR_ENV_BY_CLIENT,
+    LOOPBACK_NO_PROXY,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -31,6 +38,42 @@ _TRUST_LEVEL_LINE = 'trust_level = "trusted"'
 _TRUST_LEVEL_RE = re.compile(r"^\s*trust_level\s*=")
 _TOML_TABLE_RE = re.compile(r"^\s*\[")
 _JSON_FILE_MODE = 0o600
+_DIRECTORY_MODE = 0o700
+_CLAUDE_ROUTE_ENV_KEY = "ANTHROPIC_BASE_URL"
+_NO_PROXY_ENV_KEY = "NO_PROXY"
+# Claude daemon control + dispatch state that must stay LOCAL to the overlay (never
+# symlinked back to the source). The original route-loss bug is the daemon rebuilding a
+# background worker's env from its dispatch state, so ``jobs/`` (queued daemon jobs) is
+# route-sensitive exactly like ``daemon*`` and must not resolve to the source home.
+_CLAUDE_DAEMON_LOCAL_NAMES = frozenset(
+    {
+        "daemon",
+        "daemon.lock",
+        "daemon.log",
+        "daemon.status.json",
+        "jobs",
+    }
+)
+# Overlay-owned real files (copied + route-merged), also never symlinked.
+_CLAUDE_OVERLAY_COPIED_NAMES = frozenset(
+    {
+        _CLAUDE_CONFIG_FILENAME,
+        _CLAUDE_SETTINGS_FILENAME,
+    }
+)
+_CLAUDE_OVERLAY_LOCAL_NAMES = _CLAUDE_OVERLAY_COPIED_NAMES | _CLAUDE_DAEMON_LOCAL_NAMES
+_CODEX_OVERLAY_LOCAL_NAMES = frozenset(
+    {
+        _CODEX_AUTH_FILENAME,
+        _CODEX_CONFIG_FILENAME,
+    }
+)
+
+
+@dataclass(frozen=True, slots=True)
+class RuntimeHomeOverlay:
+    source_home_dir: Path
+    runtime_home_dir: Path
 
 
 class HarnessSeeder(Protocol):
@@ -120,6 +163,189 @@ def seed_home_dir(
         working_dir=working_dir,
         env=os.environ if env is None else env,
     )
+
+
+def resolve_source_home_dir(
+    client_name: str,
+    *,
+    home_dir: Path | None,
+    env: Mapping[str, str] | None = None,
+) -> Path:
+    """Resolve the operator supplied or native source home for a captured client."""
+    if home_dir is not None:
+        return home_dir.expanduser()
+    source_env = os.environ if env is None else env
+    if client_name == CLIENT_NAME_CLAUDE:
+        return _default_claude_home(source_env)
+    if client_name == CLIENT_NAME_CODEX:
+        return _default_codex_home(source_env)
+    raise ValueError(f"unmapped managed client home seeder: {client_name!r}")
+
+
+def prepare_runtime_home_overlay(
+    client_name: str,
+    *,
+    source_home_dir: Path,
+    runtime_home_dir: Path,
+    working_dir: Path,
+    env: Mapping[str, str] | None = None,
+) -> RuntimeHomeOverlay:
+    """Build a per-run home overlay while keeping user visible state on source."""
+    runtime_home_dir.mkdir(mode=_DIRECTORY_MODE, parents=True, exist_ok=True)
+    runtime_home_dir.chmod(_DIRECTORY_MODE)
+    source_home_dir = source_home_dir.expanduser()
+
+    local_names = _overlay_local_names(client_name)
+    _symlink_source_home_entries(
+        source_home_dir=source_home_dir,
+        runtime_home_dir=runtime_home_dir,
+        local_names=local_names,
+    )
+    _copy_overlay_local_files(
+        client_name,
+        source_home_dir=source_home_dir,
+        runtime_home_dir=runtime_home_dir,
+        env=env,
+    )
+
+    seed_env = dict(os.environ if env is None else env)
+    seed_env[HOME_DIR_ENV_BY_CLIENT[client_name]] = str(source_home_dir)
+    seed_home_dir(
+        client_name,
+        home_dir=runtime_home_dir,
+        working_dir=working_dir,
+        env=seed_env,
+    )
+    _assert_overlay_daemon_is_local(
+        source_home_dir=source_home_dir,
+        runtime_home_dir=runtime_home_dir,
+    )
+    return RuntimeHomeOverlay(
+        source_home_dir=source_home_dir,
+        runtime_home_dir=runtime_home_dir,
+    )
+
+
+def apply_claude_proxy_env_settings(
+    *,
+    runtime_home_dir: Path,
+    proxy_url: str,
+    run_id: str,
+) -> None:
+    """Write the run proxy route into the overlay's Claude ``settings.json`` ``env``.
+
+    Merge-only: preserves unrelated settings and unrelated ``env`` keys, replacing
+    only the Transport Matters managed keys. ``TRANSPORT_MATTERS_AGENT_HOME_DIR`` is
+    the overlay home itself, matching the child's ``CLAUDE_CONFIG_DIR``. Raises
+    ``ValueError`` if ``settings.json`` or its ``env`` block is not a JSON object, so a
+    malformed overlay fails launch instead of silently dropping the route. Writes
+    atomically with restrictive mode and never touches the source home.
+    """
+    settings_path = runtime_home_dir / _CLAUDE_SETTINGS_FILENAME
+    settings = _read_json_object_if_exists(settings_path)
+    env = settings.get("env")
+    if env is None:
+        env = {}
+        settings["env"] = env
+    if not isinstance(env, dict):
+        raise ValueError(f"{settings_path} env must contain a JSON object")
+    env[_CLAUDE_ROUTE_ENV_KEY] = proxy_url
+    env[env_keys.RUN_ID] = run_id
+    env[env_keys.AGENT_HOME_DIR] = str(runtime_home_dir)
+    env[_NO_PROXY_ENV_KEY] = LOOPBACK_NO_PROXY
+    _write_atomic_json(settings_path, settings)
+
+
+def _overlay_local_names(client_name: str) -> frozenset[str]:
+    if client_name == CLIENT_NAME_CLAUDE:
+        return _CLAUDE_OVERLAY_LOCAL_NAMES
+    if client_name == CLIENT_NAME_CODEX:
+        return _CODEX_OVERLAY_LOCAL_NAMES
+    raise ValueError(f"unmapped managed client home seeder: {client_name!r}")
+
+
+def _symlink_source_home_entries(
+    *,
+    source_home_dir: Path,
+    runtime_home_dir: Path,
+    local_names: frozenset[str],
+) -> None:
+    try:
+        entries = list(source_home_dir.iterdir())
+    except FileNotFoundError:
+        return
+    for entry in entries:
+        if entry.name in local_names:
+            continue
+        target = runtime_home_dir / entry.name
+        if target.exists() or target.is_symlink():
+            continue
+        target.symlink_to(entry, target_is_directory=entry.is_dir())
+
+
+def _copy_overlay_local_files(
+    client_name: str,
+    *,
+    source_home_dir: Path,
+    runtime_home_dir: Path,
+    env: Mapping[str, str] | None,
+) -> None:
+    if client_name == CLIENT_NAME_CLAUDE:
+        _copy_secret_file_if_missing(
+            source_home_dir / _CLAUDE_SETTINGS_FILENAME,
+            runtime_home_dir / _CLAUDE_SETTINGS_FILENAME,
+        )
+        _copy_secret_file_if_missing(
+            _source_claude_config_path(source_home_dir, env),
+            runtime_home_dir / _CLAUDE_CONFIG_FILENAME,
+        )
+        return
+    if client_name == CLIENT_NAME_CODEX:
+        _copy_secret_file_if_missing(
+            source_home_dir / _CODEX_AUTH_FILENAME,
+            runtime_home_dir / _CODEX_AUTH_FILENAME,
+        )
+        _copy_secret_file_if_missing(
+            source_home_dir / _CODEX_CONFIG_FILENAME,
+            runtime_home_dir / _CODEX_CONFIG_FILENAME,
+        )
+        return
+    raise ValueError(f"unmapped managed client home seeder: {client_name!r}")
+
+
+def _source_claude_config_path(
+    source_home_dir: Path,
+    env: Mapping[str, str] | None,
+) -> Path:
+    source_env = os.environ if env is None else env
+    configured_home = source_env.get(_CLAUDE_CONFIG_ENV)
+    if configured_home is not None:
+        return Path(configured_home).expanduser() / _CLAUDE_CONFIG_FILENAME
+    native_home = Path.home() / ".claude"
+    if source_home_dir == native_home:
+        return Path.home() / _CLAUDE_CONFIG_FILENAME
+    return source_home_dir / _CLAUDE_CONFIG_FILENAME
+
+
+def _assert_overlay_daemon_is_local(
+    *,
+    source_home_dir: Path,
+    runtime_home_dir: Path,
+) -> None:
+    """Fail closed if any daemon control/dispatch entry resolves back to the source home.
+
+    Covers every name in :data:`_CLAUDE_DAEMON_LOCAL_NAMES` (``daemon*`` and ``jobs``), so a
+    captured run can never share the source daemon's dispatch state and silently drop the
+    route through a background worker.
+    """
+    for name in _CLAUDE_DAEMON_LOCAL_NAMES:
+        runtime_entry = runtime_home_dir / name
+        if runtime_entry.is_symlink() and runtime_entry.resolve(strict=False) == (
+            source_home_dir / name
+        ).resolve(strict=False):
+            raise ValueError(
+                f"runtime overlay {name!r} must not resolve to the source home daemon state"
+            )
 
 
 def _default_claude_config_path(env: Mapping[str, str]) -> Path:

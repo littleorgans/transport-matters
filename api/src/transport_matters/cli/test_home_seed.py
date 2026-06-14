@@ -4,12 +4,18 @@ import tomllib
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+import pytest
 from typer.testing import CliRunner
 
+from transport_matters import env_keys
 from transport_matters.cli import main
 from transport_matters.cli.home_seed import (
+    _CLAUDE_DAEMON_LOCAL_NAMES,
+    _assert_overlay_daemon_is_local,
+    apply_claude_proxy_env_settings,
     claude_projects_root,
     codex_sessions_root,
+    prepare_runtime_home_overlay,
     seed_home_dir,
 )
 from transport_matters.launch_environment import CLIENT_NAME_CLAUDE, CLIENT_NAME_CODEX
@@ -20,8 +26,6 @@ runner = CliRunner()
 
 if TYPE_CHECKING:
     from unittest.mock import MagicMock
-
-    import pytest
 
 
 class TestCodexSessionsRoot:
@@ -169,6 +173,194 @@ def test_claude_seed_preserves_existing_settings(tmp_path: Path) -> None:
     assert settings["skipDangerousModePermissionPrompt"] is True
 
 
+def test_claude_runtime_overlay_symlinks_state_and_keeps_control_files_local(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "source-claude"
+    source.mkdir()
+    (source / "skills").mkdir()
+    (source / "skills" / "skill.md").write_text("skill\n", encoding="utf-8")
+    (source / "projects").mkdir()
+    (source / "daemon").mkdir()
+    # Daemon dispatch state: queued jobs must never be shared with the source home.
+    (source / "jobs").mkdir()
+    (source / "jobs" / "job-1.json").write_text("{}\n", encoding="utf-8")
+    _write_json(source / ".claude.json", {"userID": "user-source"})
+    source_settings = {"theme": "dark", "env": {"KEEP": "1"}}
+    _write_json(source / "settings.json", source_settings)
+    runtime = tmp_path / "runtime" / "claude"
+    workdir = tmp_path / "project"
+    workdir.mkdir()
+
+    overlay = prepare_runtime_home_overlay(
+        CLIENT_NAME_CLAUDE,
+        source_home_dir=source,
+        runtime_home_dir=runtime,
+        working_dir=workdir,
+        env={"CLAUDE_CONFIG_DIR": str(source)},
+    )
+
+    assert overlay.source_home_dir == source
+    assert overlay.runtime_home_dir == runtime
+    # User-visible state is symlinked for source fidelity.
+    assert (runtime / "skills").is_symlink()
+    assert (runtime / "skills").resolve() == (source / "skills").resolve()
+    assert (runtime / "projects").is_symlink()
+    assert (runtime / "projects").resolve() == (source / "projects").resolve()
+    # Daemon control + dispatch state stays local (absent so Claude recreates it fresh),
+    # never symlinked back to the source.
+    assert not (runtime / "daemon").exists()
+    assert not (runtime / "jobs").exists()
+    assert not (runtime / "jobs").is_symlink()
+    assert not (runtime / "settings.json").is_symlink()
+    assert not (runtime / ".claude.json").is_symlink()
+    assert _read_json(source / "settings.json") == source_settings
+
+    settings = _read_json(runtime / "settings.json")
+    assert settings["theme"] == "dark"
+    assert settings["env"] == {"KEEP": "1"}
+    assert settings["skipDangerousModePermissionPrompt"] is True
+    seeded = _read_json(runtime / ".claude.json")
+    assert seeded["userID"] == "user-source"
+    assert seeded["projects"][str(workdir)]["hasTrustDialogAccepted"] is True
+
+
+def test_assert_overlay_daemon_is_local_rejects_daemon_state_symlinked_to_source(
+    tmp_path: Path,
+) -> None:
+    # Every daemon control/dispatch name (daemon*, jobs) is route-sensitive; if any is a
+    # symlink back to the source home the overlay is unsafe and launch must fail closed.
+    assert "jobs" in _CLAUDE_DAEMON_LOCAL_NAMES
+    source = tmp_path / "source-claude"
+    source.mkdir()
+    for name in _CLAUDE_DAEMON_LOCAL_NAMES:
+        source_entry = source / name
+        source_entry.mkdir()
+        runtime = tmp_path / f"runtime-{name}"
+        runtime.mkdir()
+        (runtime / name).symlink_to(source_entry)
+        with pytest.raises(ValueError, match="must not resolve to the source home"):
+            _assert_overlay_daemon_is_local(source_home_dir=source, runtime_home_dir=runtime)
+
+
+def test_assert_overlay_daemon_is_local_allows_fresh_local_daemon_state(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "source-claude"
+    (source / "daemon").mkdir(parents=True)
+    (source / "jobs").mkdir()
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    # Real, local daemon + jobs dirs (not symlinks to the source) are allowed.
+    (runtime / "daemon").mkdir()
+    (runtime / "jobs").mkdir()
+    _assert_overlay_daemon_is_local(source_home_dir=source, runtime_home_dir=runtime)
+
+
+def test_claude_runtime_overlay_copies_native_default_account_metadata(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    source = tmp_path / ".claude"
+    source.mkdir()
+    _write_json(tmp_path / ".claude.json", {"userID": "native-user"})
+    runtime = tmp_path / "runtime" / "claude"
+    workdir = tmp_path / "project"
+    workdir.mkdir()
+
+    prepare_runtime_home_overlay(
+        CLIENT_NAME_CLAUDE,
+        source_home_dir=source,
+        runtime_home_dir=runtime,
+        working_dir=workdir,
+        env={},
+    )
+
+    seeded = _read_json(runtime / ".claude.json")
+    assert seeded["userID"] == "native-user"
+    assert seeded["projects"][str(workdir)]["hasTrustDialogAccepted"] is True
+
+
+def test_apply_claude_proxy_env_settings_updates_overlay_only(tmp_path: Path) -> None:
+    source = tmp_path / "source-claude"
+    source.mkdir()
+    source_settings = {"theme": "dark", "env": {"KEEP": "1"}}
+    _write_json(source / "settings.json", source_settings)
+    runtime = tmp_path / "runtime" / "claude"
+    runtime.mkdir(parents=True)
+    _write_json(runtime / "settings.json", source_settings)
+
+    apply_claude_proxy_env_settings(
+        runtime_home_dir=runtime,
+        proxy_url="http://127.0.0.1:54321",
+        run_id="run-1",
+    )
+    # A bind-retry hands a new proxy port; the managed route must be rewritten.
+    apply_claude_proxy_env_settings(
+        runtime_home_dir=runtime,
+        proxy_url="http://127.0.0.1:60001",
+        run_id="run-1",
+    )
+
+    assert _read_json(source / "settings.json") == source_settings
+    settings = _read_json(runtime / "settings.json")
+    # Unrelated top-level settings and unrelated env keys are preserved.
+    assert settings["theme"] == "dark"
+    env = settings["env"]
+    assert env["KEEP"] == "1"
+    assert env["ANTHROPIC_BASE_URL"] == "http://127.0.0.1:60001"
+    assert env[env_keys.RUN_ID] == "run-1"
+    # TRANSPORT_MATTERS_AGENT_HOME_DIR is the overlay home, not the source (spec §1).
+    assert env[env_keys.AGENT_HOME_DIR] == str(runtime)
+    assert env["NO_PROXY"] == "127.0.0.1,localhost"
+    assert _mode(runtime / "settings.json") == 0o600
+
+
+def test_apply_claude_proxy_env_settings_writes_route_when_no_settings(
+    tmp_path: Path,
+) -> None:
+    runtime = tmp_path / "runtime" / "claude"
+    runtime.mkdir(parents=True)
+
+    apply_claude_proxy_env_settings(
+        runtime_home_dir=runtime,
+        proxy_url="http://127.0.0.1:54321",
+        run_id="run-1",
+    )
+
+    env = _read_json(runtime / "settings.json")["env"]
+    assert env["ANTHROPIC_BASE_URL"] == "http://127.0.0.1:54321"
+    assert env[env_keys.AGENT_HOME_DIR] == str(runtime)
+    assert _mode(runtime / "settings.json") == 0o600
+
+
+def test_apply_claude_proxy_env_settings_rejects_non_object_env(tmp_path: Path) -> None:
+    runtime = tmp_path / "runtime" / "claude"
+    runtime.mkdir(parents=True)
+    _write_json(runtime / "settings.json", {"env": ["not", "an", "object"]})
+
+    with pytest.raises(ValueError, match="env must contain a JSON object"):
+        apply_claude_proxy_env_settings(
+            runtime_home_dir=runtime,
+            proxy_url="http://127.0.0.1:54321",
+            run_id="run-1",
+        )
+
+
+def test_apply_claude_proxy_env_settings_rejects_non_object_root(tmp_path: Path) -> None:
+    runtime = tmp_path / "runtime" / "claude"
+    runtime.mkdir(parents=True)
+    (runtime / "settings.json").write_text("[]", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="must contain a JSON object"):
+        apply_claude_proxy_env_settings(
+            runtime_home_dir=runtime,
+            proxy_url="http://127.0.0.1:54321",
+            run_id="run-1",
+        )
+
+
 def test_codex_seed_fresh_home_copies_auth_0600_and_trust(
     tmp_path: Path,
 ) -> None:
@@ -271,7 +463,42 @@ def test_codex_seed_preserves_existing_auth_and_project_sibling_keys(
     assert config_text.count('trust_level = "trusted"') == 1
 
 
-def test_claude_launch_seeds_home_dir(
+def test_codex_runtime_overlay_copies_auth_config_and_symlinks_state(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "source-codex"
+    source.mkdir()
+    auth = source / "auth.json"
+    auth.write_bytes(b'{"tokens":{"id":"source"}}\n')
+    auth.chmod(0o600)
+    (source / "config.toml").write_text('model = "gpt-5-codex"\n', encoding="utf-8")
+    (source / "plugins").mkdir()
+    (source / "plugins" / "plugin.json").write_text("{}\n", encoding="utf-8")
+    runtime = tmp_path / "runtime" / "codex"
+    workdir = tmp_path / "project"
+    workdir.mkdir()
+
+    prepare_runtime_home_overlay(
+        CLIENT_NAME_CODEX,
+        source_home_dir=source,
+        runtime_home_dir=runtime,
+        working_dir=workdir,
+        env={"CODEX_HOME": str(source)},
+    )
+
+    assert not (runtime / "auth.json").is_symlink()
+    assert not (runtime / "config.toml").is_symlink()
+    assert (runtime / "auth.json").read_bytes() == auth.read_bytes()
+    assert (runtime / "plugins").is_symlink()
+    assert (runtime / "plugins").resolve() == (source / "plugins").resolve()
+    source_config = tomllib.loads((source / "config.toml").read_text(encoding="utf-8"))
+    runtime_config = tomllib.loads((runtime / "config.toml").read_text(encoding="utf-8"))
+    assert source_config == {"model": "gpt-5-codex"}
+    assert runtime_config["model"] == "gpt-5-codex"
+    assert runtime_config["projects"][str(workdir)]["trust_level"] == "trusted"
+
+
+def test_claude_launch_runs_from_overlay_seeded_from_agent_home_dir(
     tmp_storage: Path,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -279,19 +506,24 @@ def test_claude_launch_seeds_home_dir(
 ) -> None:
     monkeypatch.setattr("transport_matters.cli.shutil.which", _which_all())
     monkeypatch.setattr("transport_matters.cli.port_in_use", lambda _: False)
-    source = tmp_path / "default-claude"
-    source.mkdir()
-    _write_json(
-        source / ".claude.json",
-        {
-            "userID": "user-default",
-            "oauthAccount": {"accountUuid": "acct-default"},
-        },
-    )
-    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(source))
+    # --agent-home-dir is the operator's source home; populate it with account metadata.
+    source = tmp_path / "homes" / "claude"
+    source.mkdir(parents=True)
+    source_config = {"userID": "user-source", "oauthAccount": {"accountUuid": "acct-source"}}
+    _write_json(source / ".claude.json", source_config)
     monkeypatch.chdir(tmp_path)
     workdir = tmp_path / "project"
     workdir.mkdir()
+
+    # The overlay is rmtree'd when the run finishes, so capture it during the spawn.
+    captured: dict[str, Any] = {}
+
+    def _capture_overlay(**kwargs: Any) -> None:
+        overlay = Path(kwargs["client"].env["CLAUDE_CONFIG_DIR"])
+        captured["overlay"] = overlay
+        captured["claude_json"] = _read_json(overlay / ".claude.json")
+
+    spy_run_client_children.side_effect = _capture_overlay
 
     result = runner.invoke(
         main,
@@ -307,9 +539,15 @@ def test_claude_launch_seeds_home_dir(
 
     assert result.exit_code == 0, result.output
     spy_run_client_children.assert_called_once()
-    seeded = _read_json(tmp_path / "homes" / "claude" / ".claude.json")
-    assert seeded["userID"] == "user-default"
+    overlay = captured["overlay"]
+    # The child runs from the per-run overlay, seeded from the --agent-home-dir source.
+    assert overlay.name == "claude"
+    assert overlay.parent.name == "runtime-home"
+    seeded = captured["claude_json"]
+    assert seeded["userID"] == "user-source"
     assert seeded["projects"][str(workdir)]["hasTrustDialogAccepted"] is True
+    # The operator's source home is not mutated by the run (cwd trust lands in the overlay).
+    assert _read_json(source / ".claude.json") == source_config
 
 
 def test_codex_launch_seeds_home_dir(

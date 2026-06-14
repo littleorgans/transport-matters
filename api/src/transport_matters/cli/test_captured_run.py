@@ -1,7 +1,8 @@
 import signal
 import subprocess
 import sys
-from typing import TYPE_CHECKING, Any
+from pathlib import Path
+from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
@@ -20,9 +21,6 @@ from transport_matters.lock import WorkspaceLock, WorkspaceLocked
 from transport_matters.workspace import run_root
 
 from ._helpers import _which_by_name
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 runner = CliRunner()
 
@@ -139,6 +137,13 @@ def test_prepare_captured_run_spawn_spec_matches_public_invocation_helper(
         proxy_starter=_proxy_starter,
     )
     try:
+        # prepare_captured_run now builds a per-run overlay and launches Claude from it
+        # (CLAUDE_CONFIG_DIR=overlay) while the addon sees the resolved source home via
+        # TRANSPORT_MATTERS_AGENT_HOME_DIR. Mirror both into the public helper so the two
+        # construction paths still produce an identical spawn spec.
+        assert spawn_spec.client is not None
+        overlay_home = Path(spawn_spec.client.env["CLAUDE_CONFIG_DIR"])
+        source_home = Path(spawn_spec.launch_env[env_keys.AGENT_HOME_DIR])
         expected = build_claude_captured_invocation(
             addon_path=addon,
             mitmdump="/bin/mitmdump",
@@ -146,7 +151,7 @@ def test_prepare_captured_run_spawn_spec_matches_public_invocation_helper(
             working_dir=workdir,
             resolved_storage=tmp_storage,
             run_id=spawn_spec.run_id,
-            home_dir=None,
+            home_dir=source_home,
             claude_path="/bin/claude",
             claude_passthrough_user=(),
             no_claude=False,
@@ -156,6 +161,7 @@ def test_prepare_captured_run_spawn_spec_matches_public_invocation_helper(
             managed_session=spawn_spec.managed_session,
             inject_system_prompt=lambda passthrough, **_kwargs: list(passthrough),
             user_supplied_system_prompt=lambda _passthrough: False,
+            runtime_home_dir=overlay_home,
         )
         expected_argv, expected_env, expected_client = expected(9900, 9901)
 

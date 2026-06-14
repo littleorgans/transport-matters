@@ -16,6 +16,8 @@ if TYPE_CHECKING:
 __all__ = [
     "CLIENT_NAME_CLAUDE",
     "CLIENT_NAME_CODEX",
+    "HOME_DIR_ENV_BY_CLIENT",
+    "LOOPBACK_NO_PROXY",
     "build_launch_env",
     "build_managed_child_env",
     "managed_child_shell_env_excludes",
@@ -84,9 +86,9 @@ _MANAGED_CHILD_TRUST_ENV_KEYS = frozenset(
     }
 )
 
-_LOOPBACK_NO_PROXY = "127.0.0.1,localhost"
+LOOPBACK_NO_PROXY = "127.0.0.1,localhost"
 
-_HOME_DIR_ENV_BY_CLIENT: dict[str, str] = {
+HOME_DIR_ENV_BY_CLIENT: dict[str, str] = {
     CLIENT_NAME_CLAUDE: "CLAUDE_CONFIG_DIR",
     CLIENT_NAME_CODEX: "CODEX_HOME",
 }
@@ -179,8 +181,8 @@ def build_managed_child_env(
         env["ws_proxy"] = proxy_url
         env["wss_proxy"] = proxy_url
 
-    env["NO_PROXY"] = _LOOPBACK_NO_PROXY
-    env["no_proxy"] = _LOOPBACK_NO_PROXY
+    env["NO_PROXY"] = LOOPBACK_NO_PROXY
+    env["no_proxy"] = LOOPBACK_NO_PROXY
 
     if codex_ca_certificate is not None:
         env["CODEX_CA_CERTIFICATE"] = codex_ca_certificate
@@ -188,7 +190,7 @@ def build_managed_child_env(
         if client_name is None:
             raise ValueError(f"unmapped managed client home dir: {client_name!r}")
         try:
-            env_key = _HOME_DIR_ENV_BY_CLIENT[client_name]
+            env_key = HOME_DIR_ENV_BY_CLIENT[client_name]
         except KeyError as exc:
             raise ValueError(f"unmapped managed client home dir: {client_name!r}") from exc
         env[env_key] = str(home_dir)

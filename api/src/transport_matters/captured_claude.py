@@ -34,8 +34,10 @@ def build_claude_captured_invocation(
     user_supplied_system_prompt: Callable[[list[str]], bool],
     web_runtime: CapturedRunWebRuntime = WEB_RUNTIME_EMBEDDED,
     default_client_passthrough: Sequence[str] = (),
+    runtime_home_dir: Path | None = None,
 ) -> Callable[[int, int | None], tuple[list[str], dict[str, str], ManagedClient | None]]:
     """Build the retry-safe invocation factory for a captured Claude launch."""
+    from transport_matters.cli.home_seed import apply_claude_proxy_env_settings
     from transport_matters.cli.launch_runtime import (
         build_mitmdump_argv,
     )
@@ -93,13 +95,21 @@ def build_claude_captured_invocation(
             debug=debug,
         )
 
+        proxy_url = loopback_http_url(proxy_port)
         client = None
         if claude_path is not None:
+            child_home_dir = runtime_home_dir or home_dir
+            if runtime_home_dir is not None:
+                apply_claude_proxy_env_settings(
+                    runtime_home_dir=runtime_home_dir,
+                    proxy_url=proxy_url,
+                    run_id=run_id,
+                )
             client_env = build_managed_child_env(
                 env,
                 client_name=CLIENT_NAME_CLAUDE,
-                home_dir=home_dir,
-                extra_env={"ANTHROPIC_BASE_URL": loopback_http_url(proxy_port)},
+                home_dir=child_home_dir,
+                extra_env={"ANTHROPIC_BASE_URL": proxy_url},
             )
             client = ManagedClient(
                 name=CLIENT_NAME_CLAUDE,
