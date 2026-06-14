@@ -43,13 +43,18 @@ const cancelledKeys = new Set<CapturedRunKey>();
 // minimize-pending, never both: stopRun's cancel path clears this, so cancel always wins the race.
 const minimizedPendingKeys = new Set<CapturedRunKey>();
 
-// Bumped 2 -> 3 in S2: records gained the optional `minimized` dock flag. The migrate below is shape
-// tolerant, so pre-S2 records (no flag) load clean and reopen as active panes, exactly as in S1.
-const CAPTURED_RUN_STORAGE_VERSION = 3;
+// Bumped 3 -> 4 in Slice 2: the OSC color replies toggle moved from lab state into core.
+// The migrate below is shape tolerant, so older records load with the default-on bridge.
+const CAPTURED_RUN_STORAGE_VERSION = 4;
 
 export interface CapturedRunState {
   /** Live run id per captured pane. Persisted so a reload re-attaches instead of re-spawning. */
   runs: Record<CapturedRunKey, CapturedRunRecord>;
+  /**
+   * Bridge answers the CLIs' OSC 10/11 color queries at spawn (backend osc_color_responder), so
+   * terminal background-sensitive styling renders deterministically. Spawn-time only.
+   */
+  oscColorReplies: boolean;
   /** Resolve this pane's run id: reuse a persisted/in-flight run, else spawn one. */
   ensureRun(
     runKey: CapturedRunKey,
@@ -73,6 +78,7 @@ export interface CapturedRunState {
    * only when there is neither a record nor an in-flight spawn.
    */
   setMinimized(runKey: CapturedRunKey, minimized: boolean): void;
+  setOscColorReplies(on: boolean): void;
 }
 
 export function createCapturedRunKey(provider: CliName): CapturedRunKey {
@@ -88,8 +94,9 @@ export const useCapturedRunStore = create<CapturedRunState>()(
   persist(
     (set, get) => ({
       runs: {},
+      oscColorReplies: true,
 
-      ensureRun(runKey, provider, cwd, oscColorReplies = true) {
+      ensureRun(runKey, provider, cwd, oscColorReplies = get().oscColorReplies) {
         const existing = get().runs[runKey]?.runId;
         if (existing !== undefined) return Promise.resolve(existing);
         const inFlight = pendingSpawns.get(runKey);
@@ -169,16 +176,23 @@ export const useCapturedRunStore = create<CapturedRunState>()(
           return { runs: { ...state.runs, [runKey]: { ...record, minimized } } };
         });
       },
+
+      setOscColorReplies(on) {
+        set({ oscColorReplies: on });
+      },
     }),
     {
       name: FRONTEND_STORAGE_KEYS.capturedRunStore,
       storage: createFrontendPersistStorage(),
       version: CAPTURED_RUN_STORAGE_VERSION,
       migrate: (persisted) => {
-        const state = persisted as Partial<Pick<CapturedRunState, "runs">>;
-        return { runs: state.runs ?? {} };
+        const state = persisted as Partial<Pick<CapturedRunState, "runs" | "oscColorReplies">>;
+        return { runs: state.runs ?? {}, oscColorReplies: state.oscColorReplies !== false };
       },
-      partialize: (state) => ({ runs: state.runs }),
+      partialize: (state) => ({
+        runs: state.runs,
+        oscColorReplies: state.oscColorReplies,
+      }),
     },
   ),
 );
@@ -187,5 +201,5 @@ export function resetCapturedRunStoreForTests(): void {
   pendingSpawns.clear();
   cancelledKeys.clear();
   minimizedPendingKeys.clear();
-  useCapturedRunStore.setState({ runs: {} });
+  useCapturedRunStore.setState({ runs: {}, oscColorReplies: true });
 }

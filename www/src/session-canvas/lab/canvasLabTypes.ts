@@ -23,13 +23,6 @@ export interface CanvasLabState {
    * the comparison by repainting the default look over the theme.
    */
   textShadow: boolean;
-  /**
-   * Bridge answers the CLIs' OSC 10/11 color queries at spawn (backend
-   * osc_color_responder), so styling that depends on the terminal background
-   * (codex user-prompt bands) renders deterministically instead of waiting on
-   * a focus-cycle requery. Spawn-time: toggling affects new runs only.
-   */
-  oscColorReplies: boolean;
   framing: FramingState;
   expandedPaneId: PaneId | null;
   flying: boolean;

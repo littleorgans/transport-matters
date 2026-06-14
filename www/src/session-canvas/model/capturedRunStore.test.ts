@@ -47,6 +47,18 @@ describe("capturedRunStore", () => {
     expect(store().runs["claude:k1"]).toEqual({ provider: "claude", runId: "run-1" });
   });
 
+  it("defaults OSC color replies on and stores explicit changes", () => {
+    expect(store().oscColorReplies).toBe(true);
+
+    store().setOscColorReplies(false);
+
+    expect(store().oscColorReplies).toBe(false);
+    expect(
+      JSON.parse(localStorage.getItem(FRONTEND_STORAGE_KEYS.capturedRunStore) as string).state
+        .oscColorReplies,
+    ).toBe(false);
+  });
+
   it("passes an explicit OSC color replies opt-out through to the spawn", async () => {
     createCapturedRunMock.mockResolvedValue("run-1");
 
@@ -265,5 +277,17 @@ describe("capturedRunStore", () => {
 
     expect(store().runs["claude:k1"]).toEqual({ provider: "claude", runId: "run-1" });
     expect(store().runs["claude:k1"]?.minimized).toBeUndefined();
+    expect(store().oscColorReplies).toBe(true);
+  });
+
+  it("rehydrates the core OSC color replies toggle", async () => {
+    localStorage.setItem(
+      FRONTEND_STORAGE_KEYS.capturedRunStore,
+      JSON.stringify({ version: 4, state: { runs: {}, oscColorReplies: false } }),
+    );
+
+    await useCapturedRunStore.persist.rehydrate();
+
+    expect(store().oscColorReplies).toBe(false);
   });
 });

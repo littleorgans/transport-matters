@@ -22,7 +22,7 @@ import {
   titleForRef,
   viewerIdForRef,
 } from "../viewers/registry";
-import { ControlsPanel } from "./ControlsPanel";
+import { ControlsPanel, OscColorReplyToggle } from "./ControlsPanel";
 import { framedPaneId, useCanvasLabStore } from "./canvasLabStore";
 import { cliInstalled, useCapabilitiesStore } from "./capabilitiesStore";
 import "./canvas-lab.css";
@@ -52,7 +52,6 @@ export function CanvasLabRoute() {
   const activeStrategyId = useCanvasLabStore((state) => state.activeStrategyId);
   const fitToContent = useCanvasLabStore((state) => state.fitToContent);
   const textShadow = useCanvasLabStore((state) => state.textShadow);
-  const oscColorReplies = useCanvasLabStore((state) => state.oscColorReplies);
   const contentRefs = useCanvasLabStore((state) => state.contentRefs);
   const docked = useCanvasLabStore((state) => state.docked);
   const addPane = useCanvasLabStore((state) => state.addPane);
@@ -74,7 +73,6 @@ export function CanvasLabRoute() {
   const setStrategy = useCanvasLabStore((state) => state.setStrategy);
   const setFitToContent = useCanvasLabStore((state) => state.setFitToContent);
   const setTextShadow = useCanvasLabStore((state) => state.setTextShadow);
-  const setOscColorReplies = useCanvasLabStore((state) => state.setOscColorReplies);
   const setBounds = useCanvasLabStore((state) => state.setBounds);
   const setViewport = useCanvasLabStore((state) => state.setViewport);
 
@@ -280,14 +278,7 @@ export function CanvasLabRoute() {
                   />
                   Text shadow
                 </label>
-                <label className="canvas-lab-toggle">
-                  <input
-                    checked={oscColorReplies}
-                    onChange={(event) => setOscColorReplies(event.target.checked)}
-                    type="checkbox"
-                  />
-                  CLI color replies
-                </label>
+                <OscColorReplyToggle />
                 <select
                   aria-label="Layout strategy"
                   onChange={(event) => setStrategy(event.target.value)}
