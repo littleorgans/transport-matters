@@ -1,10 +1,15 @@
+import type { CliName } from "../../types";
 import { paneIdForRef, viewerIdForRef } from "../viewers/registry";
+import { createCapturedRunKey } from "./capturedRunStore";
 import type {
   CanvasPaneRef,
+  PaneContentRef,
   PaneRecord,
   SpawnablePaneRef,
   SpawnSessionDescriptor,
 } from "./paneRecords";
+
+type CapturedRunRef = Extract<PaneContentRef, { kind: "captured-run" }>;
 
 /**
  * Aliases the legacy `{ kind: "session" }` ref onto `session-timeline`. Because
@@ -22,6 +27,16 @@ export function titleForSession(session: SpawnSessionDescriptor): string {
   if (session.title && session.title.trim().length > 0) return session.title;
   const cli = session.cli ?? session.provider;
   return `${cli} session ${session.session_id.slice(0, 8)}`;
+}
+
+export function createCapturedRunRef(provider: CliName, label?: string): CapturedRunRef {
+  return {
+    kind: "captured-run",
+    owner: "local",
+    provider,
+    runKey: createCapturedRunKey(provider),
+    ...(label === undefined ? {} : { label }),
+  };
 }
 
 export function createPaneRecord(ref: CanvasPaneRef, title: string, now: string): PaneRecord {
