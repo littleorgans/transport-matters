@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import shutil
 from contextlib import ExitStack
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from datetime import datetime
 from importlib.resources import as_file
 from typing import TYPE_CHECKING
@@ -89,7 +89,6 @@ def build_captured_run_context(
         web_required=request.web_runtime == WEB_RUNTIME_EMBEDDED,
     )
     stack = ExitStack()
-    effective_request = request
     runtime_home_dir = None
     try:
         if write and prepared.client_path is not None:
@@ -113,14 +112,18 @@ def build_captured_run_context(
                 env=env,
             )
             stack.callback(shutil.rmtree, runtime_home_root, ignore_errors=True)
-            effective_request = replace(request, home_dir=source_home_dir)
+            # The resolved overlay source is an internal detail of the overlay build; it
+            # must not be promoted onto request.home_dir. Doing so would publish a native
+            # launch's ~/.claude onto AGENT_HOME_DIR (the desktop event homeDir and the
+            # embedded backend's agent_home_dir), which then stamps a Claude home onto
+            # Codex spawns. Native launches keep home_dir=None so AGENT_HOME_DIR stays unset.
 
         managed_session = prepare_managed_session(
             launch_profile,
             client_path=prepared.client_path,
             passthrough=prepared.passthrough_user,
             working_dir=prepared.working_dir,
-            home_dir=effective_request.home_dir,
+            home_dir=request.home_dir,
             env=env,
             now=now or datetime.now().astimezone(),
             write=write,
@@ -134,7 +137,7 @@ def build_captured_run_context(
                 working_dir=prepared.working_dir,
                 resolved_storage=prepared.resolved_storage,
                 run_id=prepared.run_id,
-                home_dir=effective_request.home_dir,
+                home_dir=request.home_dir,
                 runtime_home_dir=runtime_home_dir,
                 claude_path=prepared.client_path,
                 claude_passthrough_user=prepared.passthrough_user,
@@ -158,7 +161,7 @@ def build_captured_run_context(
                 working_dir=prepared.working_dir,
                 resolved_storage=prepared.resolved_storage,
                 run_id=prepared.run_id,
-                home_dir=effective_request.home_dir,
+                home_dir=request.home_dir,
                 runtime_home_dir=runtime_home_dir,
                 codex_path=prepared.client_path,
                 codex_passthrough_user=prepared.passthrough_user,
@@ -173,7 +176,7 @@ def build_captured_run_context(
         stack.close()
         raise
     return CapturedRunContext(
-        request=effective_request,
+        request=request,
         profile=launch_profile,
         prepared=prepared,
         managed_session=managed_session,

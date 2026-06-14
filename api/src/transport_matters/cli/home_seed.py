@@ -68,6 +68,10 @@ _CODEX_OVERLAY_LOCAL_NAMES = frozenset(
         _CODEX_CONFIG_FILENAME,
     }
 )
+# Entries never symlinked into any overlay, regardless of client. A source home that is
+# (or contains) a git repo must not leak its ``.git`` into the per-run overlay, where git
+# would treat the overlay as a working tree of the source repo.
+_OVERLAY_NEVER_SYMLINK_NAMES = frozenset({".git"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -275,7 +279,7 @@ def _symlink_source_home_entries(
     except FileNotFoundError:
         return
     for entry in entries:
-        if entry.name in local_names:
+        if entry.name in local_names or entry.name in _OVERLAY_NEVER_SYMLINK_NAMES:
             continue
         target = runtime_home_dir / entry.name
         if target.exists() or target.is_symlink():

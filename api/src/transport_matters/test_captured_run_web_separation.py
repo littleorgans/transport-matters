@@ -103,12 +103,82 @@ def test_prepare_captured_run_external_web_starts_capture_only_proxy(
         assert spawn_spec.client.env["ANTHROPIC_BASE_URL"] == loopback_http_url(
             spawn_spec.proxy_port
         )
+        # An explicit --agent-home-dir is the managed home and must surface on the
+        # AGENT_HOME_DIR channel (addon locate + the desktop event homeDir).
+        assert spawn_spec.launch_env[env_keys.AGENT_HOME_DIR] == str(tmp_path / "agent-home")
         assert started and started[0]["proxy_port"] == spawn_spec.proxy_port
     finally:
         lease.close()
 
     assert supervisors[0].terminated is True
     assert supervisors[0].restored is True
+
+
+def test_prepare_captured_run_native_home_does_not_publish_agent_home_dir(
+    tmp_path: Path,
+) -> None:
+    # A native launch (no --agent-home-dir) must keep AGENT_HOME_DIR unset: resolving the
+    # overlay source to ~/.claude is an internal detail and must not be promoted onto the
+    # launch env, or the desktop event publishes homeDir=~/.claude and the embedded backend
+    # inherits it as agent_home_dir and stamps a Claude home onto Codex spawns (overlay
+    # daemon assert -> 500). Regression for the #108 home_dir promotion.
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    source = tmp_path / "source-claude"
+    source.mkdir()
+    addon_path = tmp_path / "addon.py"
+    addon_path.write_text("# addon\n")
+    supervisors: list[FakeSupervisor] = []
+
+    def supervisor_factory() -> FakeSupervisor:
+        supervisor = FakeSupervisor()
+        supervisors.append(supervisor)
+        return supervisor
+
+    def proxy_starter(**_kwargs: Any) -> None:
+        return
+
+    spawn_spec, lease = prepare_captured_run(
+        CapturedRunRequest(
+            client_name=CLAUDE_CLIENT_NAME,
+            passthrough=("--dangerously-skip-permissions",),
+            directory=workspace,
+            proxy_port=None,
+            web_port=None,
+            upstream=CLAUDE_UPSTREAM_DEFAULT,
+            storage_dir=tmp_path / "storage",
+            home_dir=None,
+            client_bin=None,
+            client_disabled=False,
+            no_system_prompt=False,
+            debug=False,
+            web_runtime=WEB_RUNTIME_EXTERNAL,
+            default_client_passthrough=("--dangerously-skip-permissions",),
+        ),
+        require_addon=lambda: addon_path,
+        resolve_mitmdump=lambda: "/usr/bin/mitmdump",
+        which=lambda *_args, **_kwargs: "/usr/bin/claude",
+        port_in_use=lambda _port: False,
+        allocate_port_pair=lambda: (39323, 49323),
+        inject_system_prompt=lambda *_a, **_k: ["--dangerously-skip-permissions"],
+        user_supplied_system_prompt=lambda _args: False,
+        supervisor_factory=supervisor_factory,
+        proxy_starter=proxy_starter,
+        env={"CLAUDE_CONFIG_DIR": str(source)},
+    )
+
+    try:
+        # The native home is never published onto the launch env (the leak vector)...
+        assert env_keys.AGENT_HOME_DIR not in spawn_spec.launch_env
+        assert spawn_spec.client is not None
+        assert env_keys.AGENT_HOME_DIR not in spawn_spec.client.env
+        # ...yet the overlay is still built: the child's CLAUDE_CONFIG_DIR is the per-run
+        # runtime overlay, not the source home.
+        assert spawn_spec.client.env["CLAUDE_CONFIG_DIR"] == str(
+            tmp_path / "storage" / "runtime-home" / CLAUDE_CLIENT_NAME
+        )
+    finally:
+        lease.close()
 
 
 def test_prepare_captured_run_codex_external_web_uses_explicit_proxy_env(
