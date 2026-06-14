@@ -9,7 +9,7 @@ import {
   updateNodeRect,
 } from "../../engine";
 import { sanitizeParam, seedParams } from "../../engine/layout";
-import { createCapturedRunKey } from "../model/capturedRunStore";
+import { createCapturedRunKey, useCapturedRunStore } from "../model/capturedRunStore";
 import { planExpandLayout } from "../model/expandLayout";
 import {
   dismissPane,
@@ -53,7 +53,6 @@ type CanvasLabValues = Pick<
   | "params"
   | "fitToContent"
   | "textShadow"
-  | "oscColorReplies"
   | "framing"
   | "expandedPaneId"
   | "flying"
@@ -72,7 +71,6 @@ function createEmptyCanvasLabValues(): CanvasLabValues {
     params: seedParams(INITIAL_STRATEGY_ID),
     fitToContent: true,
     textShadow: false,
-    oscColorReplies: true,
     framing: emptyFraming(),
     expandedPaneId: null,
     flying: false,
@@ -283,7 +281,7 @@ export const useCanvasLabStore = create<CanvasLabState>()(
       },
 
       setOscColorReplies(on) {
-        set({ oscColorReplies: on });
+        useCapturedRunStore.getState().setOscColorReplies(on);
       },
 
       organize() {

@@ -94,6 +94,16 @@ describe("CapturedRunPane", () => {
     expect(only(sockets).url).toMatch(/\/api\/runs\/run-abc123\/terminal\?cols=80&rows=24$/);
   });
 
+  it("uses the core OSC color replies toggle at spawn time", async () => {
+    createCapturedRunMock.mockResolvedValue("run-abc123");
+    useCapturedRunStore.getState().setOscColorReplies(false);
+
+    render(<CapturedRunPane runKey="claude:k1" provider="claude" />);
+
+    await waitFor(() => expect(sockets).toHaveLength(1));
+    expect(createCapturedRunMock).toHaveBeenCalledWith("claude", undefined, false);
+  });
+
   it("re-attaches a persisted run id without spawning a new run", async () => {
     useCapturedRunStore.setState({
       runs: { "codex:k1": { provider: "codex", runId: "run-persisted" } },

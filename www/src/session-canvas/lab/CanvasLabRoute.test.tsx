@@ -50,7 +50,7 @@ function seedPersistedLab(
   );
   localStorage.setItem(
     FRONTEND_STORAGE_KEYS.capturedRunStore,
-    JSON.stringify({ version: 3, state: { runs } }),
+    JSON.stringify({ version: 4, state: { runs, oscColorReplies: true } }),
   );
 }
 
@@ -278,17 +278,20 @@ describe("CanvasLabRoute CLI color replies", () => {
     expect(checkbox).toBeChecked();
 
     fireEvent.click(checkbox);
-    expect(useCanvasLabStore.getState().oscColorReplies).toBe(false);
+    expect(useCapturedRunStore.getState().oscColorReplies).toBe(false);
   });
 
-  it("rehydrates an explicit off and defaults junk values to on", async () => {
-    const labExtras = { contentRefs: {}, paneRects: {}, docked: [], paneCounters: {} };
-    seedPersistedLab({ ...labExtras, nextPaneIndex: 0, oscColorReplies: false }, {});
-    await useCanvasLabStore.persist.rehydrate();
-    expect(useCanvasLabStore.getState().oscColorReplies).toBe(false);
+  it("rehydrates the core field instead of lab-local state", async () => {
+    seedCapabilities({ claude: true, codex: true });
+    localStorage.setItem(
+      FRONTEND_STORAGE_KEYS.capturedRunStore,
+      JSON.stringify({ version: 4, state: { runs: {}, oscColorReplies: false } }),
+    );
 
-    seedPersistedLab({ ...labExtras, nextPaneIndex: 0, oscColorReplies: "maybe" }, {});
-    await useCanvasLabStore.persist.rehydrate();
-    expect(useCanvasLabStore.getState().oscColorReplies).toBe(true);
+    await useCapturedRunStore.persist.rehydrate();
+    render(<CanvasLabRoute />);
+    fireEvent.click(screen.getByRole("button", { name: "Layout" }));
+
+    expect(screen.getByRole("checkbox", { name: "CLI color replies" })).not.toBeChecked();
   });
 });

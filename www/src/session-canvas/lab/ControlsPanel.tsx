@@ -1,5 +1,22 @@
 import { resolveLayout } from "../../engine/layout";
+import { useCapturedRunStore } from "../model/capturedRunStore";
 import { useCanvasLabStore } from "./canvasLabStore";
+
+export function OscColorReplyToggle() {
+  const oscColorReplies = useCapturedRunStore((state) => state.oscColorReplies);
+  const setOscColorReplies = useCanvasLabStore((state) => state.setOscColorReplies);
+
+  return (
+    <label className="canvas-lab-toggle">
+      <input
+        checked={oscColorReplies}
+        onChange={(event) => setOscColorReplies(event.target.checked)}
+        type="checkbox"
+      />
+      CLI color replies
+    </label>
+  );
+}
 
 // Auto-renders the active strategy's declarative controls. There is NO per-strategy UI code:
 // number -> range, toggle -> checkbox, enum -> select. A new strategy's controls appear here for

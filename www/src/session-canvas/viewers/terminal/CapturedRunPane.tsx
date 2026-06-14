@@ -1,6 +1,5 @@
 import { type ReactElement, useCallback, useEffect, useState } from "react";
 import type { CliName } from "../../../types";
-import { useCanvasLabStore } from "../../lab/canvasLabStore";
 import { useCapturedRunStore } from "../../model/capturedRunStore";
 import { cliLabel } from "../../model/paneRecords";
 import { parseRunErrorFrame, type RunErrorFrame } from "./runTerminalFrames";
@@ -32,6 +31,7 @@ export interface CapturedRunPaneProps {
 export function CapturedRunPane({ runKey, provider, cwd }: CapturedRunPaneProps): ReactElement {
   const ensureRun = useCapturedRunStore((state) => state.ensureRun);
   const persistedRunId = useCapturedRunStore((state) => state.runs[runKey]?.runId);
+  const oscColorReplies = useCapturedRunStore((state) => state.oscColorReplies);
   // Seed from the persisted run so a reload attaches on the first render (no
   // loading flash and no re-spawn); ensureRun still runs to spawn the first time.
   const [runId, setRunId] = useState<string | null>(persistedRunId ?? null);
@@ -39,9 +39,6 @@ export function CapturedRunPane({ runKey, provider, cwd }: CapturedRunPaneProps)
 
   useEffect(() => {
     let cancelled = false;
-    // Read at spawn time, not reactively: the OSC reply window is the CLI's
-    // startup, so the toggle can only ever apply to the next spawned run.
-    const oscColorReplies = useCanvasLabStore.getState().oscColorReplies;
     ensureRun(runKey, provider, cwd, oscColorReplies).then(
       (id) => {
         if (!cancelled) setRunId(id);
@@ -53,7 +50,7 @@ export function CapturedRunPane({ runKey, provider, cwd }: CapturedRunPaneProps)
     return () => {
       cancelled = true;
     };
-  }, [ensureRun, runKey, provider, cwd]);
+  }, [ensureRun, runKey, provider, cwd, oscColorReplies]);
 
   if (spawnError !== null) {
     return (
