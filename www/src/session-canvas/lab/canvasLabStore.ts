@@ -9,7 +9,7 @@ import {
   updateNodeRect,
 } from "../../engine";
 import { sanitizeParam, seedParams } from "../../engine/layout";
-import { createCapturedRunKey, useCapturedRunStore } from "../model/capturedRunStore";
+import { useCapturedRunStore } from "../model/capturedRunStore";
 import { planExpandLayout } from "../model/expandLayout";
 import {
   dismissPane,
@@ -30,6 +30,7 @@ import {
   stripPaneFlyIntent,
 } from "../model/paneAffordances";
 import { type CanvasPaneRef, cliLabel, type PaneContentRef } from "../model/paneRecords";
+import { createCapturedRunRef } from "../model/spawn";
 import { paneIdForRef } from "../viewers/registry";
 import {
   DEFAULT_BOUNDS,
@@ -149,26 +150,9 @@ export const useCanvasLabStore = create<CanvasLabState>()(
       },
 
       addCapturedRun(provider) {
-        // Each captured pane owns its own run: a fresh, stable per-pane key is both the
-        // pane id and the key the pane spawns + persists its runId under (it rides on the
-        // ref so the viewer reads it). Two Spawn Claude clicks are two independent runs
-        // (two PTYs, isolated input), never a shared terminal. The incremental label
-        // (Claude-1, Codex-2) rides on the ref so the chrome + dock show distinct names,
-        // and persists with the record so a reload keeps the exact title (no fallback).
-        const runKey = createCapturedRunKey(provider);
-        set((state) => {
-          const { label, counters } = labelFor(state.paneCounters, cliLabel(provider));
-          return {
-            paneCounters: counters,
-            ...spawnPaneLayout(state, runKey, {
-              kind: "captured-run",
-              owner: "local",
-              provider,
-              runKey,
-              label,
-            }),
-          };
-        });
+        const { label, counters } = labelFor(get().paneCounters, cliLabel(provider));
+        set({ paneCounters: counters });
+        get().spawnPane(createCapturedRunRef(provider, label), { focus: true });
       },
 
       dockPane(ref) {

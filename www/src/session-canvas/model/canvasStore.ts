@@ -12,6 +12,7 @@ import {
   type WorldRect,
 } from "../../engine";
 import { type LayoutParams, seedParams } from "../../engine/layout";
+import type { CliName } from "../../types";
 import type { CanvasLaunchContext } from "../route";
 import { PICKER_PANE_ID, paneIdForRef, titleForRef } from "../viewers/registry";
 import { createCanvasStorePersistOptions } from "./canvasStore.persistence";
@@ -37,16 +38,17 @@ import {
   runSpawnPaneFlow,
   stripPaneFlyIntent,
 } from "./paneAffordances";
-import type {
-  CanvasModel,
-  CanvasPaneRef,
-  DockedPane,
-  PaneContentRef,
-  PaneRecord,
-  SpawnablePaneRef,
-  SpawnSessionDescriptor,
+import {
+  type CanvasModel,
+  type CanvasPaneRef,
+  cliLabel,
+  type DockedPane,
+  type PaneContentRef,
+  type PaneRecord,
+  type SpawnablePaneRef,
+  type SpawnSessionDescriptor,
 } from "./paneRecords";
-import { createPaneRecord, normalizeRef, titleForSession } from "./spawn";
+import { createCapturedRunRef, createPaneRecord, normalizeRef, titleForSession } from "./spawn";
 
 interface CanvasStoreModel extends CanvasModel {
   activeStrategyId: string;
@@ -59,6 +61,7 @@ interface CanvasStoreModel extends CanvasModel {
 }
 
 interface CanvasStoreState extends CanvasStoreModel {
+  addCapturedRun(provider: CliName): PaneId;
   closePane(paneId: PaneId): void;
   closeDockedPane(paneId: PaneId): void;
   expandPane(paneId: PaneId): void;
@@ -100,6 +103,11 @@ export const useCanvasStore = create<CanvasStoreState>()(
   persist(
     (set, get) => ({
       ...createInitialCanvasModel(INITIAL_LAUNCH_CONTEXT),
+
+      addCapturedRun(provider) {
+        const ref = createCapturedRunRef(provider, cliLabel(provider));
+        return get().spawnPane(ref, { focus: true });
+      },
 
       closePane(paneId) {
         if (paneId === PICKER_PANE_ID) return;

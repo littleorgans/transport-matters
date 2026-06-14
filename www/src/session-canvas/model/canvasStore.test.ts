@@ -151,6 +151,41 @@ describe("canvasStore", () => {
     expect(state.layout.focusedPaneId).toBe("resource:abc:r1");
   });
 
+  it("addCapturedRun inserts one pane keyed by the run key", () => {
+    resetCanvasStoreForTests();
+
+    const paneId = useCanvasStore.getState().addCapturedRun("claude");
+
+    const state = useCanvasStore.getState();
+    const pane = state.panes[paneId];
+    if (!pane) throw new Error(`expected ${paneId} to be open`);
+    expect(Object.keys(state.panes).sort()).toEqual([PICKER_PANE_ID, paneId].sort());
+    expect(pane.viewerId).toBe("captured-run");
+    expect(pane.title).toBe("Claude");
+    expect(state.layout.focusedPaneId).toBe(paneId);
+    const ref = pane.contentRef;
+    if (ref.kind !== "captured-run") throw new Error("expected a captured run ref");
+    expect(ref.provider).toBe("claude");
+    expect(ref.runKey).toBe(paneId);
+    expect(ref.label).toBe("Claude");
+  });
+
+  it("addCapturedRun keeps two same-provider calls as two panes", () => {
+    resetCanvasStoreForTests();
+
+    const firstPaneId = useCanvasStore.getState().addCapturedRun("claude");
+    const secondPaneId = useCanvasStore.getState().addCapturedRun("claude");
+
+    const state = useCanvasStore.getState();
+    expect(firstPaneId).not.toBe(secondPaneId);
+    expect(Object.keys(state.panes).sort()).toEqual(
+      [PICKER_PANE_ID, firstPaneId, secondPaneId].sort(),
+    );
+    expect(state.panes[firstPaneId]?.contentRef.kind).toBe("captured-run");
+    expect(state.panes[secondPaneId]?.contentRef.kind).toBe("captured-run");
+    expect(state.layout.focusedPaneId).toBe(secondPaneId);
+  });
+
   it("dockPane parks a resource in the dock without touching the layout", () => {
     resetCanvasStoreForTests();
     const ref = { kind: "resource", owner: "local", source: "path", path: "/t/x.png" } as const;
@@ -218,6 +253,25 @@ describe("canvasStore", () => {
       expect(deleteRunMock).toHaveBeenCalledTimes(1);
       expect(useCapturedRunStore.getState().runs["claude:k1"]).toBeUndefined();
       expect(useCanvasStore.getState().panes["claude:k1"]).toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("addCapturedRun then closePane stops the run through the real spawn path", () => {
+    vi.useFakeTimers();
+    try {
+      resetCanvasStoreForTests();
+      const paneId = useCanvasStore.getState().addCapturedRun("claude");
+      seedCapturedRun(paneId);
+
+      useCanvasStore.getState().closePane(paneId);
+      vi.runAllTimers();
+
+      expect(deleteRunMock).toHaveBeenCalledWith("run-1");
+      expect(deleteRunMock).toHaveBeenCalledTimes(1);
+      expect(useCapturedRunStore.getState().runs[paneId]).toBeUndefined();
+      expect(useCanvasStore.getState().panes[paneId]).toBeUndefined();
     } finally {
       vi.useRealTimers();
     }
