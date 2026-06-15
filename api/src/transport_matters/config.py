@@ -95,7 +95,7 @@ class Settings(BaseSettings):
     # (a non-owned id matches nothing and stays pending). ``None`` for unmanaged runs (dev, tests).
     owned_native_session_id: str | None = None
     owned_source_descriptor: str | None = None
-    launch_fields: dict[str, Any] = Field(default_factory=dict)
+    launch_fields: dict[str, Any] = Field(default_factory=dict)  # Any: JSON env carrier.
     # Managed ``--agent-home-dir`` for this launch (§11.1), set by the CLI alongside ``cli``/``run_id``.
     # The addon threads it onto the binding so ``locate`` resolves the transcript root under the managed
     # home (external-adoption-under-managed-home) and the durable ``sessions.json`` records it. ``None``

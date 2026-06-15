@@ -67,7 +67,7 @@ class RuntimeHomePlan:
         return self.child_home
 
     @property
-    def launch_fields(self) -> dict[str, Any]:
+    def launch_fields(self) -> dict[str, Any]:  # Any: launch metadata is a JSON env carrier.
         if self.template_provenance is None:
             return {}
         return {"runtime_template": self.template_provenance.as_launch_field()}
@@ -85,13 +85,14 @@ def plan_runtime_home(
 ) -> RuntimeHomePlan:
     """Plan source, child, and descriptor homes for a managed launch."""
     if client_path is None:
+        manual_home = home_dir.expanduser() if home_dir is not None else None
         return RuntimeHomePlan(
             client_name=client_name,
-            content_source=None,
-            auth_source=None,
-            hook_trust_source=None,
-            child_home=None,
-            descriptor_home=None,
+            content_source=manual_home,
+            auth_source=manual_home,
+            hook_trust_source=manual_home,
+            child_home=manual_home,
+            descriptor_home=manual_home,
             template_provenance=None,
             mode=RuntimeHomeMode.PROXY_ONLY,
         )

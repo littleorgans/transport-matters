@@ -8,6 +8,7 @@ from typing import Any, cast
 import pytest
 from click.exceptions import Exit
 
+from transport_matters import env_keys
 from transport_matters.cli.launch_profile import (
     ClaudeLaunchProfile,
     CodexLaunchProfile,
@@ -25,7 +26,11 @@ from transport_matters.index.adapters.base import (
     decode_source_descriptor,
     encode_source_descriptor,
 )
-from transport_matters.launch_environment import CLIENT_NAME_CLAUDE, CLIENT_NAME_CODEX
+from transport_matters.launch_environment import (
+    CLIENT_NAME_CLAUDE,
+    CLIENT_NAME_CODEX,
+    build_launch_env,
+)
 
 
 def _now() -> datetime:
@@ -193,6 +198,46 @@ def test_manual_plan_preserves_descriptor_home_and_no_overlay(tmp_path: Path) ->
     assert plan.child_home == manual
     assert plan.descriptor_home == manual
     assert prepare_runtime_home(plan, working_dir=tmp_path, env={}) is None
+
+
+def test_proxy_only_plan_preserves_manual_home(tmp_path: Path) -> None:
+    manual = tmp_path / "manual-codex"
+    manual.mkdir()
+
+    plan = plan_runtime_home(
+        CLIENT_NAME_CODEX,
+        home_dir=manual,
+        runtime_template=None,
+        runtime_home_root=tmp_path / "run" / "runtime-home",
+        client_path=None,
+        env={},
+        use_runtime_overlay=False,
+    )
+
+    assert plan.mode == RuntimeHomeMode.PROXY_ONLY
+    assert plan.content_source == manual
+    assert plan.auth_source == manual
+    assert plan.child_home == manual
+    assert plan.descriptor_home == manual
+    assert prepare_runtime_home(plan, working_dir=tmp_path, env={}) is None
+
+
+def test_build_launch_env_drops_stale_launch_fields(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(env_keys.LAUNCH_FIELDS, '{"runtime_template":{"template_id":"stale"}}')
+
+    env = build_launch_env(
+        working_dir=tmp_path / "workspace",
+        storage_dir=tmp_path / "storage",
+        proxy_port=8787,
+        web_port=8788,
+        run_id="run-1",
+        launch_fields={},
+    )
+
+    assert env_keys.LAUNCH_FIELDS not in env
 
 
 def test_run_codex_force_http_fallback_still_resolves_addons(
