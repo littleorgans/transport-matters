@@ -1,5 +1,5 @@
 import { fireEvent, screen } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { clearThemeTokens } from "./hooks/useThemeTokens";
 import { RootShell } from "./rootShell";
 import {
@@ -9,6 +9,8 @@ import {
   restoreTransport,
 } from "./session-canvas/testUtils";
 import { useThemeStore } from "./stores/themeStore";
+
+vi.mock("./ambient/createAmbientBackground");
 
 // The canvas route loads through React.lazy; under full-suite load the chunk
 // can outlive findByRole's 1s default, so wait generously for the first paint.

@@ -12,6 +12,7 @@ vi.mock("../../api", () => ({
   createCapturedRun: vi.fn(),
   deleteRun: vi.fn(),
 }));
+vi.mock("../../ambient/createAmbientBackground");
 
 // The lab gates its captured-run spawn buttons on managed-CLI availability. Seeding
 // the capabilities store to "ready" makes CanvasLabRoute's mount-time probe a no-op,
