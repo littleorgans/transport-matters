@@ -260,6 +260,47 @@ def test_session_classification_defaults_and_internal_values(dao: SessionDao) ->
     assert dao.get_session("internal") == persisted
 
 
+def test_session_upsert_preserves_existing_classification(dao: SessionDao) -> None:
+    dao.upsert_session(root_session("parent", native_session_id="parent-native"))
+    continuation = root_session("continuation", native_session_id="continuation-native").model_copy(
+        update={
+            "session_purpose": SessionPurpose.CONTINUATION,
+            "session_visibility": SessionVisibility.USER_VISIBLE,
+            "parent_session_id": "parent",
+            "forked_at_seq": 4,
+        }
+    )
+    dao.upsert_session(continuation)
+
+    dao.upsert_session(root_session("continuation", native_session_id="continuation-native"))
+
+    persisted_continuation = dao.get_session("continuation")
+    assert persisted_continuation is not None
+    assert persisted_continuation.session_purpose == SessionPurpose.CONTINUATION
+    assert persisted_continuation.session_visibility == SessionVisibility.USER_VISIBLE
+    assert persisted_continuation.parent_session_id == "parent"
+    assert persisted_continuation.forked_at_seq == 4
+
+    internal = root_session(
+        "internal-reupsert", native_session_id="internal-reupsert-native"
+    ).model_copy(
+        update={
+            "session_purpose": SessionPurpose.INTERNAL_SUMMARY,
+            "session_visibility": SessionVisibility.HIDDEN,
+        }
+    )
+    dao.upsert_session(internal)
+
+    dao.upsert_session(
+        root_session("internal-reupsert", native_session_id="internal-reupsert-native")
+    )
+
+    persisted_internal = dao.get_session("internal-reupsert")
+    assert persisted_internal is not None
+    assert persisted_internal.session_purpose == SessionPurpose.INTERNAL_SUMMARY
+    assert persisted_internal.session_visibility == SessionVisibility.HIDDEN
+
+
 def test_get_events_for_owner_returns_lightweight_read_rows(dao: SessionDao) -> None:
     dao.upsert_session(root_session())
     dao.insert_event(
