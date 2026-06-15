@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { createCapturedRun, deleteRun } from "../../api";
+import { createCapturedRun, terminateRun } from "../../api";
 import { createFrontendPersistStorage, FRONTEND_STORAGE_KEYS } from "../../stores/persistence";
 import type { CliName } from "../../types";
 
@@ -31,7 +31,7 @@ export interface CapturedRunRecord {
 const pendingSpawns = new Map<CapturedRunKey, Promise<string>>();
 
 // Keys whose pane was closed while their spawn POST was still in flight. The spawn's
-// resolve handler honours this: it stops the just-born run (DELETE) and skips persisting
+// resolve handler honours this: it terminates the just-born run (POST /terminate) and skips persisting
 // it, so a close that races a spawn leaves neither an orphaned server run nor a zombie
 // run that a reload would restore.
 const cancelledKeys = new Set<CapturedRunKey>();
@@ -39,7 +39,7 @@ const cancelledKeys = new Set<CapturedRunKey>();
 // Keys minimized while their spawn POST was still in flight (no record to flag yet). The spawn's
 // resolve handler honours this: it persists the new record already `minimized`, so a minimize that
 // races the spawn still docks on reload instead of reopening. Mirrors cancelledKeys but with the
-// opposite intent — cancel = DELETE + drop; minimize = persist WITH the flag. A key is cancelled OR
+// opposite intent: cancel = POST /terminate + drop; minimize = persist WITH the flag. A key is cancelled OR
 // minimize-pending, never both: stopRun's cancel path clears this, so cancel always wins the race.
 const minimizedPendingKeys = new Set<CapturedRunKey>();
 
@@ -64,9 +64,9 @@ export interface CapturedRunState {
     oscColorReplies?: boolean,
   ): Promise<string>;
   /**
-   * Stop this pane's run on an explicit KILL ([X] close): forget the mapping AND DELETE the
-   * run. A run id that exists is stopped on the server; a close that races an in-flight spawn
-   * (no run id yet) is cancelled so the just-born run is DELETEd and never persisted, so an
+   * Stop this pane's run on an explicit KILL ([X] close): forget the mapping AND POST /terminate the
+   * run. A run id that exists is terminated on the server; a close that races an in-flight spawn
+   * (no run id yet) is cancelled so the just-born run is terminated and never persisted, so an
    * unviewed run never orphans. Minimize, by contrast, keeps the binding (the run lives) so the
    * dock can restore it locally — only close calls this.
    */
@@ -108,10 +108,10 @@ export const useCapturedRunStore = create<CapturedRunState>()(
         const spawn = createCapturedRun(provider, cwd, oscColorReplies)
           .then((runId) => {
             pendingSpawns.delete(runKey);
-            // Closed mid-spawn: stop the just-born run and do NOT persist it. .delete
+            // Closed mid-spawn: terminate the just-born run and do NOT persist it. .delete
             // returns true only if the key was marked cancelled (atomic check + clear).
             if (cancelledKeys.delete(runKey)) {
-              void deleteRun(runId).catch(() => {});
+              void terminateRun(runId).catch(() => {});
               return runId;
             }
             // Minimized mid-spawn: persist the record already docked so a reload docks it (not reopen).
@@ -138,19 +138,19 @@ export const useCapturedRunStore = create<CapturedRunState>()(
       stopRun(runKey) {
         const runId = get().runs[runKey]?.runId;
         if (runId !== undefined) {
-          // Established run: forget this pane's mapping and STOP the run (DELETE). Best-effort
-          // stop — the user is killing the pane, so a failed DELETE must not block the UI; the
-          // backend idle policy reaps anything that slips by. The stopped run also leaves the
+          // Established run: forget this pane's mapping and terminate the run (POST /terminate). Best-effort
+          // terminate, the user is killing the pane, so a failed POST /terminate must not block the UI; the
+          // backend idle policy reaps anything that slips by. The terminated run also leaves the
           // director roster (it is no longer a live run).
           set((state) => {
             const { [runKey]: _removed, ...runs } = state.runs;
             return { runs };
           });
-          void deleteRun(runId).catch(() => {});
+          void terminateRun(runId).catch(() => {});
           return;
         }
         // Kill raced an in-flight spawn (no run id yet): cancel so the spawn's resolve stops the
-        // just-born run (DELETE) and skips persisting it, so a run that was never viewed or listed
+        // just-born run (POST /terminate) and skips persisting it, so a run that was never viewed or listed
         // can never orphan. The pending promise stays so its handler runs that cleanup. Drop any
         // deferred minimize-intent for this key so close wins the race (cancel, not dock).
         if (pendingSpawns.has(runKey)) {

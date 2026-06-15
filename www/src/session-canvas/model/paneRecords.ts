@@ -86,7 +86,7 @@ export type PaneContentRef =
 
 /**
  * A pane removed from the canvas but retained locally so the dock can restore it (Option A: local
- * minimized state only, no `/api/runs`). `ref` is the viewer ref to re-seed on restore; `null` for
+ * minimized state only, no `/v1/runs`). `ref` is the viewer ref to re-seed on restore; `null` for
  * demo card/ruler stubs that carry no ref (the node is re-created from the pane id alone). Production
  * may also park the full PaneRecord so restore preserves user-facing pane metadata exactly.
  */

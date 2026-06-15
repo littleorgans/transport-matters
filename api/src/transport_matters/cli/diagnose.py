@@ -78,7 +78,7 @@ def report_runs_health(
     confirm: Callable[[dict[str, object]], bool],
     now: datetime,
 ) -> None:
-    """Report live-run health and optionally reap orphan candidates.
+    """Report live-run health and optionally terminate stale candidates.
 
     Separated from :func:`run_doctor` so it stays unit-testable and keeps
     the parent function within the ~150-line budget.
@@ -100,27 +100,23 @@ def report_runs_health(
         return
 
     age_label = f"{older_than_seconds}s"
-    typer.echo(
-        f"\n  viewerless > {age_label} (possible orphans; a minimized/docked run is ALSO\n"
-        "  viewerless — reap only if the renderer is gone):"
-    )
+    typer.echo(f"\n  running > {age_label} (possible stale captured runs):")
     for run in candidates:
         run_id = run.get("runId", "?")
         cli = run.get("cli", "?")
-        cwd = run.get("cwd", "?")
-        port = run.get("proxyPort", "?")
-        vs = run.get("viewerlessSince")
-        if vs is not None:
+        workspace_id = run.get("workspaceId", "?")
+        created_at = run.get("createdAt")
+        if created_at is not None:
             from datetime import datetime as _dt
 
-            vs_dt = _dt.fromisoformat(str(vs))
-            if vs_dt.tzinfo is None:
-                vs_dt = vs_dt.replace(tzinfo=UTC)
-            age_secs = int((now.replace(tzinfo=UTC) - vs_dt).total_seconds())
+            created_at_dt = _dt.fromisoformat(str(created_at))
+            if created_at_dt.tzinfo is None:
+                created_at_dt = created_at_dt.replace(tzinfo=UTC)
+            age_secs = int((now.replace(tzinfo=UTC) - created_at_dt).total_seconds())
             age_str = f"{age_secs}s"
         else:
             age_str = "?"
-        typer.echo(f"    {run_id}  {cli}  {cwd}  viewerless {age_str}  :{port}")
+        typer.echo(f"    {run_id}  {cli}  {workspace_id}  running {age_str}")
 
     if not reap_orphans:
         typer.echo(f"\n  hint: reap with: {CLI_COMMAND} doctor --reap-orphans")
@@ -133,9 +129,8 @@ def report_runs_health(
             typer.echo(f"  skip  {run_id}")
             continue
         ok = reap_run(base_url, str(run_id))
-        port = run.get("proxyPort", "?")
         if ok:
-            typer.secho(f"  reaped  {run_id}  :{port}", fg=typer.colors.GREEN)
+            typer.secho(f"  terminated  {run_id}", fg=typer.colors.GREEN)
         else:
             typer.secho(f"  failed  {run_id}", fg=typer.colors.RED, err=True)
 
@@ -287,7 +282,7 @@ def run_doctor(
             else:
                 _ok("session store", f"schema at {head}")
 
-    # Live runs: read-only report; optionally reap orphan candidates.
+    # Live runs: read-only report; optionally terminate stale candidates.
     now = datetime.now(tz=UTC)
 
     def _default_confirm(run: dict[str, object]) -> bool:

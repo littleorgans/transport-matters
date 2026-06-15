@@ -255,14 +255,13 @@ def test_doctor_help_renders() -> None:
 # Orphan-sweep integration tests
 # ---------------------------------------------------------------------------
 
-_VIEWERLESS_RUN: dict[str, object] = {
+_STALE_RUN: dict[str, object] = {
     "runId": "run-orphan",
+    "workspaceId": "workspace/hash",
+    "sessionId": "session-orphan",
     "cli": "claude",
-    "cwd": "/home/user/project",
-    "state": "running",
-    "viewerCount": 0,
-    "viewerlessSince": "2026-06-14T11:50:00+00:00",
-    "proxyPort": 9001,
+    "state": "RUNNING",
+    "createdAt": "2026-06-14T11:50:00+00:00",
 }
 
 
@@ -288,15 +287,13 @@ def test_doctor_api_up_with_candidate_lists_and_exits_zero(
     """When the API has an orphan candidate, it is listed but exit code stays 0."""
     monkeypatch.setattr("transport_matters.cli.shutil.which", _which_all())
     monkeypatch.setattr("transport_matters.cli.diagnose.port_in_use", lambda _: False)
-    monkeypatch.setattr(
-        "transport_matters.cli.diagnose.fetch_runs", lambda _base: [_VIEWERLESS_RUN]
-    )
+    monkeypatch.setattr("transport_matters.cli.diagnose.fetch_runs", lambda _base: [_STALE_RUN])
 
     result = runner.invoke(main, ["doctor"])
 
     assert result.exit_code == 0
     assert "run-orphan" in result.output
-    assert "reap only if the renderer is gone" in result.output
+    assert "possible stale captured runs" in result.output
     assert "--reap-orphans" in result.output
 
 
@@ -306,9 +303,7 @@ def test_doctor_reap_orphans_yes_calls_reap(
     """--reap-orphans --yes reaps each candidate without prompting."""
     monkeypatch.setattr("transport_matters.cli.shutil.which", _which_all())
     monkeypatch.setattr("transport_matters.cli.diagnose.port_in_use", lambda _: False)
-    monkeypatch.setattr(
-        "transport_matters.cli.diagnose.fetch_runs", lambda _base: [_VIEWERLESS_RUN]
-    )
+    monkeypatch.setattr("transport_matters.cli.diagnose.fetch_runs", lambda _base: [_STALE_RUN])
 
     reaped: list[str] = []
 
@@ -322,7 +317,7 @@ def test_doctor_reap_orphans_yes_calls_reap(
 
     assert result.exit_code == 0
     assert reaped == ["run-orphan"]
-    assert "reaped" in result.output
+    assert "terminated" in result.output
 
 
 def test_doctor_reap_orphans_no_candidates_skips_reap(
@@ -331,8 +326,7 @@ def test_doctor_reap_orphans_no_candidates_skips_reap(
     """When no candidates exist, --reap-orphans does nothing."""
     monkeypatch.setattr("transport_matters.cli.shutil.which", _which_all())
     monkeypatch.setattr("transport_matters.cli.diagnose.port_in_use", lambda _: False)
-    # Healthy run: has a viewer
-    healthy_run: dict[str, object] = {**_VIEWERLESS_RUN, "viewerCount": 1}
+    healthy_run: dict[str, object] = {**_STALE_RUN, "state": "EXITED"}
     monkeypatch.setattr("transport_matters.cli.diagnose.fetch_runs", lambda _base: [healthy_run])
 
     reaped: list[str] = []

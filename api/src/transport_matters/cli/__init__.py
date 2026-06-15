@@ -453,7 +453,7 @@ def doctor(
         bool,
         typer.Option(
             "--reap-orphans",
-            help="Stop orphan captured runs (viewerless longer than --older-than seconds).",
+            help="Terminate stale captured runs (running longer than --older-than seconds).",
         ),
     ] = False,
     older_than: Annotated[

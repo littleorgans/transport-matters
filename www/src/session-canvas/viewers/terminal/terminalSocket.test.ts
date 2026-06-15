@@ -86,7 +86,7 @@ describe("runTerminalSocketUrl", () => {
         protocol: "http:",
         host: "localhost:5173",
       }),
-    ).toBe("ws://localhost:5173/api/runs/run-abc123def/terminal?cols=80&rows=24");
+    ).toBe("ws://localhost:5173/v1/runs/run-abc123def/terminal?cols=80&rows=24");
   });
 
   it("upgrades to wss on https pages and encodes the run id segment", () => {
@@ -95,7 +95,7 @@ describe("runTerminalSocketUrl", () => {
         protocol: "https:",
         host: "app.example.com",
       }),
-    ).toBe("wss://app.example.com/api/runs/run%2Fabc/terminal?cols=120&rows=40");
+    ).toBe("wss://app.example.com/v1/runs/run%2Fabc/terminal?cols=120&rows=40");
   });
 });
 
@@ -151,7 +151,7 @@ describe("openTerminalSocket", () => {
     const frames: string[] = [];
     const sockets: FakeSocket[] = [];
     openTerminalSocket(term, {
-      url: "ws://host/api/runs/run-1/terminal",
+      url: "ws://host/v1/runs/run-1/terminal",
       socketFactory: (url) => {
         const socket = new FakeSocket(url);
         sockets.push(socket);

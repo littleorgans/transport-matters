@@ -42,7 +42,7 @@ export interface CanvasLabState {
   spawnPane(ref: PaneContentRef, options?: { focus?: boolean }): PaneId;
   /** Minimize ([-]): park the pane in the dock and remove it. Generic, runs the kind's onMinimize hook (captured keeps its run alive). */
   minimizePane(paneId: PaneId): void;
-  /** Close ([X]): remove the pane and run the kind's onClose hook (captured-run kills the run via DELETE). */
+  /** Close ([X]): remove the pane and run the kind's onClose hook (captured-run kills the run via POST /terminate). */
   closePane(paneId: PaneId): void;
   /** Restore a docked pane: re-seed it at its original id so its viewer re-mounts (captured re-attaches by run id). */
   restorePane(paneId: PaneId): void;

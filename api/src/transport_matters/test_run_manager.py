@@ -322,7 +322,7 @@ async def test_teardown_removes_reader_before_closing_master(
     manager = make_manager(tmp_path, pty, prepared, events=events)
 
     run = await spawn_run(manager, tmp_path)
-    await manager.stop(run.run_id)
+    await manager.terminate(run.run_id)
 
     assert events.index("remove_reader") < events.index("terminate")
 
@@ -356,7 +356,7 @@ async def test_reattach_receives_scrollback_then_live_output(
     await manager.close()
 
 
-async def test_explicit_stop_terminates_pty_before_lease_close(
+async def test_explicit_terminate_terminates_pty_before_lease_close(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     events: list[str] = []
@@ -366,13 +366,16 @@ async def test_explicit_stop_terminates_pty_before_lease_close(
     manager = make_manager(tmp_path, pty, prepared, events=events)
 
     run = await spawn_run(manager, tmp_path)
-    view = await manager.stop(run.run_id)
+    view = await manager.terminate(run.run_id)
 
-    assert view.state is RunState.EXITED
+    assert view.state is RunState.TERMINATED
+    assert view.end_reason == "explicit"
     assert events.index("terminate") < events.index("lease.close")
 
 
-async def test_explicit_stop_is_idempotent(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_explicit_terminate_is_idempotent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     events: list[str] = []
     pty = PtyHarness(events)
     patch_pty_teardown(monkeypatch, pty)
@@ -380,17 +383,17 @@ async def test_explicit_stop_is_idempotent(tmp_path: Path, monkeypatch: pytest.M
     manager = make_manager(tmp_path, pty, prepared, events=events)
 
     run = await spawn_run(manager, tmp_path)
-    first = await manager.stop(run.run_id)
-    second = await manager.stop(run.run_id)
+    first = await manager.terminate(run.run_id)
+    second = await manager.terminate(run.run_id)
 
-    assert first.state is RunState.EXITED
-    assert second.state is RunState.EXITED
+    assert first.state is RunState.TERMINATED
+    assert second.state is RunState.TERMINATED
     assert prepared.leases[0].close_count == 1
     assert events.count("terminate") == 1
     assert events.count("lease.close") == 1
 
 
-async def test_close_stops_multiple_running_runs(
+async def test_close_terminates_multiple_running_runs(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     events: list[str] = []
@@ -403,14 +406,14 @@ async def test_close_stops_multiple_running_runs(
     run_b = await spawn_run(manager, tmp_path)
     await manager.close()
 
-    assert run_a.state is RunState.EXITED
-    assert run_b.state is RunState.EXITED
+    assert run_a.state is RunState.TERMINATED
+    assert run_b.state is RunState.TERMINATED
     assert [lease.close_count for lease in prepared.leases] == [1, 1]
     assert events.count("terminate") == 2
     assert events.count("lease.close") == 2
 
 
-async def test_attach_errors_distinguish_stopped_and_stale_runs(
+async def test_attach_errors_distinguish_terminated_and_stale_runs(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     pty = PtyHarness()
@@ -418,17 +421,18 @@ async def test_attach_errors_distinguish_stopped_and_stale_runs(
     prepared = PreparedRunHarness(tmp_path)
     manager = make_manager(tmp_path, pty, prepared)
 
-    stopped = await spawn_run(manager, tmp_path)
-    await manager.stop(stopped.run_id)
-    with pytest.raises(RunManagerError) as stopped_error:
-        manager.attach(stopped.run_id, cols=80, rows=24)
-    assert stopped_error.value.code == "run_stopped"
+    terminated = await spawn_run(manager, tmp_path)
+    await manager.terminate(terminated.run_id)
+    with pytest.raises(RunManagerError) as terminated_error:
+        manager.attach(terminated.run_id, cols=80, rows=24)
+    assert terminated_error.value.code == "run_terminated"
 
     stale = await spawn_run(manager, tmp_path)
-    await manager.close()
+    pty.close_master(stale.terminal)
     with pytest.raises(RunManagerError) as stale_error:
         manager.attach(stale.run_id, cols=80, rows=24)
     assert stale_error.value.code == "run_stale"
+    await manager.close()
 
 
 async def test_slow_viewer_is_closed_without_stopping_run(

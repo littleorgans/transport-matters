@@ -189,7 +189,7 @@ export const useCanvasLabStore = create<CanvasLabState>()(
 
       closePane(paneId) {
         // Close ([X]): remove the pane and run its onClose hook, destructive and terminal. The
-        // captured-run hook kills the run (DELETE); panes with no hook are a plain remove.
+        // captured-run hook kills the run (POST /terminate); panes with no hook are a plain remove.
         dismissPane(useCanvasLabStore, {
           paneId,
           mode: "close",
@@ -227,7 +227,7 @@ export const useCanvasLabStore = create<CanvasLabState>()(
 
       closeDockedPane(paneId) {
         // Close/kill a docked pane in place, no restore. It is already off the canvas, so there is no
-        // node teardown: just run its onClose hook (captured-run -> stopRun, DELETE; plain panes have
+        // node teardown: just run its onClose hook (captured-run -> stopRun, POST /terminate; plain panes have
         // none, same seam as an on-canvas close) and drop the dock entry.
         const entry = get().docked.find((docked) => docked.paneId === paneId);
         if (!entry) return;

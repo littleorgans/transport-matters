@@ -1,6 +1,6 @@
-"""Orphan-run sweep helpers for ``transport-matters doctor``.
+"""Run sweep helpers for ``transport-matters doctor``.
 
-Pure functions + thin httpx client — fully unit-testable without a live
+Pure functions + thin httpx client, fully unit-testable without a live
 server.  ``run_doctor`` in :mod:`transport_matters.cli.diagnose` calls these
 and formats the output; no I/O happens here beyond the HTTP requests.
 
@@ -9,9 +9,9 @@ JSON field names match the camelCase serialisation aliases from
 (``by_alias=True`` in ``_response_payload``).
 
 Non-terminal :class:`~transport_matters.run_manager.RunState` values:
-  ``starting``, ``running``
+  ``RUNNING``
 Terminal values:
-  ``stopping``, ``exited``, ``failed``
+  ``TERMINATING``, ``TERMINATED``, ``EXITED``, ``FAILED``
 """
 
 from __future__ import annotations
@@ -33,7 +33,7 @@ __all__ = [
     "runs_base_url",
 ]
 
-_NON_TERMINAL_STATES: frozenset[str] = frozenset({"starting", "running"})
+_NON_TERMINAL_STATES: frozenset[str] = frozenset({"RUNNING"})
 
 
 def runs_base_url(settings: Settings) -> str:
@@ -42,17 +42,17 @@ def runs_base_url(settings: Settings) -> str:
 
 
 def fetch_runs(base_url: str, *, timeout: float = 2.0) -> list[dict[str, object]] | None:
-    """GET ``{base_url}/api/runs`` and return the ``runs`` list.
+    """GET ``{base_url}/v1/runs`` and return the ``items`` list.
 
     Returns ``None`` on connection error (API not running).  Non-connection
     HTTP errors are raised so they surface to the caller.
     """
     try:
-        response = httpx.get(f"{base_url}/api/runs", timeout=timeout)
+        response = httpx.get(f"{base_url}/v1/runs", timeout=timeout)
         if not response.is_success:
             response.raise_for_status()
         data = response.json()
-        return list(data["runs"])
+        return list(data["items"])
     except httpx.ConnectError:
         return None
     except httpx.TimeoutException:
@@ -65,35 +65,31 @@ def orphan_candidates(
     older_than: timedelta,
     now: datetime,
 ) -> list[dict[str, object]]:
-    """Return runs that are candidates for orphan reaping.
+    """Return long-running runs that are candidates for operator review.
 
     A candidate satisfies ALL of:
-    - ``state`` is non-terminal (``starting`` or ``running``)
-    - ``viewerCount == 0``
-    - ``viewerlessSince`` is not ``None``
-    - ``now - parse(viewerlessSince) >= older_than``
+    - ``state`` is non-terminal (``RUNNING``)
+    - ``createdAt`` is present
+    - ``now - parse(createdAt) >= older_than``
 
-    NOTE: a minimized/docked run and a crash orphan are indistinguishable
-    server-side (both meet the criteria above).  The operator decides.
+    The curated B6 run shape intentionally hides viewer internals. The operator
+    decides whether a long-running captured run is stale enough to terminate.
     """
     candidates: list[dict[str, object]] = []
     for run in runs:
         state = run.get("state", "")
         if state not in _NON_TERMINAL_STATES:
             continue
-        viewer_count = run.get("viewerCount", 1)
-        if viewer_count != 0:
+        created_at_raw = run.get("createdAt")
+        if created_at_raw is None:
             continue
-        viewerless_since_raw = run.get("viewerlessSince")
-        if viewerless_since_raw is None:
-            continue
-        viewerless_since = datetime.fromisoformat(str(viewerless_since_raw))
+        created_at = datetime.fromisoformat(str(created_at_raw))
         # Ensure timezone-aware comparison.
-        if viewerless_since.tzinfo is None:
-            viewerless_since = viewerless_since.replace(tzinfo=UTC)
+        if created_at.tzinfo is None:
+            created_at = created_at.replace(tzinfo=UTC)
         if now.tzinfo is None:
             now = now.replace(tzinfo=UTC)
-        age = now - viewerless_since
+        age = now - created_at
         if age < older_than:
             continue
         candidates.append(run)
@@ -101,9 +97,9 @@ def orphan_candidates(
 
 
 def reap_run(base_url: str, run_id: str, *, timeout: float = 5.0) -> bool:
-    """DELETE ``{base_url}/api/runs/{run_id}`` and return True on success."""
+    """POST ``{base_url}/v1/runs/{run_id}/terminate`` and return True on success."""
     try:
-        response = httpx.delete(f"{base_url}/api/runs/{run_id}", timeout=timeout)
+        response = httpx.post(f"{base_url}/v1/runs/{run_id}/terminate", timeout=timeout)
         return response.is_success
     except httpx.HTTPError:
         return False

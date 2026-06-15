@@ -60,8 +60,8 @@ export function terminalSocketUrl(
 
 /**
  * Same-origin ws(s):// URL that attaches to an already-spawned managed run's PTY
- * (`/api/runs/{runId}/terminal`, see api/v1/run_routes.py). The run is created
- * out of band via `POST /api/runs`; this socket only attaches, so closing it
+ * (`/v1/runs/{runId}/terminal`, see api/v1/run_routes.py). The run is created
+ * out of band via `POST /v1/runs`; this socket only attaches, so closing it
  * detaches the viewer and leaves the run running headless.
  */
 export function runTerminalSocketUrl(
@@ -71,7 +71,7 @@ export function runTerminalSocketUrl(
   location: SocketLocation = window.location,
 ): string {
   const runSegment = encodeURIComponent(runId);
-  return `${socketScheme(location)}//${location.host}/api/runs/${runSegment}/terminal?cols=${cols}&rows=${rows}`;
+  return `${socketScheme(location)}//${location.host}/v1/runs/${runSegment}/terminal?cols=${cols}&rows=${rows}`;
 }
 
 export function openTerminalSocket(

@@ -2,12 +2,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createApiTransport,
   createCapturedRun,
-  deleteRun,
   fetchMeta,
   fetchTurnContent,
   listRuns,
   resetApiTransport,
   setApiTransport,
+  terminateRun,
 } from "./api";
 
 function stubFetch(body: unknown, status = 200) {
@@ -122,12 +122,12 @@ describe("createCapturedRun", () => {
     vi.unstubAllGlobals();
   });
 
-  it("spawns a managed run via POST /api/runs and returns the run id", async () => {
+  it("spawns a managed run via POST /v1/runs and returns the run id", async () => {
     const fetchMock = stubFetch({ run: { runId: "run-abc123" } }, 201);
 
     await expect(createCapturedRun("claude")).resolves.toBe("run-abc123");
 
-    expect(fetchMock).toHaveBeenCalledWith("/api/runs", {
+    expect(fetchMock).toHaveBeenCalledWith("/v1/runs", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ cli: "claude", oscColorReplies: true }),
@@ -139,7 +139,7 @@ describe("createCapturedRun", () => {
 
     await expect(createCapturedRun("codex", "/work/proj")).resolves.toBe("run-xyz");
 
-    expect(fetchMock).toHaveBeenCalledWith("/api/runs", {
+    expect(fetchMock).toHaveBeenCalledWith("/v1/runs", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ cli: "codex", cwd: "/work/proj", oscColorReplies: true }),
@@ -153,18 +153,20 @@ describe("createCapturedRun", () => {
   });
 });
 
-describe("deleteRun", () => {
+describe("terminateRun", () => {
   afterEach(() => {
     resetApiTransport();
     vi.unstubAllGlobals();
   });
 
-  it("stops a managed run via DELETE /api/runs/{id} with an encoded id", async () => {
-    const fetchMock = stubFetch({ runId: "run/1", state: "exited", stopReason: "explicit-stop" });
+  it("terminates a managed run via POST /v1/runs/{id}/terminate with an encoded id", async () => {
+    const fetchMock = stubFetch({
+      run: { runId: "run/1", state: "TERMINATED", endReason: "explicit" },
+    });
 
-    await deleteRun("run/1");
+    await terminateRun("run/1");
 
-    expect(fetchMock).toHaveBeenCalledWith("/api/runs/run%2F1", { method: "DELETE" });
+    expect(fetchMock).toHaveBeenCalledWith("/v1/runs/run%2F1/terminate", { method: "POST" });
   });
 });
 
@@ -174,33 +176,27 @@ describe("listRuns", () => {
     vi.unstubAllGlobals();
   });
 
-  it("lists managed runs via GET /api/runs and unwraps the runs array", async () => {
+  it("lists managed runs via GET /v1/runs and unwraps the items array", async () => {
     const run = {
       runId: "run-1",
+      workspaceId: "workspace/hash",
+      sessionId: "session-1",
       cli: "claude",
-      cwd: "/work/proj",
-      storageDir: "/store/run-1",
-      proxyPort: 4010,
-      state: "running",
-      viewerCount: 0,
+      state: "RUNNING",
       createdAt: "2026-06-09T00:00:00+00:00",
-      startedAt: "2026-06-09T00:00:01+00:00",
-      updatedAt: "2026-06-09T00:00:02+00:00",
-      scrollbackBytes: 0,
-      scrollbackLimitBytes: 1048576,
     };
-    const fetchMock = stubFetch({ runs: [run] });
+    const fetchMock = stubFetch({ items: [run], nextCursor: null });
 
     await expect(listRuns()).resolves.toEqual([run]);
-    expect(fetchMock).toHaveBeenCalledWith("/api/runs");
+    expect(fetchMock).toHaveBeenCalledWith("/v1/runs");
   });
 
-  it("forwards cli, cwd, and state as query params when filtering", async () => {
-    const fetchMock = stubFetch({ runs: [] });
+  it("forwards state as a query param when filtering", async () => {
+    const fetchMock = stubFetch({ items: [], nextCursor: null });
 
-    await listRuns({ cli: "codex", cwd: "/work/proj", state: "running" });
+    await listRuns({ state: "RUNNING" });
 
-    expect(fetchMock).toHaveBeenCalledWith("/api/runs?cli=codex&cwd=%2Fwork%2Fproj&state=running");
+    expect(fetchMock).toHaveBeenCalledWith("/v1/runs?state=RUNNING");
   });
 
   it("throws on a non-OK list response", async () => {

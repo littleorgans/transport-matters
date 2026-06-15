@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+import base64
+import binascii
 import contextlib
+import json
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, NoReturn, cast
 
@@ -13,10 +16,10 @@ from pydantic import BaseModel, ConfigDict, Field
 from starlette.websockets import WebSocketDisconnect
 
 from transport_matters.api.v1 import terminal_bridge
-from transport_matters.api.v1.session_store import optional_session_pool
 from transport_matters.captured_run import CLAUDE_CLIENT_NAME, CODEX_CLIENT_NAME
 from transport_matters.captured_run_models import CapturedRunCli
 from transport_matters.config import Settings, get_settings
+from transport_matters.index.sessions import synth_session_id
 from transport_matters.run_manager import (
     ManagedRun,
     ManagedRunView,
@@ -34,12 +37,14 @@ from transport_matters.run_terminal import (
     AttachmentClosed,
     PtyChunk,
 )
-from transport_matters.session.async_dao import AsyncSessionDao
+from transport_matters.workspace import workspace_id
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
 RUNS_ROUTE_PREFIX = "/runs"
+DEFAULT_RUNS_LIMIT = 50
+MAX_RUNS_LIMIT = 100
 _CAPTURED_RUN_CLI_ALLOWLIST = frozenset({CLAUDE_CLIENT_NAME, CODEX_CLIENT_NAME})
 _RUN_MANAGER_HTTP_STATUS: dict[RunManagerErrorCode, int] = {
     "bind_conflict": http_status.HTTP_409_CONFLICT,
@@ -48,10 +53,15 @@ _RUN_MANAGER_HTTP_STATUS: dict[RunManagerErrorCode, int] = {
     "run_manager_closed": http_status.HTTP_503_SERVICE_UNAVAILABLE,
     "run_not_attachable": http_status.HTTP_409_CONFLICT,
     "run_stale": http_status.HTTP_409_CONFLICT,
-    "run_stopped": http_status.HTTP_409_CONFLICT,
+    "run_terminated": http_status.HTTP_409_CONFLICT,
     "session_store_unavailable": http_status.HTTP_503_SERVICE_UNAVAILABLE,
     "unsupported_cli": http_status.HTTP_400_BAD_REQUEST,
 }
+_CURATED_STATES = frozenset(
+    {RunState.RUNNING, RunState.TERMINATING, RunState.TERMINATED, RunState.EXITED, RunState.FAILED}
+)
+_END_REASONS = frozenset({"explicit", "idle-timeout", "shutdown", "deploy-restart"})
+PublicRunState = Literal["RUNNING", "TERMINATING", "TERMINATED", "EXITED", "FAILED"]
 
 router = APIRouter()
 
@@ -81,23 +91,15 @@ class RunViewModel(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     run_id: str = Field(serialization_alias="runId")
+    workspace_id: str = Field(serialization_alias="workspaceId")
+    session_id: str = Field(serialization_alias="sessionId")
     cli: CapturedRunCli
-    cwd: str
-    storage_dir: str = Field(serialization_alias="storageDir")
-    proxy_port: int = Field(serialization_alias="proxyPort")
-    web_port: int | None = Field(default=None, serialization_alias="webPort")
-    native_session_id: str | None = Field(default=None, serialization_alias="nativeSessionId")
-    dead_letter_count: int = Field(default=0, serialization_alias="deadLetterCount")
-    state: RunState
-    viewer_count: int = Field(serialization_alias="viewerCount")
+    state: PublicRunState
+    end_reason: Literal["explicit", "idle-timeout", "shutdown", "deploy-restart"] | None = Field(
+        default=None, serialization_alias="endReason"
+    )
+    error: str | None = None
     created_at: str = Field(serialization_alias="createdAt")
-    started_at: str = Field(serialization_alias="startedAt")
-    updated_at: str = Field(serialization_alias="updatedAt")
-    viewerless_since: str | None = Field(default=None, serialization_alias="viewerlessSince")
-    exit_code: int | None = Field(default=None, serialization_alias="exitCode")
-    stop_reason: str | None = Field(default=None, serialization_alias="stopReason")
-    scrollback_bytes: int = Field(serialization_alias="scrollbackBytes")
-    scrollback_limit_bytes: int = Field(serialization_alias="scrollbackLimitBytes")
 
 
 class CreateRunResponse(BaseModel):
@@ -105,15 +107,14 @@ class CreateRunResponse(BaseModel):
 
 
 class ListRunsResponse(BaseModel):
-    runs: list[RunViewModel]
-
-
-class StopRunResponse(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
-    run_id: str = Field(serialization_alias="runId")
-    state: RunState
-    stop_reason: Literal["explicit-stop"] = Field(serialization_alias="stopReason")
+    items: list[RunViewModel]
+    next_cursor: str | None = Field(default=None, serialization_alias="nextCursor")
+
+
+class TerminateRunResponse(BaseModel):
+    run: RunViewModel
 
 
 def create_run_manager() -> RunManager:
@@ -184,13 +185,49 @@ def _validated_cli(cli: str) -> CapturedRunCli:
 
 def _validated_state(state: str) -> RunState:
     try:
-        return RunState(state)
+        parsed = RunState(state)
     except ValueError:
         _raise_api_error(
             http_status.HTTP_400_BAD_REQUEST,
-            "invalid_state",
+            "invalid_request",
             f"unsupported run state: {state}",
         )
+    if parsed not in _CURATED_STATES:
+        _raise_api_error(
+            http_status.HTTP_400_BAD_REQUEST,
+            "invalid_request",
+            f"unsupported run state: {state}",
+        )
+    return parsed
+
+
+def _cursor_filter_key(state: str | None) -> dict[str, str | None]:
+    return {"state": state}
+
+
+def _encode_cursor(offset: int, *, filters: dict[str, str | None]) -> str:
+    raw = json.dumps({"offset": offset, "filters": filters}, separators=(",", ":")).encode()
+    return base64.urlsafe_b64encode(raw).decode().rstrip("=")
+
+
+def _decode_cursor(cursor: str, *, filters: dict[str, str | None]) -> int:
+    try:
+        padded = cursor + "=" * (-len(cursor) % 4)
+        payload = json.loads(base64.urlsafe_b64decode(padded.encode()).decode())
+    except binascii.Error, UnicodeDecodeError, ValueError, json.JSONDecodeError:
+        _raise_api_error(http_status.HTTP_400_BAD_REQUEST, "invalid_cursor", "invalid cursor")
+    if not isinstance(payload, dict):
+        _raise_api_error(http_status.HTTP_400_BAD_REQUEST, "invalid_cursor", "invalid cursor")
+    if payload.get("filters") != filters:
+        _raise_api_error(
+            http_status.HTTP_400_BAD_REQUEST,
+            "invalid_cursor",
+            "cursor does not match the active filters",
+        )
+    offset = payload.get("offset")
+    if not isinstance(offset, int) or offset < 0:
+        _raise_api_error(http_status.HTTP_400_BAD_REQUEST, "invalid_cursor", "invalid cursor")
+    return offset
 
 
 def _validated_existing_dir(cwd: str) -> Path:
@@ -220,16 +257,6 @@ def _request_cwd(cwd: str | None, settings: Settings) -> Path | None:
     return _validated_existing_dir(str(settings.cwd))
 
 
-async def _dead_letter_counts_by_run(request: Request, run_ids: list[str]) -> dict[str, int]:
-    if not run_ids:
-        return {}
-    pool = optional_session_pool(request)
-    if pool is None:
-        return {}
-    async with pool.connection() as conn:
-        return await AsyncSessionDao(conn).count_dead_letters_by_run(run_ids)
-
-
 def _spawn_request(body: CreateRunRequest, settings: Settings) -> SpawnRun:
     terminal = body.terminal or TerminalSizeModel()
     return SpawnRun(
@@ -244,26 +271,39 @@ def _spawn_request(body: CreateRunRequest, settings: Settings) -> SpawnRun:
     )
 
 
-def run_view_model(view: ManagedRunView, *, dead_letter_count: int = 0) -> RunViewModel:
+def _workspace_id_for_view(view: ManagedRunView) -> str:
+    wid = workspace_id(view.cwd)
+    return f"{wid.slug}/{wid.hash}"
+
+
+def _session_id_for_view(view: ManagedRunView) -> str:
+    if view.native_session_id is None:
+        return view.run_id
+    if view.cli == CODEX_CLIENT_NAME:
+        return synth_session_id(view.run_id, "codex", view.native_session_id)
+    return view.native_session_id
+
+
+def _curated_state(state: RunState) -> PublicRunState:
+    if state is RunState.STARTING:
+        return "RUNNING"
+    return cast("PublicRunState", state.value)
+
+
+def run_view_model(view: ManagedRunView) -> RunViewModel:
+    end_reason = view.end_reason if view.end_reason in _END_REASONS else None
     return RunViewModel(
         run_id=view.run_id,
+        workspace_id=_workspace_id_for_view(view),
+        session_id=_session_id_for_view(view),
         cli=view.cli,
-        cwd=str(view.cwd),
-        storage_dir=str(view.storage_dir),
-        proxy_port=view.proxy_port,
-        web_port=view.web_port,
-        native_session_id=view.native_session_id,
-        dead_letter_count=dead_letter_count,
-        state=view.state,
-        viewer_count=view.viewer_count,
+        state=_curated_state(view.state),
+        end_reason=cast(
+            'Literal["explicit", "idle-timeout", "shutdown", "deploy-restart"] | None',
+            end_reason,
+        ),
+        error=view.error,
         created_at=view.created_at.isoformat(),
-        started_at=view.started_at.isoformat(),
-        updated_at=view.updated_at.isoformat(),
-        viewerless_since=(view.viewerless_since.isoformat() if view.viewerless_since else None),
-        exit_code=view.exit_code,
-        stop_reason=view.stop_reason,
-        scrollback_bytes=view.scrollback_bytes,
-        scrollback_limit_bytes=view.scrollback_limit_bytes,
     )
 
 
@@ -298,26 +338,23 @@ async def create_run(
 @router.get(RUNS_ROUTE_PREFIX)
 async def list_runs(
     request: Request,
-    cli: str | None = Query(default=None),
-    cwd: str | None = Query(default=None),
     state: str | None = Query(default=None),
+    limit: int = Query(default=DEFAULT_RUNS_LIMIT, ge=1, le=MAX_RUNS_LIMIT),
+    cursor: str | None = Query(default=None),
 ) -> dict[str, object]:
+    cursor_filters = _cursor_filter_key(state)
+    offset = _decode_cursor(cursor, filters=cursor_filters) if cursor is not None else 0
     filters = RunFilters(
-        cli=_validated_cli(cli) if cli is not None else None,
-        cwd=_validated_existing_dir(cwd) if cwd is not None else None,
         states=frozenset({_validated_state(state)}) if state is not None else None,
     )
     manager = _run_manager(request)
     views = manager.list(filters)
-    dead_letter_counts = await _dead_letter_counts_by_run(request, [view.run_id for view in views])
-    return _response_payload(
-        ListRunsResponse(
-            runs=[
-                run_view_model(view, dead_letter_count=dead_letter_counts.get(view.run_id, 0))
-                for view in views
-            ]
-        )
+    page = views[offset : offset + limit]
+    next_offset = offset + limit
+    next_cursor = (
+        _encode_cursor(next_offset, filters=cursor_filters) if next_offset < len(views) else None
     )
+    return {"items": [run_view_payload(view) for view in page], "nextCursor": next_cursor}
 
 
 @router.get(RUNS_ROUTE_PREFIX + "/{run_id}")
@@ -327,28 +364,21 @@ async def get_run(run_id: str, request: Request) -> dict[str, object]:
         view = manager.get(run_id).view()
     except RunNotFoundError:
         _not_found(run_id)
-    dead_letter_counts = await _dead_letter_counts_by_run(request, [run_id])
-    return _response_payload(
-        CreateRunResponse(
-            run=run_view_model(view, dead_letter_count=dead_letter_counts.get(run_id, 0))
-        )
-    )
+    return _response_payload(CreateRunResponse(run=run_view_model(view)))
 
 
-@router.delete(RUNS_ROUTE_PREFIX + "/{run_id}")
-async def stop_run(
+@router.post(RUNS_ROUTE_PREFIX + "/{run_id}/terminate")
+async def terminate_run(
     run_id: str,
     request: Request,
     _origin: None = Depends(require_http_origin),
 ) -> dict[str, object]:
     manager = _run_manager(request)
     try:
-        view = await manager.stop(run_id, reason="explicit-stop")
+        view = await manager.terminate(run_id, reason="explicit")
     except RunNotFoundError:
         _not_found(run_id)
-    return _response_payload(
-        StopRunResponse(run_id=view.run_id, state=view.state, stop_reason="explicit-stop")
-    )
+    return _response_payload(TerminateRunResponse(run=run_view_model(view)))
 
 
 @router.websocket(RUNS_ROUTE_PREFIX + "/{run_id}/terminal")

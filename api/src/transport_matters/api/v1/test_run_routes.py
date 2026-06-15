@@ -11,7 +11,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from transport_matters import config
-from transport_matters.api.v1 import run_routes
+from transport_matters.api.v1 import run_routes, terminal_bridge
 from transport_matters.api.v1.test_terminal import _receive_until_disconnect, _wait_until
 from transport_matters.captured_run import (
     CLAUDE_CLIENT_NAME,
@@ -24,9 +24,6 @@ from transport_matters.config import Settings
 from transport_matters.main import create_app
 from transport_matters.pty_session import TerminalPty, spawn_pty_process
 from transport_matters.run_manager import RunManager, RunManagerErrorCode, RunState
-from transport_matters.session.dao import SessionDao
-from transport_matters.session.pool import connect
-from transport_matters.session.test_foundation import dead_letter
 from transport_matters.test_run_manager import (
     PreparedRunHarness,
     PtyHarness,
@@ -36,8 +33,6 @@ from transport_matters.test_run_manager import (
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
-
-    from transport_matters.session.testing import TestDb
 
 BACKEND_ORIGIN = "http://localhost:8788"
 
@@ -51,36 +46,46 @@ class ManagedRunHarness:
         monkeypatch.setattr(run_routes, "create_run_manager", lambda: self.manager)
 
 
-def test_post_get_attach_detach_and_delete(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_post_get_attach_detach_and_terminate(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     harness = ManagedRunHarness(tmp_path, monkeypatch)
     client = _client(monkeypatch, tmp_path)
 
     with client:
         create_response = client.post(
-            "/api/runs",
+            "/v1/runs",
             json={"cli": "claude", "cwd": str(tmp_path)},
             headers=_http_headers(BACKEND_ORIGIN),
         )
         assert create_response.status_code == 201
         run = create_response.json()["run"]
-        assert run["viewerCount"] == 0
-        assert run["state"] == "running"
+        assert set(run) == {"runId", "workspaceId", "sessionId", "cli", "state", "createdAt"}
+        assert run["state"] == "RUNNING"
         run_id = run["runId"]
 
-        listed = client.get("/api/runs?cli=claude", headers=_http_headers(BACKEND_ORIGIN)).json()
-        assert [item["runId"] for item in listed["runs"]] == [run_id]
+        listed = client.get("/v1/runs", headers=_http_headers(BACKEND_ORIGIN)).json()
+        assert [item["runId"] for item in listed["items"]] == [run_id]
+        assert listed["nextCursor"] is None
 
         managed = harness.manager.get(run_id)
         harness.pty.write(managed.terminal, b"past")
         _wait_until(lambda: managed.scrollback.total_bytes >= len(b"past"))
 
         with client.websocket_connect(
-            f"/api/runs/{run_id}/terminal",
+            f"/v1/runs/{run_id}/terminal",
             headers=_websocket_headers(BACKEND_ORIGIN),
         ) as websocket:
             ready = websocket.receive_json()
             assert ready["type"] == "run.terminal.ready"
-            assert ready["run"]["viewerCount"] == 1
+            assert set(ready["run"]) == {
+                "runId",
+                "workspaceId",
+                "sessionId",
+                "cli",
+                "state",
+                "createdAt",
+            }
             assert ready["scrollback"]["replayedBytes"] == len(b"past")
             assert websocket.receive_bytes() == b"past"
             assert websocket.receive_json() == {"type": "run.terminal.scrollback-end"}
@@ -89,79 +94,138 @@ def test_post_get_attach_detach_and_delete(monkeypatch: pytest.MonkeyPatch, tmp_
 
         _wait_until(lambda: harness.manager.get(run_id).view().viewer_count == 0)
         still_running = client.get(
-            f"/api/runs?state={RunState.RUNNING}",
+            f"/v1/runs?state={RunState.RUNNING}",
             headers=_http_headers(BACKEND_ORIGIN),
         ).json()
-        assert [item["runId"] for item in still_running["runs"]] == [run_id]
+        assert [item["runId"] for item in still_running["items"]] == [run_id]
 
-        delete_response = client.delete(
-            f"/api/runs/{run_id}",
+        terminate_response = client.post(
+            f"/v1/runs/{run_id}/terminate",
             headers=_http_headers(BACKEND_ORIGIN),
         )
-        assert delete_response.status_code == 200
-        assert delete_response.json() == {
-            "runId": run_id,
-            "state": "exited",
-            "stopReason": "explicit-stop",
-        }
+        assert terminate_response.status_code == 200
+        terminated = terminate_response.json()["run"]
+        assert terminated["runId"] == run_id
+        assert terminated["state"] == "TERMINATED"
+        assert terminated["endReason"] == "explicit"
 
 
-def test_run_views_surface_dead_letter_counts(
-    test_db: TestDb, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_run_views_hide_internal_fields(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     ManagedRunHarness(tmp_path, monkeypatch)
-    monkeypatch.setenv("TRANSPORT_MATTERS_DATABASE_URL", test_db.database_url)
     client = _client(monkeypatch, tmp_path)
 
     with client:
         create_response = client.post(
-            "/api/runs",
+            "/v1/runs",
             json={"cli": "claude", "cwd": str(tmp_path)},
             headers=_http_headers(BACKEND_ORIGIN),
         )
         assert create_response.status_code == 201
         run_id = create_response.json()["run"]["runId"]
 
-        listed_zero = client.get("/api/runs", headers=_http_headers(BACKEND_ORIGIN))
-        assert listed_zero.status_code == 200
-        assert listed_zero.json()["runs"][0]["deadLetterCount"] == 0
-
-        single_zero = client.get(f"/api/runs/{run_id}", headers=_http_headers(BACKEND_ORIGIN))
-        assert single_zero.status_code == 200
-        assert single_zero.json()["run"]["deadLetterCount"] == 0
-
-        with connect(test_db.database_url, autocommit=True) as conn:
-            dao = SessionDao(conn)
-            dao.insert_dead_letter(dead_letter(0, session_id="run-session", run_id=run_id))
-            dao.insert_dead_letter(dead_letter(10, session_id="run-session", run_id=run_id))
-            dao.insert_dead_letter(dead_letter(20, session_id="other-session", run_id="other-run"))
-
-        listed = client.get("/api/runs", headers=_http_headers(BACKEND_ORIGIN))
+        listed = client.get("/v1/runs", headers=_http_headers(BACKEND_ORIGIN))
         assert listed.status_code == 200
-        assert listed.json()["runs"][0]["deadLetterCount"] == 2
+        listed_run = listed.json()["items"][0]
 
-        single = client.get(f"/api/runs/{run_id}", headers=_http_headers(BACKEND_ORIGIN))
+        single = client.get(f"/v1/runs/{run_id}", headers=_http_headers(BACKEND_ORIGIN))
         assert single.status_code == 200
-        assert single.json()["run"]["deadLetterCount"] == 2
+        single_run = single.json()["run"]
+
+    assert listed_run == single_run
+    assert set(single_run) == {"runId", "workspaceId", "sessionId", "cli", "state", "createdAt"}
+    assert "nativeSessionId" not in single_run
+    assert "proxyPort" not in single_run
+    assert "webPort" not in single_run
+    assert "storageDir" not in single_run
+    assert "scrollbackBytes" not in single_run
+    assert "viewerlessSince" not in single_run
 
 
-def test_delete_run_is_idempotent(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_legacy_api_runs_path_is_removed(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    ManagedRunHarness(tmp_path, monkeypatch)
+    client = _client(monkeypatch, tmp_path)
+
+    with client:
+        response = client.get("/api/runs", headers=_http_headers(BACKEND_ORIGIN))
+
+    assert response.status_code == 404
+
+
+def test_list_runs_uses_items_envelope_and_cursor(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    ManagedRunHarness(tmp_path, monkeypatch)
+    client = _client(monkeypatch, tmp_path)
+
+    with client:
+        first_id = client.post(
+            "/v1/runs",
+            json={"cli": "claude", "cwd": str(tmp_path)},
+            headers=_http_headers(BACKEND_ORIGIN),
+        ).json()["run"]["runId"]
+        second_id = client.post(
+            "/v1/runs",
+            json={"cli": "claude", "cwd": str(tmp_path)},
+            headers=_http_headers(BACKEND_ORIGIN),
+        ).json()["run"]["runId"]
+
+        first_page = client.get("/v1/runs?limit=1", headers=_http_headers(BACKEND_ORIGIN))
+        assert first_page.status_code == 200
+        first_payload = first_page.json()
+        assert [item["runId"] for item in first_payload["items"]] == [first_id]
+        assert isinstance(first_payload["nextCursor"], str)
+
+        second_page = client.get(
+            f"/v1/runs?limit=1&cursor={first_payload['nextCursor']}",
+            headers=_http_headers(BACKEND_ORIGIN),
+        )
+
+    assert second_page.status_code == 200
+    second_payload = second_page.json()
+    assert [item["runId"] for item in second_payload["items"]] == [second_id]
+    assert second_payload["nextCursor"] is None
+
+
+def test_list_runs_rejects_cursor_for_different_filters(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    ManagedRunHarness(tmp_path, monkeypatch)
+    client = _client(monkeypatch, tmp_path)
+
+    with client:
+        for _ in range(2):
+            client.post(
+                "/v1/runs",
+                json={"cli": "claude", "cwd": str(tmp_path)},
+                headers=_http_headers(BACKEND_ORIGIN),
+            )
+        first_page = client.get("/v1/runs?limit=1", headers=_http_headers(BACKEND_ORIGIN))
+        response = client.get(
+            f"/v1/runs?state=RUNNING&cursor={first_page.json()['nextCursor']}",
+            headers=_http_headers(BACKEND_ORIGIN),
+        )
+
+    assert response.status_code == 400
+    assert response.json()["detail"]["code"] == "invalid_cursor"
+
+
+def test_terminate_run_is_idempotent(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     harness = ManagedRunHarness(tmp_path, monkeypatch)
     client = _client(monkeypatch, tmp_path)
 
     with client:
         run_id = client.post(
-            "/api/runs",
+            "/v1/runs",
             json={"cli": "claude", "cwd": str(tmp_path)},
             headers=_http_headers(BACKEND_ORIGIN),
         ).json()["run"]["runId"]
 
-        first = client.delete(
-            f"/api/runs/{run_id}",
+        first = client.post(
+            f"/v1/runs/{run_id}/terminate",
             headers=_http_headers(BACKEND_ORIGIN),
         )
-        second = client.delete(
-            f"/api/runs/{run_id}",
+        second = client.post(
+            f"/v1/runs/{run_id}/terminate",
             headers=_http_headers(BACKEND_ORIGIN),
         )
 
@@ -177,7 +241,7 @@ def test_post_rejects_origin_before_spawn(monkeypatch: pytest.MonkeyPatch, tmp_p
 
     with client:
         response = client.post(
-            "/api/runs",
+            "/v1/runs",
             json={"cli": "claude", "cwd": str(tmp_path)},
             headers=_http_headers("http://evil.test"),
         )
@@ -195,7 +259,7 @@ def test_post_rejects_invalid_cwd_before_spawn(
 
     with client:
         response = client.post(
-            "/api/runs",
+            "/v1/runs",
             json={"cli": "claude", "cwd": "relative/path"},
             headers=_http_headers(BACKEND_ORIGIN),
         )
@@ -213,7 +277,7 @@ def test_post_rejects_unsupported_cli_before_spawn(
 
     with client:
         response = client.post(
-            "/api/runs",
+            "/v1/runs",
             json={"cli": "unknown", "cwd": str(tmp_path)},
             headers=_http_headers(BACKEND_ORIGIN),
         )
@@ -223,15 +287,15 @@ def test_post_rejects_unsupported_cli_before_spawn(
     assert harness.manager.list() == []
 
 
-def test_delete_unknown_run_returns_machine_error(
+def test_terminate_unknown_run_returns_machine_error(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     ManagedRunHarness(tmp_path, monkeypatch)
     client = _client(monkeypatch, tmp_path)
 
     with client:
-        response = client.delete(
-            "/api/runs/missing",
+        response = client.post(
+            "/v1/runs/missing/terminate",
             headers=_http_headers(BACKEND_ORIGIN),
         )
 
@@ -248,7 +312,7 @@ def test_websocket_unknown_run_sends_error_and_closes(
     with (
         client,
         client.websocket_connect(
-            "/api/runs/missing/terminal",
+            "/v1/runs/missing/terminal",
             headers=_websocket_headers(BACKEND_ORIGIN),
         ) as websocket,
     ):
@@ -259,7 +323,7 @@ def test_websocket_unknown_run_sends_error_and_closes(
         }
 
 
-def test_websocket_stopped_run_sends_typed_error(
+def test_websocket_terminated_run_sends_typed_error(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     ManagedRunHarness(tmp_path, monkeypatch)
@@ -267,16 +331,16 @@ def test_websocket_stopped_run_sends_typed_error(
 
     with client:
         run_id = client.post(
-            "/api/runs",
+            "/v1/runs",
             json={"cli": "claude", "cwd": str(tmp_path)},
             headers=_http_headers(BACKEND_ORIGIN),
         ).json()["run"]["runId"]
-        client.delete(f"/api/runs/{run_id}", headers=_http_headers(BACKEND_ORIGIN))
+        client.post(f"/v1/runs/{run_id}/terminate", headers=_http_headers(BACKEND_ORIGIN))
         with client.websocket_connect(
-            f"/api/runs/{run_id}/terminal",
+            f"/v1/runs/{run_id}/terminal",
             headers=_websocket_headers(BACKEND_ORIGIN),
         ) as websocket:
-            assert websocket.receive_json()["code"] == "run_stopped"
+            assert websocket.receive_json()["code"] == "run_terminated"
 
 
 def test_websocket_stale_run_sends_typed_error(
@@ -287,13 +351,13 @@ def test_websocket_stale_run_sends_typed_error(
 
     with client:
         run_id = client.post(
-            "/api/runs",
+            "/v1/runs",
             json={"cli": "claude", "cwd": str(tmp_path)},
             headers=_http_headers(BACKEND_ORIGIN),
         ).json()["run"]["runId"]
         harness.pty.close_master(harness.manager.get(run_id).terminal)
         with client.websocket_connect(
-            f"/api/runs/{run_id}/terminal",
+            f"/v1/runs/{run_id}/terminal",
             headers=_websocket_headers(BACKEND_ORIGIN),
         ) as websocket:
             assert websocket.receive_json()["code"] == "run_stale"
@@ -316,21 +380,50 @@ def test_websocket_binary_input_reaches_child(
 
     with client:
         run_id = client.post(
-            "/api/runs",
+            "/v1/runs",
             json={"cli": "claude", "cwd": str(tmp_path)},
             headers=_http_headers(BACKEND_ORIGIN),
         ).json()["run"]["runId"]
         with client.websocket_connect(
-            f"/api/runs/{run_id}/terminal",
+            f"/v1/runs/{run_id}/terminal",
             headers=_websocket_headers(BACKEND_ORIGIN),
         ) as websocket:
             assert websocket.receive_json()["type"] == "run.terminal.ready"
             assert websocket.receive_json() == {"type": "run.terminal.scrollback-end"}
             websocket.send_bytes(b"ping\n")
             output = _receive_until_disconnect(websocket, needle=b"ECHO:ping")
+            assert b"ECHO:ping" in output
+        _wait_until(lambda: manager.get(run_id).state is RunState.EXITED)
 
-    assert b"ECHO:ping" in output
-    assert manager.get(run_id).state is RunState.EXITED
+
+def test_websocket_escape_interrupt_byte_reaches_child_without_terminating_run(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    harness = ManagedRunHarness(tmp_path, monkeypatch)
+    writes: list[bytes] = []
+
+    def capture_write_all(_fd: int, payload: bytes) -> None:
+        writes.append(payload)
+
+    monkeypatch.setattr(terminal_bridge, "write_all", capture_write_all)
+    client = _client(monkeypatch, tmp_path)
+
+    with client:
+        run_id = client.post(
+            "/v1/runs",
+            json={"cli": "claude", "cwd": str(tmp_path)},
+            headers=_http_headers(BACKEND_ORIGIN),
+        ).json()["run"]["runId"]
+        with client.websocket_connect(
+            f"/v1/runs/{run_id}/terminal",
+            headers=_websocket_headers(BACKEND_ORIGIN),
+        ) as websocket:
+            assert websocket.receive_json()["type"] == "run.terminal.ready"
+            assert websocket.receive_json() == {"type": "run.terminal.scrollback-end"}
+            websocket.send_bytes(b"\x1b")
+            _wait_until(lambda: writes == [b"\x1b"])
+            assert harness.manager.get(run_id).state is RunState.RUNNING
+        client.post(f"/v1/runs/{run_id}/terminate", headers=_http_headers(BACKEND_ORIGIN))
 
 
 def _client(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> TestClient:
@@ -384,7 +477,7 @@ def test_post_after_manager_close_returns_machine_error(
 
     with client:
         response = client.post(
-            "/api/runs",
+            "/v1/runs",
             json={"cli": "claude", "cwd": str(tmp_path)},
             headers=_http_headers(BACKEND_ORIGIN),
         )
@@ -408,7 +501,7 @@ def test_post_launch_failure_returns_machine_error(
 
     with client:
         response = client.post(
-            "/api/runs",
+            "/v1/runs",
             json={"cli": "claude", "cwd": str(tmp_path)},
             headers=_http_headers(BACKEND_ORIGIN),
         )
