@@ -13,6 +13,8 @@ Two launch paths: Claude Code through a reverse proxy in front of
 ChatGPT authenticated websocket traffic. Proxy, FastAPI backend, and React
 UI ship as one tool install rooted at `~/.transport-matters/`.
 
+**Current focus:** see [NOW.md](./NOW.md) for what we are working on next.
+
 ## Mental Model
 
 Transport Matters is orthogonal to the rest of the Little Organs stack. It
