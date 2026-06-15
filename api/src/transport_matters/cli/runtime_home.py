@@ -101,18 +101,19 @@ def plan_runtime_home(
 
     native_home = resolve_source_home_dir(client_name, home_dir=None, env=env)
     manual_home = home_dir.expanduser() if home_dir is not None else None
-    runtime_template = _validated_template(client_name, runtime_template)
     if manual_home is not None:
         content_source = manual_home
         mode = RuntimeHomeMode.MANUAL
         provenance = None
     elif runtime_template is not None:
-        content_source = runtime_template.template_home.expanduser()
+        validated_template = _validated_template(client_name, runtime_template)
+        assert validated_template is not None
+        content_source = validated_template.template_home.expanduser()
         mode = RuntimeHomeMode.TEMPLATE
         provenance = RuntimeTemplateProvenance(
-            template_id=runtime_template.template_id,
+            template_id=validated_template.template_id,
             template_home=content_source,
-            provenance=runtime_template.provenance,
+            provenance=validated_template.provenance,
         )
     else:
         content_source = native_home

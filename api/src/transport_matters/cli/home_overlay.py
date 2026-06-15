@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
@@ -120,6 +121,7 @@ _CODEX_CONFIG_SECRET_KEYS = frozenset(
         "api_key",
         "auth",
         "authentication",
+        "authorization",
         "credential",
         "credentials",
         "id_token",
@@ -129,6 +131,11 @@ _CODEX_CONFIG_SECRET_KEYS = frozenset(
         "tokens",
     }
 )
+_CODEX_CONFIG_EXACT_ONLY_SECRET_KEYS = frozenset({"account"})
+_CODEX_CONFIG_DELIMITED_SECRET_KEYS = (
+    _CODEX_CONFIG_SECRET_KEYS - _CODEX_CONFIG_EXACT_ONLY_SECRET_KEYS
+)
+_CODEX_CONFIG_KEY_DELIMITER_PATTERN = re.compile(r"[_\-.]+")
 
 
 def materialize_runtime_home_overlay(
@@ -226,10 +233,11 @@ def validate_runtime_home_template(client_name: str, template_home: Path) -> Non
     """Reject templates that contain secrets or unclassified top level entries."""
     template_home = template_home.expanduser()
     policy = _template_materialization_policy(client_name)
-    try:
-        entries = list(template_home.iterdir())
-    except FileNotFoundError:
-        return
+    if not template_home.exists():
+        raise ValueError(f"runtime template {template_home} does not exist")
+    if not template_home.is_dir():
+        raise ValueError(f"runtime template {template_home} is not a directory")
+    entries = list(template_home.iterdir())
 
     classified_names = (
         policy.content_names
@@ -475,7 +483,7 @@ def _codex_config_secret_path(value: Any, *, prefix: str = "") -> str | None:
     if isinstance(value, dict):
         for key, child in value.items():
             key_path = f"{prefix}.{key}" if prefix else str(key)
-            if str(key).lower() in _CODEX_CONFIG_SECRET_KEYS:
+            if _codex_config_key_has_secret_indicator(key):
                 return key_path
             found = _codex_config_secret_path(child, prefix=key_path)
             if found is not None:
@@ -486,6 +494,37 @@ def _codex_config_secret_path(value: Any, *, prefix: str = "") -> str | None:
             if found is not None:
                 return found
     return None
+
+
+def _codex_config_key_has_secret_indicator(key: object) -> bool:
+    normalized = str(key).lower()
+    if normalized in _CODEX_CONFIG_SECRET_KEYS:
+        return True
+    key_parts = tuple(
+        part for part in _CODEX_CONFIG_KEY_DELIMITER_PATTERN.split(normalized) if part
+    )
+    return any(
+        _codex_config_key_matches_indicator(normalized, key_parts, indicator)
+        for indicator in _CODEX_CONFIG_DELIMITED_SECRET_KEYS
+    )
+
+
+def _codex_config_key_matches_indicator(
+    key: str,
+    key_parts: tuple[str, ...],
+    indicator: str,
+) -> bool:
+    if key.endswith(indicator):
+        return True
+    indicator_parts = tuple(
+        part for part in _CODEX_CONFIG_KEY_DELIMITER_PATTERN.split(indicator) if part
+    )
+    if len(indicator_parts) == 1:
+        return indicator_parts[0] in key_parts
+    return any(
+        key_parts[index : index + len(indicator_parts)] == indicator_parts
+        for index in range(len(key_parts) - len(indicator_parts) + 1)
+    )
 
 
 def _source_claude_config_path(
