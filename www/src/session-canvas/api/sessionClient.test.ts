@@ -15,13 +15,13 @@ describe("sessionClient", () => {
       sessionsPath({
         owner: "local",
         workspaceHash: "hash-1",
-        cli: "codex",
-        status: "active",
+        purpose: "continuation",
+        includeInternal: true,
         limit: 25,
-        offset: 5,
+        cursor: "cursor-1",
       }),
     ).toBe(
-      "/api/sessions?owner=local&limit=25&offset=5&workspace_hash=hash-1&cli=codex&status=active",
+      "/v1/sessions?owner=local&limit=25&workspaceId=hash-1&purpose=continuation&includeInternal=true&cursor=cursor-1",
     );
   });
 
@@ -30,15 +30,13 @@ describe("sessionClient", () => {
     const session = makeSessionSummary();
     installMockTransport((path) => {
       seenPaths.push(path);
-      return jsonResponse([session]);
+      return jsonResponse({ items: [session], nextCursor: null });
     });
 
     await expect(listSessions({ owner: "local", workspaceHash: "hash-1" })).resolves.toEqual([
       session,
     ]);
-    expect(seenPaths).toEqual([
-      "/api/sessions?owner=local&limit=50&offset=0&workspace_hash=hash-1",
-    ]);
+    expect(seenPaths).toEqual(["/v1/sessions?owner=local&limit=50&workspaceId=hash-1"]);
   });
 
   it("throws detail from failed session lookups", async () => {

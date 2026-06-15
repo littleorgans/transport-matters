@@ -82,7 +82,7 @@ describe("canvasStore", () => {
 
   it("spawns or focuses one transcript pane per session", () => {
     resetCanvasStoreForTests();
-    const session = makeSessionSummary({ session_id: "session-abc" });
+    const session = makeSessionSummary({ sessionId: "session-abc" });
 
     useCanvasStore.getState().spawnOrFocusTranscript(session);
     useCanvasStore.getState().spawnOrFocusTranscript(session);
@@ -94,7 +94,7 @@ describe("canvasStore", () => {
 
   it("plans spawned panes with the active grid fit strategy", () => {
     resetCanvasStoreForTests();
-    const session = makeSessionSummary({ session_id: "session-abc" });
+    const session = makeSessionSummary({ sessionId: "session-abc" });
 
     useCanvasStore.getState().spawnOrFocusTranscript(session);
 
@@ -105,7 +105,7 @@ describe("canvasStore", () => {
 
   it("replans open panes when viewport bounds change", () => {
     resetCanvasStoreForTests();
-    useCanvasStore.getState().spawnOrFocusTranscript(makeSessionSummary({ session_id: "abc" }));
+    useCanvasStore.getState().spawnOrFocusTranscript(makeSessionSummary({ sessionId: "abc" }));
     useCanvasStore
       .getState()
       .spawnPane({ kind: "resource", owner: "local", sessionId: "abc", resourceId: "r1" });
@@ -352,7 +352,7 @@ describe("canvasStore", () => {
       useCanvasStore
         .getState()
         .spawnOrFocusTranscript(
-          makeSessionSummary({ session_id: "session-abc", title: "Agent transcript" }),
+          makeSessionSummary({ sessionId: "session-abc", title: "Agent transcript" }),
         );
       useCanvasStore.getState().spawnPane({
         kind: "resource",
@@ -383,7 +383,7 @@ describe("canvasStore", () => {
 
   it("expands through the shared hero plus grid overflow planner and unexpands to the strategy", () => {
     resetCanvasStoreForTests();
-    useCanvasStore.getState().spawnOrFocusTranscript(makeSessionSummary({ session_id: "abc" }));
+    useCanvasStore.getState().spawnOrFocusTranscript(makeSessionSummary({ sessionId: "abc" }));
     useCanvasStore
       .getState()
       .spawnPane({ kind: "resource", owner: "local", sessionId: "abc", resourceId: "r1" });
@@ -419,7 +419,7 @@ describe("canvasStore", () => {
       useCanvasStore.getState().expandPane(PICKER_PANE_ID);
       expect(useCanvasStore.getState().expandedPaneId).toBeNull();
 
-      useCanvasStore.getState().spawnOrFocusTranscript(makeSessionSummary({ session_id: "abc" }));
+      useCanvasStore.getState().spawnOrFocusTranscript(makeSessionSummary({ sessionId: "abc" }));
       useCanvasStore.getState().minimizePane("transcript:abc");
       vi.runAllTimers();
 
@@ -432,7 +432,7 @@ describe("canvasStore", () => {
 
   it("frames by moving the camera only and unframes back to the overview", () => {
     resetCanvasStoreForTests();
-    useCanvasStore.getState().spawnOrFocusTranscript(makeSessionSummary({ session_id: "abc" }));
+    useCanvasStore.getState().spawnOrFocusTranscript(makeSessionSummary({ sessionId: "abc" }));
     useCanvasStore
       .getState()
       .spawnPane({ kind: "resource", owner: "local", sessionId: "abc", resourceId: "r1" });

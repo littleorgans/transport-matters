@@ -25,48 +25,47 @@ test.beforeEach(async ({ page }) => {
 
 function sessionSummary(sessionId: string, title: string) {
   return {
-    session_id: sessionId,
+    sessionId,
+    workspaceId: "transport-matters/workspace-hash",
+    title,
+    status: "active",
     provider: "anthropic",
     cli: "claude",
-    run_id: `run-${sessionId}`,
-    cwd: "/tmp/transport-matters",
-    workspace_slug: "transport-matters",
-    workspace_hash: "workspace-hash",
-    native_session_id: null,
-    minted: false,
-    source_descriptor: null,
-    home_dir: null,
-    owner: "local",
-    status: "active",
-    title,
-    parent_session_id: null,
-    forked_at_seq: null,
-    started_at: "2026-06-11T00:00:00Z",
-    created_at: "2026-06-11T00:00:00Z",
-    updated_at: "2026-06-11T00:00:00Z",
+    createdAt: "2026-06-11T00:00:00Z",
+    lastActivityAt: "2026-06-11T00:00:00Z",
+    purpose: "user_history",
+    visibility: "user_visible",
+    lineage: {
+      parentSessionId: null,
+      forkedAtSeq: null,
+      forkedAtTurn: null,
+    },
+    turnCount: 0,
+    inheritedTurnCount: 0,
+    lastMessagePreview: null,
   };
 }
 
 async function mockSessionApi(page: Page) {
-  await page.route("**/api/sessions/*/events/stream**", (route) =>
+  await page.route("**/v1/sessions/*/events/stream**", (route) =>
     route.fulfill({
       status: 200,
       contentType: "text/event-stream",
       body: "",
     }),
   );
-  await page.route("**/api/sessions/*/events?**", (route) =>
+  await page.route("**/v1/sessions/*/events?**", (route) =>
     route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ events: [], next_from_seq: null }),
+      body: JSON.stringify({ events: [], nextFromSeq: null }),
     }),
   );
-  await page.route("**/api/sessions?**", (route) =>
+  await page.route("**/v1/sessions?**", (route) =>
     route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify(sessions),
+      body: JSON.stringify({ items: sessions, nextCursor: null }),
     }),
   );
 }

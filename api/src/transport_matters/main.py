@@ -10,7 +10,7 @@ from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from transport_matters.api.v1 import run_routes
+from transport_matters.api.v1 import run_routes, session_routes
 from transport_matters.api.v1.router import api_router
 from transport_matters.config import MissingDatabaseConfigError, get_settings, resolve_database_url
 from transport_matters.session.listen import SessionEventHub, SessionEventListener
@@ -201,6 +201,7 @@ def create_app() -> FastAPI:
 
     app.include_router(api_router, prefix="/api")
     app.include_router(run_routes.router, prefix="/v1", tags=["runs"])
+    app.include_router(session_routes.router, prefix="/v1", tags=["sessions"])
 
     from pathlib import Path
 

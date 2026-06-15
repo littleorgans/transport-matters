@@ -129,7 +129,7 @@ export function resourceContentPath(filters: ResourceContentFilters): string {
   appendNumberParam(params, "range_start", filters.rangeStart);
   appendNumberParam(params, "range_end", filters.rangeEnd);
   if (filters.includeDebug) params.set("include_debug", "true");
-  return `/api/sessions/${encodeURIComponent(filters.sessionId)}/resources/${encodeURIComponent(
+  return `/v1/sessions/${encodeURIComponent(filters.sessionId)}/resources/${encodeURIComponent(
     filters.resourceId,
   )}?${params.toString()}`;
 }

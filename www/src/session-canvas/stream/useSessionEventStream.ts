@@ -41,7 +41,7 @@ export function useSessionEventStream({
 
     async function dispatchParsedEvent(parsed: SessionEventView) {
       const previousHighestSeq = lastSeqRef.current;
-      if (closed || parsed.session_id !== sessionId || parsed.seq <= previousHighestSeq) return;
+      if (closed || parsed.seq <= previousHighestSeq) return;
       if (parsed.seq > previousHighestSeq + 1) {
         await dispatchGapBackfill(parsed, previousHighestSeq);
         return;
@@ -59,9 +59,7 @@ export function useSessionEventStream({
           toSeq: parsed.seq - 1,
         });
         if (closed) return;
-        const events = [...backfill.events, parsed].filter(
-          (event) => event.session_id === sessionId,
-        );
+        const events = [...backfill.events, parsed];
         lastSeqRef.current = highestEventSeq(events, previousHighestSeq);
         onEventsRef.current(events);
         setConnected(true);
@@ -73,6 +71,7 @@ export function useSessionEventStream({
     }
 
     function connect() {
+      if (typeof EventSource === "undefined") return;
       source?.close();
       source = new EventSource(
         sessionEventsStreamUrl(sessionId, owner, lastSeqRef.current, baseUrl),
@@ -105,7 +104,7 @@ export function useSessionEventStream({
 function parseEventMessage(data: string): SessionEventView | null {
   try {
     const parsed = JSON.parse(data) as SessionEventView;
-    return typeof parsed.session_id === "string" && typeof parsed.seq === "number" ? parsed : null;
+    return typeof parsed.seq === "number" ? parsed : null;
   } catch {
     return null;
   }

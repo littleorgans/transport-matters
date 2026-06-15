@@ -43,41 +43,36 @@ class TimelineModel(BaseModel):
 
 class SessionHeader(TimelineModel):
     session_id: str
+    workspace_id: str
     provider: str
     cli: str | None
-    run_id: str
-    cwd: str
-    workspace_slug: str
-    workspace_hash: str
-    native_session_id: str | None
-    owner: str
     status: str
     title: str | None
-    parent_session_id: str | None
-    forked_at_seq: int | None
-    started_at: str
+    purpose: str
+    visibility: str
+    lineage: dict[str, int | str | None]
     created_at: str | None
-    updated_at: str | None
+    last_activity_at: str
 
     @classmethod
     def from_row(cls, row: SessionRow) -> SessionHeader:
+        last_activity_at = row.updated_at or row.created_at or row.started_at
         return cls(
             session_id=row.session_id,
+            workspace_id=f"{row.workspace_slug}/{row.workspace_hash}",
             provider=row.provider,
             cli=row.cli,
-            run_id=row.run_id,
-            cwd=row.cwd,
-            workspace_slug=row.workspace_slug,
-            workspace_hash=row.workspace_hash,
-            native_session_id=row.native_session_id,
-            owner=row.owner,
             status=str(row.status),
             title=row.title,
-            parent_session_id=row.parent_session_id,
-            forked_at_seq=row.forked_at_seq,
-            started_at=row.started_at.isoformat(),
+            purpose=str(row.session_purpose),
+            visibility=str(row.session_visibility),
+            lineage={
+                "parentSessionId": row.parent_session_id,
+                "forkedAtSeq": row.forked_at_seq,
+                "forkedAtTurn": None,
+            },
             created_at=None if row.created_at is None else row.created_at.isoformat(),
-            updated_at=None if row.updated_at is None else row.updated_at.isoformat(),
+            last_activity_at=last_activity_at.isoformat(),
         )
 
 
@@ -129,6 +124,7 @@ class MessageItem(TimelineModel):
     kind: Literal["message"] = "message"
     id: str
     seq: int
+    turn_index: int | None
     role: MessageRole
     ts: str | None
     model: str | None
@@ -143,6 +139,7 @@ class StateItem(TimelineModel):
     kind: Literal["state"] = "state"
     id: str
     seq: int
+    turn_index: int | None
     ts: str | None
     label: str
     value: str
@@ -154,6 +151,7 @@ class SubagentItem(TimelineModel):
     kind: Literal["subagent"] = "subagent"
     id: str
     seq: int
+    turn_index: int | None
     ts: str | None
     title: str
     subagent_ref: SubagentRef
@@ -166,6 +164,7 @@ class ContextItem(TimelineModel):
     kind: Literal["context"] = "context"
     id: str
     seq: int
+    turn_index: int | None
     ts: str | None
     label: str
     summary: str
@@ -178,6 +177,7 @@ class DiagnosticItem(TimelineModel):
     kind: Literal["diagnostic"] = "diagnostic"
     id: str
     seq: int
+    turn_index: int | None
     ts: str | None
     label: str
     summary: str

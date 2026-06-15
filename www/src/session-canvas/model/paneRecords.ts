@@ -162,14 +162,12 @@ export type LegacyPaneContentRef = { kind: "session"; owner: "local"; sessionId:
 export type SpawnablePaneRef = CanvasPaneRef | LegacyPaneContentRef;
 
 export interface SpawnSessionDescriptor {
-  session_id: string;
+  sessionId: string;
   title: string | null;
   provider: string;
-  cli: string | null;
-  cwd: string;
+  cli: string;
   status: string;
-  native_session_id: string | null;
-  started_at: string;
+  lastActivityAt: string;
 }
 
 export interface PaneActions {

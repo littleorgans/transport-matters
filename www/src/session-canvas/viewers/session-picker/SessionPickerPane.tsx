@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { displayCwd, formatRelativeAge } from "../../../lib/formatting";
+import { formatRelativeAge } from "../../../lib/formatting";
 import type { SessionSummary } from "../../api/sessionClient";
 import { useSessions } from "../../hooks/useSessions";
 import type { PickerPaneRef, ViewerProps } from "../../model/paneRecords";
@@ -9,7 +9,6 @@ export function SessionPickerPane({ canvas, actions }: ViewerProps<PickerPaneRef
     owner: "local",
     workspaceHash: canvas.workspaceHash,
     limit: 50,
-    offset: 0,
   });
   const sessions = data ?? [];
   const [activeIndex, setActiveIndex] = useState(0);
@@ -55,12 +54,12 @@ export function SessionPickerPane({ canvas, actions }: ViewerProps<PickerPaneRef
             aria-current={index === activeIndex ? "true" : undefined}
             className="canvas-picker__row"
             data-active={index === activeIndex}
-            key={session.session_id}
+            key={session.sessionId}
             onClick={() => actions.spawnOrFocusTranscript(session)}
             onFocus={() => setActiveIndex(index)}
             type="button"
           >
-            <SessionRow session={session} live={session.session_id === canvas.launchSessionId} />
+            <SessionRow session={session} live={session.sessionId === canvas.launchSessionId} />
           </button>
         ))}
       </div>
@@ -75,7 +74,7 @@ export function SessionPickerPane({ canvas, actions }: ViewerProps<PickerPaneRef
 
 function SessionRow({ session, live }: { session: SessionSummary; live: boolean }) {
   const title = session.title ?? `${session.cli ?? session.provider} session`;
-  const started = formatRelativeAge(session.started_at);
+  const started = formatRelativeAge(session.lastActivityAt);
   return (
     <span className="canvas-picker__row-inner">
       <span className="canvas-picker__row-title">
@@ -88,9 +87,9 @@ function SessionRow({ session, live }: { session: SessionSummary; live: boolean 
         <span>{session.status}</span>
         <span>{started}</span>
       </span>
-      <span className="canvas-picker__row-cwd">{displayCwd(session.cwd)}</span>
-      {session.native_session_id ? (
-        <span className="canvas-picker__row-native">native {session.native_session_id}</span>
+      <span className="canvas-picker__row-cwd">{session.workspaceId}</span>
+      {session.lastMessagePreview ? (
+        <span className="canvas-picker__row-native">{session.lastMessagePreview}</span>
       ) : null}
     </span>
   );

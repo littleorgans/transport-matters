@@ -16,6 +16,7 @@ from transport_matters.session.listen import (
     SessionEventListener,
     SessionEventSignal,
 )
+from transport_matters.session.models import SessionPurpose, SessionVisibility
 from transport_matters.session.pool import async_connect, create_async_pool
 from transport_matters.session.test_foundation import dead_letter, event, root_session
 from transport_matters.session.timeline import project_timeline
@@ -46,26 +47,104 @@ async def test_session_routes_are_owner_scoped_and_omit_raw(test_db: TestDb) -> 
     ):
         await _seed_sessions(conn)
     async with _client(test_db) as client:
-        sessions = await client.get("/api/sessions")
+        legacy = await client.get("/api/sessions")
+        assert legacy.status_code == 404
+
+        sessions = await client.get("/v1/sessions")
         assert sessions.status_code == 200
-        assert [item["session_id"] for item in sessions.json()] == ["s1"]
-        assert [item["dead_letter_count"] for item in sessions.json()] == [2]
+        payload = sessions.json()
+        assert [item["sessionId"] for item in payload["items"]] == ["s1"]
+        assert payload["nextCursor"] is None
+        assert payload["items"][0]["workspaceId"] == "workspace/hash1"
+        assert payload["items"][0]["turnCount"] == 1
+        assert payload["items"][0]["lastMessagePreview"] == "alpha"
+        assert not _contains_key(payload, "nativeSessionId")
+        assert not _contains_key(payload, "sourceDescriptor")
+        assert not _contains_key(payload, "homeDir")
 
-        other = await client.get("/api/sessions", params={"owner": "other"})
+        other = await client.get("/v1/sessions", params={"owner": "other"})
         assert other.status_code == 200
-        assert [item["session_id"] for item in other.json()] == ["s2"]
-        assert [item["dead_letter_count"] for item in other.json()] == [0]
+        assert [item["sessionId"] for item in other.json()["items"]] == ["s2"]
 
-        events = await client.get("/api/sessions/s1/events", params={"limit": 1})
+        single = await client.get("/v1/sessions/s1")
+        assert single.status_code == 200
+        assert single.json()["sessionId"] == "s1"
+
+        events = await client.get("/v1/sessions/s1/events", params={"limit": 1})
         assert events.status_code == 200
         payload = events.json()
-        assert payload["next_from_seq"] == 1
+        assert payload["nextFromSeq"] == 1
         assert [item["seq"] for item in payload["events"]] == [0]
-        assert payload["events"][0]["ir"] == {"parts": [{"type": "text", "text": "alpha"}]}
+        assert payload["events"][0]["turnIndex"] == 1
+        assert payload["events"][0]["body"] == {
+            "kind": "assistant",
+            "parts": [{"type": "text", "text": "alpha"}],
+        }
         assert "raw" not in payload["events"][0]
+        assert "nativeTurnId" not in payload["events"][0]
+        assert "searchText" not in payload["events"][0]
 
-        hidden = await client.get("/api/sessions/s1/events", params={"owner": "other"})
+        hidden = await client.get("/v1/sessions/s1/events", params={"owner": "other"})
         assert hidden.status_code == 404
+
+
+async def test_session_list_filters_internal_sessions_and_locks_cursor(
+    test_db: TestDb,
+) -> None:
+    async with (
+        create_async_pool(test_db.database_url, min_size=1, max_size=2) as pool,
+        pool.connection() as conn,
+    ):
+        dao = AsyncSessionDao(conn)
+        await dao.upsert_session(root_session("user", native_session_id="native-user"))
+        await dao.upsert_session(
+            root_session("continuation", native_session_id="native-continuation").model_copy(
+                update={"session_purpose": SessionPurpose.CONTINUATION}
+            )
+        )
+        await dao.upsert_session(
+            root_session("internal", native_session_id="native-internal").model_copy(
+                update={"session_purpose": SessionPurpose.INTERNAL_SUMMARY}
+            )
+        )
+        await dao.upsert_session(
+            root_session("hidden", native_session_id="native-hidden").model_copy(
+                update={"session_visibility": SessionVisibility.HIDDEN}
+            )
+        )
+
+    async with _client(test_db) as client:
+        default = await client.get("/v1/sessions")
+        assert default.status_code == 200
+        assert {item["sessionId"] for item in default.json()["items"]} == {
+            "continuation",
+            "user",
+        }
+
+        continuation = await client.get("/v1/sessions", params={"purpose": "continuation"})
+        assert continuation.status_code == 200
+        assert [item["sessionId"] for item in continuation.json()["items"]] == ["continuation"]
+
+        internal = await client.get("/v1/sessions", params={"includeInternal": "true"})
+        assert internal.status_code == 200
+        assert {item["sessionId"] for item in internal.json()["items"]} == {
+            "continuation",
+            "hidden",
+            "internal",
+            "user",
+        }
+
+        first = await client.get("/v1/sessions", params={"limit": 1})
+        assert first.status_code == 200
+        cursor = first.json()["nextCursor"]
+        assert isinstance(cursor, str)
+
+        mismatch = await client.get(
+            "/v1/sessions",
+            params={"limit": 1, "cursor": cursor, "purpose": "continuation"},
+        )
+        assert mismatch.status_code == 400
+        assert mismatch.json()["detail"]["code"] == "invalid_cursor"
 
 
 async def test_session_timeline_is_owner_scoped_paginated_and_omits_raw(
@@ -94,24 +173,27 @@ async def test_session_timeline_is_owner_scoped_paginated_and_omits_raw(
         await dao.insert_event(event(0, session_id="s2", search_text="other"))
 
     async with _client(test_db) as client:
-        first = await client.get("/api/sessions/s1/timeline", params={"limit": 1})
+        first = await client.get("/v1/sessions/s1/timeline", params={"limit": 1})
         assert first.status_code == 200
         first_payload = first.json()
         assert first_payload["session"]["sessionId"] == "s1"
+        assert first_payload["session"]["workspaceId"] == "workspace/hash1"
+        assert "nativeSessionId" not in first_payload["session"]
         assert first_payload["nextFromSeq"] == 1
         assert [item["kind"] for item in first_payload["items"]] == ["message"]
+        assert first_payload["items"][0]["turnIndex"] == 1
         assert first_payload["items"][0]["source"]["rawAvailable"] is True
         assert not _contains_key(first_payload, "raw")
 
-        second = await client.get("/api/sessions/s1/timeline", params={"from_seq": 1, "limit": 1})
+        second = await client.get("/v1/sessions/s1/timeline", params={"from_seq": 1, "limit": 1})
         assert second.status_code == 200
         second_payload = second.json()
         assert second_payload["nextFromSeq"] == 2
-        assert [(item["kind"], item["label"]) for item in second_payload["items"]] == [
-            ("state", "Permission mode")
-        ]
+        assert [
+            (item["kind"], item["label"], item["turnIndex"]) for item in second_payload["items"]
+        ] == [("state", "Permission mode", 1)]
 
-        hidden = await client.get("/api/sessions/s1/timeline", params={"owner": "other"})
+        hidden = await client.get("/v1/sessions/s1/timeline", params={"owner": "other"})
         assert hidden.status_code == 404
 
 
@@ -296,7 +378,7 @@ async def test_session_timeline_stream_is_owner_scoped(test_db: TestDb) -> None:
         await AsyncSessionDao(conn).upsert_session(root_session("s1"))
 
     async with _client(test_db) as client:
-        hidden = await client.get("/api/sessions/s1/timeline/stream", params={"owner": "other"})
+        hidden = await client.get("/v1/sessions/s1/timeline/stream", params={"owner": "other"})
 
     assert hidden.status_code == 404
 
@@ -339,7 +421,7 @@ async def test_lifespan_listener_start_failure_keeps_routes_unavailable(
             assert app.state.session_pool is None
             transport = ASGITransport(app=app)
             async with AsyncClient(transport=transport, base_url="http://test") as client:
-                response = await client.get("/api/sessions")
+                response = await client.get("/v1/sessions")
             assert response.status_code == 503
     finally:
         get_settings.cache_clear()
@@ -359,7 +441,7 @@ async def test_lifespan_degrades_when_database_unreachable(
             assert app.state.session_pool is None
             transport = ASGITransport(app=app)
             async with AsyncClient(transport=transport, base_url="http://test") as client:
-                response = await client.get("/api/sessions")
+                response = await client.get("/v1/sessions")
             assert response.status_code == 503
     finally:
         get_settings.cache_clear()

@@ -81,6 +81,15 @@ class SessionRow(BaseModel):
     updated_at: datetime | None = None
 
 
+class SessionListRow(SessionRow):
+    model_config = ConfigDict(frozen=True, use_enum_values=True)
+
+    last_activity_at: datetime
+    turn_count: int = 0
+    inherited_turn_count: int = 0
+    last_message_preview: str | None = None
+
+
 class ChildSessionRow(SessionRow):
     model_config = ConfigDict(frozen=True, use_enum_values=True)
 

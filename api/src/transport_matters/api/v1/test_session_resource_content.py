@@ -135,7 +135,7 @@ async def test_inline_resource_content_is_typed_by_media_type(
     await _seed_resource_session(test_db, [_turn()], [artifact])
 
     async with session_client(test_db) as client:
-        response = await client.get(f"/api/sessions/s1/resources/inline:{artifact.hash}")
+        response = await client.get(f"/v1/sessions/s1/resources/inline:{artifact.hash}")
 
     assert response.status_code == 200
     payload = response.json()
@@ -166,7 +166,7 @@ async def test_native_resource_content_returns_native_record_json(test_db: TestD
     await _seed_resource_session(test_db, [_turn(raw=raw)])
 
     async with session_client(test_db) as client:
-        response = await client.get("/api/sessions/s1/resources/native:s1:0")
+        response = await client.get("/v1/sessions/s1/resources/native:s1:0")
 
     assert response.status_code == 200
     payload = response.json()
@@ -184,7 +184,7 @@ async def test_wire_resource_content_redirects_without_payload_duplication(test_
     await _seed_resource_session(test_db, [row])
 
     async with session_client(test_db) as client:
-        response = await client.get("/api/sessions/s1/resources/wire:exchange-1")
+        response = await client.get("/v1/sessions/s1/resources/wire:exchange-1")
 
     assert response.status_code == 200
     payload = response.json()
@@ -205,7 +205,7 @@ async def test_wire_resource_content_returns_uncorrelated_when_exchange_is_absen
     await _seed_resource_session(test_db, [_turn()])
 
     async with session_client(test_db) as client:
-        response = await client.get("/api/sessions/s1/resources/wire:missing-exchange")
+        response = await client.get("/v1/sessions/s1/resources/wire:missing-exchange")
 
     assert response.status_code == 200
     payload = response.json()
@@ -229,7 +229,7 @@ async def test_wire_resource_content_uses_shared_exchange_correlation_params(
     await _seed_resource_session(test_db, [row])
 
     async with session_client(test_db) as client:
-        response = await client.get("/api/sessions/s1/resources/wire:exchange-1")
+        response = await client.get("/v1/sessions/s1/resources/wire:exchange-1")
 
     assert response.status_code == 200
     assert calls == ["exchange-1"]
@@ -239,7 +239,7 @@ async def test_resource_content_rejects_ids_outside_session(test_db: TestDb) -> 
     await _seed_resource_session(test_db, [_turn(), _turn(session_id="s2")], other_session=True)
 
     async with session_client(test_db) as client:
-        response = await client.get("/api/sessions/s1/resources/native:s2:0")
+        response = await client.get("/v1/sessions/s1/resources/native:s2:0")
 
     assert response.status_code == 200
     payload = response.json()
@@ -254,8 +254,8 @@ async def test_resource_content_returns_typed_missing_for_not_found_and_unsuppor
     await _seed_resource_session(test_db, [_turn()])
 
     async with session_client(test_db) as client:
-        missing = await client.get("/api/sessions/s1/resources/inline:missing")
-        unsupported = await client.get("/api/sessions/s1/resources/tool-output:s1:0:0")
+        missing = await client.get("/v1/sessions/s1/resources/inline:missing")
+        unsupported = await client.get("/v1/sessions/s1/resources/tool-output:s1:0:0")
 
     assert missing.status_code == 200
     assert missing.json()["kind"] == "missing"
@@ -273,7 +273,7 @@ async def test_text_resource_content_supports_ranges(test_db: TestDb) -> None:
 
     async with session_client(test_db) as client:
         response = await client.get(
-            f"/api/sessions/s1/resources/inline:{artifact.hash}",
+            f"/v1/sessions/s1/resources/inline:{artifact.hash}",
             params={"range_start": 2, "range_end": 5},
         )
 
@@ -291,7 +291,7 @@ async def test_binary_resource_content_returns_typed_too_large(test_db: TestDb) 
     await _seed_resource_session(test_db, [_turn()], [artifact])
 
     async with session_client(test_db) as client:
-        response = await client.get(f"/api/sessions/s1/resources/inline:{artifact.hash}")
+        response = await client.get(f"/v1/sessions/s1/resources/inline:{artifact.hash}")
 
     assert response.status_code == 200
     payload = response.json()
@@ -309,7 +309,7 @@ async def test_resource_content_withholds_raw_only_debug_resources_by_default(
     await _seed_resource_session(test_db, [_turn()])
 
     async with session_client(test_db) as client:
-        response = await client.get("/api/sessions/s1/resources/raw-provider:exchange-1")
+        response = await client.get("/v1/sessions/s1/resources/raw-provider:exchange-1")
 
     assert response.status_code == 200
     payload = response.json()

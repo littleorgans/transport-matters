@@ -32,7 +32,7 @@ describe("SessionCanvasRoute", () => {
   it("renders the picker immediately", async () => {
     resetCanvasStoreForTests();
     window.history.pushState({}, "", "/canvas");
-    installMockTransport(() => jsonResponse([]));
+    installMockTransport(() => jsonResponse({ items: [], nextCursor: null }));
 
     renderWithQuery(<SessionCanvasRoute />);
 
@@ -44,7 +44,7 @@ describe("SessionCanvasRoute", () => {
 
   it("auto resolves the launched run into the transcript seam", async () => {
     resetCanvasStoreForTests();
-    const session = makeSessionSummary({ session_id: "session-live", run_id: "run-live" });
+    const session = makeSessionSummary({ sessionId: "session-live" });
     window.history.pushState(
       {},
       "",
@@ -54,10 +54,10 @@ describe("SessionCanvasRoute", () => {
     installMockTransport((path) =>
       path.includes("/events?")
         ? jsonResponse({
-            events: [makeSessionEvent({ session_id: "session-live" })],
-            next_from_seq: null,
+            events: [makeSessionEvent()],
+            nextFromSeq: null,
           })
-        : jsonResponse([session]),
+        : jsonResponse({ items: [session], nextCursor: null }),
     );
 
     renderWithQuery(<SessionCanvasRoute />);
@@ -70,7 +70,7 @@ describe("SessionCanvasRoute", () => {
   it("feeds surface resize bounds into canvas planning", async () => {
     resetCanvasStoreForTests();
     window.history.pushState({}, "", "/canvas");
-    installMockTransport(() => jsonResponse([]));
+    installMockTransport(() => jsonResponse({ items: [], nextCursor: null }));
     let width = 900;
     let height = 700;
     vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockImplementation(() => width);
@@ -114,13 +114,13 @@ describe("SessionCanvasRoute", () => {
   it("renders pane affordance controls and dispatches header double-click gestures", () => {
     resetCanvasStoreForTests();
     window.history.pushState({}, "", "/canvas");
-    installMockTransport(() => jsonResponse([]));
+    installMockTransport(() => jsonResponse({ items: [], nextCursor: null }));
 
     renderWithQuery(<SessionCanvasRoute />);
     act(() => {
       useCanvasStore
         .getState()
-        .spawnOrFocusTranscript(makeSessionSummary({ session_id: "abc", title: "Project agent" }));
+        .spawnOrFocusTranscript(makeSessionSummary({ sessionId: "abc", title: "Project agent" }));
     });
 
     expect(screen.getByRole("button", { name: "Frame Project agent" })).toBeInTheDocument();
@@ -141,13 +141,13 @@ describe("SessionCanvasRoute", () => {
     vi.useFakeTimers();
     resetCanvasStoreForTests();
     window.history.pushState({}, "", "/canvas");
-    installMockTransport(() => jsonResponse([]));
+    installMockTransport(() => jsonResponse({ items: [], nextCursor: null }));
 
     renderWithQuery(<SessionCanvasRoute />);
     act(() => {
       useCanvasStore
         .getState()
-        .spawnOrFocusTranscript(makeSessionSummary({ session_id: "abc", title: "Project agent" }));
+        .spawnOrFocusTranscript(makeSessionSummary({ sessionId: "abc", title: "Project agent" }));
     });
 
     act(() => {

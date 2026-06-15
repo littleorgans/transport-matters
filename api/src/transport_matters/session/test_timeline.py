@@ -80,6 +80,7 @@ def test_projector_maps_turn_rows_to_message_items() -> None:
             "kind": "message",
             "id": "message:s1:0",
             "seq": 0,
+            "turnIndex": 1,
             "role": "assistant",
             "ts": "2026-06-06T00:00:00+00:00",
             "model": None,

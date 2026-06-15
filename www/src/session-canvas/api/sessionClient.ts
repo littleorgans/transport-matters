@@ -1,57 +1,86 @@
 import { requestApiJson } from "../../api";
 
+export type SessionPurpose =
+  | "user"
+  | "continuation"
+  | "internal_summary"
+  | "internal_indexing"
+  | "internal_eval"
+  | "system_maintenance";
+
+export type SessionVisibility = "user_visible" | "hidden" | "diagnostic";
+
+export interface SessionLineage {
+  parentSessionId: string | null;
+  forkedAtSeq: number | null;
+  forkedAtTurn: number | null;
+}
+
 export interface SessionSummary {
-  session_id: string;
-  provider: string;
-  cli: string | null;
-  run_id: string;
-  cwd: string;
-  workspace_slug: string;
-  workspace_hash: string;
-  native_session_id: string | null;
-  minted: boolean;
-  source_descriptor: Record<string, unknown> | null;
-  home_dir: string | null;
-  owner: string;
-  status: string;
+  sessionId: string;
+  workspaceId: string;
   title: string | null;
-  parent_session_id: string | null;
-  forked_at_seq: number | null;
-  started_at: string;
-  created_at: string | null;
-  updated_at: string | null;
+  status: string;
+  provider: string;
+  cli: string;
+  createdAt: string;
+  lastActivityAt: string;
+  purpose: SessionPurpose;
+  visibility: SessionVisibility;
+  lineage: SessionLineage;
+  turnCount: number;
+  inheritedTurnCount: number;
+  lastMessagePreview: string | null;
+}
+
+export interface SessionListResponse {
+  items: SessionSummary[];
+  nextCursor: string | null;
 }
 
 export interface SessionListFilters {
   owner: "local";
   workspaceHash?: string | null;
-  provider?: string | null;
+  purpose?: SessionPurpose | null;
+  visibility?: SessionVisibility | null;
+  includeInternal?: boolean;
   cli?: string | null;
-  status?: "active" | "completed" | "archived" | null;
   limit?: number;
-  offset?: number;
+  cursor?: string | null;
 }
 
 const DEFAULT_LIMIT = 50;
-const DEFAULT_OFFSET = 0;
 
 export async function listSessions(filters: SessionListFilters): Promise<SessionSummary[]> {
-  return requestApiJson<SessionSummary[]>(sessionsPath(filters), "Failed to fetch sessions");
+  const response = await requestApiJson<SessionListResponse>(
+    sessionsPath(filters),
+    "Failed to fetch sessions",
+  );
+  const cli = filters.cli;
+  return cli ? response.items.filter((session) => session.cli === cli) : response.items;
 }
 
 export function sessionsPath(filters: SessionListFilters): string {
   const params = new URLSearchParams({
     owner: filters.owner,
     limit: String(filters.limit ?? DEFAULT_LIMIT),
-    offset: String(filters.offset ?? DEFAULT_OFFSET),
   });
-  appendParam(params, "workspace_hash", filters.workspaceHash);
-  appendParam(params, "provider", filters.provider);
-  appendParam(params, "cli", filters.cli);
-  appendParam(params, "status", filters.status);
-  return `/api/sessions?${params.toString()}`;
+  appendParam(params, "workspaceId", filters.workspaceHash);
+  appendParam(params, "purpose", filters.purpose);
+  appendParam(params, "visibility", filters.visibility);
+  appendBooleanParam(params, "includeInternal", filters.includeInternal);
+  appendParam(params, "cursor", filters.cursor);
+  return `/v1/sessions?${params.toString()}`;
 }
 
 function appendParam(params: URLSearchParams, key: string, value: string | null | undefined): void {
   if (value && value.length > 0) params.set(key, value);
+}
+
+function appendBooleanParam(
+  params: URLSearchParams,
+  key: string,
+  value: boolean | null | undefined,
+): void {
+  if (value !== null && value !== undefined) params.set(key, String(value));
 }

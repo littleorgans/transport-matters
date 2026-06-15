@@ -28,7 +28,7 @@ describe("TranscriptChatPane", () => {
   });
 
   it("renders backlog events", async () => {
-    installMockTransport(() => jsonResponse({ events: [makeSessionEvent()], next_from_seq: null }));
+    installMockTransport(() => jsonResponse({ events: [makeSessionEvent()], nextFromSeq: null }));
 
     renderWithQuery(<TranscriptChatPane {...transcriptProps()} />);
 

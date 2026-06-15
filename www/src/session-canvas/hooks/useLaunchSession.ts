@@ -17,7 +17,6 @@ export function useLaunchSession(launch: CanvasLaunchContext) {
         workspaceHash: launch.workspaceHash,
         cli: launch.cli,
         limit: 50,
-        offset: 0,
       });
       return resolveLaunchSession(sessions, launch);
     },

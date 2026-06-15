@@ -24,6 +24,7 @@ SESSION_COLUMN_NAMES = (
     "updated_at",
 )
 SESSION_COLUMNS = ", ".join(SESSION_COLUMN_NAMES)
+SESSION_VIEW_COLUMNS = ", ".join(f"s.{name}" for name in SESSION_COLUMN_NAMES)
 CHILD_SESSION_COLUMNS = ", ".join(f"c.{name}" for name in SESSION_COLUMN_NAMES)
 EVENT_COLUMN_NAMES = (
     "session_id",
@@ -107,6 +108,54 @@ FROM "session"
 WHERE session_id = %(session_id)s
   AND owner = %(owner)s
 """
+
+SESSION_VIEW_SELECT_SQL = f"""
+SELECT {SESSION_VIEW_COLUMNS},
+       COALESCE(
+           (SELECT max(e.ts) FROM "event" AS e WHERE e.session_id = s.session_id),
+           s.updated_at,
+           s.started_at
+       ) AS last_activity_at,
+       (
+           SELECT count(*)::integer
+           FROM "event" AS e
+           WHERE e.session_id = s.session_id
+             AND e.kind = 'turn'
+             AND e.is_sidechain = false
+       ) AS turn_count,
+       CASE
+           WHEN s.parent_session_id IS NULL OR s.forked_at_seq IS NULL THEN 0
+           ELSE (
+               SELECT count(*)::integer
+               FROM "event" AS parent_event
+               JOIN "session" AS parent_session
+                 ON parent_session.session_id = parent_event.session_id
+               WHERE parent_event.session_id = s.parent_session_id
+                 AND parent_session.owner = s.owner
+                 AND parent_event.kind = 'turn'
+                 AND parent_event.is_sidechain = false
+                 AND parent_event.seq <= s.forked_at_seq
+           )
+       END AS inherited_turn_count,
+       (
+           SELECT e.search_text
+           FROM "event" AS e
+           WHERE e.session_id = s.session_id
+             AND e.kind = 'turn'
+             AND e.is_sidechain = false
+             AND NULLIF(e.search_text, '') IS NOT NULL
+           ORDER BY e.seq DESC
+           LIMIT 1
+       ) AS last_message_preview
+FROM "session" AS s
+"""
+
+GET_SESSION_VIEW_FOR_OWNER_SQL = f"""
+{SESSION_VIEW_SELECT_SQL}
+WHERE s.session_id = %(session_id)s
+  AND s.owner = %(owner)s
+"""
+
 LIST_SESSIONS_SQL = f"""
 SELECT {SESSION_COLUMNS}
 FROM "session"
@@ -116,6 +165,24 @@ WHERE owner = %(owner)s
   AND (%(cli)s::text IS NULL OR cli = %(cli)s)
   AND (%(status)s::text IS NULL OR status = %(status)s)
 ORDER BY started_at DESC, session_id
+LIMIT %(limit)s
+OFFSET %(offset)s
+"""
+
+LIST_SESSION_VIEWS_SQL = f"""
+{SESSION_VIEW_SELECT_SQL}
+WHERE s.owner = %(owner)s
+  AND (%(workspace_id)s::text IS NULL OR s.workspace_slug || '/' || s.workspace_hash = %(workspace_id)s OR s.workspace_hash = %(workspace_id)s)
+  AND (%(purpose)s::text IS NULL OR s.session_purpose = %(purpose)s)
+  AND (%(visibility)s::text IS NULL OR s.session_visibility = %(visibility)s)
+  AND (
+      %(include_internal)s::boolean
+      OR (
+          s.session_visibility = 'user_visible'
+          AND s.session_purpose = ANY(%(user_history_purposes)s::text[])
+      )
+  )
+ORDER BY last_activity_at DESC, s.session_id
 LIMIT %(limit)s
 OFFSET %(offset)s
 """
@@ -201,6 +268,17 @@ WHERE e.session_id = %(session_id)s
   AND e.seq < %(before_seq)s
 ORDER BY e.seq DESC
 LIMIT 1
+"""
+
+COUNT_TURNS_BEFORE_FOR_OWNER_SQL = """
+SELECT count(*)::integer AS turn_count
+FROM "event" AS e
+JOIN "session" AS s ON s.session_id = e.session_id
+WHERE e.session_id = %(session_id)s
+  AND s.owner = %(owner)s
+  AND e.kind = 'turn'
+  AND e.is_sidechain = false
+  AND e.seq < %(before_seq)s
 """
 
 LIST_CHILD_SESSIONS_FOR_OWNER_SQL = f"""
