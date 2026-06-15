@@ -41,13 +41,14 @@ def _write_json(path: Path, value: dict[str, Any]) -> None:
     path.write_text(json.dumps(value), encoding="utf-8")
 
 
-def test_codex_template_overlay_copies_native_auth_fallback(tmp_path: Path) -> None:
+def test_codex_template_overlay_links_native_auth_fallback(tmp_path: Path) -> None:
     native = tmp_path / "native-codex"
     native.mkdir()
     (native / "auth.json").write_bytes(b'{"tokens":{"id":"native"}}\n')
     template = tmp_path / "templates" / "codex"
     template.mkdir(parents=True)
     (template / "config.toml").write_text('model = "gpt-5-codex"\n', encoding="utf-8")
+    (template / "auth.json").write_bytes(b'{"tokens":{"id":"template"}}\n')
     runtime_root = tmp_path / "run" / "runtime-home"
     workdir = tmp_path / "project"
     workdir.mkdir()
@@ -72,8 +73,11 @@ def test_codex_template_overlay_copies_native_auth_fallback(tmp_path: Path) -> N
     assert plan.content_source == template
     assert plan.auth_source == native
     assert plan.child_home == runtime_root / CLIENT_NAME_CODEX
-    assert (plan.child_home / "auth.json").read_bytes() == b'{"tokens":{"id":"native"}}\n'
-    assert not (template / "auth.json").exists()
+    auth_link = plan.child_home / "auth.json"
+    assert auth_link.is_symlink()
+    assert auth_link.resolve() == (native / "auth.json").resolve()
+    assert auth_link.read_bytes() == b'{"tokens":{"id":"native"}}\n'
+    assert (template / "auth.json").read_bytes() == b'{"tokens":{"id":"template"}}\n'
 
 
 def test_codex_template_descriptor_seeds_runtime_sessions_without_mutating_template(

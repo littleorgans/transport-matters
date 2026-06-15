@@ -469,7 +469,7 @@ def test_codex_seed_preserves_existing_auth_and_project_sibling_keys(
     assert config_text.count('trust_level = "trusted"') == 1
 
 
-def test_codex_runtime_overlay_copies_auth_config_and_symlinks_state(
+def test_codex_runtime_overlay_links_auth_copies_config_and_symlinks_state(
     tmp_path: Path,
 ) -> None:
     source = tmp_path / "source-codex"
@@ -492,8 +492,9 @@ def test_codex_runtime_overlay_copies_auth_config_and_symlinks_state(
         env={"CODEX_HOME": str(source)},
     )
 
-    assert not (runtime / "auth.json").is_symlink()
+    assert (runtime / "auth.json").is_symlink()
     assert not (runtime / "config.toml").is_symlink()
+    assert (runtime / "auth.json").resolve() == auth.resolve()
     assert (runtime / "auth.json").read_bytes() == auth.read_bytes()
     assert (runtime / "plugins").is_symlink()
     assert (runtime / "plugins").resolve() == (source / "plugins").resolve()
