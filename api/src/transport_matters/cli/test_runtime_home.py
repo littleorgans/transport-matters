@@ -92,6 +92,75 @@ def test_codex_template_overlay_links_native_auth_fallback(tmp_path: Path) -> No
     assert auth_link.read_bytes() == b'{"tokens":{"id":"native"}}\n'
 
 
+def test_template_overlay_symlinks_unknown_entries(tmp_path: Path) -> None:
+    native = tmp_path / "native-codex"
+    native.mkdir()
+    (native / "auth.json").write_text("{}\n", encoding="utf-8")
+    template = tmp_path / "templates" / "codex"
+    template.mkdir(parents=True)
+    (template / "config.toml").write_text('model = "gpt-5-codex"\n', encoding="utf-8")
+    (template / "custom-file.txt").write_text("hello\n", encoding="utf-8")
+    custom_dir = template / "custom-dir"
+    custom_dir.mkdir()
+    (custom_dir / "nested.txt").write_text("nested\n", encoding="utf-8")
+
+    plan = plan_runtime_home(
+        CLIENT_NAME_CODEX,
+        home_dir=None,
+        runtime_template=RuntimeTemplateRef(
+            template_id="codex/base",
+            client_name=CLIENT_NAME_CODEX,
+            template_home=template,
+            provenance={},
+        ),
+        runtime_home_root=tmp_path / "run" / "runtime-home",
+        client_path="/bin/codex",
+        env={"CODEX_HOME": str(native)},
+        use_runtime_overlay=True,
+    )
+    prepare_runtime_home(plan, working_dir=tmp_path, env={"CODEX_HOME": str(native)})
+
+    assert plan.child_home is not None
+    file_link = plan.child_home / "custom-file.txt"
+    dir_link = plan.child_home / "custom-dir"
+    assert file_link.is_symlink()
+    assert file_link.resolve() == (template / "custom-file.txt").resolve()
+    assert file_link.read_text(encoding="utf-8") == "hello\n"
+    assert dir_link.is_symlink()
+    assert dir_link.resolve() == custom_dir.resolve()
+    assert (dir_link / "nested.txt").read_text(encoding="utf-8") == "nested\n"
+
+
+def test_template_overlay_excludes_runtime_toml(tmp_path: Path) -> None:
+    native = tmp_path / "native-codex"
+    native.mkdir()
+    (native / "auth.json").write_text("{}\n", encoding="utf-8")
+    template = tmp_path / "templates" / "codex"
+    template.mkdir(parents=True)
+    (template / "config.toml").write_text('model = "gpt-5-codex"\n', encoding="utf-8")
+    (template / "runtime.toml").write_text("[runtime]\n", encoding="utf-8")
+
+    plan = plan_runtime_home(
+        CLIENT_NAME_CODEX,
+        home_dir=None,
+        runtime_template=RuntimeTemplateRef(
+            template_id="codex/base",
+            client_name=CLIENT_NAME_CODEX,
+            template_home=template,
+            provenance={},
+        ),
+        runtime_home_root=tmp_path / "run" / "runtime-home",
+        client_path="/bin/codex",
+        env={"CODEX_HOME": str(native)},
+        use_runtime_overlay=True,
+    )
+    prepare_runtime_home(plan, working_dir=tmp_path, env={"CODEX_HOME": str(native)})
+
+    assert plan.child_home is not None
+    assert not (plan.child_home / "runtime.toml").exists()
+    assert not (plan.child_home / "runtime.toml").is_symlink()
+
+
 @pytest.mark.parametrize(
     ("home_dir", "runtime_template"),
     [

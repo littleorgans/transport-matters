@@ -59,4 +59,4 @@ _OVERLAY_CREDENTIAL_NAMES_BY_CLIENT = {
 }
 # Entries never symlinked into any overlay, regardless of client. A source home that is
 # or contains a git repo must not leak its ``.git`` into the per-run overlay.
-_OVERLAY_NEVER_SYMLINK_NAMES = frozenset({".git"})
+_OVERLAY_NEVER_SYMLINK_NAMES = frozenset({".git", "runtime.toml"})

@@ -188,7 +188,7 @@ def materialize_runtime_home_template_overlay(
     env: Mapping[str, str] | None = None,
     auth_source_home_dir: Path | None = None,
 ) -> OverlayMaterialization:
-    """Build a template overlay from explicitly classified source entries."""
+    """Build a template overlay with safe local state and symlinked content."""
     source_home_dir = source_home_dir.expanduser()
     validate_runtime_home_template(client_name, source_home_dir)
     source_home_dir, auth_source_home_dir, explicit_auth_source = _prepare_materialization_dirs(
@@ -230,7 +230,7 @@ def materialize_runtime_home_template_overlay(
 
 
 def validate_runtime_home_template(client_name: str, template_home: Path) -> None:
-    """Reject templates that contain secrets or unclassified top level entries."""
+    """Reject templates that contain secrets."""
     template_home = template_home.expanduser()
     policy = _template_materialization_policy(client_name)
     if not template_home.exists():
@@ -239,25 +239,10 @@ def validate_runtime_home_template(client_name: str, template_home: Path) -> Non
         raise ValueError(f"runtime template {template_home} is not a directory")
     entries = list(template_home.iterdir())
 
-    classified_names = (
-        policy.content_names
-        | policy.copy_names
-        | policy.local_writable_names
-        | policy.credential_names
-        | policy.reject_names
-    )
     for entry in entries:
         if entry.name in policy.credential_names:
             raise ValueError(
                 f"runtime template {template_home} contains credential file {entry.name!r}"
-            )
-        if entry.name in policy.reject_names:
-            raise ValueError(
-                f"runtime template {template_home} contains rejected entry {entry.name!r}"
-            )
-        if entry.name not in classified_names:
-            raise ValueError(
-                f"runtime template {template_home} contains unclassified entry {entry.name!r}"
             )
     _validate_template_secret_free(client_name, template_home)
 
@@ -348,8 +333,14 @@ def _symlink_template_content_entries(
         entries = list(source_home_dir.iterdir())
     except FileNotFoundError:
         return
+    local_names = (
+        policy.copy_names
+        | policy.local_writable_names
+        | policy.credential_names
+        | policy.reject_names
+    )
     for entry in entries:
-        if entry.name not in policy.content_names:
+        if entry.name in local_names:
             continue
         target = runtime_home_dir / entry.name
         if target.exists() or target.is_symlink():

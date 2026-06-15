@@ -168,28 +168,30 @@ def test_runtime_template_missing_root_is_rejected(tmp_path: Path) -> None:
         (CLIENT_NAME_CODEX, "config.toml"),
     ],
 )
-def test_template_unknown_top_level_entries_are_rejected(
+def test_template_unknown_top_level_entries_do_not_fail_planning(
     tmp_path: Path,
     client_name: str,
     seed_file: str,
 ) -> None:
     template = tmp_path / "template"
     template.mkdir()
-    (template / seed_file).write_text("{}\n", encoding="utf-8")
+    seed_content = 'model = "gpt-5-codex"\n' if seed_file == "config.toml" else "{}\n"
+    (template / seed_file).write_text(seed_content, encoding="utf-8")
     (template / "mystery-state").mkdir()
 
-    with pytest.raises(ValueError, match="unclassified"):
-        plan_runtime_home(
-            client_name,
-            home_dir=None,
-            runtime_template=RuntimeTemplateRef(
-                template_id="client/base",
-                client_name=client_name,
-                template_home=template,
-                provenance={},
-            ),
-            runtime_home_root=tmp_path / "run" / "runtime-home",
-            client_path=f"/bin/{client_name}",
-            env={},
-            use_runtime_overlay=True,
-        )
+    plan = plan_runtime_home(
+        client_name,
+        home_dir=None,
+        runtime_template=RuntimeTemplateRef(
+            template_id="client/base",
+            client_name=client_name,
+            template_home=template,
+            provenance={},
+        ),
+        runtime_home_root=tmp_path / "run" / "runtime-home",
+        client_path=f"/bin/{client_name}",
+        env={},
+        use_runtime_overlay=True,
+    )
+
+    assert plan.mode == RuntimeHomeMode.TEMPLATE

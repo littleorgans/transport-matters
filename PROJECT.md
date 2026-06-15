@@ -118,8 +118,9 @@ Template mode is the only mode with explicit top level materialization policy.
 Native and manual overlays keep the existing catch all symlink behavior.
 Proxy only launches do not materialize a home.
 
-Template content is read only and symlinked only when the per client allow list
-names it:
+Template content is read only. Known content lists remain explicit, but unknown
+top level entries default to symlink include so dual target templates work
+without per client rejection:
 
 - Claude content: `CLAUDE.md`, `agents`, `commands`, `hooks`,
   `output-styles`, `plugins`, `skills`, `statusline-command.sh`.
@@ -128,8 +129,10 @@ names it:
 
 Template credentials are rejected at launch. Claude rejects `.credentials.json`
 and `.claude.json` with `oauthAccount` or `userID`. Codex rejects `auth.json`
-and auth shaped material in `config.toml`. Unknown top level entries are
-rejected until the template registry classifies them in a later slice.
+and auth shaped material in `config.toml`. Generator internal files in the
+explicit ignore list are excluded from the runtime home: `.git` and
+`runtime.toml`. Unknown top level entries are included as symlinks, not rejected
+or silently dropped.
 
 Transport Matters home writers are:
 
@@ -166,9 +169,9 @@ Known Codex writable paths are local to the runtime home: `config.toml`,
 
 MCP and tool state written during a template run must land in an external
 service, a native credential link, or the local runtime home. A template may
-provide static MCP or tool configuration only through the explicit content list
-or copied local config. Persistent MCP caches, SQLite stores, generated files,
-and hook trust updates must not write to the template tree.
+provide static MCP or tool configuration through known content names, unknown
+symlinked content, or copied local config. Persistent MCP caches, SQLite stores,
+generated files, and hook trust updates must not write to the template tree.
 
 ## Launch and adapter ports
 
