@@ -111,6 +111,7 @@ def build_launch_env(
     home_dir: Path | None = None,
     owned_native_session_id: str | None = None,
     owned_source_descriptor: str | None = None,
+    launch_fields: Mapping[str, object] | None = None,
     default_client_passthrough: Sequence[str] = (),
 ) -> dict[str, str]:
     """Return the shared runtime environment for a launch attempt.
@@ -146,6 +147,11 @@ def build_launch_env(
         env[env_keys.OWNED_NATIVE_SESSION_ID] = owned_native_session_id
     if owned_source_descriptor is not None:
         env[env_keys.OWNED_SOURCE_DESCRIPTOR] = owned_source_descriptor
+    if launch_fields:
+        env[env_keys.LAUNCH_FIELDS] = json.dumps(
+            dict(launch_fields),
+            separators=(",", ":"),
+        )
     return env
 
 

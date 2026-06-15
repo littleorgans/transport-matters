@@ -19,7 +19,6 @@ from transport_matters.launch_environment import (
 )
 from transport_matters.launch_manifest import run_with_workspace_manifest
 
-from .home_seed import seed_home_dir
 from .identity import CLI_COMMAND, PRODUCT_LABEL
 from .launch_profile import (
     CodexLaunchProfile,
@@ -35,6 +34,11 @@ from .launch_runtime import (
 )
 from .net import loopback_http_url
 from .runner import ManagedClient
+from .runtime_home import (
+    plan_runtime_home,
+    prepare_runtime_home,
+    seed_direct_home_if_needed,
+)
 from .trust import (
     ConfiguredCACertificateMissingError,
     MitmproxyCAMissingError,
@@ -167,6 +171,7 @@ def build_codex_invocation(
     web_runtime: str = "embedded",
     default_client_passthrough: Sequence[str] = (),
     runtime_home_dir: Path | None = None,
+    launch_fields: Mapping[str, object] | None = None,
 ) -> Callable[[int, int | None], tuple[list[str], dict[str, str], ManagedClient | None]]:
     """Build the retry-safe invocation factory for `transport-matters codex`.
 
@@ -197,6 +202,7 @@ def build_codex_invocation(
             owned_source_descriptor=(
                 managed_session.source_descriptor if managed_session is not None else None
             ),
+            launch_fields=launch_fields,
             default_client_passthrough=default_client_passthrough,
         )
 
@@ -385,6 +391,24 @@ def run_codex(
             print_command=print_command,
             resolve_codex_ca_certificate=resolve_codex_ca_certificate,
         )
+        runtime_home_root = prepared.resolved_storage / "runtime-home"
+        runtime_home_plan = plan_runtime_home(
+            CLIENT_NAME_CODEX,
+            home_dir=home_dir,
+            runtime_template=None,
+            runtime_home_root=runtime_home_root,
+            client_path=prepared.client_path,
+            env=os.environ,
+            use_runtime_overlay=False,
+        )
+        runtime_home_dir = None
+        if not print_command and prepare_runtime_home(
+            runtime_home_plan,
+            working_dir=prepared.working_dir,
+            env=os.environ,
+        ):
+            runtime_home_dir = runtime_home_plan.runtime_home_dir
+            stack.callback(shutil.rmtree, runtime_home_root, ignore_errors=True)
         # Managed-mint (§5.2b/§5.2c): mint the native uuid + pre-seed the rollout ONCE, before the
         # retry loop, so every attempt resumes the same owned session. Codex flows through the SAME
         # shared launch path claude uses (the codex profile owns the seed + argv shape); ``write`` is
@@ -396,7 +420,7 @@ def run_codex(
             client_path=prepared.client_path,
             passthrough=prepared.passthrough_user,
             working_dir=prepared.working_dir,
-            home_dir=home_dir,
+            home_dir=runtime_home_plan.descriptor_home,
             env=os.environ,
             now=datetime.now().astimezone(),
             write=not print_command,
@@ -408,7 +432,8 @@ def run_codex(
             working_dir=prepared.working_dir,
             resolved_storage=prepared.resolved_storage,
             run_id=prepared.run_id,
-            home_dir=home_dir,
+            home_dir=runtime_home_plan.descriptor_home,
+            runtime_home_dir=runtime_home_dir,
             codex_path=prepared.client_path,
             codex_passthrough_user=prepared.passthrough_user,
             codex_ca_certificate=codex_ca_certificate,
@@ -416,6 +441,7 @@ def run_codex(
             managed_session=managed_session,
             debug=debug,
             default_client_passthrough=default_client_passthrough,
+            launch_fields=runtime_home_plan.launch_fields,
         )
         prepared_web_port = require_web_port(prepared.web_port)
 
@@ -425,11 +451,11 @@ def run_codex(
                 proxy_port=prepared.proxy_port,
                 web_port=prepared_web_port,
             )
-        if not print_command and home_dir is not None and prepared.client_path is not None:
-            seed_home_dir(
-                CLIENT_NAME_CODEX,
-                home_dir=home_dir,
+        if not print_command:
+            seed_direct_home_if_needed(
+                runtime_home_plan,
                 working_dir=prepared.working_dir,
+                env=os.environ,
             )
 
         def run_launch(write_manifest_for: Callable[[int, int], None]) -> None:
@@ -442,7 +468,7 @@ def run_codex(
                     managed_session,
                     run_id=prepared.run_id,
                     storage_root=prepared.resolved_storage,
-                    home_dir=home_dir,
+                    home_dir=runtime_home_plan.descriptor_home,
                 )
             _run_codex_launch(
                 proxy_port=prepared.proxy_port,
@@ -463,6 +489,6 @@ def run_codex(
             working_dir=prepared.working_dir,
             storage_dir=prepared.resolved_storage,
             run_id=prepared.run_id,
-            home_dir=home_dir,
+            home_dir=runtime_home_plan.descriptor_home,
             run_launch=run_launch,
         )

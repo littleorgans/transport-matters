@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 from transport_matters.captured_run_models import WEB_RUNTIME_EMBEDDED, CapturedRunWebRuntime
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Sequence
+    from collections.abc import Callable, Mapping, Sequence
     from pathlib import Path
 
     from transport_matters.cli.launch_profile import LaunchProfile, ManagedSession
@@ -35,6 +35,7 @@ def build_claude_captured_invocation(
     web_runtime: CapturedRunWebRuntime = WEB_RUNTIME_EMBEDDED,
     default_client_passthrough: Sequence[str] = (),
     runtime_home_dir: Path | None = None,
+    launch_fields: Mapping[str, object] | None = None,
 ) -> Callable[[int, int | None], tuple[list[str], dict[str, str], ManagedClient | None]]:
     """Build the retry-safe invocation factory for a captured Claude launch."""
     from transport_matters.cli.home_seed import apply_claude_proxy_env_settings
@@ -85,6 +86,7 @@ def build_claude_captured_invocation(
             owned_source_descriptor=(
                 managed_session.source_descriptor if managed_session is not None else None
             ),
+            launch_fields=launch_fields,
             default_client_passthrough=default_client_passthrough,
         )
         argv = build_mitmdump_argv(

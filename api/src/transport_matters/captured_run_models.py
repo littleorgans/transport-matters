@@ -20,6 +20,7 @@ if TYPE_CHECKING:
 
     from transport_matters.cli.launch_profile import ManagedSession
     from transport_matters.cli.runner import ManagedClient
+    from transport_matters.cli.runtime_home import RuntimeTemplateRef
     from transport_matters.lock import WorkspaceLock
 
 __all__ = [
@@ -61,6 +62,7 @@ class CapturedRunRequest:
     debug: bool
     web_runtime: CapturedRunWebRuntime = WEB_RUNTIME_EMBEDDED
     default_client_passthrough: tuple[str, ...] = ()
+    runtime_template: RuntimeTemplateRef | None = None
 
 
 @dataclass(frozen=True, slots=True)

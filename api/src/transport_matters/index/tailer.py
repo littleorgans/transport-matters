@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING, Any, Protocol, Self
 from transport_matters.index.adapters.base import (
     FileTailSource,
     RunContext,
+    SessionBinding,
     TurnContext,
     decode_source_descriptor,
 )
@@ -39,7 +40,6 @@ if TYPE_CHECKING:
     from transport_matters.index.adapters.base import (
         NormalizedTurn,
         RawRecord,
-        SessionBinding,
         TranscriptAdapter,
         TranscriptSource,
     )
@@ -51,6 +51,15 @@ _FAIL_LOG_INTERVAL_S = 30.0
 
 class _ProvenanceWrite(Protocol):
     def model_copy(self, *, update: dict[str, object]) -> Self: ...
+
+
+def _binding_extra_fields(binding: SessionBinding) -> dict[str, object]:
+    """Return dynamic launch fields attached through model_copy(update=...)."""
+    return {
+        key: value
+        for key, value in binding.__dict__.items()
+        if key not in SessionBinding.model_fields
+    }
 
 
 @dataclass(frozen=True, slots=True)
@@ -462,6 +471,7 @@ async def register_session_cursor(
         # had none, so an external-adoption claude binding still falls through to ``locate``.
         transcript_binding = transcript_binding.model_copy(
             update={
+                **_binding_extra_fields(binding),
                 "minted": binding.minted,
                 "source_descriptor": binding.source_descriptor
                 or transcript_binding.source_descriptor,
