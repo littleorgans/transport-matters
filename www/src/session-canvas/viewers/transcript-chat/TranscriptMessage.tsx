@@ -9,9 +9,16 @@ export interface TranscriptMessageProps {
 
 export function TranscriptMessage({ message }: TranscriptMessageProps) {
   return (
-    <article className="canvas-transcript-message" data-role={message.role}>
+    <article
+      className="canvas-transcript-message"
+      data-kind={message.kind}
+      data-role={message.role}
+    >
       <header className="canvas-transcript-message__header">
         <span>{message.role}</span>
+        {message.wireLabel ? (
+          <span className="canvas-transcript-message__wire-label">{message.wireLabel}</span>
+        ) : null}
         <span>seq {message.seq}</span>
         {message.timestamp ? <span>{formatClockTime(message.timestamp)}</span> : null}
       </header>

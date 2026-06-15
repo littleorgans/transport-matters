@@ -353,6 +353,11 @@
 .canvas-transcript-message[data-role="user"] {
   border-left: 2px solid var(--color-sky);
 }
+.canvas-transcript-message[data-role="wire"],
+.canvas-transcript-message[data-kind="wire_context"] {
+  border-left: 2px solid var(--color-amber);
+  background: color-mix(in srgb, var(--color-amber) 8%, var(--color-surface));
+}
 .canvas-transcript-message__header {
   display: flex;
   flex-wrap: wrap;
@@ -363,6 +368,9 @@
   letter-spacing: 0.08em;
   padding: var(--canvas-gap) var(--canvas-row-padding);
   text-transform: uppercase;
+}
+.canvas-transcript-message__wire-label {
+  color: var(--color-amber);
 }
 .canvas-transcript-message__blocks {
   display: flex;

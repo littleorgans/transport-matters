@@ -35,6 +35,59 @@ describe("TranscriptChatPane", () => {
     await waitFor(() => expect(screen.getByText("hello transcript")).toBeInTheDocument());
   });
 
+  it("renders wire injected turns with their label and affordance", async () => {
+    installMockTransport(() =>
+      jsonResponse({
+        events: [
+          makeSessionEvent({
+            role: "system",
+            body: {
+              kind: "wire_injected",
+              label: "System reminder",
+              parts: [{ type: "text", text: "remember the policy" }],
+            },
+          }),
+        ],
+        nextFromSeq: null,
+      }),
+    );
+
+    renderWithQuery(<TranscriptChatPane {...transcriptProps()} />);
+
+    await waitFor(() => {
+      const message = screen.getByText("remember the policy").closest("article");
+      expect(message).toHaveAttribute("data-kind", "wire_context");
+      expect(message).toHaveAttribute("data-role", "wire");
+      expect(screen.getByText("System reminder")).toBeInTheDocument();
+    });
+  });
+
+  it("renders tool use and tool result bodies", async () => {
+    installMockTransport(() =>
+      jsonResponse({
+        events: [
+          makeSessionEvent({
+            seq: 1,
+            body: { kind: "tool_use", toolName: "Read", input: { file: "a.ts" } },
+          }),
+          makeSessionEvent({
+            seq: 2,
+            body: { kind: "tool_result", toolName: "Read", output: "contents", isError: false },
+          }),
+        ],
+        nextFromSeq: null,
+      }),
+    );
+
+    renderWithQuery(<TranscriptChatPane {...transcriptProps()} />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/tool_use: Read/)).toBeInTheDocument();
+      expect(screen.getByText(/tool_result: Read/)).toBeInTheDocument();
+      expect(screen.getByText(/contents/)).toBeInTheDocument();
+    });
+  });
+
   it("shows an inline retry on backlog errors", async () => {
     installMockTransport(() => jsonResponse({}, 500));
 

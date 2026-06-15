@@ -15,6 +15,26 @@ describe("mapSessionEventToChatItems", () => {
     expect(message?.blocks).toEqual([{ type: "text", text: "prompt", provider_data: null }]);
   });
 
+  it("preserves wire context turns with their label", () => {
+    const [message] = mapSessionEventToChatItems(
+      makeSessionEvent({
+        role: "system",
+        body: {
+          kind: "wire_injected",
+          label: "System reminder",
+          parts: [{ type: "text", text: "remember the policy" }],
+        },
+      }),
+    );
+
+    expect(message?.kind).toBe("wire_context");
+    expect(message?.role).toBe("wire");
+    expect(message?.wireLabel).toBe("System reminder");
+    expect(message?.blocks).toEqual([
+      { type: "text", text: "remember the policy", provider_data: null },
+    ]);
+  });
+
   it("renders meta events from curated fields", () => {
     const [message] = mapSessionEventToChatItems(
       makeSessionEvent({
@@ -53,6 +73,20 @@ describe("mapSessionEventToChatItems", () => {
     const [block] = message?.blocks ?? [];
     const text = block !== undefined && "text" in block ? block.text : "";
     expect(text).toContain("tool_use: Read");
+  });
+
+  it("renders tool results as readable text", () => {
+    const [message] = mapSessionEventToChatItems(
+      makeSessionEvent({
+        body: { kind: "tool_result", toolName: "Read", output: "contents", isError: false },
+      }),
+    );
+
+    expect(message?.blocks[0]?.type).toBe("text");
+    const [block] = message?.blocks ?? [];
+    const text = block !== undefined && "text" in block ? block.text : "";
+    expect(text).toContain("tool_result: Read");
+    expect(text).toContain("contents");
   });
 
   it("branches unknown kinds safely", () => {
