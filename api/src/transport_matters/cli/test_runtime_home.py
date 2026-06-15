@@ -368,6 +368,31 @@ def test_manual_plan_preserves_descriptor_home_and_no_overlay(tmp_path: Path) ->
     assert prepare_runtime_home(plan, working_dir=tmp_path, env={}) is None
 
 
+def test_manual_plan_ignores_invalid_runtime_template(tmp_path: Path) -> None:
+    manual = tmp_path / "manual-codex"
+    manual.mkdir()
+    missing_template = tmp_path / "missing-template"
+
+    plan = plan_runtime_home(
+        CLIENT_NAME_CODEX,
+        home_dir=manual,
+        runtime_template=RuntimeTemplateRef(
+            template_id="codex/base",
+            client_name=CLIENT_NAME_CODEX,
+            template_home=missing_template,
+            provenance={},
+        ),
+        runtime_home_root=tmp_path / "run" / "runtime-home",
+        client_path="/bin/codex",
+        env={},
+        use_runtime_overlay=False,
+    )
+
+    assert plan.mode == RuntimeHomeMode.MANUAL
+    assert plan.content_source == manual
+    assert plan.child_home == manual
+
+
 def test_proxy_only_plan_preserves_manual_home(tmp_path: Path) -> None:
     manual = tmp_path / "manual-codex"
     manual.mkdir()
