@@ -27,7 +27,13 @@ from transport_matters.session.ingest import (
     build_event,
     build_event_batch,
 )
-from transport_matters.session.models import DeadLetterWrite, EventKind, EventRow
+from transport_matters.session.models import (
+    DeadLetterWrite,
+    EventKind,
+    EventRow,
+    SessionPurpose,
+    SessionVisibility,
+)
 from transport_matters.session.pool import async_connect, create_async_pool
 from transport_matters.session.quarantine import DEAD_LETTER_RAW_MAX_BYTES
 from transport_matters.session.writer import CommitResult, SessionWriter
@@ -192,6 +198,33 @@ async def test_session_writer_commits_raw_ir_meta_artifacts_and_reingest(
             row = await cursor.fetchone()
             assert row is not None
             assert row["n"] == 1
+    finally:
+        await writer.aclose()
+
+
+async def test_session_writer_persists_internal_session_classification(
+    test_db: TestDb,
+) -> None:
+    binding = _binding().model_copy(update={"session_id": "internal-session"})
+    batch = build_event_batch(
+        binding,
+        [],
+        session_purpose=SessionPurpose.INTERNAL_SUMMARY,
+        session_visibility=SessionVisibility.HIDDEN,
+    )
+    loop = asyncio.get_running_loop()
+    writer = SessionWriter(
+        create_async_pool(test_db.database_url, min_size=1, max_size=1), loop=loop
+    )
+    try:
+        result = await loop.run_in_executor(None, writer.submit_blocking, batch)
+        assert (result.ok, result.committed, result.last_seq) == (True, 0, None)
+
+        async with await async_connect(test_db.database_url, autocommit=True) as conn:
+            row = await AsyncSessionDao(conn).get_session("internal-session")
+            assert row is not None
+            assert row.session_purpose == SessionPurpose.INTERNAL_SUMMARY
+            assert row.session_visibility == SessionVisibility.HIDDEN
     finally:
         await writer.aclose()
 
