@@ -10,7 +10,13 @@ from transport_matters.session import async_connect, connect, dao_rows
 from transport_matters.session.artifacts import artifact_hash
 from transport_matters.session.async_dao import AsyncSessionDao
 from transport_matters.session.dao import SessionDao
-from transport_matters.session.models import DeadLetterWrite, EventRow, SessionRow
+from transport_matters.session.models import (
+    DeadLetterWrite,
+    EventRow,
+    SessionPurpose,
+    SessionRow,
+    SessionVisibility,
+)
 from transport_matters.session.pool import (
     async_transaction,
     create_async_pool,
@@ -234,6 +240,24 @@ def test_schema_round_trips_session_event_and_artifact(dao: SessionDao) -> None:
     assert with_raw[0].artifacts[0].artifact_hash == artifact.hash
     assert with_raw[0].artifacts[0].media_type == "image/png"
     assert with_raw[0].artifacts[0].size_bytes == len(b"image-bytes")
+
+
+def test_session_classification_defaults_and_internal_values(dao: SessionDao) -> None:
+    inserted = dao.upsert_session(root_session())
+    assert inserted.session_purpose == SessionPurpose.USER
+    assert inserted.session_visibility == SessionVisibility.USER_VISIBLE
+
+    internal = root_session("internal", native_session_id="internal-native").model_copy(
+        update={
+            "session_purpose": SessionPurpose.INTERNAL_SUMMARY,
+            "session_visibility": SessionVisibility.HIDDEN,
+        }
+    )
+    persisted = dao.upsert_session(internal)
+
+    assert persisted.session_purpose == SessionPurpose.INTERNAL_SUMMARY
+    assert persisted.session_visibility == SessionVisibility.HIDDEN
+    assert dao.get_session("internal") == persisted
 
 
 def test_get_events_for_owner_returns_lightweight_read_rows(dao: SessionDao) -> None:

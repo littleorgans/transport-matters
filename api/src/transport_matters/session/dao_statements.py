@@ -13,6 +13,8 @@ SESSION_COLUMN_NAMES = (
     "source_descriptor",
     "home_dir",
     "owner",
+    "session_purpose",
+    "session_visibility",
     "status",
     "title",
     "parent_session_id",
@@ -68,13 +70,13 @@ LIMIT %(limit)s
 UPSERT_SESSION_SQL = f"""
 INSERT INTO "session" (
     session_id, provider, cli, run_id, cwd, workspace_slug, workspace_hash,
-    native_session_id, minted, source_descriptor, home_dir, owner, status, title,
-    parent_session_id, forked_at_seq, started_at
+    native_session_id, minted, source_descriptor, home_dir, owner, session_purpose,
+    session_visibility, status, title, parent_session_id, forked_at_seq, started_at
 ) VALUES (
     %(session_id)s, %(provider)s, %(cli)s, %(run_id)s, %(cwd)s, %(workspace_slug)s,
     %(workspace_hash)s, %(native_session_id)s, %(minted)s, %(source_descriptor)s,
-    %(home_dir)s, %(owner)s, %(status)s, %(title)s, %(parent_session_id)s,
-    %(forked_at_seq)s, %(started_at)s
+    %(home_dir)s, %(owner)s, %(session_purpose)s, %(session_visibility)s, %(status)s,
+    %(title)s, %(parent_session_id)s, %(forked_at_seq)s, %(started_at)s
 )
 ON CONFLICT (session_id) DO UPDATE SET
     provider = EXCLUDED.provider,
@@ -88,6 +90,8 @@ ON CONFLICT (session_id) DO UPDATE SET
     source_descriptor = COALESCE("session".source_descriptor, EXCLUDED.source_descriptor),
     home_dir = COALESCE("session".home_dir, EXCLUDED.home_dir),
     owner = EXCLUDED.owner,
+    session_purpose = EXCLUDED.session_purpose,
+    session_visibility = EXCLUDED.session_visibility,
     status = EXCLUDED.status,
     title = COALESCE(EXCLUDED.title, "session".title),
     parent_session_id = COALESCE("session".parent_session_id, EXCLUDED.parent_session_id),

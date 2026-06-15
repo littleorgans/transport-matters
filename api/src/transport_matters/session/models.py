@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import StrEnum
-from typing import Any, Literal
+from typing import Any, Final, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -11,6 +11,29 @@ class SessionStatus(StrEnum):
     ACTIVE = "active"
     COMPLETED = "completed"
     ARCHIVED = "archived"
+
+
+class SessionPurpose(StrEnum):
+    USER = "user"
+    CONTINUATION = "continuation"
+    INTERNAL_SUMMARY = "internal_summary"
+    INTERNAL_INDEXING = "internal_indexing"
+    INTERNAL_EVAL = "internal_eval"
+    SYSTEM_MAINTENANCE = "system_maintenance"
+
+
+class SessionVisibility(StrEnum):
+    USER_VISIBLE = "user_visible"
+    HIDDEN = "hidden"
+    DIAGNOSTIC = "diagnostic"
+
+
+SESSION_PURPOSE_VALUES: Final[tuple[str, ...]] = tuple(item.value for item in SessionPurpose)
+SESSION_VISIBILITY_VALUES: Final[tuple[str, ...]] = tuple(item.value for item in SessionVisibility)
+USER_HISTORY_PURPOSE_VALUES: Final[tuple[str, ...]] = (
+    SessionPurpose.USER.value,
+    SessionPurpose.CONTINUATION.value,
+)
 
 
 class EventKind(StrEnum):
@@ -47,6 +70,8 @@ class SessionRow(BaseModel):
     source_descriptor: JsonObject | None = None
     home_dir: str | None = None
     owner: str = "local"
+    session_purpose: SessionPurpose = SessionPurpose.USER
+    session_visibility: SessionVisibility = SessionVisibility.USER_VISIBLE
     status: SessionStatus = SessionStatus.ACTIVE
     title: str | None = None
     parent_session_id: str | None = None

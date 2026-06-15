@@ -2,6 +2,9 @@ from transport_matters.session.artifacts import ARTIFACT_HASH_ALGO, artifact_has
 from transport_matters.session.async_dao import AsyncSessionDao
 from transport_matters.session.dao import SessionDao
 from transport_matters.session.models import (
+    SESSION_PURPOSE_VALUES,
+    SESSION_VISIBILITY_VALUES,
+    USER_HISTORY_PURPOSE_VALUES,
     ArtifactRow,
     ChildSessionRow,
     DeadLetterWrite,
@@ -10,8 +13,10 @@ from transport_matters.session.models import (
     EventReadRow,
     EventRow,
     InlineArtifact,
+    SessionPurpose,
     SessionRow,
     SessionStatus,
+    SessionVisibility,
 )
 from transport_matters.session.pool import (
     async_connect,
@@ -24,6 +29,9 @@ from transport_matters.session.pool import (
 
 __all__ = [
     "ARTIFACT_HASH_ALGO",
+    "SESSION_PURPOSE_VALUES",
+    "SESSION_VISIBILITY_VALUES",
+    "USER_HISTORY_PURPOSE_VALUES",
     "ArtifactRow",
     "AsyncSessionDao",
     "ChildSessionRow",
@@ -34,8 +42,10 @@ __all__ = [
     "EventRow",
     "InlineArtifact",
     "SessionDao",
+    "SessionPurpose",
     "SessionRow",
     "SessionStatus",
+    "SessionVisibility",
     "artifact_hash",
     "async_connect",
     "async_transaction",

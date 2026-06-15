@@ -16,7 +16,14 @@ from transport_matters.ir import (
     UnknownBlock,
 )
 from transport_matters.session.artifacts import artifact_hash, inline_artifacts_from_parts
-from transport_matters.session.models import EventKind, EventRow, InlineArtifact, SessionRow
+from transport_matters.session.models import (
+    EventKind,
+    EventRow,
+    InlineArtifact,
+    SessionPurpose,
+    SessionRow,
+    SessionVisibility,
+)
 
 if TYPE_CHECKING:
     from transport_matters.index.adapters.base import (
@@ -59,7 +66,12 @@ class EventBatch(BaseModel):
     events: tuple[EventWrite, ...] = Field(default_factory=tuple)
 
 
-def build_session(binding: SessionBinding) -> SessionRow:
+def build_session(
+    binding: SessionBinding,
+    *,
+    session_purpose: SessionPurpose = SessionPurpose.USER,
+    session_visibility: SessionVisibility = SessionVisibility.USER_VISIBLE,
+) -> SessionRow:
     """Build the session row carried by a transcript cursor binding."""
     return SessionRow(
         session_id=binding.session_id,
@@ -73,6 +85,8 @@ def build_session(binding: SessionBinding) -> SessionRow:
         minted=binding.minted,
         source_descriptor=_descriptor_json(binding.source_descriptor),
         home_dir=binding.home_dir,
+        session_purpose=session_purpose,
+        session_visibility=session_visibility,
         title=binding.title,
         parent_session_id=binding.parent_session_id,
         forked_at_seq=binding.forked_at_seq,
@@ -80,9 +94,22 @@ def build_session(binding: SessionBinding) -> SessionRow:
     )
 
 
-def build_event_batch(binding: SessionBinding, events: list[EventWrite]) -> EventBatch:
+def build_event_batch(
+    binding: SessionBinding,
+    events: list[EventWrite],
+    *,
+    session_purpose: SessionPurpose = SessionPurpose.USER,
+    session_visibility: SessionVisibility = SessionVisibility.USER_VISIBLE,
+) -> EventBatch:
     """Build the atomic writer batch for one cursor poll."""
-    return EventBatch(session=build_session(binding), events=tuple(events))
+    return EventBatch(
+        session=build_session(
+            binding,
+            session_purpose=session_purpose,
+            session_visibility=session_visibility,
+        ),
+        events=tuple(events),
+    )
 
 
 def build_event(record: RawRecord, turn: NormalizedTurn | None, ctx: TurnContext) -> EventWrite:
