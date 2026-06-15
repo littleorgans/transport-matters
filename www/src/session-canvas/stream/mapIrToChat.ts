@@ -9,6 +9,7 @@ export interface TranscriptMessageModel {
   blocks: ContentBlock[];
   timestamp: string | null;
   wireLabel: string | null;
+  nativePayload: Record<string, unknown> | null;
 }
 
 export type ChatItem = TranscriptMessageModel;
@@ -28,7 +29,7 @@ function mapSessionEventToTranscriptMessage(
 }
 
 function mapMetaEvent(event: SessionEventView): TranscriptMessageModel {
-  return buildMessage(event, "meta", [metadataBlock(event)]);
+  return buildMessage(event, "meta", [fallbackBlock(event)]);
 }
 
 function mapUnknownEvent(event: SessionEventView): TranscriptMessageModel {
@@ -50,6 +51,7 @@ function buildMessage(
     blocks,
     timestamp: event.ts,
     wireLabel,
+    nativePayload: event.nativePayload,
   };
 }
 
@@ -58,7 +60,7 @@ function bodyBlocks(event: SessionEventView): ContentBlock[] {
   if (body.kind === "user" || body.kind === "assistant" || body.kind === "wire_injected") {
     return body.parts.length > 0
       ? body.parts.map((part) => textBlock(part.text))
-      : [metadataBlock(event)];
+      : [fallbackBlock(event)];
   }
   if (body.kind === "tool_use") {
     return [
@@ -81,9 +83,17 @@ function bodyBlocks(event: SessionEventView): ContentBlock[] {
 function mapWireInjectedEvent(event: SessionEventView): TranscriptMessageModel {
   const body = event.body;
   if (body.kind !== "wire_injected") return buildMessage(event, "unknown", [metadataBlock(event)]);
-  const blocks =
-    body.parts.length > 0 ? body.parts.map((part) => textBlock(part.text)) : [metadataBlock(event)];
-  return buildMessage(event, "wire_context", blocks, body.label);
+  return buildMessage(event, "wire_context", bodyBlocks(event), body.label);
+}
+
+function fallbackBlock(event: SessionEventView): ContentBlock {
+  return nativePayloadBlock(event) ?? metadataBlock(event);
+}
+
+function nativePayloadBlock(event: SessionEventView): ContentBlock | null {
+  return event.nativePayload === null
+    ? null
+    : textBlock(JSON.stringify(event.nativePayload, null, 2));
 }
 
 function metadataBlock(event: SessionEventView): ContentBlock {

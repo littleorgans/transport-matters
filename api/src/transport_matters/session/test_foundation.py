@@ -301,16 +301,15 @@ def test_session_upsert_preserves_existing_classification(dao: SessionDao) -> No
     assert persisted_internal.session_visibility == SessionVisibility.HIDDEN
 
 
-def test_get_events_for_owner_returns_lightweight_read_rows(dao: SessionDao) -> None:
+def test_get_events_for_owner_preserves_native_raw_payload(dao: SessionDao) -> None:
     dao.upsert_session(root_session())
-    dao.insert_event(
-        event(search_text="large image").model_copy(update={"raw": {"image_base64": "x" * 200_000}})
-    )
+    raw = {"image_base64": "x" * 200_000}
+    dao.insert_event(event(search_text="large image").model_copy(update={"raw": raw}))
 
     rows = dao.get_events_for_owner("s1", owner="local")
 
     assert len(rows) == 1
-    assert not hasattr(rows[0], "raw")
+    assert rows[0].raw == raw
     assert rows[0].ir == {"parts": [{"type": "text", "text": "large image"}]}
 
 

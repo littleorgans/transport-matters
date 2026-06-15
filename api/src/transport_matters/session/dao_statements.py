@@ -47,7 +47,7 @@ EVENT_COLUMN_NAMES = (
     "search_text",
     "created_at",
 )
-EVENT_READ_COLUMN_NAMES = tuple(name for name in EVENT_COLUMN_NAMES if name != "raw")
+EVENT_READ_COLUMN_NAMES = EVENT_COLUMN_NAMES
 EVENT_COLUMNS = ", ".join(EVENT_COLUMN_NAMES)
 EVENT_OWNER_COLUMNS = ", ".join(f"e.{name}" for name in EVENT_COLUMN_NAMES)
 EVENT_READ_COLUMNS = ", ".join(f"e.{name}" for name in EVENT_READ_COLUMN_NAMES)

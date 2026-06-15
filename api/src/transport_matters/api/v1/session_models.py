@@ -132,6 +132,7 @@ class TranscriptEventView(PublicSessionModel):
     role: str | None
     ts: datetime | None
     body: TranscriptEventBody
+    native_payload: dict[str, Any] | None
     resource_refs: list[TranscriptResourceRef] = Field(default_factory=list)
 
 
@@ -194,6 +195,7 @@ def transcript_event_view(row: EventReadRow, *, turn_index: int | None) -> Trans
         role=row.role,
         ts=row.ts,
         body=_event_body(row),
+        native_payload=row.raw,
     )
 
 

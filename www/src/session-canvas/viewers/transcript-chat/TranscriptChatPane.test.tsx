@@ -46,6 +46,13 @@ describe("TranscriptChatPane", () => {
               label: "System reminder",
               parts: [{ type: "text", text: "remember the policy" }],
             },
+            nativePayload: {
+              type: "attachment",
+              attachment: {
+                type: "hook_success",
+                stdout: "remember the policy",
+              },
+            },
           }),
         ],
         nextFromSeq: null,
@@ -59,6 +66,7 @@ describe("TranscriptChatPane", () => {
       expect(message).toHaveAttribute("data-kind", "wire_context");
       expect(message).toHaveAttribute("data-role", "wire");
       expect(screen.getByText("System reminder")).toBeInTheDocument();
+      expect(screen.getByText("view raw")).toBeInTheDocument();
     });
   });
 

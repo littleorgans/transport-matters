@@ -35,7 +35,7 @@ describe("mapSessionEventToChatItems", () => {
     ]);
   });
 
-  it("renders meta events from curated fields", () => {
+  it("renders meta events from native payload", () => {
     const [message] = mapSessionEventToChatItems(
       makeSessionEvent({
         kind: "meta",
@@ -44,6 +44,10 @@ describe("mapSessionEventToChatItems", () => {
         turnIndex: 3,
         ts: "2026-06-06T18:00:00Z",
         body: { kind: "wire_injected", label: "meta", parts: [] },
+        nativePayload: {
+          type: "session_meta",
+          payload: { id: "native-1", cwd: "/workspace" },
+        },
       }),
     );
 
@@ -51,13 +55,49 @@ describe("mapSessionEventToChatItems", () => {
     expect(message?.role).toBe("metadata");
     expect(message?.blocks[0]).toEqual({
       type: "text",
-      text: [
-        "kind: meta",
-        "seq: 7",
-        "turn_index: 3",
-        "ts: 2026-06-06T18:00:00Z",
-        "body: wire_injected",
-      ].join("\n"),
+      text: JSON.stringify(
+        {
+          type: "session_meta",
+          payload: { id: "native-1", cwd: "/workspace" },
+        },
+        null,
+        2,
+      ),
+      provider_data: null,
+    });
+  });
+
+  it("renders empty wire injected cards from native payload", () => {
+    const [message] = mapSessionEventToChatItems(
+      makeSessionEvent({
+        role: "system",
+        body: { kind: "wire_injected", label: "Hook success", parts: [] },
+        nativePayload: {
+          type: "attachment",
+          attachment: {
+            type: "hook_success",
+            command: "pwd",
+            stdout: "Injected reminder text",
+          },
+        },
+      }),
+    );
+
+    expect(message?.kind).toBe("wire_context");
+    expect(message?.blocks[0]).toEqual({
+      type: "text",
+      text: JSON.stringify(
+        {
+          type: "attachment",
+          attachment: {
+            type: "hook_success",
+            command: "pwd",
+            stdout: "Injected reminder text",
+          },
+        },
+        null,
+        2,
+      ),
       provider_data: null,
     });
   });

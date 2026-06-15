@@ -162,6 +162,7 @@ class EventReadRow(BaseModel):
     is_sidechain: bool = False
     ts: datetime | None = None
     model: str | None = None
+    raw: JsonObject | None = None
     ir: JsonObject | None = None
     source_path: str | None = None
     source_line: int | None = None

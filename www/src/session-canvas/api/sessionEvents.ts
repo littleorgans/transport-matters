@@ -25,6 +25,7 @@ export interface SessionEventView {
   role: string | null;
   ts: string | null;
   body: TranscriptEventBody;
+  nativePayload: Record<string, unknown> | null;
   resourceRefs: TranscriptResourceRef[];
 }
 
