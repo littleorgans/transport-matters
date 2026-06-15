@@ -1,10 +1,13 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { presetThemes } from "../theme/presets";
 import { FRONTEND_STORAGE_KEYS } from "./persistence";
-import { useThemeStore } from "./themeStore";
+import { migrateThemeState, useThemeStore } from "./themeStore";
 
 const littleorgans = presetThemes[0];
 if (!littleorgans) throw new Error("expected bundled presets");
+
+const openWater = presetThemes.find((theme) => theme.id === "open-water");
+if (!openWater) throw new Error("expected open-water preset");
 
 beforeEach(() => {
   localStorage.clear();
@@ -55,5 +58,47 @@ describe("themeStore", () => {
     expect(raw).not.toBeNull();
     const persisted = JSON.parse(raw ?? "{}") as { state: { theme: { id: string } | null } };
     expect(persisted.state.theme?.id).toBe("littleorgans");
+  });
+
+  describe("migrateThemeState", () => {
+    it("resets to the default theme when the persisted payload is absent", () => {
+      expect(() => migrateThemeState(undefined)).not.toThrow();
+      const migrated = migrateThemeState(undefined);
+      expect(migrated.theme?.id).toBe("open-water");
+      expect(migrated.liveDayCycle).toBe(true);
+    });
+
+    it("resets to the default theme when the versioned payload is malformed", () => {
+      for (const malformed of [null, "corrupted", 42, [openWater]]) {
+        expect(() => migrateThemeState(malformed)).not.toThrow();
+        expect(migrateThemeState(malformed).theme?.id).toBe("open-water");
+        expect(migrateThemeState(malformed).liveDayCycle).toBe(true);
+      }
+    });
+
+    it("resets the theme when a record payload has no usable theme", () => {
+      for (const malformed of [{}, { theme: undefined }, { theme: "open-water" }]) {
+        const migrated = migrateThemeState(malformed);
+        expect(migrated.theme?.id).toBe("open-water");
+        expect(migrated.theme).not.toBeUndefined();
+        expect(migrated.liveDayCycle).toBe(true);
+      }
+    });
+
+    it("preserves an explicit unthemed (theme: null) choice and its liveDayCycle", () => {
+      const migrated = migrateThemeState({ theme: null, liveDayCycle: false });
+      expect(migrated.theme).toBeNull();
+      expect(migrated.liveDayCycle).toBe(false);
+    });
+
+    it("rehydrates a legacy reference-sea-ii theme onto reference-sea", () => {
+      const legacyPayload = {
+        theme: { ...openWater, settings: { ...openWater.settings, sceneId: "reference-sea-ii" } },
+        liveDayCycle: true,
+      };
+      const migrated = migrateThemeState(legacyPayload);
+      expect(migrated.theme?.settings.sceneId).toBe("reference-sea");
+      expect(migrated.liveDayCycle).toBe(true);
+    });
   });
 });
