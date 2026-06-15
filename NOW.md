@@ -14,6 +14,14 @@ Launch Claude/Codex from a **pristine `.agent-runtimes/<name>` template** into a
 
 Three tracks, no committed order yet. Fork/share/eval are the destination, not this phase.
 
+## Ready to build — B6 curated `/v1` API
+
+The product API seam #2 and #3 sit on, and the gate the ephemeral-home Slice 4 waits on. **Design ratified** (warroom-reviewed, 0 blockers): [`NOTES/captured-canvas/b6-api-spec.md`](NOTES/captured-canvas/b6-api-spec.md). One converged `/v1` namespace replacing `/api/*` in place; curated product nouns (workspace, session, transcript, run, resource) behind the RunManager/session boundary, no internals on the wire.
+
+- Build order: **§2 session schema** (`purpose`/`visibility`, isolated first slice) → **runs family** (`/v1`, curated `Run`, the `terminate` rename — this is "B6 step 2") → **sessions family** (powers #3) → **continuation** (`continueFromSessionId`, binds the ephemeral-home Slice 1 carrier — now delivered) → **canvas-layout store**.
+- Run-lifecycle vocabulary (settled): `interrupt` (halt the turn, run lives — ESC over the WS) / `detach` (viewer leaves) / `terminate` (run dies, the REST teardown). Retires the overloaded `stop`.
+- Full remaining-work backlog: [`NOTES/WORK-REMAINING.md`](NOTES/WORK-REMAINING.md).
+
 ## 1. User onboarding
 
 First-run welcome flow in the desktop.
@@ -30,10 +38,11 @@ Make the desktop opinionated. tm owns the launch config; it is not a flag passth
 
 - Stop spawning Claude in the terminal. The canvas/pane path (`prepare_captured_run` → PTY → xterm via `RunManager`) becomes the only desktop launch.
 - Remove the current options and passthroughs (`transport-matters desktop --help`). tm manages and optimizes options inside the app instead of forwarding raw flags.
+- Run lifecycle + curated run API land via the B6 runs family (`terminate`/`interrupt`/`detach` vocab — see *Ready to build*).
 
 ## 3. Session transcripts (read surface)
 
-Browse and read past sessions. Non-interactive.
+Browse and read past sessions. Non-interactive. Served by the B6 sessions family (curated `Session`/`TranscriptEvent`/`timeline`); **import** = `WORK-REMAINING` §9.
 
 - **import**: persist the CLI's own recorded transcript stream into the DB.
 - **search**: query across stored transcripts.
