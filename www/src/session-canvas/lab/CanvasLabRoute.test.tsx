@@ -10,7 +10,7 @@ import { resetCapabilitiesStoreForTests, useCapabilitiesStore } from "./capabili
 
 vi.mock("../../api", () => ({
   createCapturedRun: vi.fn(),
-  deleteRun: vi.fn(),
+  terminateRun: vi.fn(),
 }));
 vi.mock("../../ambient/createAmbientBackground");
 

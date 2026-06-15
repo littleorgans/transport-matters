@@ -382,7 +382,7 @@ export async function fetchCapabilities(): Promise<CapabilitiesResponse> {
 
 /**
  * Spawn a captured managed-CLI run (real CLI in a PTY, traffic through the TM
- * reverse proxy) via `POST /api/runs` and return its `runId`. Create is separate
+ * reverse proxy) via `POST /v1/runs` and return its `runId`. Create is separate
  * from attach: the pane attaches to the returned run over a WebSocket, so the run
  * survives a detach. `cwd` is an absolute workspace dir; omitting it lets the
  * backend resolve its launch workspace.
@@ -396,7 +396,7 @@ export async function createCapturedRun(
 ): Promise<string> {
   const body = { cli, ...(cwd === undefined ? {} : { cwd }), oscColorReplies };
   const response = await requestJson<{ run: { runId: string } }>(
-    "/api/runs",
+    "/v1/runs",
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -408,66 +408,53 @@ export async function createCapturedRun(
   return response.run.runId;
 }
 
-/** Explicitly stop a managed run via `DELETE /api/runs/{runId}`. */
-export async function deleteRun(runId: string): Promise<void> {
+/** Explicitly terminate a managed run via `POST /v1/runs/{runId}/terminate`. */
+export async function terminateRun(runId: string): Promise<void> {
   await requestVoid(
-    `/api/runs/${encodeURIComponent(runId)}`,
-    { method: "DELETE" },
-    `Failed to stop run ${runId}`,
+    `/v1/runs/${encodeURIComponent(runId)}/terminate`,
+    { method: "POST" },
+    `Failed to terminate run ${runId}`,
     true,
   );
 }
 
 /** Lifecycle of a managed captured run. Mirrors the backend `RunState` enum. */
-export type RunState = "starting" | "running" | "stopping" | "exited" | "failed";
+export type RunState = "RUNNING" | "TERMINATING" | "TERMINATED" | "EXITED" | "FAILED";
+export type RunEndReason = "explicit" | "idle-timeout" | "shutdown" | "deploy-restart";
 
 /**
- * A managed run as the director surface sees it: enough to list, attach, and stop a
- * run without the raw bytes. Optional fields are omitted by the backend when unset
- * (`exclude_none`), so they are optional here too. Mirrors the backend `RunViewModel`.
+ * A managed run as the curated B6 surface sees it. Optional fields are omitted by the
+ * backend when unset, so they are optional here too.
  */
 export interface RunView {
   runId: string;
+  workspaceId: string;
+  sessionId: string;
   cli: CliName;
-  cwd: string;
-  storageDir: string;
-  proxyPort: number;
-  webPort?: number;
-  nativeSessionId?: string;
   state: RunState;
-  viewerCount: number;
+  endReason?: RunEndReason;
+  error?: string;
   createdAt: string;
-  startedAt: string;
-  updatedAt: string;
-  viewerlessSince?: string;
-  exitCode?: number;
-  stopReason?: string;
-  scrollbackBytes: number;
-  scrollbackLimitBytes: number;
 }
 
-/** Optional server-side filters for `listRuns` (`GET /api/runs?cli&cwd&state`). */
+/** Optional server-side filters for `listRuns` (`GET /v1/runs?state`). */
 export interface RunFilters {
-  cli?: CliName;
-  cwd?: string;
   state?: RunState;
 }
 
 /**
- * List managed runs via `GET /api/runs`, optionally filtered by cli, cwd, or state.
+ * List managed runs via `GET /v1/runs`, optionally filtered by state.
  * Read-only: this never spawns a run. The director surface uses it to show live runs
- * an operator can attach to or stop.
+ * an operator can attach to or terminate.
  */
 export async function listRuns(filters?: RunFilters): Promise<RunView[]> {
   const query = new URLSearchParams();
-  if (filters?.cli !== undefined) query.set("cli", filters.cli);
-  if (filters?.cwd !== undefined) query.set("cwd", filters.cwd);
   if (filters?.state !== undefined) query.set("state", filters.state);
   const suffix = query.toString();
-  const response = await requestJson<{ runs: RunView[] }>(
-    suffix ? `/api/runs?${suffix}` : "/api/runs",
+  const response = await requestJson<{ items: RunView[]; nextCursor: string | null }>(
+    suffix ? `/v1/runs?${suffix}` : "/v1/runs",
     undefined,
     "Failed to list captured runs",
   );
-  return response.runs;
+  return response.items;
 }

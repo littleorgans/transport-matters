@@ -7,13 +7,13 @@ import { resetCanvasLabStoreForTests, useCanvasLabStore } from "./canvasLabStore
 import { CANVAS_LAB_STORAGE_VERSION } from "./canvasLabStore.persistence";
 import { capturedPaneIds } from "./canvasLabStore.testSupport";
 
-const { createCapturedRunMock, deleteRunMock } = vi.hoisted(() => ({
+const { createCapturedRunMock, terminateRunMock } = vi.hoisted(() => ({
   createCapturedRunMock: vi.fn(),
-  deleteRunMock: vi.fn(),
+  terminateRunMock: vi.fn(),
 }));
 vi.mock("../../api", () => ({
   createCapturedRun: createCapturedRunMock,
-  deleteRun: deleteRunMock,
+  terminateRun: terminateRunMock,
 }));
 
 const store = useCanvasLabStore.getState;
@@ -52,7 +52,7 @@ describe("canvasLabStore persistence adapter", () => {
     resetCanvasLabStoreForTests();
     resetCapturedRunStoreForTests();
     createCapturedRunMock.mockReset();
-    deleteRunMock.mockReset();
+    terminateRunMock.mockReset();
   });
 
   it("keeps pane titles identical across a reload, including the incremental index", async () => {

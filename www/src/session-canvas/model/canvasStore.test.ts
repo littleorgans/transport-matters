@@ -9,14 +9,14 @@ import { resetCapturedRunStoreForTests, useCapturedRunStore } from "./capturedRu
 import { planExpandLayout } from "./expandLayout";
 import { openPaneIds } from "./layoutPlanning";
 
-const { createCapturedRunMock, deleteRunMock } = vi.hoisted(() => ({
+const { createCapturedRunMock, terminateRunMock } = vi.hoisted(() => ({
   createCapturedRunMock: vi.fn(),
-  deleteRunMock: vi.fn(),
+  terminateRunMock: vi.fn(),
 }));
 
 vi.mock("../../api", () => ({
   createCapturedRun: createCapturedRunMock,
-  deleteRun: deleteRunMock,
+  terminateRun: terminateRunMock,
 }));
 
 type CanvasStoreSnapshot = ReturnType<typeof useCanvasStore.getState>;
@@ -68,8 +68,8 @@ describe("canvasStore", () => {
     localStorage.clear();
     resetCapturedRunStoreForTests();
     createCapturedRunMock.mockReset();
-    deleteRunMock.mockReset();
-    deleteRunMock.mockResolvedValue(undefined);
+    terminateRunMock.mockReset();
+    terminateRunMock.mockResolvedValue(undefined);
   });
 
   it("starts with a stable picker pane", () => {
@@ -249,8 +249,8 @@ describe("canvasStore", () => {
       useCanvasStore.getState().closePane("claude:k1");
       vi.runAllTimers();
 
-      expect(deleteRunMock).toHaveBeenCalledWith("run-1");
-      expect(deleteRunMock).toHaveBeenCalledTimes(1);
+      expect(terminateRunMock).toHaveBeenCalledWith("run-1");
+      expect(terminateRunMock).toHaveBeenCalledTimes(1);
       expect(useCapturedRunStore.getState().runs["claude:k1"]).toBeUndefined();
       expect(useCanvasStore.getState().panes["claude:k1"]).toBeUndefined();
     } finally {
@@ -268,8 +268,8 @@ describe("canvasStore", () => {
       useCanvasStore.getState().closePane(paneId);
       vi.runAllTimers();
 
-      expect(deleteRunMock).toHaveBeenCalledWith("run-1");
-      expect(deleteRunMock).toHaveBeenCalledTimes(1);
+      expect(terminateRunMock).toHaveBeenCalledWith("run-1");
+      expect(terminateRunMock).toHaveBeenCalledTimes(1);
       expect(useCapturedRunStore.getState().runs[paneId]).toBeUndefined();
       expect(useCanvasStore.getState().panes[paneId]).toBeUndefined();
     } finally {
@@ -284,8 +284,8 @@ describe("canvasStore", () => {
 
     useCanvasStore.getState().closeDockedPane(paneId);
 
-    expect(deleteRunMock).toHaveBeenCalledWith("run-1");
-    expect(deleteRunMock).toHaveBeenCalledTimes(1);
+    expect(terminateRunMock).toHaveBeenCalledWith("run-1");
+    expect(terminateRunMock).toHaveBeenCalledTimes(1);
     expect(useCapturedRunStore.getState().runs["claude:k1"]).toBeUndefined();
     expect(useCanvasStore.getState().docked).toEqual([]);
   });
@@ -306,7 +306,7 @@ describe("canvasStore", () => {
     useCanvasStore.getState().closeDockedPane(paneId);
 
     expect(createCapturedRunMock).not.toHaveBeenCalled();
-    expect(deleteRunMock).toHaveBeenCalledWith("run-rehydrated");
+    expect(terminateRunMock).toHaveBeenCalledWith("run-rehydrated");
     expect(useCapturedRunStore.getState().runs[runKey]).toBeUndefined();
     expect(useCanvasStore.getState().docked).toEqual([]);
   });

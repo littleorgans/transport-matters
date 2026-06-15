@@ -19,7 +19,7 @@ const DOCK_TITLE_MAX = 44;
 
 // Canvas-resident dock: a count-badged chip in the viewport's top band whose menu lists the locally
 // minimized panes; selecting one restores it. Sourced ONLY from local minimized state (Option A),
-// no GET /api/runs, no liveness polling, no per-row attach/stop. Screen-space and rendered through
+// no GET /v1/runs, no liveness polling, no per-row attach or terminate. Screen-space and rendered through
 // LayoutCanvas's overlay slot, so it is immune to pan/zoom and survives the lab top-bar TAB hide.
 // Shared (components/, not lab/) so lab and production render the same dock affordance.
 export interface PaneDockProps {

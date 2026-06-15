@@ -200,6 +200,7 @@ def create_app() -> FastAPI:
         return {"status": "ok"}
 
     app.include_router(api_router, prefix="/api")
+    app.include_router(run_routes.router, prefix="/v1", tags=["runs"])
 
     from pathlib import Path
 

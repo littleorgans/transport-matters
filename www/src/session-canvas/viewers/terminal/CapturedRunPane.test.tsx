@@ -6,8 +6,8 @@ import { resolvePasteHandle } from "./pasteRegistry";
 
 // xterm renders to a real canvas/WebGL surface that jsdom cannot host, so the
 // terminal is mocked (as in TerminalPane.test). The point under test is the
-// managed-run lifecycle: the pane spawns a run via POST /api/runs (or re-attaches
-// a persisted run id), attaches its terminal WebSocket to /api/runs/{id}/terminal,
+// managed-run lifecycle: the pane spawns a run via POST /v1/runs (or re-attaches
+// a persisted run id), attaches its terminal WebSocket to /v1/runs/{id}/terminal,
 // and turns a spawn failure or run.error frame into a banner. The raw socket
 // protocol is proven separately in terminalSocket.test.ts.
 const { terminals, MockTerminal, MockFitAddon } = vi.hoisted(() => {
@@ -38,16 +38,16 @@ const { terminals, MockTerminal, MockFitAddon } = vi.hoisted(() => {
   return { terminals, MockTerminal, MockFitAddon };
 });
 
-const { createCapturedRunMock, deleteRunMock } = vi.hoisted(() => ({
+const { createCapturedRunMock, terminateRunMock } = vi.hoisted(() => ({
   createCapturedRunMock: vi.fn(),
-  deleteRunMock: vi.fn(),
+  terminateRunMock: vi.fn(),
 }));
 
 vi.mock("@xterm/xterm", () => ({ Terminal: MockTerminal }));
 vi.mock("@xterm/addon-fit", () => ({ FitAddon: MockFitAddon }));
 vi.mock("../../../api", () => ({
   createCapturedRun: createCapturedRunMock,
-  deleteRun: deleteRunMock,
+  terminateRun: terminateRunMock,
 }));
 
 const sockets: MockWebSocket[] = [];
@@ -75,7 +75,7 @@ describe("CapturedRunPane", () => {
     localStorage.clear();
     resetCapturedRunStoreForTests();
     createCapturedRunMock.mockReset();
-    deleteRunMock.mockReset();
+    terminateRunMock.mockReset();
     vi.stubGlobal("WebSocket", MockWebSocket);
   });
 
@@ -91,7 +91,7 @@ describe("CapturedRunPane", () => {
 
     await waitFor(() => expect(sockets).toHaveLength(1));
     expect(createCapturedRunMock).toHaveBeenCalledWith("claude", undefined, true);
-    expect(only(sockets).url).toMatch(/\/api\/runs\/run-abc123\/terminal\?cols=80&rows=24$/);
+    expect(only(sockets).url).toMatch(/\/v1\/runs\/run-abc123\/terminal\?cols=80&rows=24$/);
   });
 
   it("uses the core OSC color replies toggle at spawn time", async () => {
@@ -113,7 +113,7 @@ describe("CapturedRunPane", () => {
 
     await waitFor(() => expect(sockets).toHaveLength(1));
     expect(createCapturedRunMock).not.toHaveBeenCalled();
-    expect(only(sockets).url).toMatch(/\/api\/runs\/run-persisted\/terminal\?cols=80&rows=24$/);
+    expect(only(sockets).url).toMatch(/\/v1\/runs\/run-persisted\/terminal\?cols=80&rows=24$/);
   });
 
   it("registers a paste handle for its pane id and deregisters on unmount", async () => {
@@ -160,7 +160,7 @@ describe("CapturedRunPane", () => {
     expect(alert).toHaveTextContent(/Codex/);
   });
 
-  it("shows a spawn-failure banner when POST /api/runs fails", async () => {
+  it("shows a spawn-failure banner when POST /v1/runs fails", async () => {
     createCapturedRunMock.mockRejectedValue(new Error("no claude on PATH"));
 
     render(<CapturedRunPane runKey="claude:k1" provider="claude" />);

@@ -2,7 +2,7 @@
 // (api/v1/run_routes.py). The backend sends a `run.terminal.ready` frame, then
 // scrollback bytes, then `run.terminal.scrollback-end` before live PTY output,
 // and a `run.error` frame on any attach/runtime failure (run_not_found,
-// run_not_attachable, run_stopped, run_stale, ...). The captured pane only
+// run_not_attachable, run_terminated, run_stale, ...). The captured pane only
 // needs to surface errors; field names mirror the backend `run.error` payload exactly.
 
 export interface RunErrorFrame {

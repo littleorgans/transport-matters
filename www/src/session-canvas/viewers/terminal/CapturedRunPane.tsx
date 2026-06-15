@@ -20,7 +20,7 @@ export interface CapturedRunPaneProps {
  * A captured managed-CLI session (Claude or Codex) in a canvas pane: the desktop
  * equivalent of `transport-matters {provider}`, with the agent's traffic routed
  * through the TM reverse proxy. Each pane owns its OWN server-managed run, keyed by
- * `runKey` (the stable pane id): it spawns the run once via `POST /api/runs`,
+ * `runKey` (the stable pane id): it spawns the run once via `POST /v1/runs`,
  * persists the `runId` under its key, and attaches its terminal over a WebSocket, so
  * two same-provider panes never share a PTY. A browser reload re-attaches the same
  * run (output continues) instead of re-spawning; a transient socket drop detaches

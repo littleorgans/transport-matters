@@ -6,14 +6,14 @@ import {
   useCapturedRunStore,
 } from "./capturedRunStore";
 
-const { createCapturedRunMock, deleteRunMock } = vi.hoisted(() => ({
+const { createCapturedRunMock, terminateRunMock } = vi.hoisted(() => ({
   createCapturedRunMock: vi.fn(),
-  deleteRunMock: vi.fn(),
+  terminateRunMock: vi.fn(),
 }));
 
 vi.mock("../../api", () => ({
   createCapturedRun: createCapturedRunMock,
-  deleteRun: deleteRunMock,
+  terminateRun: terminateRunMock,
 }));
 
 function store() {
@@ -35,7 +35,7 @@ describe("capturedRunStore", () => {
     localStorage.clear();
     resetCapturedRunStoreForTests();
     createCapturedRunMock.mockReset();
-    deleteRunMock.mockReset();
+    terminateRunMock.mockReset();
   });
 
   it("spawns once and stores the run keyed by pane", async () => {
@@ -125,42 +125,42 @@ describe("capturedRunStore", () => {
     });
   });
 
-  it("stopRun stops (DELETE) and forgets only that pane's established run", async () => {
+  it("stopRun terminates and forgets only that pane's established run", async () => {
     createCapturedRunMock.mockResolvedValueOnce("run-1").mockResolvedValueOnce("run-2");
-    deleteRunMock.mockResolvedValue(undefined);
+    terminateRunMock.mockResolvedValue(undefined);
     await store().ensureRun("claude:k1", "claude");
     await store().ensureRun("claude:k2", "claude");
 
     store().stopRun("claude:k1");
 
     // Kill stops the run on the server so it leaves the director roster too.
-    expect(deleteRunMock).toHaveBeenCalledWith("run-1");
-    expect(deleteRunMock).toHaveBeenCalledTimes(1);
+    expect(terminateRunMock).toHaveBeenCalledWith("run-1");
+    expect(terminateRunMock).toHaveBeenCalledTimes(1);
     expect(store().runs["claude:k1"]).toBeUndefined();
     expect(store().runs["claude:k2"]).toEqual({ provider: "claude", runId: "run-2" });
   });
 
-  it("stopRun cancels an in-flight spawn: stops the just-born run and never persists it", async () => {
+  it("stopRun cancels an in-flight spawn: terminates the just-born run and never persists it", async () => {
     let resolveSpawn!: (id: string) => void;
     createCapturedRunMock.mockReturnValue(
       new Promise<string>((r) => {
         resolveSpawn = r;
       }),
     );
-    deleteRunMock.mockResolvedValue(undefined);
+    terminateRunMock.mockResolvedValue(undefined);
 
     const spawn = store().ensureRun("claude:k1", "claude"); // POST in-flight
     store().stopRun("claude:k1"); // killed mid-spawn (runs["claude:k1"] still absent)
     resolveSpawn("run-1"); // POST resolves AFTER the kill
     await spawn;
 
-    expect(deleteRunMock).toHaveBeenCalledWith("run-1");
+    expect(terminateRunMock).toHaveBeenCalledWith("run-1");
     expect(store().runs["claude:k1"]).toBeUndefined();
   });
 
   it("stopRun is a no-op when no run exists for the pane", () => {
     store().stopRun("claude:missing");
-    expect(deleteRunMock).not.toHaveBeenCalled();
+    expect(terminateRunMock).not.toHaveBeenCalled();
   });
 
   it("setMinimized flags an established run, and clears it again, persisting the docked state", () => {
@@ -220,17 +220,17 @@ describe("capturedRunStore", () => {
     });
   });
 
-  it("close wins over a mid-spawn minimize for the same key (cancel + DELETE, not dock)", async () => {
+  it("close wins over a mid-spawn minimize for the same key (cancel + POST /terminate, not dock)", async () => {
     // A key can be cancelled OR minimize-pending, never both: when a close races the spawn after a
-    // minimize, the cancel (DELETE, do-not-persist) takes precedence and the deferred minimize-intent
-    // is dropped, so the run is stopped rather than persisted-and-docked.
+    // minimize, the cancel (POST /terminate, do-not-persist) takes precedence and the deferred minimize-intent
+    // is dropped, so the run is terminated rather than persisted-and-docked.
     let resolveSpawn!: (id: string) => void;
     createCapturedRunMock.mockReturnValue(
       new Promise<string>((r) => {
         resolveSpawn = r;
       }),
     );
-    deleteRunMock.mockResolvedValue(undefined);
+    terminateRunMock.mockResolvedValue(undefined);
 
     const spawn = store().ensureRun("claude:k1", "claude");
     store().setMinimized("claude:k1", true); // deferred minimize-intent
@@ -238,7 +238,7 @@ describe("capturedRunStore", () => {
     resolveSpawn("run-1");
     await spawn;
 
-    expect(deleteRunMock).toHaveBeenCalledWith("run-1");
+    expect(terminateRunMock).toHaveBeenCalledWith("run-1");
     expect(store().runs["claude:k1"]).toBeUndefined();
   });
 

@@ -52,7 +52,8 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-StopReason = Literal["explicit-stop", "shutdown", "idle-timeout", "natural-exit", "failed"]
+TerminateReason = Literal["explicit", "shutdown", "idle-timeout", "deploy-restart"]
+RunEndReason = TerminateReason | Literal["natural-exit", "failed"]
 RunManagerErrorCode = Literal[
     "bind_conflict",
     "invalid_cwd",
@@ -60,7 +61,7 @@ RunManagerErrorCode = Literal[
     "run_manager_closed",
     "run_not_attachable",
     "run_stale",
-    "run_stopped",
+    "run_terminated",
     "session_store_unavailable",
     "unsupported_cli",
 ]
@@ -87,11 +88,12 @@ class PrepareCapturedRun(Protocol):
 
 
 class RunState(StrEnum):
-    STARTING = "starting"
-    RUNNING = "running"
-    STOPPING = "stopping"
-    EXITED = "exited"
-    FAILED = "failed"
+    STARTING = "STARTING"
+    RUNNING = "RUNNING"
+    TERMINATING = "TERMINATING"
+    TERMINATED = "TERMINATED"
+    EXITED = "EXITED"
+    FAILED = "FAILED"
 
 
 class RunManagerError(RuntimeError):
@@ -150,7 +152,8 @@ class ManagedRunView:
     viewer_count: int
     viewerless_since: datetime | None
     exit_code: int | None
-    stop_reason: str | None
+    end_reason: str | None
+    error: str | None
     scrollback_bytes: int
     scrollback_limit_bytes: int
 
@@ -170,7 +173,8 @@ class ManagedRun:
     updated_at: datetime
     viewerless_since: datetime | None
     exit_code: int | None
-    stop_reason: str | None
+    end_reason: str | None
+    error: str | None
     # None when the bridge should stay silent (osc_color_replies disabled).
     osc_responder: OscColorResponder | None
     drain_task: asyncio.Task[None] = field(init=False)
@@ -203,7 +207,8 @@ class ManagedRun:
             viewer_count=len(self.attachments),
             viewerless_since=self.viewerless_since,
             exit_code=self.exit_code,
-            stop_reason=self.stop_reason,
+            end_reason=self.end_reason,
+            error=self.error,
             scrollback_bytes=self.scrollback.total_bytes,
             scrollback_limit_bytes=self.scrollback.max_bytes,
         )
@@ -277,7 +282,8 @@ class RunManager:
                 updated_at=now,
                 viewerless_since=now,
                 exit_code=None,
-                stop_reason=None,
+                end_reason=None,
+                error=None,
                 osc_responder=OscColorResponder() if request.osc_color_replies else None,
             )
             if self._closed:
@@ -331,8 +337,8 @@ class RunManager:
         queue_maxsize: int | None = None,
     ) -> AttachedTerminal:
         run = self.get(run_id)
-        if run.stop_reason == "explicit-stop":
-            raise RunManagerError("run_stopped", f"run {run_id} was stopped")
+        if run.state is RunState.TERMINATED:
+            raise RunManagerError("run_terminated", f"run {run_id} was terminated")
         if run.terminal.closed:
             raise RunManagerError("run_stale", f"run {run_id} has no live terminal")
         if run.state is not RunState.RUNNING:
@@ -351,16 +357,18 @@ class RunManager:
         run = self.get(run_id)
         self._detach(run, attachment_id)
 
-    async def stop(self, run_id: str, *, reason: StopReason = "explicit-stop") -> ManagedRunView:
+    async def terminate(
+        self, run_id: str, *, reason: TerminateReason = "explicit"
+    ) -> ManagedRunView:
         run = self.get(run_id)
-        await self._teardown_run(run, terminate=True, reason=reason)
+        await self._teardown_run(run, force=True, reason=reason)
         return run.view()
 
     async def close(self) -> None:
         self._closed = True
         runs = [run for run in self._runs.values() if run.state not in _TERMINAL_STATES]
         for run in runs:
-            await self._teardown_run(run, terminate=True, reason="shutdown")
+            await self._teardown_run(run, force=True, reason="shutdown")
 
     async def _prepare_request(
         self, request: SpawnRun
@@ -441,14 +449,14 @@ class RunManager:
             self._remove_reader(fd)
 
         if failure is None:
-            await self._teardown_run(run, terminate=False, reason="natural-exit")
+            await self._teardown_run(run, force=False, reason="natural-exit")
             return
 
         logger.error(
             "managed run drain failed",
             exc_info=(type(failure), failure, failure.__traceback__),
         )
-        await self._teardown_run(run, terminate=False, reason="failed", failure=failure)
+        await self._teardown_run(run, force=False, reason="failed", failure=failure)
 
     def _handle_pty_readable(self, run: ManagedRun, done: asyncio.Future[None]) -> None:
         if done.done():
@@ -466,7 +474,7 @@ class RunManager:
             return
 
         now = self._clock()
-        if run.state not in {RunState.RUNNING, RunState.STOPPING}:
+        if run.state not in {RunState.RUNNING, RunState.TERMINATING}:
             return
         if run.osc_responder is not None:
             # Answer color queries inside the CLI's startup window; an fd that
@@ -483,24 +491,29 @@ class RunManager:
         self,
         run: ManagedRun,
         *,
-        terminate: bool,
-        reason: StopReason,
+        force: bool,
+        reason: RunEndReason,
         failure: BaseException | None = None,
     ) -> None:
         async with self._teardown_lock:
             if run.state in _TERMINAL_STATES and run.terminal.closed:
                 return
 
-            run.state = RunState.STOPPING if terminate else RunState.EXITED
+            run.state = RunState.TERMINATING if force else RunState.EXITED
             if reason == "failed":
                 run.state = RunState.FAILED
-            run.stop_reason = str(failure) if failure is not None else reason
+            run.end_reason = (
+                reason
+                if reason in {"explicit", "shutdown", "idle-timeout", "deploy-restart"}
+                else None
+            )
+            run.error = str(failure) if failure is not None else None
             run.updated_at = self._clock()
             self._close_all_attachments(
                 run,
                 code="run-ended",
                 retryable=False,
-                message=f"run ended: {run.stop_reason}",
+                message=f"run ended: {run.state}",
             )
 
             current_task = asyncio.current_task()
@@ -511,15 +524,15 @@ class RunManager:
                     await run.drain_task
 
             self._remove_reader(run.terminal.master_fd)
-            if terminate:
+            if force:
                 await asyncio.to_thread(terminate_terminal_pty, run.terminal)
             else:
                 await asyncio.to_thread(close_terminal_master, run.terminal)
             await asyncio.to_thread(run.lease.close)
 
             run.exit_code = run.terminal.process.poll()
-            if run.state is RunState.STOPPING:
-                run.state = RunState.EXITED
+            if run.state is RunState.TERMINATING:
+                run.state = RunState.TERMINATED
             run.updated_at = self._clock()
 
     async def _rollback_post_prepare(
@@ -561,5 +574,5 @@ class RunManager:
             asyncio.get_running_loop().remove_reader(fd)
 
 
-_TERMINAL_STATES = frozenset({RunState.EXITED, RunState.FAILED})
+_TERMINAL_STATES = frozenset({RunState.TERMINATED, RunState.EXITED, RunState.FAILED})
 _VALID_CAPTURED_RUN_CLIS = frozenset({CLAUDE_CLIENT_NAME, CODEX_CLIENT_NAME})

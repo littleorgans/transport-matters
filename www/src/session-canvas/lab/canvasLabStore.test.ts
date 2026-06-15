@@ -9,13 +9,13 @@ import {
 } from "./canvasLabStore";
 import { capturedPaneIds } from "./canvasLabStore.testSupport";
 
-const { createCapturedRunMock, deleteRunMock } = vi.hoisted(() => ({
+const { createCapturedRunMock, terminateRunMock } = vi.hoisted(() => ({
   createCapturedRunMock: vi.fn(),
-  deleteRunMock: vi.fn(),
+  terminateRunMock: vi.fn(),
 }));
 vi.mock("../../api", () => ({
   createCapturedRun: createCapturedRunMock,
-  deleteRun: deleteRunMock,
+  terminateRun: terminateRunMock,
 }));
 
 const store = useCanvasLabStore.getState;
@@ -190,7 +190,7 @@ describe("canvasLabStore captured runs", () => {
     resetCanvasLabStoreForTests();
     resetCapturedRunStoreForTests();
     createCapturedRunMock.mockReset();
-    deleteRunMock.mockReset();
+    terminateRunMock.mockReset();
   });
 
   it("spawns an independent pane and key per Spawn, even for the same provider", () => {
@@ -207,7 +207,7 @@ describe("canvasLabStore captured runs", () => {
   it("minimizePane docks a captured pane and keeps its run alive (no stop)", () => {
     vi.useFakeTimers();
     try {
-      deleteRunMock.mockResolvedValue(undefined);
+      terminateRunMock.mockResolvedValue(undefined);
       store().addCapturedRun("claude");
       const paneId = capturedPaneIds(store().contentRefs)[0];
       if (!paneId) throw new Error("expected a captured pane");
@@ -216,10 +216,10 @@ describe("canvasLabStore captured runs", () => {
       store().minimizePane(paneId);
       vi.runAllTimers();
 
-      // Minimize is non-destructive: the run is NOT stopped, and its binding is KEPT so restore
+      // Minimize is non-destructive: the run is NOT terminated, and its binding is KEPT so restore
       // re-attaches by id (the WS close on unmount only drops the viewer count). The captured-run
       // onMinimize hook also flags the persisted record minimized so a reload docks it (S2).
-      expect(deleteRunMock).not.toHaveBeenCalled();
+      expect(terminateRunMock).not.toHaveBeenCalled();
       expect(useCapturedRunStore.getState().runs[paneId]).toEqual({
         provider: "claude",
         runId: "run-1",
@@ -283,7 +283,7 @@ describe("canvasLabStore captured runs", () => {
   it("restorePane re-seeds a docked captured pane without spawning a new run", () => {
     vi.useFakeTimers();
     try {
-      deleteRunMock.mockResolvedValue(undefined);
+      terminateRunMock.mockResolvedValue(undefined);
       store().addCapturedRun("claude");
       const paneId = capturedPaneIds(store().contentRefs)[0];
       if (!paneId) throw new Error("expected a captured pane");
@@ -333,10 +333,10 @@ describe("canvasLabStore captured runs", () => {
     }
   });
 
-  it("closeDockedPane kills a docked captured run (DELETE) and drops the dock entry", () => {
+  it("closeDockedPane kills a docked captured run (POST /terminate) and drops the dock entry", () => {
     vi.useFakeTimers();
     try {
-      deleteRunMock.mockResolvedValue(undefined);
+      terminateRunMock.mockResolvedValue(undefined);
       store().addCapturedRun("claude");
       const paneId = capturedPaneIds(store().contentRefs)[0];
       if (!paneId) throw new Error("expected a captured pane");
@@ -347,9 +347,9 @@ describe("canvasLabStore captured runs", () => {
 
       store().closeDockedPane(paneId);
 
-      // Close from the dock runs the captured-run onClose hook: the run is stopped (DELETE) and the
+      // Close from the dock runs the captured-run onClose hook: the run is terminated (POST /terminate) and the
       // entry leaves the dock. The pane never returns to the canvas.
-      expect(deleteRunMock).toHaveBeenCalledWith("run-1");
+      expect(terminateRunMock).toHaveBeenCalledWith("run-1");
       expect(useCapturedRunStore.getState().runs[paneId]).toBeUndefined();
       expect(store().docked).toEqual([]);
       expect(store().contentRefs[paneId]).toBeUndefined();
@@ -369,7 +369,7 @@ describe("canvasLabStore captured runs", () => {
 
       store().closeDockedPane("lab-1");
 
-      expect(deleteRunMock).not.toHaveBeenCalled();
+      expect(terminateRunMock).not.toHaveBeenCalled();
       expect(store().docked).toEqual([]);
     } finally {
       vi.useRealTimers();
@@ -402,7 +402,7 @@ describe("canvasLabStore captured runs", () => {
   it("closePane ([X]) kills (stops) an established captured run and removes the pane", () => {
     vi.useFakeTimers();
     try {
-      deleteRunMock.mockResolvedValue(undefined);
+      terminateRunMock.mockResolvedValue(undefined);
       store().addCapturedRun("claude");
       const paneId = capturedPaneIds(store().contentRefs)[0];
       if (!paneId) throw new Error("expected a captured pane");
@@ -411,8 +411,8 @@ describe("canvasLabStore captured runs", () => {
       store().closePane(paneId);
       vi.runAllTimers();
 
-      // Close is destructive: the run is stopped (DELETE) so it leaves the director too.
-      expect(deleteRunMock).toHaveBeenCalledWith("run-1");
+      // Close is destructive: the run is terminated (POST /terminate) so it leaves the director too.
+      expect(terminateRunMock).toHaveBeenCalledWith("run-1");
       expect(useCapturedRunStore.getState().runs[paneId]).toBeUndefined();
       expect(store().contentRefs[paneId]).toBeUndefined();
     } finally {
@@ -431,7 +431,7 @@ describe("canvasLabStore captured runs", () => {
       store().closePane("lab-1");
       vi.runAllTimers();
 
-      expect(deleteRunMock).not.toHaveBeenCalled();
+      expect(terminateRunMock).not.toHaveBeenCalled();
       expect(useCapturedRunStore.getState().runs["claude:k1"]).toEqual({
         provider: "claude",
         runId: "run-1",
