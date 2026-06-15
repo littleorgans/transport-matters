@@ -95,6 +95,7 @@ async def _register_owned_cursor(
         binding = await adapter.bind(run)
         binding = binding.model_copy(
             update={
+                **settings.launch_fields,
                 "minted": adapter.provider in _DIRECT_MINT_PROVIDERS,
                 "source_descriptor": settings.owned_source_descriptor,
             }

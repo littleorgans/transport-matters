@@ -86,6 +86,8 @@ _MANAGED_CHILD_TRUST_ENV_KEYS = frozenset(
     }
 )
 
+_MANAGED_CHILD_TRANSPORT_INTERNAL_ENV_KEYS = frozenset({env_keys.LAUNCH_FIELDS})
+
 LOOPBACK_NO_PROXY = "127.0.0.1,localhost"
 
 HOME_DIR_ENV_BY_CLIENT: dict[str, str] = {
@@ -96,7 +98,13 @@ HOME_DIR_ENV_BY_CLIENT: dict[str, str] = {
 
 def managed_child_shell_env_excludes() -> tuple[str, ...]:
     """Return managed env keys that nested tool shells should not inherit."""
-    return tuple(sorted(_MANAGED_CHILD_PROXY_ENV_KEYS | _MANAGED_CHILD_TRUST_ENV_KEYS))
+    return tuple(
+        sorted(
+            _MANAGED_CHILD_PROXY_ENV_KEYS
+            | _MANAGED_CHILD_TRUST_ENV_KEYS
+            | _MANAGED_CHILD_TRANSPORT_INTERNAL_ENV_KEYS
+        )
+    )
 
 
 def build_launch_env(
@@ -111,6 +119,7 @@ def build_launch_env(
     home_dir: Path | None = None,
     owned_native_session_id: str | None = None,
     owned_source_descriptor: str | None = None,
+    launch_fields: Mapping[str, object] | None = None,
     default_client_passthrough: Sequence[str] = (),
 ) -> dict[str, str]:
     """Return the shared runtime environment for a launch attempt.
@@ -146,6 +155,13 @@ def build_launch_env(
         env[env_keys.OWNED_NATIVE_SESSION_ID] = owned_native_session_id
     if owned_source_descriptor is not None:
         env[env_keys.OWNED_SOURCE_DESCRIPTOR] = owned_source_descriptor
+    if launch_fields:
+        env[env_keys.LAUNCH_FIELDS] = json.dumps(
+            dict(launch_fields),
+            separators=(",", ":"),
+        )
+    else:
+        env.pop(env_keys.LAUNCH_FIELDS, None)
     return env
 
 
@@ -164,6 +180,7 @@ def build_managed_child_env(
         _MANAGED_CHILD_PROXY_ENV_KEYS
         | _MANAGED_CHILD_PROXY_INTERNAL_ENV_KEYS
         | _MANAGED_CHILD_TRUST_ENV_KEYS
+        | _MANAGED_CHILD_TRANSPORT_INTERNAL_ENV_KEYS
     ):
         env.pop(key, None)
 

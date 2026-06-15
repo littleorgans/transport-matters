@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+import json
+from pathlib import Path
+from typing import Any
 
 from transport_matters import env_keys
 from transport_matters.captured_run import (
@@ -14,9 +16,6 @@ from transport_matters.captured_run import (
     prepare_captured_run,
 )
 from transport_matters.cli.net import loopback_http_url
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 
 class FakeSupervisor:
@@ -264,3 +263,70 @@ def test_prepare_captured_run_codex_external_web_uses_explicit_proxy_env(
 
     assert supervisors[0].terminated is True
     assert supervisors[0].restored is True
+
+
+def test_prepare_captured_run_codex_manual_home_seeds_runtime_home(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    source_home = tmp_path / "agent-home"
+    source_home.mkdir()
+    addon_path = tmp_path / "addon.py"
+    addon_path.write_text("# addon\n")
+    ca_path = tmp_path / "codex-ca.pem"
+    ca_path.write_text("codex ca\n")
+    storage = tmp_path / "storage"
+    supervisors: list[FakeSupervisor] = []
+
+    def supervisor_factory() -> FakeSupervisor:
+        supervisor = FakeSupervisor()
+        supervisors.append(supervisor)
+        return supervisor
+
+    spawn_spec, lease = prepare_captured_run(
+        CapturedRunRequest(
+            client_name=CODEX_CLIENT_NAME,
+            passthrough=(),
+            directory=workspace,
+            proxy_port=None,
+            web_port=None,
+            upstream="",
+            storage_dir=storage,
+            home_dir=source_home,
+            client_bin=None,
+            client_disabled=False,
+            no_system_prompt=False,
+            debug=False,
+            web_runtime=WEB_RUNTIME_EXTERNAL,
+        ),
+        require_addon=lambda: addon_path,
+        resolve_mitmdump=lambda: "/usr/bin/mitmdump",
+        which=lambda name, *_args, **_kwargs: f"/usr/bin/{name}",
+        port_in_use=lambda _port: False,
+        allocate_port_pair=lambda: (39223, 49223),
+        inject_system_prompt=lambda passthrough, **_kwargs: list(passthrough),
+        user_supplied_system_prompt=lambda _args: False,
+        supervisor_factory=supervisor_factory,
+        proxy_starter=lambda **_kwargs: None,
+        env={
+            "CODEX_CA_CERTIFICATE": str(ca_path),
+            "CODEX_HOME": str(source_home),
+        },
+    )
+
+    try:
+        assert spawn_spec.client is not None
+        assert spawn_spec.managed_session is not None
+        runtime_home = Path(spawn_spec.client.env["CODEX_HOME"])
+        assert runtime_home != source_home
+        assert runtime_home.parent == storage / "runtime-home"
+        runtime_rollouts = list(runtime_home.glob("sessions/**/*.jsonl"))
+        source_rollouts = list(source_home.glob("sessions/**/*.jsonl"))
+        assert len(runtime_rollouts) == 1
+        assert source_rollouts == []
+        first_record = json.loads(runtime_rollouts[0].read_text(encoding="utf-8").splitlines()[0])
+        assert first_record["payload"]["id"] == spawn_spec.managed_session.native_session_id
+        assert spawn_spec.managed_session.native_session_id in spawn_spec.client.argv
+    finally:
+        lease.close()

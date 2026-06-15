@@ -24,7 +24,7 @@ from transport_matters.launch_environment import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Collection, Mapping
 
 _CLAUDE_CONFIG_ENV = "CLAUDE_CONFIG_DIR"
 _CODEX_HOME_ENV = "CODEX_HOME"
@@ -202,13 +202,19 @@ def prepare_runtime_home_overlay(
     runtime_home_dir: Path,
     working_dir: Path,
     env: Mapping[str, str] | None = None,
+    auth_source_home_dir: Path | None = None,
+    extra_local_names: Collection[str] = (),
 ) -> RuntimeHomeOverlay:
     """Build a per-run home overlay while keeping user visible state on source."""
     runtime_home_dir.mkdir(mode=_DIRECTORY_MODE, parents=True, exist_ok=True)
     runtime_home_dir.chmod(_DIRECTORY_MODE)
     source_home_dir = source_home_dir.expanduser()
+    explicit_auth_source = auth_source_home_dir is not None
+    auth_source_home_dir = (
+        auth_source_home_dir.expanduser() if auth_source_home_dir is not None else source_home_dir
+    )
 
-    local_names = _overlay_local_names(client_name)
+    local_names = _overlay_local_names(client_name) | frozenset(extra_local_names)
     _symlink_source_home_entries(
         source_home_dir=source_home_dir,
         runtime_home_dir=runtime_home_dir,
@@ -220,9 +226,18 @@ def prepare_runtime_home_overlay(
         runtime_home_dir=runtime_home_dir,
         env=env,
     )
+    _copy_overlay_auth_files(
+        client_name,
+        auth_source_home_dir=auth_source_home_dir,
+        runtime_home_dir=runtime_home_dir,
+    )
 
     seed_env = dict(os.environ if env is None else env)
-    seed_env[HOME_DIR_ENV_BY_CLIENT[client_name]] = str(source_home_dir)
+    if client_name == CLIENT_NAME_CLAUDE and explicit_auth_source:
+        if _CLAUDE_CONFIG_ENV in seed_env:
+            seed_env[_CLAUDE_CONFIG_ENV] = str(auth_source_home_dir)
+    else:
+        seed_env[HOME_DIR_ENV_BY_CLIENT[client_name]] = str(source_home_dir)
     seed_home_dir(
         client_name,
         home_dir=runtime_home_dir,
@@ -321,6 +336,23 @@ def _copy_overlay_local_files(
         _copy_secret_file_if_missing(
             source_home_dir / _CODEX_CONFIG_FILENAME,
             runtime_home_dir / _CODEX_CONFIG_FILENAME,
+        )
+        return
+    raise ValueError(f"unmapped managed client home seeder: {client_name!r}")
+
+
+def _copy_overlay_auth_files(
+    client_name: str,
+    *,
+    auth_source_home_dir: Path,
+    runtime_home_dir: Path,
+) -> None:
+    if client_name == CLIENT_NAME_CLAUDE:
+        return
+    if client_name == CLIENT_NAME_CODEX:
+        _copy_secret_file_if_missing(
+            auth_source_home_dir / _CODEX_AUTH_FILENAME,
+            runtime_home_dir / _CODEX_AUTH_FILENAME,
         )
         return
     raise ValueError(f"unmapped managed client home seeder: {client_name!r}")

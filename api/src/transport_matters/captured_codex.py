@@ -31,6 +31,7 @@ def build_codex_captured_invocation(
     web_runtime: str,
     default_client_passthrough: Sequence[str] = (),
     runtime_home_dir: Path | None = None,
+    launch_fields: Mapping[str, object] | None = None,
 ) -> Callable[[int, int | None], tuple[list[str], dict[str, str], ManagedClient | None]]:
     """Build a nested capture only Codex invocation through the existing Codex path."""
     from transport_matters.cli.codex_cmd import (
@@ -65,4 +66,5 @@ def build_codex_captured_invocation(
         debug=debug,
         web_runtime=web_runtime,
         default_client_passthrough=default_client_passthrough,
+        launch_fields=launch_fields,
     )

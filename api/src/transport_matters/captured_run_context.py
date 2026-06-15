@@ -27,6 +27,7 @@ if TYPE_CHECKING:
     from transport_matters.cli.launch_profile import LaunchProfile, ManagedSession
     from transport_matters.cli.launch_runtime import LaunchPreparation
     from transport_matters.cli.runner import ManagedClient
+    from transport_matters.cli.runtime_home import RuntimeHomePlan
     from transport_matters.lock import WorkspaceLock
 
 
@@ -42,6 +43,7 @@ class CapturedRunContext:
     ]
     resource_stack: ExitStack
     runtime_home_dir: Path | None = None
+    runtime_home_plan: RuntimeHomePlan | None = None
 
 
 def build_captured_run_context(
@@ -63,6 +65,7 @@ def build_captured_run_context(
     """Resolve launch state and build the provider specific invocation factory."""
     from transport_matters.cli.launch_profile import PROFILES, prepare_managed_session
     from transport_matters.cli.launch_runtime import prepare_launch
+    from transport_matters.cli.runtime_home import plan_runtime_home, prepare_runtime_home
 
     try:
         launch_profile = profile or PROFILES[request.client_name]
@@ -90,45 +93,41 @@ def build_captured_run_context(
     )
     stack = ExitStack()
     runtime_home_dir = None
+    runtime_home_plan = None
     try:
-        if write and prepared.client_path is not None:
-            from transport_matters.cli.home_seed import (
-                prepare_runtime_home_overlay,
-                resolve_source_home_dir,
-            )
-
-            source_home_dir = resolve_source_home_dir(
-                request.client_name,
-                home_dir=request.home_dir,
-                env=env,
-            )
-            runtime_home_root = prepared.resolved_storage / "runtime-home"
-            runtime_home_dir = runtime_home_root / request.client_name
-            prepare_runtime_home_overlay(
-                request.client_name,
-                source_home_dir=source_home_dir,
-                runtime_home_dir=runtime_home_dir,
-                working_dir=prepared.working_dir,
-                env=env,
-            )
+        runtime_home_root = prepared.resolved_storage / "runtime-home"
+        runtime_home_plan = plan_runtime_home(
+            request.client_name,
+            home_dir=request.home_dir,
+            runtime_template=request.runtime_template,
+            runtime_home_root=runtime_home_root,
+            client_path=prepared.client_path,
+            env=env,
+            use_runtime_overlay=write and prepared.client_path is not None,
+        )
+        if write and prepare_runtime_home(
+            runtime_home_plan,
+            working_dir=prepared.working_dir,
+            env=env,
+        ):
+            runtime_home_dir = runtime_home_plan.runtime_home_dir
             stack.callback(shutil.rmtree, runtime_home_root, ignore_errors=True)
-            # The resolved overlay source is an internal detail of the overlay build; it
-            # must not be promoted onto request.home_dir. Doing so would publish a native
-            # launch's ~/.claude onto AGENT_HOME_DIR (the desktop event homeDir and the
-            # embedded backend's agent_home_dir), which then stamps a Claude home onto
-            # Codex spawns. Native launches keep home_dir=None so AGENT_HOME_DIR stays unset.
+            # The resolved overlay source is an internal detail of the overlay build. It must not
+            # be promoted onto request.home_dir. Native launches keep home_dir=None so
+            # AGENT_HOME_DIR stays unset.
 
         managed_session = prepare_managed_session(
             launch_profile,
             client_path=prepared.client_path,
             passthrough=prepared.passthrough_user,
             working_dir=prepared.working_dir,
-            home_dir=request.home_dir,
+            home_dir=runtime_home_plan.descriptor_home,
             env=env,
             now=now or datetime.now().astimezone(),
             write=write,
         )
         addon_path = stack.enter_context(as_file(prepared.addon_traversable))
+        launch_fields = runtime_home_plan.launch_fields
         if request.client_name == CLAUDE_CLIENT_NAME:
             build_invocation = build_claude_captured_invocation(
                 addon_path=addon_path,
@@ -137,7 +136,7 @@ def build_captured_run_context(
                 working_dir=prepared.working_dir,
                 resolved_storage=prepared.resolved_storage,
                 run_id=prepared.run_id,
-                home_dir=request.home_dir,
+                home_dir=runtime_home_plan.descriptor_home,
                 runtime_home_dir=runtime_home_dir,
                 claude_path=prepared.client_path,
                 claude_passthrough_user=prepared.passthrough_user,
@@ -150,6 +149,7 @@ def build_captured_run_context(
                 user_supplied_system_prompt=user_supplied_system_prompt,
                 web_runtime=request.web_runtime,
                 default_client_passthrough=request.default_client_passthrough,
+                launch_fields=launch_fields,
             )
         else:
             from transport_matters.captured_codex import build_codex_captured_invocation
@@ -161,7 +161,7 @@ def build_captured_run_context(
                 working_dir=prepared.working_dir,
                 resolved_storage=prepared.resolved_storage,
                 run_id=prepared.run_id,
-                home_dir=request.home_dir,
+                home_dir=runtime_home_plan.descriptor_home,
                 runtime_home_dir=runtime_home_dir,
                 codex_path=prepared.client_path,
                 codex_passthrough_user=prepared.passthrough_user,
@@ -171,6 +171,7 @@ def build_captured_run_context(
                 env=env,
                 web_runtime=request.web_runtime,
                 default_client_passthrough=request.default_client_passthrough,
+                launch_fields=launch_fields,
             )
     except Exception:
         stack.close()
@@ -183,7 +184,14 @@ def build_captured_run_context(
         build_invocation=build_invocation,
         resource_stack=stack,
         runtime_home_dir=runtime_home_dir,
+        runtime_home_plan=runtime_home_plan,
     )
+
+
+def _descriptor_home(ctx: CapturedRunContext) -> Path | None:
+    if ctx.runtime_home_plan is None:
+        return ctx.request.home_dir
+    return ctx.runtime_home_plan.descriptor_home
 
 
 def persist_owned_session_facts(ctx: CapturedRunContext) -> None:
@@ -197,7 +205,7 @@ def persist_owned_session_facts(ctx: CapturedRunContext) -> None:
         ctx.managed_session,
         run_id=ctx.prepared.run_id,
         storage_root=ctx.prepared.resolved_storage,
-        home_dir=ctx.request.home_dir,
+        home_dir=_descriptor_home(ctx),
     )
 
 
@@ -214,7 +222,7 @@ def write_captured_run_manifest(
         working_dir=ctx.prepared.working_dir,
         storage_dir=ctx.prepared.resolved_storage,
         run_id=ctx.prepared.run_id,
-        home_dir=ctx.request.home_dir,
+        home_dir=_descriptor_home(ctx),
         proxy_port=proxy_port,
         web_port=web_port,
     )

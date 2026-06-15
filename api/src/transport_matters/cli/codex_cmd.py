@@ -4,6 +4,7 @@ import contextlib
 import os
 import shutil
 import tempfile
+from dataclasses import dataclass
 from datetime import datetime
 from importlib.resources import as_file
 from pathlib import Path
@@ -19,7 +20,6 @@ from transport_matters.launch_environment import (
 )
 from transport_matters.launch_manifest import run_with_workspace_manifest
 
-from .home_seed import seed_home_dir
 from .identity import CLI_COMMAND, PRODUCT_LABEL
 from .launch_profile import (
     CodexLaunchProfile,
@@ -35,6 +35,12 @@ from .launch_runtime import (
 )
 from .net import loopback_http_url
 from .runner import ManagedClient
+from .runtime_home import (
+    RuntimeHomePlan,
+    plan_runtime_home,
+    prepare_runtime_home,
+    seed_direct_home_if_needed,
+)
 from .trust import (
     ConfiguredCACertificateMissingError,
     MitmproxyCAMissingError,
@@ -47,6 +53,18 @@ if TYPE_CHECKING:
     from importlib.resources.abc import Traversable
 
     from .launch_profile import LaunchProfile, ManagedSession
+    from .launch_runtime import LaunchPreparation
+
+
+@dataclass(frozen=True)
+class _CodexLaunchParts:
+    runtime_home_plan: RuntimeHomePlan
+    profile: LaunchProfile
+    managed_session: ManagedSession | None
+    build_invocation: Callable[
+        [int, int | None],
+        tuple[list[str], dict[str, str], ManagedClient | None],
+    ]
 
 
 def _resolve_codex_ca_certificate_or_exit(
@@ -167,6 +185,7 @@ def build_codex_invocation(
     web_runtime: str = "embedded",
     default_client_passthrough: Sequence[str] = (),
     runtime_home_dir: Path | None = None,
+    launch_fields: Mapping[str, object] | None = None,
 ) -> Callable[[int, int | None], tuple[list[str], dict[str, str], ManagedClient | None]]:
     """Build the retry-safe invocation factory for `transport-matters codex`.
 
@@ -197,6 +216,7 @@ def build_codex_invocation(
             owned_source_descriptor=(
                 managed_session.source_descriptor if managed_session is not None else None
             ),
+            launch_fields=launch_fields,
             default_client_passthrough=default_client_passthrough,
         )
 
@@ -315,6 +335,80 @@ def resolve_codex_addons_and_ca(
     return force_http_fallback_addon_path, codex_ca_certificate
 
 
+def _prepare_codex_launch_parts(
+    *,
+    stack: contextlib.ExitStack,
+    addon_path: Path,
+    force_http_fallback_addon_path: Path | None,
+    codex_ca_certificate: str | None,
+    prepared: LaunchPreparation,
+    home_dir: Path | None,
+    print_command: bool,
+    debug: bool,
+    default_client_passthrough: Sequence[str],
+    env: Mapping[str, str] = os.environ,
+) -> _CodexLaunchParts:
+    runtime_home_root = prepared.resolved_storage / "runtime-home"
+    runtime_home_plan = plan_runtime_home(
+        CLIENT_NAME_CODEX,
+        home_dir=home_dir,
+        runtime_template=None,
+        runtime_home_root=runtime_home_root,
+        client_path=prepared.client_path,
+        env=env,
+        use_runtime_overlay=False,
+    )
+    runtime_home_dir = None
+    if not print_command and prepare_runtime_home(
+        runtime_home_plan,
+        working_dir=prepared.working_dir,
+        env=env,
+    ):
+        runtime_home_dir = runtime_home_plan.runtime_home_dir
+        stack.callback(shutil.rmtree, runtime_home_root, ignore_errors=True)
+
+    # Managed-mint (§5.2b/§5.2c): mint the native uuid + pre-seed the rollout ONCE, before the
+    # retry loop, so every attempt resumes the same owned session. Codex flows through the SAME
+    # shared launch path claude uses (the codex profile owns the seed + argv shape); ``write`` is
+    # gated on print-command (dry run touches no disk). ``None`` when proxy-only or the user passed
+    # their own `resume` (honor passthrough).
+    profile = CodexLaunchProfile()
+    managed_session = prepare_managed_session(
+        profile,
+        client_path=prepared.client_path,
+        passthrough=prepared.passthrough_user,
+        working_dir=prepared.working_dir,
+        home_dir=runtime_home_plan.descriptor_home,
+        env=env,
+        now=datetime.now().astimezone(),
+        write=not print_command,
+    )
+    build_invocation = build_codex_invocation(
+        addon_path=addon_path,
+        force_http_fallback_addon_path=force_http_fallback_addon_path,
+        mitmdump=prepared.mitmdump,
+        working_dir=prepared.working_dir,
+        resolved_storage=prepared.resolved_storage,
+        run_id=prepared.run_id,
+        home_dir=runtime_home_plan.descriptor_home,
+        runtime_home_dir=runtime_home_dir,
+        codex_path=prepared.client_path,
+        codex_passthrough_user=prepared.passthrough_user,
+        codex_ca_certificate=codex_ca_certificate,
+        profile=profile,
+        managed_session=managed_session,
+        debug=debug,
+        default_client_passthrough=default_client_passthrough,
+        launch_fields=runtime_home_plan.launch_fields,
+    )
+    return _CodexLaunchParts(
+        runtime_home_plan=runtime_home_plan,
+        profile=profile,
+        managed_session=managed_session,
+        build_invocation=build_invocation,
+    )
+
+
 def run_codex(
     *,
     directory: Path | None,
@@ -385,64 +479,43 @@ def run_codex(
             print_command=print_command,
             resolve_codex_ca_certificate=resolve_codex_ca_certificate,
         )
-        # Managed-mint (§5.2b/§5.2c): mint the native uuid + pre-seed the rollout ONCE, before the
-        # retry loop, so every attempt resumes the same owned session. Codex flows through the SAME
-        # shared launch path claude uses (the codex profile owns the seed + argv shape); ``write`` is
-        # gated on print-command (dry run touches no disk). ``None`` when proxy-only or the user passed
-        # their own `resume` (honor passthrough).
-        profile = CodexLaunchProfile()
-        managed_session = prepare_managed_session(
-            profile,
-            client_path=prepared.client_path,
-            passthrough=prepared.passthrough_user,
-            working_dir=prepared.working_dir,
-            home_dir=home_dir,
-            env=os.environ,
-            now=datetime.now().astimezone(),
-            write=not print_command,
-        )
-        build_invocation = build_codex_invocation(
+        launch_parts = _prepare_codex_launch_parts(
+            stack=stack,
             addon_path=addon_path,
             force_http_fallback_addon_path=force_http_fallback_addon_path,
-            mitmdump=prepared.mitmdump,
-            working_dir=prepared.working_dir,
-            resolved_storage=prepared.resolved_storage,
-            run_id=prepared.run_id,
-            home_dir=home_dir,
-            codex_path=prepared.client_path,
-            codex_passthrough_user=prepared.passthrough_user,
             codex_ca_certificate=codex_ca_certificate,
-            profile=profile,
-            managed_session=managed_session,
+            prepared=prepared,
+            home_dir=home_dir,
             debug=debug,
+            print_command=print_command,
             default_client_passthrough=default_client_passthrough,
         )
         prepared_web_port = require_web_port(prepared.web_port)
 
         if print_command:
             print_invocation(
-                build_invocation=build_invocation,
+                build_invocation=launch_parts.build_invocation,
                 proxy_port=prepared.proxy_port,
                 web_port=prepared_web_port,
             )
-        if not print_command and home_dir is not None and prepared.client_path is not None:
-            seed_home_dir(
-                CLIENT_NAME_CODEX,
-                home_dir=home_dir,
+        if not print_command:
+            seed_direct_home_if_needed(
+                launch_parts.runtime_home_plan,
                 working_dir=prepared.working_dir,
+                env=os.environ,
             )
 
         def run_launch(write_manifest_for: Callable[[int, int], None]) -> None:
             # Durable owned-launch facts (§11.1): written once here, inside the per-run lock (the run
             # dir exists) and before the retry loop, so a §10.5 rebuild reads the owned state without
             # the live env. ``None`` for proxy-only / user-pinned resume (nothing owned to persist).
-            if managed_session is not None:
+            if launch_parts.managed_session is not None:
                 persist_owned_session_facts(
-                    profile,
-                    managed_session,
+                    launch_parts.profile,
+                    launch_parts.managed_session,
                     run_id=prepared.run_id,
                     storage_root=prepared.resolved_storage,
-                    home_dir=home_dir,
+                    home_dir=launch_parts.runtime_home_plan.descriptor_home,
                 )
             _run_codex_launch(
                 proxy_port=prepared.proxy_port,
@@ -453,7 +526,7 @@ def run_codex(
                 codex_ca_certificate=codex_ca_certificate,
                 working_dir=prepared.working_dir,
                 resolved_storage=prepared.resolved_storage,
-                build_invocation=build_invocation,
+                build_invocation=launch_parts.build_invocation,
                 print_client_banner=print_client_banner,
                 run_client_with_retry=run_client_with_retry,
                 write_manifest_for=write_manifest_for,
@@ -463,6 +536,6 @@ def run_codex(
             working_dir=prepared.working_dir,
             storage_dir=prepared.resolved_storage,
             run_id=prepared.run_id,
-            home_dir=home_dir,
+            home_dir=launch_parts.runtime_home_plan.descriptor_home,
             run_launch=run_launch,
         )
