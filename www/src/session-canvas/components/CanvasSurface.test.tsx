@@ -12,6 +12,8 @@ import {
 } from "../testUtils";
 import { CanvasSurface } from "./CanvasSurface";
 
+vi.mock("../../ambient/createAmbientBackground");
+
 const launch = {
   owner: "local",
   workspaceHash: "hash-1",

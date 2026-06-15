@@ -11,6 +11,8 @@ import {
   restoreTransport,
 } from "./testUtils";
 
+vi.mock("../ambient/createAmbientBackground");
+
 class MockEventSource {
   onopen: (() => void) | null = null;
   onerror: (() => void) | null = null;

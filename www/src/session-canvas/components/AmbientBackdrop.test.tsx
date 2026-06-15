@@ -7,9 +7,7 @@ import { useThemeStore } from "../../stores/themeStore";
 import { presetTheme } from "../../theme/presets";
 import { AmbientBackdrop, driveAmbientScene } from "./AmbientBackdrop";
 
-vi.mock("../../ambient/createAmbientBackground", () => ({
-  createAmbientBackground: vi.fn(() => null),
-}));
+vi.mock("../../ambient/createAmbientBackground");
 
 function fakeBackground(): AmbientBackground {
   return {
