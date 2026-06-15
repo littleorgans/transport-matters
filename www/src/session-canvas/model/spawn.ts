@@ -25,8 +25,7 @@ export function normalizeRef(ref: SpawnablePaneRef): CanvasPaneRef {
 
 export function titleForSession(session: SpawnSessionDescriptor): string {
   if (session.title && session.title.trim().length > 0) return session.title;
-  const cli = session.cli ?? session.provider;
-  return `${cli} session ${session.session_id.slice(0, 8)}`;
+  return `${session.cli} session ${session.sessionId.slice(0, 8)}`;
 }
 
 export function createCapturedRunRef(provider: CliName, label?: string): CapturedRunRef {

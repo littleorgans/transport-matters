@@ -14,11 +14,11 @@ describe("sessionEventReducer", () => {
     expect(state.highestSeq).toBe(0);
   });
 
-  it("drops wrong session events", () => {
+  it("drops wrong session append actions", () => {
     const state = sessionEventReducer(createSessionEventState("session-1"), {
       type: "append",
-      sessionId: "session-1",
-      events: [makeSessionEvent({ session_id: "other", seq: 0 })],
+      sessionId: "other",
+      events: [makeSessionEvent({ seq: 0 })],
     });
 
     expect(state.events).toEqual([]);

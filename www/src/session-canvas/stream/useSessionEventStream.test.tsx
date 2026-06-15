@@ -45,7 +45,7 @@ describe("useSessionEventStream", () => {
       }),
     );
 
-    expect(sources[0]?.url).toBe("/api/sessions/session-1/events/stream?owner=local&last_seq=-1");
+    expect(sources[0]?.url).toBe("/v1/sessions/session-1/events/stream?owner=local&last_seq=-1");
     act(() => {
       sources[0]?.onmessage?.(
         new MessageEvent("message", { data: JSON.stringify(makeSessionEvent({ seq: 0 })) }),
@@ -76,16 +76,16 @@ describe("useSessionEventStream", () => {
     });
 
     expect(sources[0]?.close).toHaveBeenCalled();
-    expect(sources[1]?.url).toBe("/api/sessions/session-1/events/stream?owner=local&last_seq=2");
+    expect(sources[1]?.url).toBe("/v1/sessions/session-1/events/stream?owner=local&last_seq=2");
   });
 
   it("backfills missing seq before dispatching a skipped live event", async () => {
     const onEvents = vi.fn();
     installMockTransport((path) => {
-      expect(path).toBe("/api/sessions/session-1/events?owner=local&limit=500&from_seq=0&to_seq=1");
+      expect(path).toBe("/v1/sessions/session-1/events?owner=local&limit=500&from_seq=0&to_seq=1");
       return jsonResponse({
         events: [makeSessionEvent({ seq: 0 }), makeSessionEvent({ seq: 1 })],
-        next_from_seq: null,
+        nextFromSeq: null,
       });
     });
     renderHook(() =>

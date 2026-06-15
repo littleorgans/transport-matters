@@ -31,6 +31,7 @@ def project_timeline_stream_envelopes(
     include_session_update: bool = False,
     emitted_at: str | None = None,
     page_from_seq: int | None = None,
+    turn_index_offset: int = 0,
 ) -> list[TimelineStreamEnvelope]:
     projection_revision_seq = max((row.seq for row in events), default=None)
     projection = project_timeline(
@@ -40,6 +41,7 @@ def project_timeline_stream_envelopes(
         include_resources=include_resources,
         include_debug=include_debug,
         page_from_seq=page_from_seq,
+        turn_index_offset=turn_index_offset,
     )
     stamp = emitted_at or _emitted_at()
     envelopes: list[TimelineStreamEnvelope] = []

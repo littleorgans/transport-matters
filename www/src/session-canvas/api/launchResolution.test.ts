@@ -3,12 +3,12 @@ import { makeSessionSummary } from "../testUtils";
 import { resolveLaunchSession } from "./launchResolution";
 
 describe("resolveLaunchSession", () => {
-  it("prefers the run id match", () => {
-    const fallback = makeSessionSummary({ session_id: "fallback", run_id: "run-old" });
-    const exact = makeSessionSummary({ session_id: "exact", run_id: "run-target" });
+  it("resolves the active matching cli and workspace", () => {
+    const otherCli = makeSessionSummary({ sessionId: "other-cli", cli: "codex" });
+    const exact = makeSessionSummary({ sessionId: "exact", cli: "claude" });
 
     expect(
-      resolveLaunchSession([fallback, exact], {
+      resolveLaunchSession([otherCli, exact], {
         owner: "local",
         workspaceHash: "hash-1",
         cli: "claude",
@@ -19,7 +19,7 @@ describe("resolveLaunchSession", () => {
 
   it("falls back to the newest active session for the workspace", () => {
     const completed = makeSessionSummary({ status: "completed" });
-    const active = makeSessionSummary({ session_id: "active", run_id: "run-active" });
+    const active = makeSessionSummary({ sessionId: "active" });
 
     expect(
       resolveLaunchSession([completed, active], {

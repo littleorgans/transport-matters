@@ -1,29 +1,36 @@
 import { apiUrl, requestApiJson } from "../../api";
 
-export interface SessionEventView {
-  session_id: string;
-  seq: number;
+export interface TranscriptTextPart {
+  type: "text";
+  text: string;
+}
+
+export type TranscriptEventBody =
+  | { kind: "user"; parts: TranscriptTextPart[] }
+  | { kind: "assistant"; parts: TranscriptTextPart[] }
+  | { kind: "tool_use"; toolName: string | null; input: unknown }
+  | { kind: "tool_result"; toolName: string | null; output: unknown; isError: boolean }
+  | { kind: "wire_injected"; label: string; parts: TranscriptTextPart[] };
+
+export interface TranscriptResourceRef {
+  id: string;
   kind: string;
-  native_turn_id: string | null;
-  parent_native_id: string | null;
-  parent_seq: number | null;
-  run_id: string;
-  provider: string;
-  cli: string;
+  label?: string | null;
+}
+
+export interface SessionEventView {
+  seq: number;
+  turnIndex: number | null;
+  kind: string;
   role: string | null;
-  is_sidechain: boolean;
   ts: string | null;
-  model: string | null;
-  ir: Record<string, unknown> | null;
-  source_path: string | null;
-  source_line: number | null;
-  search_text: string | null;
-  created_at: string | null;
+  body: TranscriptEventBody;
+  resourceRefs: TranscriptResourceRef[];
 }
 
 export interface SessionEventListResponse {
   events: SessionEventView[];
-  next_from_seq: number | null;
+  nextFromSeq: number | null;
 }
 
 export interface SessionEventsFilters {
@@ -52,7 +59,7 @@ export function sessionEventsPath(filters: SessionEventsFilters): string {
   });
   appendNumberParam(params, "from_seq", filters.fromSeq);
   appendNumberParam(params, "to_seq", filters.toSeq);
-  return `/api/sessions/${encodeURIComponent(filters.sessionId)}/events?${params.toString()}`;
+  return `/v1/sessions/${encodeURIComponent(filters.sessionId)}/events?${params.toString()}`;
 }
 
 export function sessionEventsStreamUrl(
@@ -63,7 +70,7 @@ export function sessionEventsStreamUrl(
 ): string {
   const params = new URLSearchParams({ owner, last_seq: String(lastSeq) });
   return apiUrl(
-    `/api/sessions/${encodeURIComponent(sessionId)}/events/stream?${params.toString()}`,
+    `/v1/sessions/${encodeURIComponent(sessionId)}/events/stream?${params.toString()}`,
     baseUrl,
   );
 }

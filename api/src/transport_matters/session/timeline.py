@@ -26,6 +26,7 @@ from transport_matters.session.timeline_resources import (
     context_item_with_resources,
     message_resources,
 )
+from transport_matters.session.turn_index import turn_indices_by_seq
 
 if TYPE_CHECKING:
     from transport_matters.session.models import ChildSessionRow, EventRow, SessionRow
@@ -66,6 +67,7 @@ def project_timeline(
     include_debug: bool = False,
     page_from_seq: int | None = None,
     next_from_seq: int | None = None,
+    turn_index_offset: int = 0,
 ) -> TimelineResponse:
     items: list[TimelineItemType] = []
     resources: dict[str, ResourceSummaryType] = {}
@@ -75,11 +77,12 @@ def project_timeline(
     message_item_indices_by_seq: dict[int, int] = {}
     last_message_seq: int | None = None
     event_kinds_by_seq: dict[int, Literal["turn", "meta"]] = {}
+    turn_indices = turn_indices_by_seq(events, offset=turn_index_offset)
 
     for row in events:
         event_kinds_by_seq[row.seq] = _source_event_kind(row.kind)
         if row.kind == "turn":
-            message, message_resources = _message_item(row)
+            message, message_resources = _message_item(row, turn_index=turn_indices.get(row.seq))
             message_item_indices_by_seq[row.seq] = len(items)
             items.append(message)
             messages_by_seq[row.seq] = message
@@ -102,7 +105,7 @@ def project_timeline(
                 )
             continue
 
-        meta_item = _meta_item(row)
+        meta_item = _meta_item(row, turn_index=turn_indices.get(row.seq))
         if meta_item is not None:
             if isinstance(meta_item, ContextItem):
                 meta_item, context_resources = context_item_with_resources(row, meta_item)
@@ -115,6 +118,7 @@ def project_timeline(
         visible_parent_seqs={row.seq for row in events},
         visible_seq_window=_seq_window(events, from_seq=page_from_seq),
         event_kinds_by_seq=event_kinds_by_seq,
+        turn_indices_by_seq=turn_indices,
         messages_by_seq=messages_by_seq,
         message_item_indices_by_seq=message_item_indices_by_seq,
         items=items,
@@ -144,13 +148,16 @@ def required_timeline_anchor_before_seq(events: list[EventRow]) -> int | None:
     return None
 
 
-def _message_item(row: EventRow) -> tuple[MessageItem, dict[str, ResourceSummaryType]]:
+def _message_item(
+    row: EventRow, *, turn_index: int | None
+) -> tuple[MessageItem, dict[str, ResourceSummaryType]]:
     parts = _parts(row.ir)
     source = _source_ref(row)
     resource_refs, resources = message_resources(row, parts, source=source)
     return MessageItem(
         id=f"message:{row.session_id}:{row.seq}",
         seq=row.seq,
+        turn_index=turn_index,
         role=_message_role(row.role),
         ts=_ts(row),
         model=row.model,
@@ -160,7 +167,7 @@ def _message_item(row: EventRow) -> tuple[MessageItem, dict[str, ResourceSummary
     ), resources
 
 
-def _meta_item(row: EventRow) -> TimelineItemType | None:
+def _meta_item(row: EventRow, *, turn_index: int | None) -> TimelineItemType | None:
     key = _native_record_key(row.raw)
     if key in _NO_ITEM_META_KEYS:
         return None
@@ -168,6 +175,7 @@ def _meta_item(row: EventRow) -> TimelineItemType | None:
         return StateItem(
             id=f"state:{row.session_id}:{row.seq}",
             seq=row.seq,
+            turn_index=turn_index,
             ts=_ts(row),
             label=_STATE_LABELS[key],
             value=_state_value(row.raw, fallback=key),
@@ -178,6 +186,7 @@ def _meta_item(row: EventRow) -> TimelineItemType | None:
         return ContextItem(
             id=f"context:{row.session_id}:{row.seq}",
             seq=row.seq,
+            turn_index=turn_index,
             ts=_ts(row),
             label=_CONTEXT_LABELS[key],
             summary=_summary_value(row.raw, fallback=_CONTEXT_LABELS[key]),
@@ -188,6 +197,7 @@ def _meta_item(row: EventRow) -> TimelineItemType | None:
         return DiagnosticItem(
             id=f"diagnostic:{row.session_id}:{row.seq}",
             seq=row.seq,
+            turn_index=turn_index,
             ts=_ts(row),
             label=_DIAGNOSTIC_LABELS[key],
             summary=_summary_value(row.raw, fallback=_DIAGNOSTIC_LABELS[key]),
@@ -197,6 +207,7 @@ def _meta_item(row: EventRow) -> TimelineItemType | None:
     return ContextItem(
         id=f"context:{row.session_id}:{row.seq}",
         seq=row.seq,
+        turn_index=turn_index,
         ts=_ts(row),
         label="Native record",
         summary=_summary_value(row.raw, fallback=key),
@@ -212,6 +223,7 @@ def _append_child_subagents(
     visible_parent_seqs: set[int],
     visible_seq_window: tuple[int, int] | None,
     event_kinds_by_seq: dict[int, Literal["turn", "meta"]],
+    turn_indices_by_seq: dict[int, int | None],
     messages_by_seq: dict[int, MessageItem],
     message_item_indices_by_seq: dict[int, int],
     items: list[TimelineItemType],
@@ -250,6 +262,7 @@ def _append_child_subagents(
             SubagentItem(
                 id=f"subagent:{session.session_id}:{summary.subagent_id}",
                 seq=seq,
+                turn_index=turn_indices_by_seq.get(seq),
                 ts=None,
                 title=summary.title,
                 subagent_ref=subagent_ref,

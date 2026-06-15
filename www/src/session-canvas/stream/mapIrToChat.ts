@@ -5,11 +5,10 @@ export interface TranscriptMessageModel {
   id: string;
   seq: number;
   role: string;
-  kind: "turn" | "meta" | "unknown";
+  kind: "turn" | "meta" | "unknown" | "wire_context";
   blocks: ContentBlock[];
   timestamp: string | null;
-  sourcePath: string | null;
-  sourceLine: number | null;
+  wireLabel: string | null;
 }
 
 export type ChatItem = TranscriptMessageModel;
@@ -23,12 +22,9 @@ function mapSessionEventToTranscriptMessage(
   event: SessionEventView,
 ): TranscriptMessageModel | null {
   if (event.kind === "meta") return mapMetaEvent(event);
+  if (event.body.kind === "wire_injected") return mapWireInjectedEvent(event);
   if (event.kind !== "turn") return mapUnknownEvent(event);
-  if (!event.ir) return mapUnknownEvent(event);
-  const parts = event.ir.parts;
-  if (!Array.isArray(parts)) return mapUnknownEvent(event);
-  const blocks = parts.map(normalizeContentBlock);
-  return buildMessage(event, "turn", blocks.length > 0 ? blocks : fallbackBlocks(event));
+  return buildMessage(event, "turn", bodyBlocks(event));
 }
 
 function mapMetaEvent(event: SessionEventView): TranscriptMessageModel {
@@ -43,22 +39,51 @@ function buildMessage(
   event: SessionEventView,
   kind: TranscriptMessageModel["kind"],
   blocks: ContentBlock[],
+  wireLabel: string | null = null,
 ): TranscriptMessageModel {
   return {
-    id: `${event.session_id}:${event.seq}`,
+    id: `event:${event.seq}`,
     seq: event.seq,
-    role: kind === "meta" ? "metadata" : (event.role ?? "unknown"),
+    role:
+      kind === "wire_context" ? "wire" : kind === "meta" ? "metadata" : (event.role ?? "unknown"),
     kind,
     blocks,
-    timestamp: event.ts ?? event.created_at,
-    sourcePath: event.source_path,
-    sourceLine: event.source_line,
+    timestamp: event.ts,
+    wireLabel,
   };
 }
 
-function fallbackBlocks(event: SessionEventView): ContentBlock[] {
-  if (event.search_text) return [textBlock(event.search_text)];
-  return [metadataBlock(event)];
+function bodyBlocks(event: SessionEventView): ContentBlock[] {
+  const body = event.body;
+  if (body.kind === "user" || body.kind === "assistant" || body.kind === "wire_injected") {
+    return body.parts.length > 0
+      ? body.parts.map((part) => textBlock(part.text))
+      : [metadataBlock(event)];
+  }
+  if (body.kind === "tool_use") {
+    return [
+      textBlock(
+        [`tool_use: ${body.toolName ?? "unknown"}`, JSON.stringify(body.input, null, 2)].join("\n"),
+      ),
+    ];
+  }
+  return [
+    textBlock(
+      [
+        `tool_result: ${body.toolName ?? "unknown"}`,
+        `is_error: ${body.isError}`,
+        JSON.stringify(body.output, null, 2),
+      ].join("\n"),
+    ),
+  ];
+}
+
+function mapWireInjectedEvent(event: SessionEventView): TranscriptMessageModel {
+  const body = event.body;
+  if (body.kind !== "wire_injected") return buildMessage(event, "unknown", [metadataBlock(event)]);
+  const blocks =
+    body.parts.length > 0 ? body.parts.map((part) => textBlock(part.text)) : [metadataBlock(event)];
+  return buildMessage(event, "wire_context", blocks, body.label);
 }
 
 function metadataBlock(event: SessionEventView): ContentBlock {
@@ -66,11 +91,9 @@ function metadataBlock(event: SessionEventView): ContentBlock {
     [
       `kind: ${event.kind}`,
       `seq: ${event.seq}`,
-      `native_turn_id: ${event.native_turn_id ?? "none"}`,
-      `ts: ${event.ts ?? event.created_at ?? "none"}`,
-      `model: ${event.model ?? "none"}`,
-      `source_path: ${event.source_path ?? "none"}`,
-      `source_line: ${event.source_line ?? "none"}`,
+      `turn_index: ${event.turnIndex ?? "none"}`,
+      `ts: ${event.ts ?? "none"}`,
+      `body: ${event.body.kind}`,
     ].join("\n"),
   );
 }

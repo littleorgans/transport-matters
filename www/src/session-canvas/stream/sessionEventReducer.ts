@@ -59,10 +59,8 @@ function findMissingFromSeq(events: readonly SessionEventView[]): number | null 
 }
 
 function filteredSortedEvents(
-  sessionId: string,
+  _sessionId: string,
   events: readonly SessionEventView[],
 ): SessionEventView[] {
-  return events
-    .filter((event) => event.session_id === sessionId)
-    .sort((left, right) => left.seq - right.seq);
+  return [...events].sort((left, right) => left.seq - right.seq);
 }

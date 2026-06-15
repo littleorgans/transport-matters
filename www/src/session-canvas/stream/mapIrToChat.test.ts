@@ -3,11 +3,11 @@ import { makeSessionEvent } from "../testUtils";
 import { mapSessionEventToChatItems } from "./mapIrToChat";
 
 describe("mapSessionEventToChatItems", () => {
-  it("renders turn ir parts under the event role", () => {
+  it("renders transcript body parts under the event role", () => {
     const [message] = mapSessionEventToChatItems(
       makeSessionEvent({
         role: "user",
-        ir: { parts: [{ type: "text", text: "prompt" }] },
+        body: { kind: "user", parts: [{ type: "text", text: "prompt" }] },
       }),
     );
 
@@ -15,18 +15,35 @@ describe("mapSessionEventToChatItems", () => {
     expect(message?.blocks).toEqual([{ type: "text", text: "prompt", provider_data: null }]);
   });
 
-  it("renders meta events from event fields without ir", () => {
+  it("preserves wire context turns with their label", () => {
+    const [message] = mapSessionEventToChatItems(
+      makeSessionEvent({
+        role: "system",
+        body: {
+          kind: "wire_injected",
+          label: "System reminder",
+          parts: [{ type: "text", text: "remember the policy" }],
+        },
+      }),
+    );
+
+    expect(message?.kind).toBe("wire_context");
+    expect(message?.role).toBe("wire");
+    expect(message?.wireLabel).toBe("System reminder");
+    expect(message?.blocks).toEqual([
+      { type: "text", text: "remember the policy", provider_data: null },
+    ]);
+  });
+
+  it("renders meta events from curated fields", () => {
     const [message] = mapSessionEventToChatItems(
       makeSessionEvent({
         kind: "meta",
-        ir: null,
-        model: "claude-sonnet",
-        native_turn_id: "native-7",
         role: null,
         seq: 7,
-        source_line: 42,
-        source_path: "/tmp/source.jsonl",
+        turnIndex: 3,
         ts: "2026-06-06T18:00:00Z",
+        body: { kind: "wire_injected", label: "meta", parts: [] },
       }),
     );
 
@@ -37,40 +54,43 @@ describe("mapSessionEventToChatItems", () => {
       text: [
         "kind: meta",
         "seq: 7",
-        "native_turn_id: native-7",
+        "turn_index: 3",
         "ts: 2026-06-06T18:00:00Z",
-        "model: claude-sonnet",
-        "source_path: /tmp/source.jsonl",
-        "source_line: 42",
+        "body: wire_injected",
       ].join("\n"),
       provider_data: null,
     });
   });
 
-  it("handles artifact redacted image blocks", () => {
+  it("renders tool calls as readable text", () => {
     const [message] = mapSessionEventToChatItems(
       makeSessionEvent({
-        ir: { parts: [{ type: "image", artifact_hash: "sha256:abc", media_type: "image/png" }] },
+        body: { kind: "tool_use", toolName: "Read", input: { file: "a.ts" } },
       }),
     );
 
-    expect(message?.blocks[0]).toEqual({
-      type: "image",
-      source: { artifact_hash: "sha256:abc", media_type: "image/png", redacted: true },
-      provider_data: null,
-    });
+    expect(message?.blocks[0]?.type).toBe("text");
+    const [block] = message?.blocks ?? [];
+    const text = block !== undefined && "text" in block ? block.text : "";
+    expect(text).toContain("tool_use: Read");
   });
 
-  it("uses search text when a turn has no renderable parts", () => {
+  it("renders tool results as readable text", () => {
     const [message] = mapSessionEventToChatItems(
-      makeSessionEvent({ ir: { parts: [] }, search_text: "fallback text" }),
+      makeSessionEvent({
+        body: { kind: "tool_result", toolName: "Read", output: "contents", isError: false },
+      }),
     );
 
-    expect(message?.blocks).toEqual([{ type: "text", text: "fallback text", provider_data: null }]);
+    expect(message?.blocks[0]?.type).toBe("text");
+    const [block] = message?.blocks ?? [];
+    const text = block !== undefined && "text" in block ? block.text : "";
+    expect(text).toContain("tool_result: Read");
+    expect(text).toContain("contents");
   });
 
   it("branches unknown kinds safely", () => {
-    const [message] = mapSessionEventToChatItems(makeSessionEvent({ kind: "signal", ir: null }));
+    const [message] = mapSessionEventToChatItems(makeSessionEvent({ kind: "signal" }));
 
     expect(message?.kind).toBe("unknown");
     expect(message?.blocks[0]?.type).toBe("text");

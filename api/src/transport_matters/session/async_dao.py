@@ -22,6 +22,7 @@ from transport_matters.session.dao_rows import (
 from transport_matters.session.dao_statements import (
     COUNT_DEAD_LETTERS_BY_RUN_SQL,
     COUNT_DEAD_LETTERS_BY_SESSION_SQL,
+    COUNT_TURNS_BEFORE_FOR_OWNER_SQL,
     GET_ARTIFACT_SQL,
     GET_EVENT_ARTIFACTS_FOR_SEQS_SQL,
     GET_EVENTS_FOR_OWNER_SQL,
@@ -30,22 +31,26 @@ from transport_matters.session.dao_statements import (
     GET_LATEST_TURN_BEFORE_WITH_RAW_FOR_OWNER_SQL,
     GET_SESSION_FOR_OWNER_SQL,
     GET_SESSION_SQL,
+    GET_SESSION_VIEW_FOR_OWNER_SQL,
     INSERT_DEAD_LETTER_SQL,
     INSERT_EVENT_SQL,
     IR_SEARCH_SQL,
     LINK_ARTIFACT_SQL,
     LIST_CHILD_SESSIONS_FOR_OWNER_SQL,
+    LIST_SESSION_VIEWS_SQL,
     LIST_SESSIONS_SQL,
     TEXT_SEARCH_SQL,
     UPSERT_ARTIFACT_SQL,
     UPSERT_SESSION_SQL,
 )
 from transport_matters.session.models import (
+    USER_HISTORY_PURPOSE_VALUES,
     ArtifactRow,
     ChildSessionRow,
     EventArtifactRow,
     EventReadRow,
     EventRow,
+    SessionListRow,
     SessionRow,
 )
 
@@ -80,6 +85,43 @@ class AsyncSessionDao:
         )
         row = await cursor.fetchone()
         return one_session(row)
+
+    async def get_session_view_for_owner(
+        self, session_id: str, *, owner: str
+    ) -> SessionListRow | None:
+        cursor = await self._conn.execute(
+            GET_SESSION_VIEW_FOR_OWNER_SQL,
+            {"session_id": session_id, "owner": owner},
+        )
+        row = await cursor.fetchone()
+        return SessionListRow.model_validate(dict(row)) if row is not None else None
+
+    async def list_session_views(
+        self,
+        *,
+        owner: str,
+        workspace_id: str | None = None,
+        purpose: str | None = None,
+        visibility: str | None = None,
+        include_internal: bool = False,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[SessionListRow]:
+        cursor = await self._conn.execute(
+            LIST_SESSION_VIEWS_SQL,
+            {
+                "owner": owner,
+                "workspace_id": workspace_id,
+                "purpose": purpose,
+                "visibility": visibility,
+                "include_internal": include_internal,
+                "user_history_purposes": list(USER_HISTORY_PURPOSE_VALUES),
+                "limit": limit,
+                "offset": offset,
+            },
+        )
+        rows = await cursor.fetchall()
+        return [SessionListRow.model_validate(dict(row)) for row in rows]
 
     async def list_sessions(
         self,
@@ -213,6 +255,18 @@ class AsyncSessionDao:
         )
         row = await cursor.fetchone()
         return event_row(row) if row is not None else None
+
+    async def count_turns_before_for_owner(
+        self, session_id: str, *, owner: str, before_seq: int
+    ) -> int:
+        cursor = await self._conn.execute(
+            COUNT_TURNS_BEFORE_FOR_OWNER_SQL,
+            {"session_id": session_id, "owner": owner, "before_seq": before_seq},
+        )
+        row = await cursor.fetchone()
+        if row is None:
+            return 0
+        return int(row["turn_count"])
 
     async def events_matching_ir(
         self, filter_: dict[str, Any], *, limit: int = 50

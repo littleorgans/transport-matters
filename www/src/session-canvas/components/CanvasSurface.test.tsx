@@ -30,7 +30,7 @@ describe("CanvasSurface", () => {
 
   it("wires command bar captured run actions to addCapturedRun", () => {
     resetCanvasStoreForTests(launch);
-    installMockTransport(() => jsonResponse([]));
+    installMockTransport(() => jsonResponse({ items: [], nextCursor: null }));
     const addCapturedRun = vi.fn((provider: CliName): PaneId => `captured:${provider}`);
     useCanvasStore.setState({ addCapturedRun });
 

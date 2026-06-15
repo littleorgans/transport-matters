@@ -267,7 +267,7 @@ export const useCanvasStore = create<CanvasStoreState>()(
         const ref: PaneContentRef = {
           kind: "session-timeline",
           owner: "local",
-          sessionId: session.session_id,
+          sessionId: session.sessionId,
           title,
         };
         get().spawnPane(ref, { focus: true, title });

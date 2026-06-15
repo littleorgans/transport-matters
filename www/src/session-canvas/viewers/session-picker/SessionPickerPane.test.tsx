@@ -16,7 +16,7 @@ describe("SessionPickerPane", () => {
   it("renders sessions and opens the selected row", async () => {
     const session = makeSessionSummary({ title: "Live project" });
     const open = vi.fn();
-    installMockTransport(() => jsonResponse([session]));
+    installMockTransport(() => jsonResponse({ items: [session], nextCursor: null }));
 
     renderWithQuery(<SessionPickerPane {...pickerProps({ spawnOrFocusTranscript: open })} />);
 
@@ -27,7 +27,7 @@ describe("SessionPickerPane", () => {
   });
 
   it("shows the pending launch state when no session row exists yet", async () => {
-    installMockTransport(() => jsonResponse([]));
+    installMockTransport(() => jsonResponse({ items: [], nextCursor: null }));
 
     renderWithQuery(
       <SessionPickerPane {...pickerProps({ launchStatus: "pending", launch: { cli: "codex" } })} />,

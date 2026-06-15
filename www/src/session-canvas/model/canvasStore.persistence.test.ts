@@ -35,7 +35,7 @@ function writeCanvasStorage(state: unknown, version = CANVAS_STORE_STORAGE_VERSI
 }
 
 function spawnTranscript(sessionId: string, title: string): PaneId {
-  store().spawnOrFocusTranscript(makeSessionSummary({ session_id: sessionId, title }));
+  store().spawnOrFocusTranscript(makeSessionSummary({ sessionId: sessionId, title }));
   return `transcript:${sessionId}`;
 }
 

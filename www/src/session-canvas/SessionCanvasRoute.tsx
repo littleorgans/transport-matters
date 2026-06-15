@@ -32,7 +32,7 @@ export function SessionCanvasRoute() {
   return (
     <CanvasSurface
       launch={launch}
-      launchSessionId={resolved?.session_id ?? null}
+      launchSessionId={resolved?.sessionId ?? null}
       launchStatus={launchStatus}
     />
   );

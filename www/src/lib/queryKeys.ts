@@ -36,11 +36,12 @@ export function resourceContentKey(args: {
 export interface SessionsKeyArgs {
   owner: string;
   workspaceHash?: string | null;
-  provider?: string | null;
   cli?: string | null;
-  status?: string | null;
+  purpose?: string | null;
+  visibility?: string | null;
+  includeInternal?: boolean | null;
   limit?: number;
-  offset?: number;
+  cursor?: string | null;
   runId?: string | null;
 }
 
@@ -80,11 +81,12 @@ function normalizeSessionArgs(args: SessionsKeyArgs) {
   return {
     owner: args.owner,
     workspaceHash: args.workspaceHash ?? null,
-    provider: args.provider ?? null,
     cli: args.cli ?? null,
-    status: args.status ?? null,
+    purpose: args.purpose ?? null,
+    visibility: args.visibility ?? null,
+    includeInternal: args.includeInternal ?? null,
     limit: args.limit ?? null,
-    offset: args.offset ?? null,
+    cursor: args.cursor ?? null,
     runId: args.runId ?? null,
   } as const;
 }

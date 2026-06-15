@@ -6,7 +6,7 @@ per-run ``STORAGE_DIR`` into the child env (in-process TestClient hid it). Two g
 
 * bug #3: a launched backend resolves operator config (settings.toml -> DB url) from
   ``$TRANSPORT_MATTERS_HOME``, NOT the per-run ``STORAGE_DIR`` a launch injects. With the
-  bug, ``GET /api/sessions`` 503s; fixed, it serves ``200 []``.
+  bug, ``GET /v1/sessions`` 503s; fixed, it serves an empty sessions envelope.
 * no-DB fail-fast: the shared launch preflight hard-blocks a launch (non-zero exit with
   guidance) when the session store is unreachable, before spawning anything.
 """
@@ -94,10 +94,10 @@ def test_launched_backend_reads_db_from_home_not_per_run_storage(
     )
     try:
         status, body = _poll_http(
-            f"http://127.0.0.1:{port}/api/sessions?owner=local&limit=50&offset=0"
+            f"http://127.0.0.1:{port}/v1/sessions?owner=local&limit=50"
         )
         assert status == 200, body
-        assert json.loads(body) == []
+        assert json.loads(body) == {"items": [], "nextCursor": None}
     finally:
         proc.terminate()
         try:
