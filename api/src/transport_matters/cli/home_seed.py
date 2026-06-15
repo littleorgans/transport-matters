@@ -30,9 +30,11 @@ _CLAUDE_CONFIG_ENV = "CLAUDE_CONFIG_DIR"
 _CODEX_HOME_ENV = "CODEX_HOME"
 _CLAUDE_CONFIG_FILENAME = ".claude.json"
 _CLAUDE_SETTINGS_FILENAME = "settings.json"
+_CLAUDE_CREDENTIAL_FILENAME = ".credentials.json"
 _CLAUDE_SKIP_DANGEROUS_KEY = "skipDangerousModePermissionPrompt"
 _CODEX_AUTH_FILENAME = "auth.json"
 _CODEX_CONFIG_FILENAME = "config.toml"
+_CODEX_HOOK_TRUST_SOURCE_ENV = "TRANSPORT_MATTERS_CODEX_HOOK_TRUST_SOURCE_HOME"
 _TRUSTED = "trusted"
 _TRUST_LEVEL_LINE = 'trust_level = "trusted"'
 _TRUST_LEVEL_RE = re.compile(r"^\s*trust_level\s*=")
@@ -58,20 +60,24 @@ _CLAUDE_DAEMON_LOCAL_NAMES = frozenset(
         "jobs",
     }
 )
-# Overlay-owned real files (copied + route-merged), also never symlinked.
+# Overlay-owned real files, also never symlinked from the content source.
 _CLAUDE_OVERLAY_COPIED_NAMES = frozenset(
     {
         _CLAUDE_CONFIG_FILENAME,
         _CLAUDE_SETTINGS_FILENAME,
     }
 )
-_CLAUDE_OVERLAY_LOCAL_NAMES = _CLAUDE_OVERLAY_COPIED_NAMES | _CLAUDE_DAEMON_LOCAL_NAMES
-_CODEX_OVERLAY_LOCAL_NAMES = frozenset(
-    {
-        _CODEX_AUTH_FILENAME,
-        _CODEX_CONFIG_FILENAME,
-    }
+_CLAUDE_OVERLAY_CREDENTIAL_NAMES = frozenset({_CLAUDE_CREDENTIAL_FILENAME})
+_CLAUDE_OVERLAY_LOCAL_NAMES = (
+    _CLAUDE_OVERLAY_COPIED_NAMES | _CLAUDE_DAEMON_LOCAL_NAMES | _CLAUDE_OVERLAY_CREDENTIAL_NAMES
 )
+_CODEX_OVERLAY_COPIED_NAMES = frozenset({_CODEX_CONFIG_FILENAME})
+_CODEX_OVERLAY_CREDENTIAL_NAMES = frozenset({_CODEX_AUTH_FILENAME})
+_CODEX_OVERLAY_LOCAL_NAMES = _CODEX_OVERLAY_COPIED_NAMES | _CODEX_OVERLAY_CREDENTIAL_NAMES
+_OVERLAY_CREDENTIAL_NAMES_BY_CLIENT = {
+    CLIENT_NAME_CLAUDE: _CLAUDE_OVERLAY_CREDENTIAL_NAMES,
+    CLIENT_NAME_CODEX: _CODEX_OVERLAY_CREDENTIAL_NAMES,
+}
 # Entries never symlinked into any overlay, regardless of client. A source home that is
 # (or contains) a git repo must not leak its ``.git`` into the per-run overlay, where git
 # would treat the overlay as a working tree of the source repo.
@@ -140,13 +146,14 @@ class CodexSeeder:
         env: Mapping[str, str],
     ) -> None:
         source_home = _default_codex_home(env)
+        hook_trust_source = _codex_hook_trust_source_home(env, source_home)
         _copy_secret_file_if_missing(
             source_home / _CODEX_AUTH_FILENAME,
             home_dir / _CODEX_AUTH_FILENAME,
         )
         _relocate_codex_hook_trust_state(
             config_path=home_dir / _CODEX_CONFIG_FILENAME,
-            source_home=source_home,
+            source_home=hook_trust_source,
             overlay_home=home_dir,
         )
         _merge_codex_project_trust(
@@ -226,16 +233,17 @@ def prepare_runtime_home_overlay(
         runtime_home_dir=runtime_home_dir,
         env=env,
     )
-    _copy_overlay_auth_files(
+    _link_overlay_credential_files(
         client_name,
         auth_source_home_dir=auth_source_home_dir,
         runtime_home_dir=runtime_home_dir,
     )
 
     seed_env = dict(os.environ if env is None else env)
-    if client_name == CLIENT_NAME_CLAUDE and explicit_auth_source:
-        if _CLAUDE_CONFIG_ENV in seed_env:
-            seed_env[_CLAUDE_CONFIG_ENV] = str(auth_source_home_dir)
+    if explicit_auth_source:
+        seed_env[HOME_DIR_ENV_BY_CLIENT[client_name]] = str(auth_source_home_dir)
+        if client_name == CLIENT_NAME_CODEX:
+            seed_env[_CODEX_HOOK_TRUST_SOURCE_ENV] = str(source_home_dir)
     else:
         seed_env[HOME_DIR_ENV_BY_CLIENT[client_name]] = str(source_home_dir)
     seed_home_dir(
@@ -330,10 +338,6 @@ def _copy_overlay_local_files(
         return
     if client_name == CLIENT_NAME_CODEX:
         _copy_secret_file_if_missing(
-            source_home_dir / _CODEX_AUTH_FILENAME,
-            runtime_home_dir / _CODEX_AUTH_FILENAME,
-        )
-        _copy_secret_file_if_missing(
             source_home_dir / _CODEX_CONFIG_FILENAME,
             runtime_home_dir / _CODEX_CONFIG_FILENAME,
         )
@@ -341,21 +345,30 @@ def _copy_overlay_local_files(
     raise ValueError(f"unmapped managed client home seeder: {client_name!r}")
 
 
-def _copy_overlay_auth_files(
+def _link_overlay_credential_files(
     client_name: str,
     *,
     auth_source_home_dir: Path,
     runtime_home_dir: Path,
 ) -> None:
-    if client_name == CLIENT_NAME_CLAUDE:
+    for name in _overlay_credential_names(client_name):
+        _symlink_file_if_exists(auth_source_home_dir / name, runtime_home_dir / name)
+
+
+def _overlay_credential_names(client_name: str) -> frozenset[str]:
+    try:
+        return _OVERLAY_CREDENTIAL_NAMES_BY_CLIENT[client_name]
+    except KeyError as exc:
+        raise ValueError(f"unmapped managed client home seeder: {client_name!r}") from exc
+
+
+def _symlink_file_if_exists(source: Path, target: Path) -> None:
+    if not source.is_file():
         return
-    if client_name == CLIENT_NAME_CODEX:
-        _copy_secret_file_if_missing(
-            auth_source_home_dir / _CODEX_AUTH_FILENAME,
-            runtime_home_dir / _CODEX_AUTH_FILENAME,
-        )
+    if target.exists() or target.is_symlink():
         return
-    raise ValueError(f"unmapped managed client home seeder: {client_name!r}")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.symlink_to(source.resolve())
 
 
 def _source_claude_config_path(
@@ -412,6 +425,13 @@ def _default_codex_home(env: Mapping[str, str]) -> Path:
     if codex_home:
         return Path(codex_home).expanduser()
     return Path.home() / ".codex"
+
+
+def _codex_hook_trust_source_home(env: Mapping[str, str], fallback: Path) -> Path:
+    source = env.get(_CODEX_HOOK_TRUST_SOURCE_ENV)
+    if source:
+        return Path(source).expanduser()
+    return fallback
 
 
 def claude_projects_root(home_dir: Path | None, env: Mapping[str, str]) -> Path:
