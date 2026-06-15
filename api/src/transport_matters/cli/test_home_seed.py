@@ -1,5 +1,8 @@
 import json
+import os
 import stat
+import subprocess
+import sys
 import tomllib
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -9,9 +12,9 @@ from typer.testing import CliRunner
 
 from transport_matters import env_keys
 from transport_matters.cli import main
+from transport_matters.cli.home_constants import _CLAUDE_DAEMON_LOCAL_NAMES
+from transport_matters.cli.home_overlay import assert_overlay_daemon_is_local
 from transport_matters.cli.home_seed import (
-    _CLAUDE_DAEMON_LOCAL_NAMES,
-    _assert_overlay_daemon_is_local,
     apply_claude_proxy_env_settings,
     claude_projects_root,
     codex_sessions_root,
@@ -26,6 +29,28 @@ runner = CliRunner()
 
 if TYPE_CHECKING:
     from unittest.mock import MagicMock
+
+
+def test_home_seed_modules_import_in_fresh_subprocess() -> None:
+    modules = [
+        "transport_matters.cli.home_constants",
+        "transport_matters.cli.home_io",
+        "transport_matters.cli.claude_home",
+        "transport_matters.cli.codex_home",
+        "transport_matters.cli.home_overlay",
+        "transport_matters.cli.home_seeders",
+        "transport_matters.cli.home_seed",
+    ]
+    script = ";".join(f"import {module}" for module in modules)
+    env = {**os.environ, "PYTHONPATH": str(Path(__file__).resolve().parents[2])}
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        check=False,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    assert result.returncode == 0, result.stderr
 
 
 class TestCodexSessionsRoot:
@@ -246,7 +271,7 @@ def test_assert_overlay_daemon_is_local_rejects_daemon_state_symlinked_to_source
         runtime.mkdir()
         (runtime / name).symlink_to(source_entry)
         with pytest.raises(ValueError, match="must not resolve to the source home"):
-            _assert_overlay_daemon_is_local(source_home_dir=source, runtime_home_dir=runtime)
+            assert_overlay_daemon_is_local(source_home_dir=source, runtime_home_dir=runtime)
 
 
 def test_assert_overlay_daemon_is_local_allows_fresh_local_daemon_state(
@@ -260,7 +285,7 @@ def test_assert_overlay_daemon_is_local_allows_fresh_local_daemon_state(
     # Real, local daemon + jobs dirs (not symlinks to the source) are allowed.
     (runtime / "daemon").mkdir()
     (runtime / "jobs").mkdir()
-    _assert_overlay_daemon_is_local(source_home_dir=source, runtime_home_dir=runtime)
+    assert_overlay_daemon_is_local(source_home_dir=source, runtime_home_dir=runtime)
 
 
 def test_claude_runtime_overlay_copies_native_default_account_metadata(
