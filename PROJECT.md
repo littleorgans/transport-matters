@@ -112,6 +112,67 @@ database, schema, block store, query layer, rebuild gate, or raw route.
 home is included in the transcript source descriptor and carried explicitly, so
 path resolution remains faithful under managed homes.
 
+## Runtime home template materialization
+
+Template mode is the only mode with explicit top level materialization policy.
+Native and manual overlays keep the existing catch all symlink behavior.
+Proxy only launches do not materialize a home.
+
+Template content is read only. Known content lists remain explicit, but unknown
+top level entries default to symlink include so dual target templates work
+without per client rejection:
+
+- Claude content: `CLAUDE.md`, `agents`, `commands`, `hooks`,
+  `output-styles`, `plugins`, `skills`, `statusline-command.sh`.
+- Codex content: `AGENTS.md`, `developer_instructions`, `hooks`,
+  `hooks.json`, `plugins`, `skills`, `vendor_imports`.
+
+Template credentials are rejected at launch. Claude rejects `.credentials.json`
+and `.claude.json` with `oauthAccount` or `userID`. Codex rejects `auth.json`
+and auth shaped material in `config.toml`. Generator internal files in the
+explicit ignore list are excluded from the runtime home: `.git` and
+`runtime.toml`. Unknown top level entries are included as symlinks, not rejected
+or silently dropped.
+
+Transport Matters home writers are:
+
+- `materialize_runtime_home_overlay` and
+  `materialize_runtime_home_template_overlay`, which create the runtime home,
+  symlink content, copy local config, and link native credential files.
+- `ClaudeSeeder.seed`, which writes runtime `.claude.json`.
+- `_ensure_claude_skip_dangerous_prompt`, which writes runtime `settings.json`.
+- `apply_claude_proxy_env_settings`, which writes runtime `settings.json`
+  proxy env for the live run.
+- `CodexSeeder.seed`, which writes runtime `config.toml`.
+- `_relocate_codex_hook_trust_state`, which rewrites copied Codex hook trust
+  keys from template paths to runtime home paths.
+- `_merge_codex_project_trust`, which writes the current cwd trust stanza to
+  runtime `config.toml`.
+- `seed_codex_session`, reached through `CodexLaunchProfile.prepare`, which
+  creates the owned rollout under runtime `sessions/`.
+
+Known Claude writable paths are local to the runtime home: `.claude.json`,
+`settings.json`, `projects`, `daemon`, `daemon.lock`, `daemon.log`,
+`daemon.status.json`, `jobs`, `cache`, `downloads`, `file-history`,
+`history.jsonl`, `mcp-needs-auth-cache.json`, `paste-cache`, `session-env`,
+`sessions`, `shell-snapshots`, and `stats-cache.json`. `.credentials.json` is a
+native auth link, never template content.
+
+Known Codex writable paths are local to the runtime home: `config.toml`,
+`sessions`, `history.jsonl`, `session_index.jsonl`, `cache`, `log`, `tmp`,
+`.tmp`, `shell_snapshots`, `archived_sessions`, `computer-use`,
+`process_manager`, `node_repl`, `generated_images`, `ambient-suggestions`,
+`sqlite`, `goals_1.sqlite*`, `logs_2.sqlite*`, `memories_1.sqlite*`,
+`state_5.sqlite*`, `internal_storage.json`, `installation_id`,
+`.codex-global-state.json*`, `models_cache.json`, and `version.json`.
+`auth.json` is a native auth link, never template content.
+
+MCP and tool state written during a template run must land in an external
+service, a native credential link, or the local runtime home. A template may
+provide static MCP or tool configuration through known content names, unknown
+symlinked content, or copied local config. Persistent MCP caches, SQLite stores,
+generated files, and hook trust updates must not write to the template tree.
+
 ## Launch and adapter ports
 
 Two symmetric ports keep CLI specifics at the edges:

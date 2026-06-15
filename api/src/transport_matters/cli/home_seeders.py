@@ -96,6 +96,44 @@ def prepare_runtime_home_overlay(
         auth_source_home_dir=auth_source_home_dir,
         extra_local_names=extra_local_names,
     )
+    return _seed_runtime_home_overlay(
+        client_name, materialization, working_dir=working_dir, env=env
+    )
+
+
+def prepare_runtime_home_template_overlay(
+    client_name: str,
+    *,
+    source_home_dir: Path,
+    runtime_home_dir: Path,
+    working_dir: Path,
+    env: Mapping[str, str] | None = None,
+    auth_source_home_dir: Path | None = None,
+) -> RuntimeHomeOverlay:
+    """Build a template mode overlay from explicit materialization policy."""
+    materialization = home_overlay.materialize_runtime_home_template_overlay(
+        client_name,
+        source_home_dir=source_home_dir,
+        runtime_home_dir=runtime_home_dir,
+        env=env,
+        auth_source_home_dir=auth_source_home_dir,
+    )
+    return _seed_runtime_home_overlay(
+        client_name, materialization, working_dir=working_dir, env=env
+    )
+
+
+def validate_runtime_home_template(client_name: str, template_home: Path) -> None:
+    home_overlay.validate_runtime_home_template(client_name, template_home)
+
+
+def _seed_runtime_home_overlay(
+    client_name: str,
+    materialization: home_overlay.OverlayMaterialization,
+    *,
+    working_dir: Path,
+    env: Mapping[str, str] | None,
+) -> RuntimeHomeOverlay:
     seed_env = dict(os.environ if env is None else env)
     if materialization.explicit_auth_source:
         seed_env[HOME_DIR_ENV_BY_CLIENT[client_name]] = str(materialization.auth_source_home_dir)

@@ -10,7 +10,9 @@ from typing import TYPE_CHECKING, Any
 from transport_matters.cli.home_seed import (
     RuntimeHomeOverlay,
     prepare_runtime_home_overlay,
+    prepare_runtime_home_template_overlay,
     resolve_source_home_dir,
+    validate_runtime_home_template,
 )
 from transport_matters.launch_environment import CLIENT_NAME_CLAUDE, CLIENT_NAME_CODEX
 
@@ -99,18 +101,19 @@ def plan_runtime_home(
 
     native_home = resolve_source_home_dir(client_name, home_dir=None, env=env)
     manual_home = home_dir.expanduser() if home_dir is not None else None
-    runtime_template = _validated_template(client_name, runtime_template)
     if manual_home is not None:
         content_source = manual_home
         mode = RuntimeHomeMode.MANUAL
         provenance = None
     elif runtime_template is not None:
-        content_source = runtime_template.template_home.expanduser()
+        validated_template = _validated_template(client_name, runtime_template)
+        assert validated_template is not None
+        content_source = validated_template.template_home.expanduser()
         mode = RuntimeHomeMode.TEMPLATE
         provenance = RuntimeTemplateProvenance(
-            template_id=runtime_template.template_id,
+            template_id=validated_template.template_id,
             template_home=content_source,
-            provenance=runtime_template.provenance,
+            provenance=validated_template.provenance,
         )
     else:
         content_source = native_home
@@ -149,6 +152,15 @@ def prepare_runtime_home(
     """Materialize a runtime overlay when the plan has a distinct child home."""
     if plan.runtime_home_dir is None or plan.content_source is None:
         return None
+    if plan.mode == RuntimeHomeMode.TEMPLATE:
+        return prepare_runtime_home_template_overlay(
+            plan.client_name,
+            source_home_dir=plan.content_source,
+            runtime_home_dir=plan.runtime_home_dir,
+            working_dir=working_dir,
+            env=env,
+            auth_source_home_dir=plan.auth_source,
+        )
     return prepare_runtime_home_overlay(
         plan.client_name,
         source_home_dir=plan.content_source,
@@ -190,6 +202,7 @@ def _validated_template(
         raise ValueError(
             f"runtime template client {runtime_template.client_name!r} does not match {client_name!r}"
         )
+    validate_runtime_home_template(client_name, runtime_template.template_home)
     return runtime_template
 
 
