@@ -27,10 +27,12 @@ export function TranscriptMessage({ message }: TranscriptMessageProps) {
           <TranscriptBlock block={block} key={blockKey(block, index)} />
         ))}
       </div>
-      <details className="canvas-transcript-message__raw">
-        <summary>view raw</summary>
-        <pre>{JSON.stringify(message.nativePayload, null, 2)}</pre>
-      </details>
+      {message.nativePayload !== null ? (
+        <details className="canvas-transcript-message__raw">
+          <summary>view raw</summary>
+          <pre>{JSON.stringify(message.nativePayload, null, 2)}</pre>
+        </details>
+      ) : null}
     </article>
   );
 }

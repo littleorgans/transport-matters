@@ -47,25 +47,9 @@ EVENT_COLUMN_NAMES = (
     "search_text",
     "created_at",
 )
-EVENT_READ_COLUMN_NAMES = EVENT_COLUMN_NAMES
 EVENT_COLUMNS = ", ".join(EVENT_COLUMN_NAMES)
 EVENT_OWNER_COLUMNS = ", ".join(f"e.{name}" for name in EVENT_COLUMN_NAMES)
-EVENT_READ_COLUMNS = ", ".join(f"e.{name}" for name in EVENT_READ_COLUMN_NAMES)
 ARTIFACT_COLUMNS = "hash, media_type, size_bytes, bytes, created_at"
-
-
-def events_for_owner_sql(event_columns: str) -> str:
-    return f"""
-SELECT {event_columns}
-FROM "event" AS e
-JOIN "session" AS s ON s.session_id = e.session_id
-WHERE e.session_id = %(session_id)s
-  AND s.owner = %(owner)s
-  AND (%(from_seq)s::integer IS NULL OR e.seq >= %(from_seq)s::integer)
-  AND (%(to_seq)s::integer IS NULL OR e.seq <= %(to_seq)s::integer)
-ORDER BY e.seq
-LIMIT %(limit)s
-"""
 
 
 UPSERT_SESSION_SQL = f"""
@@ -254,8 +238,17 @@ WHERE session_id = %(session_id)s
   AND (%(to_seq)s::integer IS NULL OR seq <= %(to_seq)s::integer)
 ORDER BY seq
 """
-GET_EVENTS_FOR_OWNER_SQL = events_for_owner_sql(EVENT_READ_COLUMNS)
-GET_EVENTS_WITH_RAW_FOR_OWNER_SQL = events_for_owner_sql(EVENT_OWNER_COLUMNS)
+GET_EVENTS_FOR_OWNER_SQL = f"""
+SELECT {EVENT_OWNER_COLUMNS}
+FROM "event" AS e
+JOIN "session" AS s ON s.session_id = e.session_id
+WHERE e.session_id = %(session_id)s
+  AND s.owner = %(owner)s
+  AND (%(from_seq)s::integer IS NULL OR e.seq >= %(from_seq)s::integer)
+  AND (%(to_seq)s::integer IS NULL OR e.seq <= %(to_seq)s::integer)
+ORDER BY e.seq
+LIMIT %(limit)s
+"""
 
 GET_LATEST_TURN_BEFORE_WITH_RAW_FOR_OWNER_SQL = f"""
 SELECT {EVENT_OWNER_COLUMNS}
