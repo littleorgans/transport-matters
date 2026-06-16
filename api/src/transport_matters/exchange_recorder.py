@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING, Any
 
 from transport_matters import broadcast
 from transport_matters.client_version import detect_client_version
-from transport_matters.config import get_settings
 from transport_matters.exchange_recorder_artifacts import (
     build_request_artifacts as build_request_artifacts,
 )
@@ -25,6 +24,7 @@ from transport_matters.exchange_recorder_artifacts import (
 )
 from transport_matters.exchange_recorder_unparsed import unparsed_request_ir
 from transport_matters.exchange_stats import build_pipeline_stats, build_req_stats
+from transport_matters.shared_proxy import ProxyRunBinding, resolve_run_storage
 from transport_matters.storage import (
     CodexTurnListSummary,
     IndexEntry,
@@ -120,6 +120,7 @@ async def persist_unparsed_exchange(
     flow: http.HTTPFlow,
     raw: bytes,
     provider_name: str,
+    binding: ProxyRunBinding | None = None,
 ) -> None:
     """Record a synthetic exchange for traffic the adapter could not parse.
 
@@ -139,12 +140,9 @@ async def persist_unparsed_exchange(
         ir = unparsed_request_ir(raw, provider_name, client_version)
         req_stats = build_req_stats(ir)
 
-        from transport_matters.storage import get_storage
-
-        storage = await get_storage()
+        storage, run_id = await resolve_run_storage(binding)
         exchange_id = str(uuid.uuid4())
         ts = datetime.now(UTC)
-        run_id = get_settings().run_id
         entry = IndexEntry(
             id=exchange_id,
             run_id=run_id,
@@ -166,9 +164,10 @@ async def persist_unparsed_http_exchange(
     flow: http.HTTPFlow,
     adapter: Any,  # Any: adapter protocol has no shared base
     codex_http: bool,
+    binding: ProxyRunBinding | None = None,
 ) -> None:
     """Record an HTTP request the adapter could not parse (raw bytes preserved)."""
-    await persist_unparsed_exchange(flow, request_raw_bytes(flow), adapter.name)
+    await persist_unparsed_exchange(flow, request_raw_bytes(flow), adapter.name, binding)
 
 
 def _assign_track(
@@ -208,17 +207,18 @@ async def persist_http_exchange(
     flow: http.HTTPFlow,
     request_state: RequestFlowState,
     token_counter: TokenCountingClient | None,
+    binding: ProxyRunBinding | None = None,
 ) -> bool:
     if request_state.dropped:
-        return await delete_http_provisional_exchange(flow, request_state)
+        return await delete_http_provisional_exchange(flow, request_state, binding)
     if request_state.provisional_exchange_id is not None:
-        finalized = await _finalize_http_provisional_exchange(flow, request_state, token_counter)
+        finalized = await _finalize_http_provisional_exchange(
+            flow, request_state, token_counter, binding
+        )
         if finalized:
             return True
 
-    from transport_matters.storage import get_storage
-
-    storage = await get_storage()
+    storage, run_id = await resolve_run_storage(binding)
     adapter = request_state.adapter
     ir = request_state.request_ir
     raw_req = request_state.raw_request
@@ -233,7 +233,6 @@ async def persist_http_exchange(
     req_stats = build_req_stats(curated_ir)
     pipeline_stats = await stamped_pipeline_stats(flow, request_state, token_counter, exchange_id)
 
-    run_id = get_settings().run_id
     track_assignment = persist_track_assignment(
         run_id, request_state, res_ir, exchange_id=exchange_id
     )
@@ -285,13 +284,12 @@ async def persist_http_exchange(
 async def persist_http_provisional_exchange(
     flow: http.HTTPFlow,
     request_state: RequestFlowState,
+    binding: ProxyRunBinding | None = None,
 ) -> str | None:
     if request_state.provisional_exchange_id is not None:
         return request_state.provisional_exchange_id
 
-    from transport_matters.storage import get_storage
-
-    storage = await get_storage()
+    storage, run_id = await resolve_run_storage(binding)
     adapter = request_state.adapter
     ir = request_state.request_ir
     raw_req = request_state.raw_request
@@ -302,7 +300,6 @@ async def persist_http_provisional_exchange(
 
     exchange_id = str(uuid.uuid4())
     ts = datetime.now(UTC)
-    run_id = get_settings().run_id
     track_assignment = persist_track_assignment(
         run_id, request_state, None, exchange_id=exchange_id
     )
@@ -342,16 +339,16 @@ async def persist_http_provisional_exchange(
 async def delete_http_provisional_exchange(
     flow: http.HTTPFlow,
     request_state: RequestFlowState,
+    binding: ProxyRunBinding | None = None,
 ) -> bool:
     exchange_id = request_state.provisional_exchange_id
     if exchange_id is None:
         return True
 
     from transport_matters.flow_state import update_request_flow_state
-    from transport_matters.storage import get_storage
 
     try:
-        storage = await get_storage()
+        storage, _run_id = await resolve_run_storage(binding)
         await storage.delete_exchange(exchange_id)
     except Exception:
         logger.exception("Failed to delete provisional HTTP exchange %s", exchange_id)
@@ -367,14 +364,13 @@ async def _finalize_http_provisional_exchange(
     flow: http.HTTPFlow,
     request_state: RequestFlowState,
     token_counter: TokenCountingClient | None,
+    binding: ProxyRunBinding | None = None,
 ) -> bool:
     exchange_id = request_state.provisional_exchange_id
     if exchange_id is None:
         return False
 
-    from transport_matters.storage import get_storage
-
-    storage = await get_storage()
+    storage, _run_id = await resolve_run_storage(binding)
     existing_entry = await storage.read_index_entry(exchange_id)
     if existing_entry is None:
         return False

@@ -33,6 +33,7 @@ from transport_matters.exchange_recorder import (
 from transport_matters.exchange_stats import build_pipeline_stats, build_req_stats
 from transport_matters.flow_state import get_request_flow_state
 from transport_matters.request_diff import outbound_request_if_changed
+from transport_matters.shared_proxy import ProxyRunBinding, resolve_run_storage
 from transport_matters.storage import CodexTurnListSummary
 
 if TYPE_CHECKING:
@@ -352,6 +353,7 @@ def _updated_codex_provisional_entry(
 async def rewrite_codex_provisional_exchange(
     flow: http.HTTPFlow,
     *,
+    binding: ProxyRunBinding | None = None,
     force_replay: bool = False,
 ) -> bool:
     request_state = get_request_flow_state(flow)
@@ -360,10 +362,8 @@ async def rewrite_codex_provisional_exchange(
     if request_state is None or state is None or exchange_id is None:
         return False
 
-    from transport_matters.storage import get_storage
-
     try:
-        storage = await get_storage()
+        storage, _run_id = await resolve_run_storage(binding)
         existing_entry = await storage.read_index_entry(exchange_id)
         if existing_entry is None:
             return False

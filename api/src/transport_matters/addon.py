@@ -62,6 +62,7 @@ class TransportMattersAddon:
         await handle_http_request(
             flow,
             self._runtime.token_counter if self._runtime is not None else None,
+            self._runtime.binding if self._runtime is not None else None,
         )
 
     async def done(self) -> None:
@@ -72,15 +73,22 @@ class TransportMattersAddon:
         log_websocket_start(flow)
 
     async def websocket_message(self, flow: http.HTTPFlow) -> None:
-        await handle_codex_websocket_message(flow)
+        await handle_codex_websocket_message(
+            flow,
+            self._runtime.binding if self._runtime is not None else None,
+        )
 
     async def websocket_end(self, flow: http.HTTPFlow) -> None:
-        await handle_codex_websocket_end(flow)
+        await handle_codex_websocket_end(
+            flow,
+            self._runtime.binding if self._runtime is not None else None,
+        )
 
     async def response(self, flow: http.HTTPFlow) -> None:
         await handle_response(
             flow,
             self._runtime.token_counter if self._runtime is not None else None,
+            self._runtime.binding if self._runtime is not None else None,
         )
 
     async def error(self, flow: http.HTTPFlow) -> None:
@@ -89,7 +97,11 @@ class TransportMattersAddon:
         request_state = get_request_flow_state(flow)
         if request_state is None or request_state.provisional_exchange_id is None:
             return
-        await delete_http_provisional_exchange(flow, request_state)
+        await delete_http_provisional_exchange(
+            flow,
+            request_state,
+            self._runtime.binding if self._runtime is not None else None,
+        )
 
 
 addons = [TransportMattersAddon()]

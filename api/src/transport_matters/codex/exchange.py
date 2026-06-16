@@ -19,7 +19,6 @@ from transport_matters.codex.transport import (
     ensure_codex_transport_state,
     get_codex_transport_state,
 )
-from transport_matters.config import get_settings
 from transport_matters.exchange_recorder import (
     build_request_artifacts,
     emit_exchange,
@@ -41,6 +40,7 @@ from transport_matters.ir import (
     SamplingParams,
     TextBlock,
 )
+from transport_matters.shared_proxy import ProxyRunBinding, resolve_run_storage
 from transport_matters.storage import (
     CodexTurnListSummary,
     IndexEntry,
@@ -75,7 +75,10 @@ def _codex_turn_index(state: Any | None) -> int:
     return allocation.turn_index if allocation is not None else 0
 
 
-async def persist_codex_provisional_exchange(flow: http.HTTPFlow) -> str | None:
+async def persist_codex_provisional_exchange(
+    flow: http.HTTPFlow,
+    binding: ProxyRunBinding | None = None,
+) -> str | None:
     state = get_codex_transport_state(flow)
     request_state = get_request_flow_state(flow)
     if state is None or request_state is None:
@@ -83,9 +86,7 @@ async def persist_codex_provisional_exchange(flow: http.HTTPFlow) -> str | None:
     if state.provisional_exchange_id is not None:
         return state.provisional_exchange_id
 
-    from transport_matters.storage import get_storage
-
-    storage = await get_storage()
+    storage, run_id = await resolve_run_storage(binding)
     adapter = request_state.adapter
     ir = request_state.request_ir
     raw_req = request_state.raw_request
@@ -111,7 +112,6 @@ async def persist_codex_provisional_exchange(flow: http.HTTPFlow) -> str | None:
         if transport is not None
         else None
     )
-    run_id = get_settings().run_id
     track_assignment = persist_track_assignment(
         run_id, request_state, None, exchange_id=exchange_id
     )
@@ -155,17 +155,18 @@ async def persist_codex_provisional_exchange(flow: http.HTTPFlow) -> str | None:
     return exchange_id
 
 
-async def delete_codex_provisional_exchange(flow: http.HTTPFlow) -> bool:
+async def delete_codex_provisional_exchange(
+    flow: http.HTTPFlow,
+    binding: ProxyRunBinding | None = None,
+) -> bool:
     state = get_codex_transport_state(flow)
     exchange_id = state.provisional_exchange_id if state is not None else None
     if exchange_id is None:
         clear_codex_breakpoint_lifecycle(flow)
         return True
 
-    from transport_matters.storage import get_storage
-
     try:
-        storage = await get_storage()
+        storage, _run_id = await resolve_run_storage(binding)
         await storage.delete_exchange(exchange_id)
     except Exception:
         logger.exception("Failed to delete provisional Codex exchange %s", exchange_id)
@@ -184,6 +185,7 @@ async def _persist_codex_exchange(
     flow: http.HTTPFlow,
     summary: Any,
     *,
+    binding: ProxyRunBinding | None = None,
     message_end: int | None = None,
 ) -> bool:
     request_state = get_request_flow_state(flow)
@@ -191,9 +193,7 @@ async def _persist_codex_exchange(
     if request_state is None:
         return False
 
-    from transport_matters.storage import get_storage
-
-    storage = await get_storage()
+    storage, run_id = await resolve_run_storage(binding)
     adapter = request_state.adapter
     ir = request_state.request_ir
     raw_req = request_state.raw_request
@@ -230,7 +230,6 @@ async def _persist_codex_exchange(
         if transport is not None
         else None
     )
-    run_id = get_settings().run_id
     track_assignment = persist_track_assignment(
         run_id, request_state, res_ir, exchange_id=exchange_id
     )
@@ -281,6 +280,7 @@ async def _persist_codex_exchange(
 async def finalize_codex_provisional_exchange(
     flow: http.HTTPFlow,
     summary: Any | None,
+    binding: ProxyRunBinding | None = None,
     *,
     message_end: int | None = None,
 ) -> bool:
@@ -291,23 +291,41 @@ async def finalize_codex_provisional_exchange(
     if request_state is None:
         return False
 
-    from transport_matters.storage import get_storage
-
-    storage = await get_storage()
+    storage, _run_id = await resolve_run_storage(binding)
 
     exchange_id = provisional_exchange_id or finalized_exchange_id
     if provisional_exchange_id is None:
         if exchange_id is None or summary is None:
-            return await _persist_codex_exchange(flow, summary, message_end=message_end)
+            return await _persist_codex_exchange(
+                flow,
+                summary,
+                binding=binding,
+                message_end=message_end,
+            )
         existing_entry = await storage.read_index_entry(exchange_id)
         if existing_entry is None:
-            return await _persist_codex_exchange(flow, summary, message_end=message_end)
+            return await _persist_codex_exchange(
+                flow,
+                summary,
+                binding=binding,
+                message_end=message_end,
+            )
     elif exchange_id is None:
-        return await _persist_codex_exchange(flow, summary, message_end=message_end)
+        return await _persist_codex_exchange(
+            flow,
+            summary,
+            binding=binding,
+            message_end=message_end,
+        )
     else:
         existing_entry = await storage.read_index_entry(exchange_id)
         if existing_entry is None:
-            return await _persist_codex_exchange(flow, summary, message_end=message_end)
+            return await _persist_codex_exchange(
+                flow,
+                summary,
+                binding=binding,
+                message_end=message_end,
+            )
 
     ir = request_state.request_ir
     existing_artifacts = await storage.read_exchange(exchange_id)
@@ -492,7 +510,10 @@ def _codex_handshake_failure_ir(flow: http.HTTPFlow) -> InternalRequest:
     )
 
 
-async def persist_codex_handshake_failure(flow: http.HTTPFlow) -> None:
+async def persist_codex_handshake_failure(
+    flow: http.HTTPFlow,
+    binding: ProxyRunBinding | None = None,
+) -> None:
     response = getattr(flow, "response", None)
     if response is None or getattr(response, "status_code", None) == 101:
         return
@@ -502,9 +523,7 @@ async def persist_codex_handshake_failure(flow: http.HTTPFlow) -> None:
     if transport is None:
         return
 
-    from transport_matters.storage import get_storage
-
-    storage = await get_storage()
+    storage, run_id = await resolve_run_storage(binding)
     ir = _codex_handshake_failure_ir(flow)
     req_stats = build_req_stats(ir)
     response_raw = bytes(getattr(response, "raw_content", b"") or b"")
@@ -518,7 +537,7 @@ async def persist_codex_handshake_failure(flow: http.HTTPFlow) -> None:
     ts = datetime.now(UTC)
     entry = IndexEntry(
         id=exchange_id,
-        run_id=get_settings().run_id,
+        run_id=run_id,
         ts=ts,
         provider="codex",
         model=ir.model,
@@ -541,7 +560,7 @@ async def persist_codex_handshake_failure(flow: http.HTTPFlow) -> None:
         res_stats,
         exchange_id,
         ts,
-        get_settings().run_id,
+        run_id,
         flow_id=flow.id,
     )
 
@@ -549,6 +568,7 @@ async def persist_codex_handshake_failure(flow: http.HTTPFlow) -> None:
 async def persist_unparsed_codex_exchange(
     flow: http.HTTPFlow,
     raw_frame: bytes,
+    binding: ProxyRunBinding | None = None,
 ) -> None:
     """Record an unparsable Codex initial frame (raw bytes preserved).
 
@@ -557,4 +577,4 @@ async def persist_unparsed_codex_exchange(
     """
     if not raw_frame:
         return
-    await persist_unparsed_exchange(flow, raw_frame, "codex")
+    await persist_unparsed_exchange(flow, raw_frame, "codex", binding)

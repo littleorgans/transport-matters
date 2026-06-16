@@ -10,14 +10,19 @@ Failures (network, rate limit, malformed response, schema drift) degrade
 to None so the UI can render an em dash instead of crashing the flow.
 """
 
+from __future__ import annotations
+
 import asyncio
 import hashlib
 import json
 import logging
 from collections import OrderedDict
-from typing import Any, Protocol  # Any: raw JSON dicts, untyped header maps
+from typing import TYPE_CHECKING, Any, Protocol  # Any: raw JSON dicts, untyped header maps
 
 import httpx
+
+if TYPE_CHECKING:
+    from transport_matters.shared_proxy.binding import ProxyRunBinding
 
 logger = logging.getLogger(__name__)
 
@@ -152,13 +157,11 @@ def _cache_key(payload: bytes, auth: dict[str, str]) -> str:
 # and gracefully returns None if the addon has not initialized yet.
 _counter: TokenCounter | None = None
 
-# Cache of the most recently observed Anthropic auth headers. Live flows
-# carry credentials for the duration of a single request; lazy operations
-# (historical pipeline token recount) have no flow to borrow from, so we
-# snapshot the last known good set from each incoming flow and replay it
-# when a route needs to hit count_tokens without one in hand. Cleared at
-# addon shutdown. Never persisted — session-scoped, dies with the process.
+# Fallback cache for legacy callers. Addon flow handlers store auth on the
+# current ProxyRunBinding, then expose that binding to embedded routes through
+# _recent_auth_binding while Slice 1 still has one binding per process.
 _recent_auth: dict[str, str] | None = None
+_recent_auth_binding: ProxyRunBinding | None = None
 
 
 def set_counter(counter: TokenCounter | None) -> None:
@@ -172,7 +175,18 @@ def get_counter() -> TokenCounter | None:
     return _counter
 
 
-def set_recent_auth(auth: dict[str, str] | None) -> None:
+def _clear_recent_auth() -> None:
+    """Clear both recent auth cache holders."""
+    global _recent_auth, _recent_auth_binding
+    _recent_auth = None
+    _recent_auth_binding = None
+
+
+def set_recent_auth(
+    auth: dict[str, str] | None,
+    *,
+    binding: ProxyRunBinding | None = None,
+) -> None:
     """Cache the latest Anthropic auth headers for lazy count_tokens calls.
 
     Callers should pass the ``relevant_auth_headers`` filtered view, not
@@ -180,12 +194,25 @@ def set_recent_auth(auth: dict[str, str] | None) -> None:
     endpoint accepts. Pass ``None`` or an empty mapping to clear (e.g. at
     addon shutdown).
     """
-    global _recent_auth
-    _recent_auth = dict(auth) if auth else None
+    global _recent_auth, _recent_auth_binding
+    if binding is not None:
+        binding.recent_auth.set(auth)
+        if not auth:
+            _clear_recent_auth()
+            return
+        _recent_auth_binding = binding
+        return
+    if not auth:
+        _clear_recent_auth()
+        return
+    _recent_auth = dict(auth)
 
 
-def get_recent_auth() -> dict[str, str] | None:
+def get_recent_auth(*, binding: ProxyRunBinding | None = None) -> dict[str, str] | None:
     """Return the cached auth headers, or None if no flow has been seen."""
+    source = binding or _recent_auth_binding
+    if source is not None:
+        return source.recent_auth.get()
     return _recent_auth
 
 

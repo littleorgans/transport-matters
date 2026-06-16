@@ -7,6 +7,7 @@ import contextlib
 import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from types import MappingProxyType
 from typing import TYPE_CHECKING
 
 import httpx
@@ -23,6 +24,7 @@ from transport_matters.session.ingest import EventWrite, build_event, build_even
 from transport_matters.session.models import SessionPurpose
 from transport_matters.session.pool import create_async_pool
 from transport_matters.session.writer import SessionWriter
+from transport_matters.shared_proxy import ProxyRunBinding
 from transport_matters.storage import init_storage
 from transport_matters.storage.transcript_snapshot import make_transcript_snapshot_writer
 from transport_matters.workspace import workspace_id
@@ -33,6 +35,7 @@ if TYPE_CHECKING:
 
     from transport_matters.config import Settings
     from transport_matters.index.adapters.base import SessionBinding
+    from transport_matters.storage.base import StorageBackend
 
 logger = logging.getLogger(__name__)
 
@@ -65,43 +68,62 @@ def _make_cursor_registrar(
     return register
 
 
-def _launch_run_context(settings: Settings, started_at: str) -> RunContext | None:
-    """Build the owned transcript registration context from launch settings, if complete."""
-    if settings.run_id is None or settings.cwd is None or settings.cli is None:
-        return None
-    if settings.owned_native_session_id is None:
-        return None
-    workspace = workspace_id(settings.cwd)
-    return RunContext(
+def build_proxy_run_binding(settings: Settings, storage: StorageBackend) -> ProxyRunBinding:
+    """Build the per-run proxy identity from launch settings."""
+
+    return ProxyRunBinding(
         run_id=settings.run_id,
-        cwd=str(settings.cwd),
+        cli=settings.cli,
+        working_dir=settings.cwd,
+        storage=storage,
+        listen_port=settings.proxy_port,
+        upstream=settings.upstream_url,
+        agent_home_dir=settings.agent_home_dir,
+        owned_native_session_id=settings.owned_native_session_id,
+        owned_source_descriptor=settings.owned_source_descriptor,
+        launch_fields=MappingProxyType(dict(settings.launch_fields)),
+        default_client_passthrough=tuple(settings.default_client_passthrough),
+        breakpoint_skip_models=tuple(settings.breakpoint_skip_models),
+    )
+
+
+def _launch_run_context(binding: ProxyRunBinding, started_at: str) -> RunContext | None:
+    """Build the owned transcript registration context from launch settings, if complete."""
+    if binding.run_id is None or binding.working_dir is None or binding.cli is None:
+        return None
+    if binding.owned_native_session_id is None:
+        return None
+    workspace = workspace_id(binding.working_dir)
+    return RunContext(
+        run_id=binding.run_id,
+        cwd=str(binding.working_dir),
         workspace_slug=workspace.slug,
         workspace_hash=workspace.hash,
-        cli=settings.cli,
+        cli=binding.cli,
         started_at=started_at,
-        native_session_id=settings.owned_native_session_id,
-        home_dir=str(settings.agent_home_dir) if settings.agent_home_dir is not None else None,
+        native_session_id=binding.owned_native_session_id,
+        home_dir=str(binding.agent_home_dir) if binding.agent_home_dir is not None else None,
     )
 
 
 async def _register_owned_cursor(
-    tailer: TranscriptTailer, settings: Settings, started_at: str
+    tailer: TranscriptTailer, binding: ProxyRunBinding, started_at: str
 ) -> None:
     """Register the launcher-owned transcript cursor without the retired exchange sink."""
     try:
-        run = _launch_run_context(settings, started_at)
+        run = _launch_run_context(binding, started_at)
         if run is None:
             return
         adapter = get_adapter(run.cli)
-        binding = await adapter.bind(run)
-        binding = binding.model_copy(
+        session_binding = await adapter.bind(run)
+        session_binding = session_binding.model_copy(
             update={
-                **settings.launch_fields,
+                **binding.launch_fields,
                 "minted": adapter.provider in _DIRECT_MINT_PROVIDERS,
-                "source_descriptor": settings.owned_source_descriptor,
+                "source_descriptor": binding.owned_source_descriptor,
             }
         )
-        await register_session_cursor(tailer, adapter, binding)
+        await register_session_cursor(tailer, adapter, session_binding)
     except Exception:
         logger.exception("owned transcript cursor registration failed")
 
@@ -125,6 +147,7 @@ def _session_purpose_for_binding(binding: SessionBinding) -> SessionPurpose:
 class CaptureRuntime:
     http_client: httpx.AsyncClient
     token_counter: TokenCounter
+    binding: ProxyRunBinding | None = None
     session_writer: SessionWriter | None = None
     index_tailer: TranscriptTailer | None = None
 
@@ -156,10 +179,15 @@ class AddonRuntime:
     def index_tailer(self) -> TranscriptTailer | None:
         return self.capture.index_tailer
 
+    @property
+    def binding(self) -> ProxyRunBinding | None:
+        return self.capture.binding
+
 
 def load_capture_runtime(settings: Settings | None = None) -> CaptureRuntime:
     settings = settings or get_settings()
     storage = init_storage(root=settings.storage_dir)
+    binding = build_proxy_run_binding(settings, storage)
     from transport_matters.storage.disk import DiskStorageBackend
 
     # The tier-1 storage root is workspace-scoped. The snapshot writer must use the backend's real
@@ -228,7 +256,7 @@ def load_capture_runtime(settings: Settings | None = None) -> CaptureRuntime:
         )
         index_tailer.start()
         loop.create_task(
-            _register_owned_cursor(index_tailer, settings, started_at),
+            _register_owned_cursor(index_tailer, binding, started_at),
             name="register-owned-transcript-cursor",
         )
     except Exception:
@@ -238,6 +266,7 @@ def load_capture_runtime(settings: Settings | None = None) -> CaptureRuntime:
     return CaptureRuntime(
         http_client=http_client,
         token_counter=token_counter,
+        binding=binding,
         session_writer=session_writer,
         index_tailer=index_tailer,
     )
@@ -283,7 +312,10 @@ async def close_capture_runtime(runtime: CaptureRuntime | None) -> None:
     await drain_pause_count_tasks()
     await runtime.http_client.aclose()
     set_counter(None)
-    set_recent_auth(None)
+    if runtime.binding is not None:
+        set_recent_auth(None, binding=runtime.binding)
+    else:
+        set_recent_auth(None)
 
 
 async def close_web_runtime(runtime: WebRuntime | None) -> None:

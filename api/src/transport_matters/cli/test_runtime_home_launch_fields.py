@@ -14,6 +14,8 @@ if TYPE_CHECKING:
 
     import pytest
 
+    from transport_matters.storage.base import StorageBackend
+
 
 async def test_launch_fields_carrier_reaches_owned_cursor(
     tmp_path: Path,
@@ -72,7 +74,8 @@ async def test_launch_fields_carrier_reaches_owned_cursor(
             "session_purpose": "continuation",
         },
     )
-    await _register_owned_cursor(cast("Any", object()), settings, "2026-06-15T12:00:00+00:00")
+    binding = addon_runtime.build_proxy_run_binding(settings, cast("StorageBackend", object()))
+    await _register_owned_cursor(cast("Any", object()), binding, "2026-06-15T12:00:00+00:00")
 
     assert captured == {
         "template_provenance": template_provenance,
