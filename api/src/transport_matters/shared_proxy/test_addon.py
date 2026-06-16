@@ -3,10 +3,11 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING, cast
 
+import pytest
+
 if TYPE_CHECKING:
     from pathlib import Path
 
-    import pytest
     from mitmproxy import http
 
 import transport_matters.addon_handlers as addon_handlers
@@ -21,6 +22,7 @@ from transport_matters.ir import (
     TextBlock,
 )
 from transport_matters.shared_proxy.addon import (
+    FLOW_LISTEN_PORT_METADATA_KEY,
     FLOW_RUN_ID_METADATA_KEY,
     SharedProxyAddon,
     SharedProxyBindingTable,
@@ -41,7 +43,7 @@ class _ProxyMode:
 
 class _ClientConn:
     def __init__(self, *, listen_port: int, custom_listen_port: int | None = None) -> None:
-        self.sockname = ("127.0.0.1", listen_port)
+        self.sockname: tuple[str, int] | None = ("127.0.0.1", listen_port)
         self.proxy_mode = _ProxyMode(
             listen_port if custom_listen_port is None else custom_listen_port
         )
@@ -113,16 +115,25 @@ class _Flow:
         self.live = False
 
 
-async def test_http_flows_demux_pipeline_and_persistence_by_listen_port(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    table = SharedProxyBindingTable()
-    metrics = SharedProxyDemuxMetrics()
-    addon = SharedProxyAddon(table, metrics=metrics)
-    storage_roots = _register_bindings(tmp_path, table, ("run-a", 38101), ("run-b", 38102))
-    seen: list[tuple[str, str, str | None, str | None, int | None]] = []
+SeenEvent = tuple[str, str, str | None, str | None, int | None]
 
+
+def _set_demux_metadata(
+    flow: _Flow,
+    *,
+    run_id: str | None = None,
+    listen_port: int | None = None,
+) -> None:
+    if run_id is not None:
+        flow.metadata[FLOW_RUN_ID_METADATA_KEY] = run_id
+    if listen_port is not None:
+        flow.metadata[FLOW_LISTEN_PORT_METADATA_KEY] = listen_port
+
+
+def _install_recording_http_kernel(
+    monkeypatch: pytest.MonkeyPatch,
+    seen: list[SeenEvent],
+) -> None:
     async def fake_run_pipeline(
         ir: InternalRequest,
         flow_id: str,
@@ -174,6 +185,64 @@ async def test_http_flows_demux_pipeline_and_persistence_by_listen_port(
     monkeypatch.setattr(addon_handlers, "persist_http_exchange", fake_persist_final)
     monkeypatch.setattr(bp, "is_armed", lambda: False)
 
+
+def _guard_kernel(monkeypatch: pytest.MonkeyPatch, called: list[str]) -> None:
+    async def fake_async(*args: object, **kwargs: object) -> None:
+        called.append("kernel")
+
+    def fake_sync(*args: object, **kwargs: object) -> None:
+        called.append("kernel")
+
+    monkeypatch.setattr(shared_proxy_addon, "handle_http_request", fake_async)
+    monkeypatch.setattr(shared_proxy_addon, "handle_response", fake_async)
+    monkeypatch.setattr(shared_proxy_addon, "handle_codex_websocket_message", fake_async)
+    monkeypatch.setattr(shared_proxy_addon, "handle_codex_websocket_end", fake_async)
+    monkeypatch.setattr(shared_proxy_addon, "log_websocket_start", fake_sync)
+
+
+async def _drive_hook(addon: SharedProxyAddon, hook: str, flow: http.HTTPFlow) -> None:
+    if hook == "request":
+        await addon.request(flow)
+        return
+    if hook == "response":
+        await addon.response(flow)
+        return
+    if hook == "websocket_start":
+        addon.websocket_start(flow)
+        return
+    if hook == "websocket_message":
+        await addon.websocket_message(flow)
+        return
+    if hook == "websocket_end":
+        await addon.websocket_end(flow)
+        return
+    if hook == "error":
+        await addon.error(flow)
+        return
+    raise AssertionError(f"unknown hook {hook}")
+
+
+def _assert_fail_closed(flow: _Flow, *, websocket: bool) -> None:
+    if websocket:
+        assert flow.killed
+        assert flow.websocket is not None
+        assert flow.websocket.close_code == 1011
+        return
+    assert flow.response is not None
+    assert flow.response.status_code == 502
+
+
+async def test_http_flows_demux_pipeline_and_persistence_by_listen_port(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    table = SharedProxyBindingTable()
+    metrics = SharedProxyDemuxMetrics()
+    addon = SharedProxyAddon(table, metrics=metrics)
+    storage_roots = _register_bindings(tmp_path, table, ("run-a", 38101), ("run-b", 38102))
+    seen: list[SeenEvent] = []
+    _install_recording_http_kernel(monkeypatch, seen)
+
     flow_a = cast("http.HTTPFlow", _Flow("flow-a", listen_port=38101))
     flow_b = cast("http.HTTPFlow", _Flow("flow-b", listen_port=38102))
 
@@ -191,6 +260,33 @@ async def test_http_flows_demux_pipeline_and_persistence_by_listen_port(
         ("final", "flow-b", "run-b", storage_roots["run-b"], 38102),
     ]
     assert metrics.unmapped_flow_total == 0
+
+
+async def test_interleaved_http_flows_keep_run_storage_isolated(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    table = SharedProxyBindingTable()
+    addon = SharedProxyAddon(table)
+    storage_roots = _register_bindings(tmp_path, table, ("run-a", 38101), ("run-b", 38102))
+    seen: list[SeenEvent] = []
+    _install_recording_http_kernel(monkeypatch, seen)
+    flow_a = cast("http.HTTPFlow", _Flow("flow-a", listen_port=38101))
+    flow_b = cast("http.HTTPFlow", _Flow("flow-b", listen_port=38102))
+
+    await addon.request(flow_a)
+    await addon.request(flow_b)
+    await addon.response(flow_a)
+    await addon.response(flow_b)
+
+    assert seen == [
+        ("pipeline", "flow-a", "run-a", None, None),
+        ("provisional", "flow-a", "run-a", storage_roots["run-a"], 38101),
+        ("pipeline", "flow-b", "run-b", None, None),
+        ("provisional", "flow-b", "run-b", storage_roots["run-b"], 38102),
+        ("final", "flow-a", "run-a", storage_roots["run-a"], 38101),
+        ("final", "flow-b", "run-b", storage_roots["run-b"], 38102),
+    ]
 
 
 async def test_http_error_hook_uses_stamped_binding_for_cleanup(
@@ -241,6 +337,57 @@ async def test_http_error_hook_uses_stamped_binding_for_cleanup(
     assert deleted == [("flow-error", "run-a")]
 
 
+async def test_stamped_flow_fails_closed_after_port_reuse(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    table = SharedProxyBindingTable()
+    metrics = SharedProxyDemuxMetrics()
+    addon = SharedProxyAddon(table, metrics=metrics)
+    _register_bindings(tmp_path, table, ("run-old", 38101))
+    table.deregister("run-old")
+    _register_bindings(tmp_path, table, ("run-new", 38101))
+    called: list[str] = []
+    _guard_kernel(monkeypatch, called)
+    fake_flow = _Flow("flow-stamped", listen_port=38101)
+    _set_demux_metadata(fake_flow, run_id="run-old", listen_port=38101)
+    flow = cast("http.HTTPFlow", fake_flow)
+
+    await addon.response(flow)
+
+    _assert_fail_closed(fake_flow, websocket=False)
+    assert called == []
+    assert metrics.unmapped_flow_total == 1
+
+
+@pytest.mark.parametrize("missing_key", ["missing_sockname", "missing_custom_listen_port"])
+async def test_request_fails_closed_when_listen_port_key_is_missing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    missing_key: str,
+) -> None:
+    table = SharedProxyBindingTable()
+    metrics = SharedProxyDemuxMetrics()
+    addon = SharedProxyAddon(table, metrics=metrics)
+    _register_bindings(tmp_path, table, ("run-a", 38101))
+    called: list[str] = []
+    _guard_kernel(monkeypatch, called)
+    fake_flow = _Flow("flow-missing-key", listen_port=38101)
+    if missing_key == "missing_sockname":
+        fake_flow.client_conn.sockname = None
+    else:
+        fake_flow.client_conn.proxy_mode.custom_listen_port = None
+    flow = cast("http.HTTPFlow", fake_flow)
+
+    await addon.request(flow)
+
+    _assert_fail_closed(fake_flow, websocket=False)
+    assert called == []
+    assert metrics.unmapped_flow_total == 1
+    assert FLOW_RUN_ID_METADATA_KEY not in fake_flow.metadata
+    assert FLOW_LISTEN_PORT_METADATA_KEY not in fake_flow.metadata
+
+
 async def test_unmapped_http_listen_port_fails_closed_and_never_calls_kernel(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -265,6 +412,84 @@ async def test_unmapped_http_listen_port_fails_closed_and_never_calls_kernel(
     assert not called
     assert metrics.unmapped_flow_total == 1
     assert FLOW_RUN_ID_METADATA_KEY not in flow.metadata
+
+
+@pytest.mark.parametrize(
+    ("hook", "websocket"),
+    [
+        ("response", False),
+        ("websocket_message", True),
+        ("websocket_end", True),
+        ("error", False),
+    ],
+)
+async def test_existing_hooks_fail_closed_for_unmapped_stamped_run_id(
+    monkeypatch: pytest.MonkeyPatch,
+    hook: str,
+    websocket: bool,
+) -> None:
+    table = SharedProxyBindingTable()
+    metrics = SharedProxyDemuxMetrics()
+    addon = SharedProxyAddon(table, metrics=metrics)
+    called: list[str] = []
+    _guard_kernel(monkeypatch, called)
+    fake_flow = _Flow(f"flow-{hook}", listen_port=38101, websocket=websocket)
+    _set_demux_metadata(fake_flow, run_id="missing-run", listen_port=38101)
+    flow = cast("http.HTTPFlow", fake_flow)
+
+    await _drive_hook(addon, hook, flow)
+
+    _assert_fail_closed(fake_flow, websocket=websocket)
+    assert called == []
+    assert metrics.unmapped_flow_total == 1
+
+
+@pytest.mark.parametrize(
+    ("hook", "websocket"),
+    [
+        ("response", False),
+        ("websocket_message", True),
+        ("websocket_end", True),
+        ("error", False),
+    ],
+)
+async def test_existing_hooks_fail_closed_for_unmapped_listen_port(
+    monkeypatch: pytest.MonkeyPatch,
+    hook: str,
+    websocket: bool,
+) -> None:
+    table = SharedProxyBindingTable()
+    metrics = SharedProxyDemuxMetrics()
+    addon = SharedProxyAddon(table, metrics=metrics)
+    called: list[str] = []
+    _guard_kernel(monkeypatch, called)
+    fake_flow = _Flow(f"flow-{hook}", listen_port=38199, websocket=websocket)
+    _set_demux_metadata(fake_flow, listen_port=38199)
+    flow = cast("http.HTTPFlow", fake_flow)
+
+    await _drive_hook(addon, hook, flow)
+
+    _assert_fail_closed(fake_flow, websocket=websocket)
+    assert called == []
+    assert metrics.unmapped_flow_total == 1
+
+
+async def test_websocket_start_fails_closed_for_unmapped_listen_port(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    table = SharedProxyBindingTable()
+    metrics = SharedProxyDemuxMetrics()
+    addon = SharedProxyAddon(table, metrics=metrics)
+    called: list[str] = []
+    _guard_kernel(monkeypatch, called)
+    fake_flow = _Flow("flow-websocket-start", listen_port=38199, websocket=True)
+    flow = cast("http.HTTPFlow", fake_flow)
+
+    addon.websocket_start(flow)
+
+    _assert_fail_closed(fake_flow, websocket=True)
+    assert called == []
+    assert metrics.unmapped_flow_total == 1
 
 
 async def test_listen_port_mismatch_fails_closed(

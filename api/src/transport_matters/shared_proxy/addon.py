@@ -143,6 +143,7 @@ class SharedProxyBindingTable:
                 self._runtime_by_flow_id[flow_id] = binding
                 binding.active_flows.add(flow_id)
                 return binding
+            return None
         if listen_port is None:
             return None
         return self.resolve_new_flow(flow_id=flow_id, listen_port=listen_port)
