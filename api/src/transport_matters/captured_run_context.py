@@ -204,9 +204,8 @@ def persist_owned_session_facts(ctx: CapturedRunContext) -> None:
     if ctx.managed_session is None:
         return
     template_provenance = (
-        ctx.runtime_home_plan.template_provenance.as_launch_field()
+        ctx.runtime_home_plan.template_provenance_field
         if ctx.runtime_home_plan is not None
-        and ctx.runtime_home_plan.template_provenance is not None
         else None
     )
     persist_owned_session_facts(

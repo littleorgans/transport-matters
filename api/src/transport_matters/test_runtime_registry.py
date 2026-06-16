@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from transport_matters.cli.runtime_registry import resolve_runtime_template
+from transport_matters.runtime_registry import resolve_runtime_template
 
 if TYPE_CHECKING:
     from pathlib import Path

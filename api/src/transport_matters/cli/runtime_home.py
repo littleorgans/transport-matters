@@ -49,10 +49,17 @@ class RuntimeHomePlan:
         return self.child_home
 
     @property
-    def launch_fields(self) -> dict[str, Any]:  # Any: launch metadata is a JSON env carrier.
+    def template_provenance_field(self) -> dict[str, str] | None:
         if self.template_provenance is None:
+            return None
+        return self.template_provenance.as_launch_field() or None
+
+    @property
+    def launch_fields(self) -> dict[str, Any]:  # Any: launch metadata is a JSON env carrier.
+        template_provenance = self.template_provenance_field
+        if template_provenance is None:
             return {}
-        return {"template_provenance": self.template_provenance.as_launch_field()}
+        return {"template_provenance": template_provenance}
 
 
 def plan_runtime_home(
