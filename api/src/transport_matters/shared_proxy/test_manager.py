@@ -96,6 +96,7 @@ def test_binding_payload_infers_reverse_mode(tmp_path: Path) -> None:
 @pytest.mark.parametrize(
     "module",
     [
+        "transport_matters.shared_proxy.addon",
         "transport_matters.shared_proxy.control",
         "transport_matters.shared_proxy.manager",
         "transport_matters.shared_proxy.models",

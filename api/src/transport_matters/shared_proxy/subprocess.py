@@ -8,12 +8,13 @@ import contextlib
 import logging
 import time
 from pathlib import Path
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from mitmproxy.options import Options
 from mitmproxy.tools.dump import DumpMaster
 
 from transport_matters.override_state import get_store, scope_from_params
+from transport_matters.shared_proxy.addon import SharedProxyAddon, SharedProxyBindingTable
 from transport_matters.shared_proxy.control import SharedProxyControlError, SharedProxyControlServer
 from transport_matters.shared_proxy.models import (
     DeregisterListenerRequest,
@@ -27,6 +28,9 @@ from transport_matters.shared_proxy.models import (
     SharedProxyControlRequest,
 )
 
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
 LOGGER = logging.getLogger(__name__)
 
 
@@ -36,8 +40,7 @@ class SharedProxySubprocess:
     def __init__(self, *, control_socket: Path, accept_probe_timeout_s: float = 5.0) -> None:
         self.control_socket = control_socket
         self.accept_probe_timeout_s = accept_probe_timeout_s
-        self._by_run_id: dict[str, SharedProxyBindingPayload] = {}
-        self._by_listen_port: dict[int, SharedProxyBindingPayload] = {}
+        self._bindings = SharedProxyBindingTable()
         self._master: DumpMaster | None = None
         self._server = SharedProxyControlServer(control_socket, self.handle_request)
         self.proxy_generation = 0
@@ -52,6 +55,7 @@ class SharedProxySubprocess:
             with_termlog=False,
             with_dumper=False,
         )
+        cast("Callable[[object], None]", self._master.addons.add)(SharedProxyAddon(self._bindings))
         master_task = asyncio.create_task(self._master.run())
         await self._server.start()
         try:
@@ -79,10 +83,8 @@ class SharedProxySubprocess:
 
     async def register_listener(self, binding: SharedProxyBindingPayload) -> None:
         self._validate_register(binding)
-        previous_run_id = dict(self._by_run_id)
-        previous_listen_port = dict(self._by_listen_port)
-        self._by_run_id[binding.run_id] = binding
-        self._by_listen_port[binding.listen_port] = binding
+        previous_bindings = self._bindings.snapshot()
+        self._bindings.register(binding)
         try:
             self._apply_modes()
             await wait_for_tcp_accept(
@@ -92,21 +94,18 @@ class SharedProxySubprocess:
                 timeout_s=self.accept_probe_timeout_s,
             )
         except Exception as exc:
-            self._by_run_id = previous_run_id
-            self._by_listen_port = previous_listen_port
+            self._bindings.restore(previous_bindings)
             self._apply_modes()
             msg = f"listener {binding.listen_port} failed readiness probe"
             raise SharedProxyControlError("listener_ready_timeout", msg) from exc
         self.mode_generation += 1
 
     async def deregister_listener(self, run_id: str) -> None:
-        binding = self._by_run_id.get(run_id)
+        binding = self._bindings.by_run_id.get(run_id)
         if binding is None:
             return
-        previous_run_id = dict(self._by_run_id)
-        previous_listen_port = dict(self._by_listen_port)
-        self._by_run_id.pop(run_id, None)
-        self._by_listen_port.pop(binding.listen_port, None)
+        previous_bindings = self._bindings.snapshot()
+        self._bindings.deregister(run_id)
         try:
             self._apply_modes()
             await wait_for_tcp_accept(
@@ -116,8 +115,7 @@ class SharedProxySubprocess:
                 timeout_s=self.accept_probe_timeout_s,
             )
         except Exception as exc:
-            self._by_run_id = previous_run_id
-            self._by_listen_port = previous_listen_port
+            self._bindings.restore(previous_bindings)
             self._apply_modes()
             msg = f"listener {binding.listen_port} failed close probe"
             raise SharedProxyControlError("listener_close_timeout", msg) from exc
@@ -137,11 +135,14 @@ class SharedProxySubprocess:
         self.overrides_generation += 1
 
     def _validate_register(self, binding: SharedProxyBindingPayload) -> None:
-        existing = self._by_run_id.get(binding.run_id)
+        existing = self._bindings.by_run_id.get(binding.run_id)
         if existing is not None and existing.listen_port != binding.listen_port:
             msg = f"run {binding.run_id!r} is already registered on another listener"
             raise SharedProxyControlError("duplicate_run_id", msg)
-        existing_port = self._by_listen_port.get(binding.listen_port)
+        existing_run_id = self._bindings.by_listen_port.get(binding.listen_port)
+        existing_port = (
+            self._bindings.by_run_id.get(existing_run_id) if existing_run_id is not None else None
+        )
         if existing_port is not None and existing_port.run_id != binding.run_id:
             msg = f"listen port {binding.listen_port} is already registered"
             raise SharedProxyControlError("duplicate_listen_port", msg)
@@ -153,7 +154,7 @@ class SharedProxySubprocess:
         if self._master is None:
             msg = "mitmproxy master is not running"
             raise SharedProxyControlError("master_not_running", msg)
-        modes = [binding.mode_spec() for binding in self._by_listen_port.values()]
+        modes = self._bindings.mode_specs()
         options_any = cast("Any", self._master.options)  # Any: mitmproxy options.update is untyped.
         options_any.update(mode=modes)
 

@@ -44,6 +44,7 @@ class ProxyRunBinding:
     # Forward-carry for Slice 5 (shared-proxy mode_spec/routing); unused in Slice 1.
     default_client_passthrough: tuple[str, ...] = ()
     breakpoint_skip_models: tuple[str, ...] = ()
+    active_flows: set[str] = field(default_factory=set, compare=False, repr=False)
     recent_auth: RecentAuthHolder = field(
         default_factory=RecentAuthHolder,
         compare=False,
