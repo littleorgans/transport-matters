@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import logging
+import time
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Protocol
 
-from transport_matters.shared_proxy.control import SharedProxyControlClient
+from transport_matters.shared_proxy.control import SharedProxyControlClient, SharedProxyControlError
 from transport_matters.shared_proxy.models import (
     DeregisterListenerRequest,
     OverrideScopePayload,
@@ -21,6 +23,8 @@ from transport_matters.shared_proxy.models import (
 )
 from transport_matters.shared_proxy.process import SharedProxyProcess, SupervisorSharedProxyProcess
 
+LOGGER = logging.getLogger(__name__)
+
 if TYPE_CHECKING:
     from collections.abc import Mapping
     from pathlib import Path
@@ -33,13 +37,15 @@ class SharedProxyControlChannel(Protocol):
 
     async def ping(self) -> SharedProxyControlAck: ...
 
-    async def wait_until_ready(self, *, timeout_s: float) -> None: ...
-
     async def request(self, request: SharedProxyControlRequest) -> SharedProxyControlAck: ...
 
 
 class SharedProxyRegistryError(ValueError):
     """Invalid binding registry mutation."""
+
+
+class SharedProxyProcessExited(RuntimeError):
+    """Shared proxy child exited before the control channel became ready."""
 
 
 OverrideScopeKey = tuple[str | None, str | None]
@@ -55,19 +61,19 @@ class SharedProxyManager:
         control: SharedProxyControlChannel,
         ready_timeout_s: float = 5.0,
         monitor_interval_s: float | None = 0.5,
+        monitor_max_backoff_s: float = 1.0,
     ) -> None:
         self._process = process
         self._control = control
         self._ready_timeout_s = ready_timeout_s
         self._monitor_interval_s = monitor_interval_s
+        self._monitor_max_backoff_s = monitor_max_backoff_s
         self._by_run_id: dict[str, SharedProxyBindingPayload] = {}
         self._by_listen_port: dict[int, str] = {}
         self._overrides: dict[OverrideScopeKey, OverrideSnapshotPayload] = {}
         self._lock = asyncio.Lock()
         self._monitor_task: asyncio.Task[None] | None = None
-        self.proxy_generation = 0
-        self.mode_generation = 0
-        self.overrides_generation = 0
+        self._needs_rehydrate = False
 
     @classmethod
     def create(
@@ -77,6 +83,7 @@ class SharedProxyManager:
         ready_timeout_s: float = 5.0,
         request_timeout_s: float = 5.0,
         monitor_interval_s: float | None = 0.5,
+        monitor_max_backoff_s: float = 1.0,
         accept_probe_timeout_s: float = 5.0,
     ) -> SharedProxyManager:
         control_socket = runtime_dir / "shared-proxy.sock"
@@ -91,6 +98,7 @@ class SharedProxyManager:
             control=control,
             ready_timeout_s=ready_timeout_s,
             monitor_interval_s=monitor_interval_s,
+            monitor_max_backoff_s=monitor_max_backoff_s,
         )
 
     @property
@@ -124,7 +132,7 @@ class SharedProxyManager:
 
     async def supervise(self) -> None:
         async with self._lock:
-            if self._process.is_running():
+            if self._process.is_running() and not self._needs_rehydrate:
                 return
             await self._ensure_started_locked()
 
@@ -141,7 +149,6 @@ class SharedProxyManager:
                 self._by_run_id.pop(payload.run_id, None)
                 self._by_listen_port.pop(payload.listen_port, None)
                 raise
-            self.mode_generation += 1
 
     async def deregister(self, run_id: str) -> None:
         async with self._lock:
@@ -153,7 +160,7 @@ class SharedProxyManager:
             await self._control.request(DeregisterListenerRequest(run_id=run_id))
             self._by_run_id.pop(run_id, None)
             self._by_listen_port.pop(payload.listen_port, None)
-            self.mode_generation += 1
+            self._drop_overrides_for_run(run_id)
 
     async def set_overrides(
         self,
@@ -162,10 +169,18 @@ class SharedProxyManager:
     ) -> None:
         key = (scope.run_id, scope.track_id)
         async with self._lock:
-            await self._ensure_started_locked()
-            await self._control.request(SetOverridesRequest(scope=scope, payload=payload))
-            self._overrides[key] = payload
-            self.overrides_generation += 1
+            had_previous = key in self._overrides
+            previous = self._overrides.get(key)
+            try:
+                await self._ensure_started_locked()
+                await self._control.request(SetOverridesRequest(scope=scope, payload=payload))
+                self._overrides[key] = payload
+            except Exception:
+                if had_previous and previous is not None:
+                    self._overrides[key] = previous
+                else:
+                    self._overrides.pop(key, None)
+                raise
 
     def _start_monitor(self) -> None:
         if self._monitor_interval_s is None or self._monitor_task is not None:
@@ -174,19 +189,44 @@ class SharedProxyManager:
 
     async def _monitor_loop(self) -> None:
         assert self._monitor_interval_s is not None
+        backoff_s = self._monitor_interval_s
         while True:
             await asyncio.sleep(self._monitor_interval_s)
-            await self.supervise()
+            try:
+                await self.supervise()
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                LOGGER.exception("shared proxy monitor supervise attempt failed")
+                await asyncio.sleep(backoff_s)
+                backoff_s = min(backoff_s * 2, self._monitor_max_backoff_s)
+            else:
+                backoff_s = self._monitor_interval_s
 
     async def _ensure_started_locked(self) -> None:
-        started = False
         if not self._process.is_running():
             await asyncio.to_thread(self._process.start)
-            self.proxy_generation += 1
-            started = True
-        await self._control.wait_until_ready(timeout_s=self._ready_timeout_s)
-        if started:
+            self._needs_rehydrate = True
+        await self._wait_until_ready_locked()
+        if self._needs_rehydrate:
             await self._rehydrate_locked()
+            self._needs_rehydrate = False
+
+    async def _wait_until_ready_locked(self) -> None:
+        deadline = time.monotonic() + self._ready_timeout_s
+        last_error: SharedProxyControlError | None = None
+        while time.monotonic() < deadline:
+            self._raise_if_process_exited()
+            try:
+                await self._control.ping()
+                return
+            except SharedProxyControlError as exc:
+                last_error = exc
+            await asyncio.sleep(min(0.05, max(0.0, deadline - time.monotonic())))
+        self._raise_if_process_exited()
+        detail = f": {last_error.message}" if last_error is not None else ""
+        msg = f"shared proxy control socket was not ready before timeout{detail}"
+        raise SharedProxyControlError("control_ready_timeout", msg)
 
     async def _rehydrate_locked(self) -> None:
         for binding in self._by_run_id.values():
@@ -206,3 +246,14 @@ class SharedProxyManager:
                 f"for run {existing_run_id!r}"
             )
             raise SharedProxyRegistryError(msg)
+
+    def _drop_overrides_for_run(self, run_id: str) -> None:
+        stale_keys = [key for key in self._overrides if key[0] == run_id]
+        for key in stale_keys:
+            self._overrides.pop(key, None)
+
+    def _raise_if_process_exited(self) -> None:
+        exit_status = self._process.exit_status()
+        if exit_status is None:
+            return
+        raise SharedProxyProcessExited(exit_status.message())

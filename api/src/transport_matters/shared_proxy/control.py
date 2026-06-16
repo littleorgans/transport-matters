@@ -105,9 +105,16 @@ RequestHandler = Callable[[SharedProxyControlRequest], Awaitable[SharedProxyCont
 class SharedProxyControlServer:
     """Local UDS server for typed shared proxy control messages."""
 
-    def __init__(self, socket_path: Path, handler: RequestHandler) -> None:
+    def __init__(
+        self,
+        socket_path: Path,
+        handler: RequestHandler,
+        *,
+        request_timeout_s: float = 5.0,
+    ) -> None:
         self.socket_path = socket_path
         self._handler = handler
+        self.request_timeout_s = request_timeout_s
         self._server: asyncio.AbstractServer | None = None
 
     async def start(self) -> None:
@@ -136,10 +143,12 @@ class SharedProxyControlServer:
         writer: asyncio.StreamWriter,
     ) -> None:
         try:
-            raw = await reader.readline()
+            raw = await asyncio.wait_for(reader.readline(), timeout=self.request_timeout_s)
             response = await self._dispatch(raw)
             writer.write(response_to_json_bytes(response))
             await writer.drain()
+        except TimeoutError:
+            return
         finally:
             writer.close()
             with contextlib.suppress(Exception):

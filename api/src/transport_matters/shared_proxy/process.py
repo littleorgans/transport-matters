@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import sys
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol
 
 from transport_matters.supervisor_core import ProcessSupervisor
@@ -17,6 +18,18 @@ if TYPE_CHECKING:
 SHARED_PROXY_PROCESS_NAME = "shared-mitmdump"
 
 
+@dataclass(frozen=True, slots=True)
+class SharedProxyProcessExit:
+    """Observed subprocess exit details for startup diagnostics."""
+
+    return_code: int | None
+    log_tail: str | None = None
+
+    def message(self) -> str:
+        suffix = f"; stderr/log tail: {self.log_tail}" if self.log_tail else ""
+        return f"shared proxy subprocess exited early with returncode={self.return_code}{suffix}"
+
+
 class SharedProxyProcess(Protocol):
     """Shape required by SharedProxyManager to supervise the subprocess."""
 
@@ -24,6 +37,8 @@ class SharedProxyProcess(Protocol):
     def process_id(self) -> int | None: ...
 
     def is_running(self) -> bool: ...
+
+    def exit_status(self) -> SharedProxyProcessExit | None: ...
 
     def start(self) -> None: ...
 
@@ -62,6 +77,17 @@ class SupervisorSharedProxyProcess:
     def is_running(self) -> bool:
         return self._managed is not None and self._managed.popen.poll() is None
 
+    def exit_status(self) -> SharedProxyProcessExit | None:
+        if self._managed is None:
+            return None
+        return_code = self._managed.popen.poll()
+        if return_code is None:
+            return None
+        return SharedProxyProcessExit(
+            return_code=return_code,
+            log_tail=_read_log_tail(self.log_path),
+        )
+
     def start(self) -> None:
         if self.is_running():
             return
@@ -85,3 +111,16 @@ class SupervisorSharedProxyProcess:
 
     def terminate(self) -> None:
         self.supervisor.terminate_all(grace_seconds=2.0)
+
+
+def _read_log_tail(log_path: Path, *, max_bytes: int = 4096) -> str | None:
+    try:
+        with log_path.open("rb") as handle:
+            handle.seek(0, os.SEEK_END)
+            size = handle.tell()
+            handle.seek(max(0, size - max_bytes))
+            data = handle.read(max_bytes)
+    except OSError:
+        return None
+    tail = data.decode(errors="replace").strip()
+    return tail or None
