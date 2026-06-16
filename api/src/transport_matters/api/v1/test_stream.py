@@ -6,17 +6,65 @@ from typing import TYPE_CHECKING, cast
 
 from transport_matters import broadcast
 from transport_matters.api.v1.stream import stream_run
+from transport_matters.main import create_app
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
 
     from fastapi.responses import StreamingResponse
     from httpx import AsyncClient
+    from starlette.types import Message, Scope
 
 
 def _as_gen(response: StreamingResponse) -> AsyncGenerator[str]:
     """Cast body_iterator to AsyncGenerator for test access."""
     return cast("AsyncGenerator[str]", response.body_iterator)
+
+
+async def _first_response_body(path: str) -> tuple[int, bytes]:
+    app = create_app()
+    request_consumed = False
+    disconnect = asyncio.Event()
+    first_body = asyncio.Event()
+    messages: list[Message] = []
+    scope: Scope = {
+        "type": "http",
+        "asgi": {"version": "3.0"},
+        "http_version": "1.1",
+        "method": "GET",
+        "scheme": "http",
+        "path": path,
+        "raw_path": path.encode(),
+        "query_string": b"",
+        "headers": [(b"host", b"testserver")],
+        "client": ("127.0.0.1", 12345),
+        "server": ("testserver", 80),
+    }
+
+    async def receive() -> Message:
+        nonlocal request_consumed
+        if not request_consumed:
+            request_consumed = True
+            return {"type": "http.request", "body": b"", "more_body": False}
+        await disconnect.wait()
+        return {"type": "http.disconnect"}
+
+    async def send(message: Message) -> None:
+        messages.append(message)
+        if message["type"] == "http.response.body":
+            first_body.set()
+            disconnect.set()
+
+    task = asyncio.create_task(app(scope, receive, send))
+    try:
+        await asyncio.wait_for(first_body.wait(), timeout=1.0)
+    finally:
+        disconnect.set()
+        await asyncio.wait_for(task, timeout=1.0)
+
+    start = next(message for message in messages if message["type"] == "http.response.start")
+    body = next(message for message in messages if message["type"] == "http.response.body")
+    return int(start["status"]), bytes(body.get("body", b""))
 
 
 def _reset() -> None:
@@ -98,3 +146,11 @@ class TestSSEGenerator:
     async def test_global_api_stream_is_removed(self, client: AsyncClient) -> None:
         response = await client.get("/api/stream")
         assert response.status_code == 404
+
+    async def test_route_accepts_same_origin_eventsource_without_origin_header(self) -> None:
+        status, body = await _first_response_body("/v1/runs/run-current/stream")
+        assert status == 200
+        assert json.loads(body.removeprefix(b"data: ").strip()) == {
+            "type": "connected",
+            "run_id": "run-current",
+        }

@@ -5,11 +5,10 @@ import json
 import logging
 from typing import TYPE_CHECKING
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 
 from transport_matters import broadcast
-from transport_matters.api.v1.run_routes import require_http_origin
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
@@ -22,7 +21,6 @@ router = APIRouter()
 @router.get("/runs/{run_id}/stream")
 async def stream_run(
     run_id: str,
-    _origin: None = Depends(require_http_origin),
 ) -> StreamingResponse:
     async def event_generator() -> AsyncGenerator[str]:
         q = broadcast.subscribe(run_id)
