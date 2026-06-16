@@ -48,7 +48,7 @@ async def test_persist_unparsed_codex_exchange_records_raw_and_version() -> None
         "http.HTTPFlow",
         _Flow({"user-agent": "codex_cli_rs/0.5.0 (Mac OS 15.0; arm64)"}),
     )
-    events = broadcast.subscribe()
+    events = broadcast.subscribe("run-http")
 
     await codex_exchange.persist_unparsed_codex_exchange(flow, raw)
 

@@ -53,13 +53,19 @@ class ProxyRunBinding:
 
 async def resolve_run_storage(
     binding: ProxyRunBinding | None,
-) -> tuple[StorageBackend, str | None]:
+) -> tuple[StorageBackend, str]:
     """Resolve storage and run id from a binding, falling back to Context A globals."""
 
     if binding is not None:
-        return binding.storage, binding.run_id
+        return binding.storage, require_run_id(binding.run_id)
 
     from transport_matters.config import get_settings
     from transport_matters.storage import get_storage
 
-    return await get_storage(), get_settings().run_id
+    return await get_storage(), require_run_id(get_settings().run_id)
+
+
+def require_run_id(run_id: str | None) -> str:
+    if run_id is None:
+        raise RuntimeError("run_id is required")
+    return run_id

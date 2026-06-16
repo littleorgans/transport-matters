@@ -39,7 +39,7 @@ logger = logging.getLogger(__name__)
 
 
 class TrackFields(TypedDict):
-    run_id: str | None
+    run_id: str
     track_id: str | None
     parent_track_id: str | None
     track_display_name: str | None
@@ -51,7 +51,7 @@ class TrackFields(TypedDict):
 class _PauseHooks:
     auth_headers: dict[str, str] | None = None
     provisional_exchange_id: str | None = None
-    after_broadcast: Callable[[], None] | None = None
+    after_broadcast: Callable[[str], None] | None = None
 
 
 @dataclass(frozen=True)
@@ -132,6 +132,7 @@ async def drain_pause_count_tasks() -> None:
 
 
 async def fire_pause_count(
+    run_id: str,
     flow_id: str,
     counter: TokenCountingClient,
     payload: bytes,
@@ -158,7 +159,8 @@ async def fire_pause_count(
             "type": "paused_tokens",
             "flow_id": flow_id,
             "tokens_before": tokens,
-        }
+        },
+        run_id=run_id,
     )
 
 
@@ -170,8 +172,8 @@ def _paused_event_payload(
     curated_ir: InternalRequest,
     audit: OverrideAudit | None,
     paused_at_ms: int,
+    run_id: str,
     provisional_exchange_id: str | None = None,
-    run_id: str | None = None,
     track_id: str | None = None,
     parent_track_id: str | None = None,
     track_display_name: str | None = None,
@@ -206,8 +208,13 @@ def _paused_event_payload(
 def _flow_track_fields(flow: http.HTTPFlow) -> TrackFields:
     request_state = get_request_flow_state(flow)
     assignment = request_state.track_assignment if request_state is not None else None
+    run_id = request_state.run_id if request_state is not None else None
+    if run_id is None:
+        run_id = get_settings().run_id
+    if run_id is None:
+        raise RuntimeError("run_id is required for pause SSE events")
     return {
-        "run_id": get_settings().run_id,
+        "run_id": run_id,
         "track_id": assignment.track_id if assignment is not None else None,
         "parent_track_id": assignment.parent_track_id if assignment is not None else None,
         "track_display_name": (assignment.track_display_name if assignment is not None else None),
@@ -253,10 +260,11 @@ async def _run_pause(
                 paused_at_ms=paused_at_ms,
                 provisional_exchange_id=hooks.provisional_exchange_id,
                 **track_fields,
-            )
+            ),
+            run_id=track_fields["run_id"],
         )
         if hooks.after_broadcast is not None:
-            hooks.after_broadcast()
+            hooks.after_broadcast(track_fields["run_id"])
         settings = get_settings()
         try:
             await asyncio.wait_for(event.wait(), timeout=settings.breakpoint_timeout_s)
@@ -302,9 +310,10 @@ async def handle_breakpoint(
         if counter is None:
             return _PauseHooks(auth_headers=auth)
 
-        def after_broadcast() -> None:
+        def after_broadcast(run_id: str) -> None:
             task = asyncio.create_task(
                 fire_pause_count(
+                    run_id,
                     flow.id,
                     counter,
                     adapter.outbound_request(curated_ir),

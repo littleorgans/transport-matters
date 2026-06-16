@@ -73,7 +73,7 @@ describe("App", () => {
   it("opens the browser stream from the browser shell", async () => {
     renderWithProviders(<App />);
 
-    await waitFor(() => expect(eventSourceUrls).toEqual(["/api/stream"]));
+    await waitFor(() => expect(eventSourceUrls).toEqual(["/v1/runs/run-current/stream"]));
   });
 
   it("keeps exchange reads run scoped when history is toggled", async () => {

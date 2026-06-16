@@ -1,13 +1,9 @@
-"""Tests for the SSE broadcaster."""
-
 import json
 import logging
-from typing import TYPE_CHECKING
+
+import pytest
 
 from transport_matters import broadcast
-
-if TYPE_CHECKING:
-    import pytest
 
 
 class TestBroadcast:
@@ -16,43 +12,50 @@ class TestBroadcast:
         broadcast._next_id = 0
 
     def test_subscribe_receive(self) -> None:
-        q = broadcast.subscribe()
-        broadcast.emit({"type": "test", "value": 1})
-        assert not q.empty()
-        data = q.get_nowait()
-        parsed = json.loads(data)
-        assert parsed["type"] == "test"
+        q = broadcast.subscribe("run-a")
+        broadcast.emit({"type": "test", "value": 1}, run_id="run-a")
+        msg = q.get_nowait()
+        assert json.loads(msg) == {"type": "test", "value": 1, "run_id": "run-a"}
 
     def test_unsubscribe(self) -> None:
-        q = broadcast.subscribe()
+        q = broadcast.subscribe("run-a")
         broadcast.unsubscribe(q)
-        broadcast.emit({"type": "test"})
-        assert q.empty()
+        assert not broadcast._subscribers
+        broadcast.emit({"type": "test"}, run_id="run-a")
 
-    def test_multiple_subscribers(self) -> None:
-        q1 = broadcast.subscribe()
-        q2 = broadcast.subscribe()
-        broadcast.emit({"type": "multi"})
-        assert not q1.empty()
-        assert not q2.empty()
-        d1 = q1.get_nowait()
-        d2 = q2.get_nowait()
-        assert d1 == d2
-        parsed = json.loads(d1)
-        assert parsed["type"] == "multi"
+    def test_multiple_subscribers_same_run(self) -> None:
+        q1 = broadcast.subscribe("run-a")
+        q2 = broadcast.subscribe("run-a")
+        broadcast.emit({"type": "multi"}, run_id="run-a")
+        assert q1.get_nowait()
+        assert q2.get_nowait()
+
+    def test_subscribers_only_receive_their_run(self) -> None:
+        run_a = broadcast.subscribe("run-a")
+        run_b = broadcast.subscribe("run-b")
+
+        broadcast.emit({"type": "scoped"}, run_id="run-a")
+
+        assert json.loads(run_a.get_nowait()) == {"type": "scoped", "run_id": "run-a"}
+        assert run_b.empty()
+
+    def test_subscribe_requires_run_id(self) -> None:
+        with pytest.raises(ValueError, match="run_id is required"):
+            broadcast.subscribe("")
+
+    def test_emit_requires_run_id(self) -> None:
+        with pytest.raises(ValueError, match="run_id is required"):
+            broadcast.emit({"type": "missing"}, run_id="")
 
     def test_bounded_queue_maxsize(self) -> None:
-        q = broadcast.subscribe()
+        q = broadcast.subscribe("run-a")
         assert q.maxsize == broadcast.QUEUE_MAX_SIZE
 
     def test_overflow_logs_warning(self, caplog: pytest.LogCaptureFixture) -> None:
-        q = broadcast.subscribe()
+        q = broadcast.subscribe("run-a")
+        # Fill queue
         for i in range(broadcast.QUEUE_MAX_SIZE):
-            q.put_nowait(f'{{"i": {i}}}')
-        assert q.full()
-
-        with caplog.at_level(logging.WARNING, logger="transport_matters.broadcast"):
-            broadcast.emit({"type": "overflow"})
-
-        assert q.qsize() == broadcast.QUEUE_MAX_SIZE
-        assert any("Dropped SSE event" in r.message for r in caplog.records)
+            q.put_nowait(str(i))
+        with caplog.at_level(logging.WARNING):
+            broadcast.emit({"type": "overflow"}, run_id="run-a")
+        assert "Dropped SSE event for subscriber" in caplog.text

@@ -8,6 +8,7 @@ must fire once at finalize, never at provisional creation.
 
 from typing import TYPE_CHECKING
 
+import pytest
 from mitmproxy import websocket
 from wsproto.frame_protocol import Opcode
 
@@ -20,6 +21,7 @@ if TYPE_CHECKING:
     from transport_matters.storage.base import ExchangeArtifacts, IndexEntry
 
 pytest_plugins = ("transport_matters.codex.test_transport_support",)
+pytestmark = pytest.mark.usefixtures("codex_run_id")
 
 
 async def test_codex_finalize_feeds_post_persist_sink_once_at_finalize() -> None:

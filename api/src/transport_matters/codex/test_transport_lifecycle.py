@@ -23,6 +23,7 @@ from transport_matters.codex.transport import record_codex_websocket_message
 from transport_matters.storage import get_storage
 
 pytest_plugins = ("transport_matters.codex.test_transport_support",)
+pytestmark = pytest.mark.usefixtures("codex_run_id")
 
 
 async def test_addon_websocket_end_skips_persisting_dropped_codex_exchange() -> None:
@@ -49,7 +50,7 @@ async def test_addon_websocket_end_skips_persisting_dropped_codex_exchange() -> 
     flow.websocket.close_code = 1000
     flow.websocket.close_reason = "dropped"
     flow.websocket.closed_by_client = True
-    queue = broadcast.subscribe()
+    queue = broadcast.subscribe("run-codex")
     try:
         await addon.websocket_end(flow)
         storage = await get_storage()
@@ -119,7 +120,7 @@ async def test_addon_websocket_end_persists_codex_exchange() -> None:
     flow.websocket.close_reason = "done"
     flow.websocket.closed_by_client = False
 
-    queue = broadcast.subscribe()
+    queue = broadcast.subscribe("run-codex")
     try:
         await addon.websocket_end(flow)
         event = json.loads(await asyncio.wait_for(queue.get(), timeout=0.01))

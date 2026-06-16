@@ -13,7 +13,7 @@ describe("useExchangeStream browser source", () => {
     });
     const source = getMockSource();
 
-    expect(source.url).toBe("/api/stream");
+    expect(source.url).toBe("/v1/runs/run-current/stream");
     expect(result.current.connected).toBe(false);
 
     act(() => source.onopen?.());
@@ -52,6 +52,6 @@ describe("useExchangeStream browser source", () => {
       },
     );
 
-    expect(getMockSource().url).toBe("http://127.0.0.1:4321/api/stream");
+    expect(getMockSource().url).toBe("http://127.0.0.1:4321/v1/runs/run-current/stream");
   });
 });

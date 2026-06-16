@@ -24,6 +24,8 @@ from transport_matters.ir import (
 )
 from transport_matters.pause_session import _release_payload, handle_breakpoint
 
+RUN_ID = "run-http"
+
 if TYPE_CHECKING:
     import pytest
     from mitmproxy import http
@@ -384,6 +386,7 @@ async def test_http_breakpoint_drop_marks_state_before_synthetic_response(
         request_ir=ir,
         raw_request=b"raw",
         curated_request_ir=ir,
+        run_id=RUN_ID,
     )
     update_request_flow_state(flow, provisional_exchange_id="exchange-drop")
 
@@ -464,7 +467,12 @@ async def test_http_breakpoint_release_preserves_original_bytes_when_unchanged(
     original_text = cast("_Flow", flow).request.text
     ir = _curated_ir()
     capture_request_flow_state(
-        flow, adapter=object(), request_ir=ir, raw_request=b"raw", curated_request_ir=ir
+        flow,
+        adapter=object(),
+        request_ir=ir,
+        raw_request=b"raw",
+        curated_request_ir=ir,
+        run_id=RUN_ID,
     )
     adapter = _WSAdapter()
     paused = _paused(ir, ir)

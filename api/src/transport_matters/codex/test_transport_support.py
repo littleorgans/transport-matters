@@ -1,6 +1,7 @@
 """Shared helpers for Codex transport tests."""
 
 import asyncio
+import os
 from typing import TYPE_CHECKING, Any
 
 import pytest
@@ -8,6 +9,7 @@ from mitmproxy import http
 from mitmproxy.test import tflow
 
 from transport_matters import breakpoint as bp
+from transport_matters import config
 from transport_matters.codex.continuity import get_codex_continuity_allocator
 from transport_matters.overrides import get_store
 from transport_matters.storage import init_storage, reset_storage
@@ -63,6 +65,19 @@ def _reset_breakpoint_and_overrides() -> None:
     store = get_store()
     store.clear()
     store.enabled = True
+
+
+@pytest.fixture
+def codex_run_id() -> Generator[None]:
+    old_run_id = os.environ.get("TRANSPORT_MATTERS_RUN_ID")
+    os.environ["TRANSPORT_MATTERS_RUN_ID"] = "run-codex"
+    config.get_settings.cache_clear()
+    yield
+    if old_run_id is None:
+        os.environ.pop("TRANSPORT_MATTERS_RUN_ID", None)
+    else:
+        os.environ["TRANSPORT_MATTERS_RUN_ID"] = old_run_id
+    config.get_settings.cache_clear()
 
 
 @pytest.fixture(autouse=True)

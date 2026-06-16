@@ -33,7 +33,7 @@ from transport_matters.exchange_recorder import (
 from transport_matters.exchange_stats import build_pipeline_stats, build_req_stats
 from transport_matters.flow_state import get_request_flow_state
 from transport_matters.request_diff import outbound_request_if_changed
-from transport_matters.shared_proxy import ProxyRunBinding, resolve_run_storage
+from transport_matters.shared_proxy import ProxyRunBinding, require_run_id, resolve_run_storage
 from transport_matters.storage import CodexTurnListSummary
 
 if TYPE_CHECKING:
@@ -432,7 +432,7 @@ async def rewrite_codex_provisional_exchange(
                 updated_entry.res,
                 exchange_id,
                 updated_entry.ts,
-                updated_entry.run_id,
+                require_run_id(updated_entry.run_id),
                 updated_entry.mutated_manually,
                 updated_entry.pipeline,
                 flow_id=flow.id,

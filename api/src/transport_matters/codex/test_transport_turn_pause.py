@@ -3,6 +3,7 @@
 import asyncio
 import json
 
+import pytest
 from mitmproxy import websocket
 from wsproto.frame_protocol import Opcode
 
@@ -14,6 +15,7 @@ from transport_matters.flow_state import get_request_flow_state
 from transport_matters.storage import get_storage
 
 pytest_plugins = ("transport_matters.codex.test_transport_support",)
+pytestmark = pytest.mark.usefixtures("codex_run_id")
 
 
 async def test_addon_websocket_message_can_pause_second_response_create_turn() -> None:

@@ -58,7 +58,7 @@ async def test_persist_unparsed_http_exchange_records_raw_and_version() -> None:
         ),
     )
     adapter = AnthropicAdapter()
-    events = broadcast.subscribe()
+    events = broadcast.subscribe("run-http")
 
     await recorder.persist_unparsed_http_exchange(flow, adapter, codex_http=False)
 

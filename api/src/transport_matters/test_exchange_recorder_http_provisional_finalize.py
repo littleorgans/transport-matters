@@ -57,7 +57,7 @@ async def test_finalize_http_provisional_exchange_updates_pending_row_in_place(
         )
 
     monkeypatch.setattr(recorder, "persist_track_assignment", fake_track_assignment)
-    events = broadcast.subscribe()
+    events = broadcast.subscribe("run-http")
 
     exchange_id = await recorder.persist_http_provisional_exchange(flow, state)
 
@@ -160,7 +160,7 @@ async def test_finalize_http_provisional_exchange_returns_false_for_missing_entr
     state = _make_state(provisional_exchange_id="missing-exchange")
     flow = cast("http.HTTPFlow", _Flow())
     cast("_Flow", flow).response = _Response(_make_response_body())
-    events = broadcast.subscribe()
+    events = broadcast.subscribe("run-http")
 
     def fail_track_assignment(
         run_id: str | None,

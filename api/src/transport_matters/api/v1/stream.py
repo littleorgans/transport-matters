@@ -1,6 +1,7 @@
-"""SSE stream endpoint for live exchange updates."""
+"""Run-scoped SSE stream endpoint for live exchange updates."""
 
 import asyncio
+import json
 import logging
 from typing import TYPE_CHECKING
 
@@ -17,12 +18,15 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-@router.get("/stream")
-async def stream_exchanges() -> StreamingResponse:
+@router.get("/runs/{run_id}/stream")
+async def stream_run(
+    run_id: str,
+) -> StreamingResponse:
     async def event_generator() -> AsyncGenerator[str]:
-        q = broadcast.subscribe()
+        q = broadcast.subscribe(run_id)
         try:
-            yield 'data: {"type": "connected"}\n\n'
+            connected = json.dumps({"type": "connected", "run_id": run_id})
+            yield f"data: {connected}\n\n"
             while True:
                 try:
                     data = await asyncio.wait_for(q.get(), timeout=15.0)
