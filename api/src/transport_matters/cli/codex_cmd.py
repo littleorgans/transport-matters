@@ -510,12 +510,18 @@ def run_codex(
             # dir exists) and before the retry loop, so a §10.5 rebuild reads the owned state without
             # the live env. ``None`` for proxy-only / user-pinned resume (nothing owned to persist).
             if launch_parts.managed_session is not None:
+                template_provenance = (
+                    launch_parts.runtime_home_plan.template_provenance.as_launch_field()
+                    if launch_parts.runtime_home_plan.template_provenance is not None
+                    else None
+                )
                 persist_owned_session_facts(
                     launch_parts.profile,
                     launch_parts.managed_session,
                     run_id=prepared.run_id,
                     storage_root=prepared.resolved_storage,
                     home_dir=launch_parts.runtime_home_plan.descriptor_home,
+                    template_provenance=template_provenance,
                 )
             _run_codex_launch(
                 proxy_port=prepared.proxy_port,

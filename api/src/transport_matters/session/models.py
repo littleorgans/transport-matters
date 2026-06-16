@@ -69,6 +69,7 @@ class SessionRow(BaseModel):
     minted: bool = False
     source_descriptor: JsonObject | None = None
     home_dir: str | None = None
+    template_provenance: JsonObject | None = None
     owner: str = "local"
     session_purpose: SessionPurpose = SessionPurpose.USER
     session_visibility: SessionVisibility = SessionVisibility.USER_VISIBLE

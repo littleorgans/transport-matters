@@ -3,12 +3,17 @@ from __future__ import annotations
 import json
 from datetime import datetime
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 import pytest
 from click.exceptions import Exit
 
 from transport_matters import env_keys
+from transport_matters.captured_run import (
+    WEB_RUNTIME_EXTERNAL,
+    CapturedRunRequest,
+    prepare_captured_run,
+)
 from transport_matters.cli.home_seed import apply_claude_proxy_env_settings
 from transport_matters.cli.launch_profile import (
     ClaudeLaunchProfile,
@@ -23,9 +28,7 @@ from transport_matters.cli.runtime_home import (
 )
 from transport_matters.index.adapters.base import (
     FileTailSource,
-    SessionBinding,
     decode_source_descriptor,
-    encode_source_descriptor,
 )
 from transport_matters.launch_environment import (
     CLIENT_NAME_CLAUDE,
@@ -34,6 +37,7 @@ from transport_matters.launch_environment import (
     build_managed_child_env,
     managed_child_shell_env_excludes,
 )
+from transport_matters.storage.session_facts import read_run_session_facts
 
 
 def _now() -> datetime:
@@ -306,6 +310,80 @@ def test_codex_template_tree_is_byte_identical_after_full_launch_prep(
     assert (plan.child_home / "hooks.json").is_symlink()
 
 
+def test_codex_captured_run_template_launch_records_provenance_and_runtime_descriptor(
+    tmp_path: Path,
+) -> None:
+    native = tmp_path / "native-codex"
+    native.mkdir()
+    (native / "auth.json").write_text("{}\n", encoding="utf-8")
+    template = tmp_path / "templates" / "codex"
+    template.mkdir(parents=True)
+    (template / "config.toml").write_text('model = "gpt-5-codex"\n', encoding="utf-8")
+    workdir = tmp_path / "project"
+    workdir.mkdir()
+    storage = tmp_path / "storage"
+    addon = tmp_path / "addon.py"
+    addon.write_text("# addon\n", encoding="utf-8")
+    runtime_template = RuntimeTemplateRef(
+        template_id="codex/base",
+        client_name=CLIENT_NAME_CODEX,
+        template_home=template,
+        provenance={"registry_source": "agent-runtimes"},
+    )
+
+    spawn_spec, lease = prepare_captured_run(
+        CapturedRunRequest(
+            client_name=CLIENT_NAME_CODEX,
+            passthrough=(),
+            directory=workdir,
+            proxy_port=None,
+            web_port=None,
+            upstream="",
+            storage_dir=storage,
+            home_dir=None,
+            client_bin=None,
+            client_disabled=False,
+            no_system_prompt=False,
+            debug=False,
+            web_runtime=WEB_RUNTIME_EXTERNAL,
+            runtime_template=runtime_template,
+        ),
+        require_addon=lambda: addon,
+        resolve_mitmdump=lambda: "/bin/mitmdump",
+        which=lambda name: "/bin/codex" if name == "codex" else "/bin/mitmdump",
+        port_in_use=lambda _port: False,
+        allocate_port_pair=lambda: (39000, 39001),
+        inject_system_prompt=lambda passthrough, **_kwargs: list(passthrough),
+        user_supplied_system_prompt=lambda _passthrough: False,
+        proxy_starter=lambda **_kwargs: None,
+        env={"CODEX_HOME": str(native)},
+        now=_now(),
+    )
+    try:
+        child_home = storage / "runtime-home" / CLIENT_NAME_CODEX
+        launch_fields = json.loads(spawn_spec.launch_env[env_keys.LAUNCH_FIELDS])
+        expected_provenance = {
+            "template_id": "codex/base",
+            "template_home": str(template),
+            "registry_source": "agent-runtimes",
+        }
+
+        assert spawn_spec.launch_env[env_keys.AGENT_HOME_DIR] == str(child_home)
+        assert spawn_spec.client is not None
+        assert spawn_spec.client.env["CODEX_HOME"] == str(child_home)
+        assert launch_fields["template_provenance"] == expected_provenance
+        assert spawn_spec.managed_session is not None
+        source = decode_source_descriptor(spawn_spec.managed_session.source_descriptor)
+        assert isinstance(source, FileTailSource)
+        assert Path(source.path).is_relative_to(child_home / "sessions")
+        assert source.home_dir == str(child_home)
+        facts = read_run_session_facts(storage)
+        assert facts is not None
+        assert facts.sessions[0].template_provenance == expected_provenance
+    finally:
+        lease.close()
+
+
 def test_claude_template_descriptor_resolves_under_runtime_projects(tmp_path: Path) -> None:
     native = tmp_path / "native-claude"
     native.mkdir()
@@ -490,7 +568,7 @@ def test_build_launch_env_drops_stale_launch_fields(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv(env_keys.LAUNCH_FIELDS, '{"runtime_template":{"template_id":"stale"}}')
+    monkeypatch.setenv(env_keys.LAUNCH_FIELDS, '{"template_provenance":{"template_id":"stale"}}')
     monkeypatch.setenv(env_keys.RESUME_CONTEXT, '{"transcriptRef":"stale"}')
 
     env = build_launch_env(
@@ -575,117 +653,3 @@ def test_run_codex_force_http_fallback_still_resolves_addons(
         )
 
     assert captured == {"force_http_fallback": True, "client_path": "/bin/codex"}
-
-
-async def test_launch_fields_carrier_reaches_owned_cursor(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    from transport_matters import addon_runtime
-    from transport_matters.addon_runtime import _register_owned_cursor
-    from transport_matters.config import Settings
-
-    captured: dict[str, Any] = {}
-    runtime_template = {"template_id": "codex/base", "template_home": "/templates/codex"}
-
-    class FakeAdapter:
-        provider = "codex"
-        cli = "codex"
-
-        async def bind(self, run: Any) -> SessionBinding:
-            return SessionBinding(
-                session_id="session-1",
-                provider=self.provider,
-                run_id=run.run_id,
-                cwd=run.cwd,
-                workspace_slug=run.workspace_slug,
-                workspace_hash=run.workspace_hash,
-                started_at=run.started_at,
-                cli=self.cli,
-                native_session_id=run.native_session_id,
-            )
-
-    async def fake_register_session_cursor(
-        _tailer: Any, _adapter: Any, binding: SessionBinding
-    ) -> None:
-        captured["runtime_template"] = cast("Any", binding).runtime_template
-        captured["parent_session_id"] = binding.parent_session_id
-        captured["forked_at_seq"] = binding.forked_at_seq
-        captured["session_purpose"] = cast("Any", binding).session_purpose
-        captured["source_descriptor"] = binding.source_descriptor
-
-    monkeypatch.setattr(addon_runtime, "get_adapter", lambda _cli: FakeAdapter())
-    monkeypatch.setattr(
-        addon_runtime,
-        "register_session_cursor",
-        fake_register_session_cursor,
-    )
-
-    settings = Settings(
-        run_id="run-1",
-        cwd=tmp_path,
-        cli="codex",
-        owned_native_session_id="native-1",
-        owned_source_descriptor="descriptor-1",
-        launch_fields={
-            "runtime_template": runtime_template,
-            "parent_session_id": "parent-session",
-            "forked_at_seq": 4,
-            "session_purpose": "continuation",
-        },
-    )
-    await _register_owned_cursor(cast("Any", object()), settings, "2026-06-15T12:00:00+00:00")
-
-    assert captured == {
-        "runtime_template": runtime_template,
-        "parent_session_id": "parent-session",
-        "forked_at_seq": 4,
-        "session_purpose": "continuation",
-        "source_descriptor": "descriptor-1",
-    }
-
-
-async def test_register_session_cursor_preserves_dynamic_launch_fields(tmp_path: Path) -> None:
-    from transport_matters.index.tailer import register_session_cursor
-
-    runtime_template = {"template_id": "codex/base", "template_home": "/templates/codex"}
-    descriptor = encode_source_descriptor(
-        FileTailSource(path=str(tmp_path / "rollout.jsonl"), format="codex_rollout")
-    )
-    binding = SessionBinding(
-        session_id="session-1",
-        provider="codex",
-        run_id="run-1",
-        cwd=str(tmp_path),
-        workspace_slug="workspace",
-        workspace_hash="hash",
-        started_at="2026-06-15T12:00:00+00:00",
-        cli="codex",
-        native_session_id="native-1",
-        source_descriptor=descriptor,
-        parent_session_id="parent-session",
-        forked_at_seq=4,
-    ).model_copy(update={"runtime_template": runtime_template, "session_purpose": "continuation"})
-
-    class FakeAdapter:
-        provider = "codex"
-        cli = "codex"
-
-        async def bind(self, _run: Any) -> SessionBinding:
-            return binding.model_copy(update={"runtime_template": None})
-
-    class FakeTailer:
-        def __init__(self) -> None:
-            self.cursor: Any = None
-
-        def register(self, cursor: Any) -> None:
-            self.cursor = cursor
-
-    tailer = FakeTailer()
-    await register_session_cursor(cast("Any", tailer), cast("Any", FakeAdapter()), binding)
-
-    assert tailer.cursor is not None
-    assert tailer.cursor.binding.runtime_template == runtime_template
-    assert tailer.cursor.binding.parent_session_id == "parent-session"
-    assert tailer.cursor.binding.forked_at_seq == 4
-    assert tailer.cursor.binding.session_purpose == "continuation"

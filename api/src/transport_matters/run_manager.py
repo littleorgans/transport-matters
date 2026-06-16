@@ -50,6 +50,8 @@ from transport_matters.run_terminal import (
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    from transport_matters.runtime_templates import RuntimeTemplateRef
+
 logger = logging.getLogger(__name__)
 
 TerminateReason = Literal["explicit", "shutdown", "idle-timeout", "deploy-restart"]
@@ -125,6 +127,7 @@ class SpawnRun:
     debug: bool = False
     web_runtime: CapturedRunWebRuntime = WEB_RUNTIME_EXTERNAL
     default_client_passthrough: tuple[str, ...] = ()
+    runtime_template: RuntimeTemplateRef | None = None
     launch_fields: dict[str, object] = field(default_factory=dict)
     idempotency_key: str | None = None
     # Bridge answers the CLI's OSC 10/11 color queries (see osc_color_responder).
@@ -438,6 +441,7 @@ class RunManager:
             debug=request.debug,
             web_runtime=request.web_runtime,
             default_client_passthrough=request.default_client_passthrough,
+            runtime_template=request.runtime_template,
             launch_fields=request.launch_fields,
         )
 

@@ -475,6 +475,7 @@ async def register_session_cursor(
                 "minted": binding.minted,
                 "source_descriptor": binding.source_descriptor
                 or transcript_binding.source_descriptor,
+                "template_provenance": binding.template_provenance,
                 "parent_session_id": binding.parent_session_id,
                 "forked_at_seq": binding.forked_at_seq,
             }

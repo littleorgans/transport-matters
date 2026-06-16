@@ -21,8 +21,8 @@ if TYPE_CHECKING:
 
     from transport_matters.cli.launch_profile import ManagedSession
     from transport_matters.cli.runner import ManagedClient
-    from transport_matters.cli.runtime_home import RuntimeTemplateRef
     from transport_matters.lock import WorkspaceLock
+    from transport_matters.runtime_templates import RuntimeTemplateRef
 
 __all__ = [
     "CLAUDE_CLIENT_NAME",

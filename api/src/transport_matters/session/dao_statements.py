@@ -12,6 +12,7 @@ SESSION_COLUMN_NAMES = (
     "minted",
     "source_descriptor",
     "home_dir",
+    "template_provenance",
     "owner",
     "session_purpose",
     "session_visibility",
@@ -55,13 +56,14 @@ ARTIFACT_COLUMNS = "hash, media_type, size_bytes, bytes, created_at"
 UPSERT_SESSION_SQL = f"""
 INSERT INTO "session" (
     session_id, provider, cli, run_id, cwd, workspace_slug, workspace_hash,
-    native_session_id, minted, source_descriptor, home_dir, owner, session_purpose,
+    native_session_id, minted, source_descriptor, home_dir, template_provenance, owner, session_purpose,
     session_visibility, status, title, parent_session_id, forked_at_seq, started_at
 ) VALUES (
     %(session_id)s, %(provider)s, %(cli)s, %(run_id)s, %(cwd)s, %(workspace_slug)s,
     %(workspace_hash)s, %(native_session_id)s, %(minted)s, %(source_descriptor)s,
-    %(home_dir)s, %(owner)s, %(session_purpose)s, %(session_visibility)s, %(status)s,
-    %(title)s, %(parent_session_id)s, %(forked_at_seq)s, %(started_at)s
+    %(home_dir)s, %(template_provenance)s, %(owner)s, %(session_purpose)s,
+    %(session_visibility)s, %(status)s, %(title)s, %(parent_session_id)s,
+    %(forked_at_seq)s, %(started_at)s
 )
 ON CONFLICT (session_id) DO UPDATE SET
     provider = EXCLUDED.provider,
@@ -74,6 +76,7 @@ ON CONFLICT (session_id) DO UPDATE SET
     minted = "session".minted OR EXCLUDED.minted,
     source_descriptor = COALESCE("session".source_descriptor, EXCLUDED.source_descriptor),
     home_dir = COALESCE("session".home_dir, EXCLUDED.home_dir),
+    template_provenance = COALESCE("session".template_provenance, EXCLUDED.template_provenance),
     owner = EXCLUDED.owner,
     session_purpose = COALESCE("session".session_purpose, EXCLUDED.session_purpose),
     session_visibility = COALESCE("session".session_visibility, EXCLUDED.session_visibility),

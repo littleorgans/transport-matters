@@ -20,6 +20,7 @@ from transport_matters.captured_run import (
     CapturedRunSpawnSpec,
 )
 from transport_matters.cli.runner import ManagedClient
+from transport_matters.cli.runtime_home import RuntimeTemplateRef
 from transport_matters.pty_session import TerminalPty
 from transport_matters.run_manager import (
     ManagedRun,
@@ -314,6 +315,23 @@ async def test_different_idempotency_keys_spawn_distinct_runs(tmp_path: Path) ->
 
     assert second is not first
     assert len(prepared.requests) == 2
+
+
+async def test_spawn_passes_runtime_template_to_captured_request(tmp_path: Path) -> None:
+    pty = PtyHarness()
+    prepared = PreparedRunHarness(tmp_path)
+    manager = make_manager(tmp_path, pty, prepared)
+    runtime_template = RuntimeTemplateRef(
+        template_id="codex-base",
+        client_name="codex",
+        template_home=tmp_path / "template",
+        provenance={"registry_source": "agent-runtimes"},
+    )
+
+    await manager.spawn(SpawnRun(cli="codex", cwd=tmp_path, runtime_template=runtime_template))
+
+    assert len(prepared.requests) == 1
+    assert prepared.requests[0].runtime_template is runtime_template
 
 
 async def test_close_during_in_flight_spawn_rolls_back_prepared_run(

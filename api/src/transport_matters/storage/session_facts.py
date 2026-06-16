@@ -4,7 +4,7 @@ Tier-1 must be a complete source of truth for the OWNED launch state, so a futur
 re-resolves transcript paths faithfully WITHOUT the live launch env. The transcript bytes are owned
 by the 8b-i snapshot; this module owns the launch FACTS a rebuild needs to bind them back: the
 native session id, the ``source_descriptor`` (which now carries the managed ``home_dir``), the cli,
-``minted``, and ``home_dir``.
+``minted``, ``home_dir``, and template provenance.
 
 The manifest carries ``home_dir`` too, but it is a liveness beacon unlinked on process exit
 (``cli/launch_runtime.py``), so it cannot be the durable home. ``index.jsonl`` is the durable run
@@ -45,6 +45,7 @@ class OwnedSessionFacts(BaseModel):
     home_dir: str | None = (
         None  # managed ``--agent-home-dir`` the transcript root resolves under; None = native
     )
+    template_provenance: dict[str, str] | None = None
 
 
 class RunSessionFacts(BaseModel):

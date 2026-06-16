@@ -253,6 +253,7 @@ def persist_owned_session_facts(
     run_id: str,
     storage_root: Path,
     home_dir: Path | None,
+    template_provenance: Mapping[str, str] | None = None,
 ) -> Path:
     """Persist the §11.1 durable owned-launch facts for a managed session under the run dir.
 
@@ -270,5 +271,6 @@ def persist_owned_session_facts(
             minted=profile.mints_session_id,
             source_descriptor=managed_session.source_descriptor,
             home_dir=str(home_dir) if home_dir is not None else None,
+            template_provenance=dict(template_provenance) if template_provenance else None,
         ),
     )

@@ -93,6 +93,7 @@ def session_params(session: SessionRow) -> dict[str, Any]:
         ).items()
     }
     data["source_descriptor"] = jsonb(data["source_descriptor"])
+    data["template_provenance"] = jsonb(data["template_provenance"])
     return data
 
 

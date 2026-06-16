@@ -26,6 +26,7 @@ _TIER1_EVENT_INDEXES = frozenset(
 _DEAD_LETTER_INDEXES = frozenset({"event_dead_letter_run_ix", "event_dead_letter_span_uq"})
 _REDUNDANT_SESSION_SEQ_INDEX = "event_session_seq_ix"
 _SESSION_CLASSIFICATION_COLUMNS = frozenset({"session_purpose", "session_visibility"})
+_SESSION_TEMPLATE_PROVENANCE_COLUMNS = frozenset({"template_provenance"})
 
 
 def _reset_to_unmigrated(database_url: str) -> None:
@@ -105,6 +106,14 @@ def _assert_session_classification_absent(database_url: str) -> None:
     assert _session_columns(database_url).isdisjoint(_SESSION_CLASSIFICATION_COLUMNS)
 
 
+def _assert_session_template_provenance_present(database_url: str) -> None:
+    assert _session_columns(database_url) >= _SESSION_TEMPLATE_PROVENANCE_COLUMNS
+
+
+def _assert_session_template_provenance_absent(database_url: str) -> None:
+    assert _session_columns(database_url).isdisjoint(_SESSION_TEMPLATE_PROVENANCE_COLUMNS)
+
+
 def _insert_legacy_session(database_url: str) -> None:
     with connect(database_url, autocommit=True) as conn:
         conn.execute(
@@ -155,6 +164,15 @@ def test_alembic_upgrade_and_downgrade_smoke(test_db: TestDb) -> None:
     _assert_tier1_indexes_present(test_db.database_url)
     _assert_dead_letter_present(test_db.database_url)
     _assert_session_classification_present(test_db.database_url)
+    _assert_session_template_provenance_present(test_db.database_url)
+
+    command.downgrade(migrate.alembic_config(test_db.database_url), "-1")
+
+    assert migrate.current_revision(test_db.database_url) == "0004_session_purpose_visibility"
+    _assert_session_template_provenance_absent(test_db.database_url)
+    _assert_session_classification_present(test_db.database_url)
+    _assert_dead_letter_present(test_db.database_url)
+    _assert_tier1_indexes_present(test_db.database_url)
 
     command.downgrade(migrate.alembic_config(test_db.database_url), "-1")
 
@@ -175,6 +193,7 @@ def test_alembic_upgrade_and_downgrade_smoke(test_db: TestDb) -> None:
     _assert_tier1_indexes_present(test_db.database_url)
     _assert_dead_letter_present(test_db.database_url)
     _assert_session_classification_present(test_db.database_url)
+    _assert_session_template_provenance_present(test_db.database_url)
 
 
 def test_session_classification_migration_backfills_checks_and_downgrades(
@@ -208,6 +227,12 @@ def test_session_classification_migration_backfills_checks_and_downgrades(
             conn.execute(
                 "UPDATE \"session\" SET session_visibility = 'bogus' WHERE session_id = 'legacy-session'"
             )
+
+    command.downgrade(cfg, "-1")
+
+    assert migrate.current_revision(test_db.database_url) == "0004_session_purpose_visibility"
+    _assert_session_template_provenance_absent(test_db.database_url)
+    _assert_session_classification_present(test_db.database_url)
 
     command.downgrade(cfg, "-1")
 
