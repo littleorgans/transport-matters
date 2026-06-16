@@ -55,22 +55,6 @@ class TestListExchanges:
         data = response.json()
         assert [row["id"] for row in data] == ["ex-new"]
 
-    async def test_list_include_history_stays_run_scoped(
-        self, client: AsyncClient, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        from transport_matters.storage import get_storage
-
-        monkeypatch.setenv("TRANSPORT_MATTERS_RUN_ID", "run-current")
-        config.get_settings.cache_clear()
-        storage = await get_storage()
-        await storage.append_index(make_index_entry("ex-old", run_id="run-old"))
-        await storage.append_index(make_index_entry("ex-new", run_id="run-current"))
-
-        response = await client.get("/v1/runs/run-current/exchanges?include_history=true")
-        assert response.status_code == 200
-        data = response.json()
-        assert [row["id"] for row in data] == ["ex-new"]
-
     async def test_list_filters_by_track_id(
         self, client: AsyncClient, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -115,7 +99,7 @@ class TestListExchanges:
         assert response.status_code == 200
         assert [entry["id"] for entry in response.json()] == ["subagent-a"]
 
-    async def test_list_mixed_providers_respects_run_scope_and_history(
+    async def test_list_mixed_providers_respects_run_scope(
         self, client: AsyncClient, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         from transport_matters.storage import get_storage
@@ -148,14 +132,6 @@ class TestListExchanges:
         assert [(row["id"], row["provider"]) for row in data] == [
             ("anth-current", "anthropic"),
             ("codex-current", "codex"),
-        ]
-
-        history = await client.get("/v1/runs/run-current/exchanges?include_history=true")
-        assert history.status_code == 200
-        history_data = history.json()
-        assert [(row["id"], row["run_id"], row["provider"]) for row in history_data] == [
-            ("anth-current", "run-current", "anthropic"),
-            ("codex-current", "run-current", "codex"),
         ]
 
     async def test_list_surfaces_codex_turn_summary_when_present(

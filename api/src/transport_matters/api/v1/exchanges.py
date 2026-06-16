@@ -47,7 +47,6 @@ EXCHANGES_ROUTE_PREFIX = "/exchanges"
 RUN_EXCHANGES_ROUTE_PREFIX = "/runs/{run_id}/exchanges"
 EXCHANGE_DETAIL_ROUTE_PATH = "/{exchange_id}"
 
-router = APIRouter()
 run_router = APIRouter()
 
 # Per-exchange locks serialize concurrent lazy recounts so the second
@@ -168,10 +167,8 @@ async def list_exchanges(
     request: Request,
     limit: int = Query(default=50, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
-    include_history: bool = Query(default=False),
     track_id: str | None = Query(default=None),
 ) -> list[IndexEntry]:
-    del include_history
     context = await resolve_run_storage_or_404(request, run_id)
     try:
         return await context.storage.read_index(

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING, NoReturn
 
@@ -21,7 +22,7 @@ if TYPE_CHECKING:
     from transport_matters.storage import StorageBackend
 
 
-_BACKENDS_BY_STORAGE_DIR: dict[Path, StorageBackend] = {}
+RUN_STORAGE_BACKEND_CACHE_MAXSIZE = 64
 
 
 @dataclass(frozen=True, slots=True)
@@ -129,12 +130,9 @@ def _resolve_path(path: Path) -> Path:
     return path.expanduser().resolve()
 
 
+@lru_cache(maxsize=RUN_STORAGE_BACKEND_CACHE_MAXSIZE)
 def _disk_storage_for(storage_dir: Path) -> StorageBackend:
-    backend = _BACKENDS_BY_STORAGE_DIR.get(storage_dir)
-    if backend is None:
-        backend = DiskStorageBackend(root=storage_dir)
-        _BACKENDS_BY_STORAGE_DIR[storage_dir] = backend
-    return backend
+    return DiskStorageBackend(root=storage_dir)
 
 
 def _run_not_found(run_id: str, exc: BaseException) -> NoReturn:
