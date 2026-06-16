@@ -40,7 +40,7 @@ def _contains_key(value: object, key: str) -> bool:
     return False
 
 
-async def test_session_routes_are_owner_scoped_and_omit_raw(test_db: TestDb) -> None:
+async def test_session_routes_are_owner_scoped_and_expose_native_payload(test_db: TestDb) -> None:
     async with (
         create_async_pool(test_db.database_url, min_size=1, max_size=2) as pool,
         pool.connection() as conn,
@@ -80,12 +80,84 @@ async def test_session_routes_are_owner_scoped_and_omit_raw(test_db: TestDb) -> 
             "kind": "assistant",
             "parts": [{"type": "text", "text": "alpha"}],
         }
+        assert payload["events"][0]["nativePayload"] == {
+            "uuid": "turn0",
+            "message": {"content": "alpha"},
+        }
         assert "raw" not in payload["events"][0]
         assert "nativeTurnId" not in payload["events"][0]
         assert "searchText" not in payload["events"][0]
 
         hidden = await client.get("/v1/sessions/s1/events", params={"owner": "other"})
         assert hidden.status_code == 404
+
+
+async def test_session_event_routes_reveal_native_payload_for_meta_records(
+    test_db: TestDb,
+) -> None:
+    session_id = "native-payload"
+    session_meta = {
+        "type": "session_meta",
+        "payload": {"id": "native-1", "cwd": "/workspace"},
+    }
+    attachment = {
+        "type": "attachment",
+        "attachment": {
+            "type": "hook_success",
+            "command": "pwd",
+            "stdout": "Injected reminder text",
+        },
+    }
+    async with create_async_pool(test_db.database_url, min_size=1, max_size=3) as pool:
+        async with pool.connection() as conn:
+            dao = AsyncSessionDao(conn)
+            await dao.upsert_session(root_session(session_id))
+            await dao.insert_event(
+                event(0, session_id=session_id, search_text="").model_copy(
+                    update={
+                        "kind": "meta",
+                        "role": None,
+                        "raw": session_meta,
+                        "ir": None,
+                        "search_text": None,
+                    }
+                )
+            )
+            await dao.insert_event(
+                event(1, session_id=session_id, search_text="").model_copy(
+                    update={
+                        "kind": "meta",
+                        "role": None,
+                        "raw": attachment,
+                        "ir": None,
+                        "search_text": None,
+                    }
+                )
+            )
+
+        async with _client(test_db) as client:
+            listed = await client.get(
+                f"/v1/sessions/{session_id}/events",
+                params={"limit": 2},
+            )
+        assert listed.status_code == 200
+        list_events = listed.json()["events"]
+        assert [item["nativePayload"] for item in list_events] == [session_meta, attachment]
+        assert list_events[0]["body"] == {"kind": "wire_injected", "label": "meta", "parts": []}
+        assert list_events[1]["body"] == {"kind": "wire_injected", "label": "meta", "parts": []}
+        assert "raw" not in list_events[0]
+
+        stream = _event_stream(session_id, "local", -1, pool, SessionEventHub())
+        try:
+            first = _frame_payload(await asyncio.wait_for(anext(stream), timeout=2.0))
+            second = _frame_payload(await asyncio.wait_for(anext(stream), timeout=2.0))
+        finally:
+            await stream.aclose()
+
+    assert [first["nativePayload"], second["nativePayload"]] == [session_meta, attachment]
+    assert first["body"] == {"kind": "wire_injected", "label": "meta", "parts": []}
+    assert second["body"] == {"kind": "wire_injected", "label": "meta", "parts": []}
+    assert "raw" not in first
 
 
 async def test_session_list_filters_internal_sessions_and_locks_cursor(
