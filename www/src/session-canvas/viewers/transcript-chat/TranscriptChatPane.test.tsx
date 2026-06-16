@@ -70,6 +70,33 @@ describe("TranscriptChatPane", () => {
     });
   });
 
+  it("hides raw details and renders metadata fallback for null native payloads", async () => {
+    installMockTransport(() =>
+      jsonResponse({
+        events: [
+          makeSessionEvent({
+            kind: "meta",
+            role: null,
+            seq: 7,
+            turnIndex: 3,
+            ts: "2026-06-06T18:00:00Z",
+            body: { kind: "wire_injected", label: "meta", parts: [] },
+            nativePayload: null,
+          }),
+        ],
+        nextFromSeq: null,
+      }),
+    );
+
+    renderWithQuery(<TranscriptChatPane {...transcriptProps()} />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/kind: meta/)).toBeInTheDocument();
+      expect(screen.getByText(/body: wire_injected/)).toBeInTheDocument();
+      expect(screen.queryByText("view raw")).not.toBeInTheDocument();
+    });
+  });
+
   it("renders tool use and tool result bodies", async () => {
     installMockTransport(() =>
       jsonResponse({

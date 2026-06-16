@@ -68,7 +68,10 @@ export function makeSessionEvent(
       kind: "assistant",
       parts: [{ type: "text", text: "hello transcript" }],
     },
-    nativePayload: patch.nativePayload ?? { type: "message", text: "hello transcript" },
+    nativePayload:
+      patch.nativePayload === null
+        ? null
+        : (patch.nativePayload ?? { type: "message", text: "hello transcript" }),
     resourceRefs: patch.resourceRefs ?? [],
   };
 }

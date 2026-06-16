@@ -26,7 +26,6 @@ from transport_matters.session.dao_statements import (
     GET_EVENT_ARTIFACTS_FOR_SEQS_SQL,
     GET_EVENTS_FOR_OWNER_SQL,
     GET_EVENTS_SQL,
-    GET_EVENTS_WITH_RAW_FOR_OWNER_SQL,
     GET_SESSION_FOR_OWNER_SQL,
     GET_SESSION_SQL,
     INSERT_DEAD_LETTER_SQL,
@@ -175,7 +174,7 @@ class SessionDao:
         limit: int = 500,
     ) -> list[EventRow]:
         rows = self._conn.execute(
-            GET_EVENTS_WITH_RAW_FOR_OWNER_SQL,
+            GET_EVENTS_FOR_OWNER_SQL,
             {
                 "session_id": session_id,
                 "owner": owner,

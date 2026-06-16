@@ -27,7 +27,6 @@ from transport_matters.session.dao_statements import (
     GET_EVENT_ARTIFACTS_FOR_SEQS_SQL,
     GET_EVENTS_FOR_OWNER_SQL,
     GET_EVENTS_SQL,
-    GET_EVENTS_WITH_RAW_FOR_OWNER_SQL,
     GET_LATEST_TURN_BEFORE_WITH_RAW_FOR_OWNER_SQL,
     GET_SESSION_FOR_OWNER_SQL,
     GET_SESSION_SQL,
@@ -226,7 +225,7 @@ class AsyncSessionDao:
         limit: int = 500,
     ) -> list[EventRow]:
         cursor = await self._conn.execute(
-            GET_EVENTS_WITH_RAW_FOR_OWNER_SQL,
+            GET_EVENTS_FOR_OWNER_SQL,
             {
                 "session_id": session_id,
                 "owner": owner,
