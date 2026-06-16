@@ -1,4 +1,4 @@
-import type { Page } from "@playwright/test";
+import type { Page, Route } from "@playwright/test";
 import { FRONTEND_STORAGE_KEYS } from "../../../src/stores/persistence";
 import type { IndexEntry } from "../../../src/types";
 import { mockExchangeDetails } from "./details";
@@ -23,7 +23,7 @@ export interface SetupOptions {
    * key in `mockExchangeDetails`.
    */
   selectedExchangeId?: string;
-  /** Exchange list fixture returned from `/api/exchanges`. Default: `mockExchanges`. */
+  /** Exchange list fixture returned from `/v1/runs/{runId}/exchanges`. Default: `mockExchanges`. */
   exchanges?: readonly IndexEntry[];
 }
 
@@ -32,8 +32,8 @@ export interface SetupOptions {
  *
  * - Freeze the page clock for deterministic elapsed-time rendering.
  * - Stub `EventSource` so the SSE "Live" indicator turns on without a backend.
- * - Intercept every `/api/**` request with canned responses derived from the
- *   mocks above, parametrised by `armed` / `paused`.
+ * - Intercept every `/api/**` and run-scoped `/v1/**` request with canned
+ *   responses derived from the mocks above, parametrised by `armed` / `paused`.
  *
  * Call this *before* `page.goto(...)`.
  */
@@ -75,13 +75,19 @@ export async function setupVisualTest(page: Page, opts: SetupOptions = {}): Prom
     { selectedId: selectedExchangeId, uiStoreKey: FRONTEND_STORAGE_KEYS.uiStore },
   );
 
+  const fulfillExchangeDetail = async (route: Route, encodedId: string) => {
+    const id = decodeURIComponent(encodedId);
+    const detail = mockExchangeDetails[id];
+    if (detail) {
+      return route.fulfill({ json: detail });
+    }
+    return route.fulfill({ status: 404, json: { error: "not found" } });
+  };
+
   await page.route("**/api/**", async (route) => {
     const url = new URL(route.request().url());
     const p = url.pathname;
 
-    if (p === "/api/exchanges") {
-      return route.fulfill({ json: exchanges });
-    }
     if (p === "/api/breakpoint/status") {
       return route.fulfill({
         json: {
@@ -100,19 +106,44 @@ export async function setupVisualTest(page: Page, opts: SetupOptions = {}): Prom
       return route.fulfill({ json: MOCK_META });
     }
 
-    // /api/exchanges/{id}; per-exchange detail
-    const detailMatch = p.match(/^\/api\/exchanges\/([^/]+)$/);
+    // Unknown route; return empty JSON so nothing throws.
+    return route.fulfill({ json: {} });
+  });
+
+  await page.route("**/v1/**", async (route) => {
+    const url = new URL(route.request().url());
+    const p = url.pathname;
+    const runPrefix = `/v1/runs/${mockVisualRunId}`;
+
+    if (p === `${runPrefix}/exchanges`) {
+      return route.fulfill({ json: exchanges });
+    }
+
+    const turnContentMatch = p.match(/^\/v1\/runs\/([^/]+)\/exchanges\/([^/]+)\/turn-content$/);
+    if (turnContentMatch) {
+      const [, runId] = turnContentMatch;
+      if (runId !== mockVisualRunId) {
+        return route.fulfill({ status: 404, json: { error: "not found" } });
+      }
+      return route.fulfill({
+        json: {
+          user_text: "fixture user prompt",
+          response_text: "fixture assistant response",
+          stop_reason: "end_turn",
+        },
+      });
+    }
+
+    const detailMatch = p.match(/^\/v1\/runs\/([^/]+)\/exchanges\/([^/]+)$/);
     if (detailMatch) {
-      const encodedId = detailMatch[1];
+      const [, runId, encodedId] = detailMatch;
+      if (runId !== mockVisualRunId) {
+        return route.fulfill({ status: 404, json: { error: "not found" } });
+      }
       if (encodedId === undefined) {
         return route.fulfill({ status: 404, json: { error: "not found" } });
       }
-      const id = decodeURIComponent(encodedId);
-      const detail = mockExchangeDetails[id];
-      if (detail) {
-        return route.fulfill({ json: detail });
-      }
-      return route.fulfill({ status: 404, json: { error: "not found" } });
+      return fulfillExchangeDetail(route, encodedId);
     }
 
     // Unknown route; return empty JSON so nothing throws.
