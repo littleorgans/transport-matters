@@ -2,6 +2,7 @@
 
 import json
 
+import pytest
 from mitmproxy import websocket
 from wsproto.frame_protocol import Opcode
 
@@ -16,6 +17,7 @@ from transport_matters.codex.transport import (
 )
 
 pytest_plugins = ("transport_matters.codex.test_transport_support",)
+pytestmark = pytest.mark.usefixtures("codex_run_id")
 
 
 def test_is_codex_websocket_flow_only_matches_target_path() -> None:

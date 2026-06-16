@@ -169,6 +169,7 @@ def test_paused_event_payload_includes_spawn_anchor() -> None:
         curated_ir=_make_ir(),
         audit=None,
         paused_at_ms=1_700_000_000_000,
+        run_id="run-pause",
         spawn_anchor=SpawnAnchor(
             track_spawn_exchange_id="exchange-parent-1",
             track_spawn_tool_use_id="toolu_child",
@@ -418,10 +419,10 @@ class TestFirePauseCount:
         import json
 
         pf = await self._register("flow-A")
-        q = broadcast.subscribe()
+        q = broadcast.subscribe("run-pause")
         counter = _SeqCounter([42])
 
-        await fire_pause_count("flow-A", counter, b'{"model":"x"}', {"k": "v"})
+        await fire_pause_count("run-pause", "flow-A", counter, b'{"model":"x"}', {"k": "v"})
 
         assert pf.tokens_before == 42
         data = json.loads(q.get_nowait())
@@ -433,21 +434,21 @@ class TestFirePauseCount:
     async def test_counter_none_does_not_broadcast(self) -> None:
         """A None counter result keeps the em dash; no follow-up event."""
         pf = await self._register("flow-B")
-        q = broadcast.subscribe()
+        q = broadcast.subscribe("run-pause")
         counter = _SeqCounter([None])
 
-        await fire_pause_count("flow-B", counter, b"{}", {})
+        await fire_pause_count("run-pause", "flow-B", counter, b"{}", {})
 
         assert pf.tokens_before is None
         assert q.empty()
 
     async def test_flow_already_released_does_not_broadcast(self) -> None:
         """Race: counter finishes after user released the flow — silent drop."""
-        q = broadcast.subscribe()
+        q = broadcast.subscribe("run-pause")
         counter = _SeqCounter([99])
 
         # Flow never registered: set_tokens_before returns False.
-        await fire_pause_count("flow-GONE", counter, b"{}", {})
+        await fire_pause_count("run-pause", "flow-GONE", counter, b"{}", {})
 
         assert q.empty()
 
@@ -459,9 +460,9 @@ class TestFirePauseCount:
                 raise RuntimeError("boom")
 
         pf = await self._register("flow-E")
-        q = broadcast.subscribe()
+        q = broadcast.subscribe("run-pause")
 
-        await fire_pause_count("flow-E", _Boom(), b"{}", {})
+        await fire_pause_count("run-pause", "flow-E", _Boom(), b"{}", {})
 
         assert pf.tokens_before is None
         assert q.empty()

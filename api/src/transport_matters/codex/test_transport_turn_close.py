@@ -2,6 +2,7 @@
 
 from typing import Any
 
+import pytest
 from mitmproxy import websocket
 from wsproto.frame_protocol import Opcode
 
@@ -10,6 +11,7 @@ from transport_matters.codex.test_transport_support import _codex_flow
 from transport_matters.storage import get_storage
 
 pytest_plugins = ("transport_matters.codex.test_transport_support",)
+pytestmark = pytest.mark.usefixtures("codex_run_id")
 
 
 async def test_addon_websocket_end_keeps_turn_artifacts_separated() -> None:

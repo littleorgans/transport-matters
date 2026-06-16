@@ -1,7 +1,7 @@
-"""Module-level SSE broadcaster.
+"""Run-scoped SSE broadcaster.
 
 Subscribers get an asyncio.Queue; the addon calls ``emit()`` to push
-events to all connected queues.
+events to connected queues for the same run.
 
 This module imports no internal Transport Matters modules.
 """
@@ -9,20 +9,35 @@ This module imports no internal Transport Matters modules.
 import asyncio
 import json
 import logging
+from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
 
 QUEUE_MAX_SIZE = 1000
 
-_subscribers: dict[int, asyncio.Queue[str]] = {}
+
+@dataclass(frozen=True)
+class _Subscriber:
+    run_id: str
+    queue: asyncio.Queue[str]
+
+
+_subscribers: dict[int, _Subscriber] = {}
 _next_id: int = 0
 
 
-def subscribe() -> asyncio.Queue[str]:
+def _required_run_id(run_id: object) -> str:
+    if not isinstance(run_id, str) or run_id == "":
+        raise ValueError("run_id is required")
+    return run_id
+
+
+def subscribe(run_id: str) -> asyncio.Queue[str]:
     global _next_id
+    run_id = _required_run_id(run_id)
     q: asyncio.Queue[str] = asyncio.Queue(maxsize=QUEUE_MAX_SIZE)
     _next_id += 1
-    _subscribers[_next_id] = q
+    _subscribers[_next_id] = _Subscriber(run_id=run_id, queue=q)
     q._subscriber_id = _next_id  # type: ignore[attr-defined]
     return q
 
@@ -33,11 +48,16 @@ def unsubscribe(q: asyncio.Queue[str]) -> None:
         _subscribers.pop(sid, None)
 
 
-def emit(event: dict[str, object]) -> None:
-    data = json.dumps(event, default=str)
-    for sid, q in list(_subscribers.items()):
+def emit(event: dict[str, object], *, run_id: str) -> None:
+    run_id = _required_run_id(run_id)
+    payload = dict(event)
+    payload["run_id"] = run_id
+    data = json.dumps(payload, default=str)
+    for sid, subscriber in list(_subscribers.items()):
+        if subscriber.run_id != run_id:
+            continue
         try:
-            q.put_nowait(data)
+            subscriber.queue.put_nowait(data)
         except asyncio.QueueFull:
             logger.warning(
                 "Dropped SSE event for subscriber %d (queue full, maxsize=%d)",

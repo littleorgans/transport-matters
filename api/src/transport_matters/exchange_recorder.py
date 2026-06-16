@@ -24,7 +24,7 @@ from transport_matters.exchange_recorder_artifacts import (
 )
 from transport_matters.exchange_recorder_unparsed import unparsed_request_ir
 from transport_matters.exchange_stats import build_pipeline_stats, build_req_stats
-from transport_matters.shared_proxy import ProxyRunBinding, resolve_run_storage
+from transport_matters.shared_proxy import ProxyRunBinding, require_run_id, resolve_run_storage
 from transport_matters.storage import (
     CodexTurnListSummary,
     IndexEntry,
@@ -73,7 +73,7 @@ def emit_exchange(
     res_stats: ResStats | None,
     exchange_id: str,
     ts: datetime,
-    run_id: str | None,
+    run_id: str,
     mutated_manually: bool = False,
     pipeline_stats: PipelineStats | None = None,
     flow_id: str | None = None,
@@ -106,14 +106,14 @@ def emit_exchange(
         payload["flow_id"] = flow_id
     if codex_turn is not None:
         payload["codex_turn"] = codex_turn.model_dump(mode="json")
-    broadcast.emit(payload)
+    broadcast.emit(payload, run_id=run_id)
 
 
-def emit_exchange_deleted(exchange_id: str, flow_id: str | None = None) -> None:
+def emit_exchange_deleted(exchange_id: str, *, run_id: str, flow_id: str | None = None) -> None:
     payload: dict[str, object] = {"type": "exchange_deleted", "id": exchange_id}
     if flow_id is not None:
         payload["flow_id"] = flow_id
-    broadcast.emit(payload)
+    broadcast.emit(payload, run_id=run_id)
 
 
 async def persist_unparsed_exchange(
@@ -348,7 +348,7 @@ async def delete_http_provisional_exchange(
     from transport_matters.flow_state import update_request_flow_state
 
     try:
-        storage, _run_id = await resolve_run_storage(binding)
+        storage, run_id = await resolve_run_storage(binding)
         await storage.delete_exchange(exchange_id)
     except Exception:
         logger.exception("Failed to delete provisional HTTP exchange %s", exchange_id)
@@ -356,7 +356,7 @@ async def delete_http_provisional_exchange(
 
     request_state.provisional_exchange_id = None
     update_request_flow_state(flow, provisional_exchange_id=None)
-    emit_exchange_deleted(exchange_id, flow_id=flow.id)
+    emit_exchange_deleted(exchange_id, run_id=run_id, flow_id=flow.id)
     return True
 
 
@@ -387,7 +387,7 @@ async def _finalize_http_provisional_exchange(
     req_stats = build_req_stats(curated_ir)
     pipeline_stats = await stamped_pipeline_stats(flow, request_state, token_counter, exchange_id)
 
-    run_id = existing_entry.run_id
+    run_id = require_run_id(existing_entry.run_id)
     persist_track_assignment(run_id, request_state, res_ir, exchange_id=exchange_id)
     entry = existing_entry.model_copy(
         update={

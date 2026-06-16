@@ -16,6 +16,8 @@ from transport_matters.storage.base import (
     SpawnAnchor,
 )
 
+RUN_ID = "run-emit"
+
 
 def _make_ir() -> InternalRequest:
     return InternalRequest(
@@ -50,7 +52,7 @@ class TestEmitExchange:
             tokens_before=60,
             tokens_after=50,
         )
-        q = broadcast.subscribe()
+        q = broadcast.subscribe(RUN_ID)
 
         emit_exchange(
             ir,
@@ -58,7 +60,7 @@ class TestEmitExchange:
             None,
             "exchange-1",
             datetime(2026, 1, 1, tzinfo=UTC),
-            None,
+            RUN_ID,
             mutated_manually=True,
             pipeline_stats=pipeline_stats,
         )
@@ -72,7 +74,7 @@ class TestEmitExchange:
     def test_payload_includes_flow_id_when_provided(self) -> None:
         ir = _make_ir()
         req_stats = build_req_stats(ir)
-        q = broadcast.subscribe()
+        q = broadcast.subscribe(RUN_ID)
 
         emit_exchange(
             ir,
@@ -80,7 +82,7 @@ class TestEmitExchange:
             None,
             "exchange-3",
             datetime(2026, 1, 1, tzinfo=UTC),
-            None,
+            RUN_ID,
             flow_id="mitmproxy-flow-abc123",
         )
 
@@ -90,7 +92,7 @@ class TestEmitExchange:
     def test_payload_includes_codex_turn_when_provided(self) -> None:
         ir = _make_ir().model_copy(update={"provider": "codex", "model": "codex/gpt-5-codex"})
         req_stats = build_req_stats(ir)
-        q = broadcast.subscribe()
+        q = broadcast.subscribe(RUN_ID)
 
         emit_exchange(
             ir,
@@ -98,7 +100,7 @@ class TestEmitExchange:
             None,
             "exchange-codex-1",
             datetime(2026, 1, 1, tzinfo=UTC),
-            None,
+            RUN_ID,
             codex_turn=CodexTurnListSummary(
                 turn_index=2,
                 message_range_start=4,
@@ -126,7 +128,7 @@ class TestEmitExchange:
     def test_payload_omits_flow_id_when_none(self) -> None:
         ir = _make_ir()
         req_stats = build_req_stats(ir)
-        q = broadcast.subscribe()
+        q = broadcast.subscribe(RUN_ID)
 
         emit_exchange(
             ir,
@@ -134,7 +136,7 @@ class TestEmitExchange:
             None,
             "exchange-4",
             datetime(2026, 1, 1, tzinfo=UTC),
-            None,
+            RUN_ID,
         )
 
         data = json.loads(q.get_nowait())
@@ -143,7 +145,7 @@ class TestEmitExchange:
     def test_payload_includes_spawn_anchor_object(self) -> None:
         ir = _make_ir()
         req_stats = build_req_stats(ir)
-        q = broadcast.subscribe()
+        q = broadcast.subscribe(RUN_ID)
 
         emit_exchange(
             ir,
@@ -151,7 +153,7 @@ class TestEmitExchange:
             None,
             "exchange-anchor",
             datetime(2026, 1, 1, tzinfo=UTC),
-            None,
+            RUN_ID,
             spawn_anchor=SpawnAnchor(
                 track_spawn_exchange_id="ex-parent",
                 track_spawn_tool_use_id="toolu_child",
@@ -172,7 +174,7 @@ class TestEmitExchange:
     def test_payload_defaults_spawn_anchor_to_none(self) -> None:
         ir = _make_ir()
         req_stats = build_req_stats(ir)
-        q = broadcast.subscribe()
+        q = broadcast.subscribe(RUN_ID)
 
         emit_exchange(
             ir,
@@ -180,7 +182,7 @@ class TestEmitExchange:
             None,
             "exchange-anchor-default",
             datetime(2026, 1, 1, tzinfo=UTC),
-            None,
+            RUN_ID,
         )
 
         data = json.loads(q.get_nowait())
@@ -189,9 +191,9 @@ class TestEmitExchange:
     def test_defaults_omit_pipeline_and_mutated_false(self) -> None:
         ir = _make_ir()
         req_stats = build_req_stats(ir)
-        q = broadcast.subscribe()
+        q = broadcast.subscribe(RUN_ID)
 
-        emit_exchange(ir, req_stats, None, "exchange-2", datetime(2026, 1, 1, tzinfo=UTC), None)
+        emit_exchange(ir, req_stats, None, "exchange-2", datetime(2026, 1, 1, tzinfo=UTC), RUN_ID)
 
         assert not q.empty()
         data = json.loads(q.get_nowait())

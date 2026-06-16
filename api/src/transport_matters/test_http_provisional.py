@@ -235,7 +235,7 @@ async def test_http_request_hook_emits_pending_exchange(
 ) -> None:
     flow = _http_flow("flow-http-emit")
     _patch_pipeline(monkeypatch)
-    queue = broadcast.subscribe()
+    queue = broadcast.subscribe("run-http")
 
     await addon_handlers.handle_http_request(flow, None)
 
@@ -351,7 +351,7 @@ async def test_http_response_hook_keeps_req_stats_json_equivalent(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     flow = _http_flow("flow-http-req-stats")
-    queue = broadcast.subscribe()
+    queue = broadcast.subscribe("run-http")
     _state, exchange_id, pending = await _request_pending(flow, monkeypatch, queue=queue)
     assert pending is not None
     _set_response(flow, _response_body())
@@ -368,7 +368,7 @@ async def test_http_breakpoint_edit_updates_final_req_stats(
 ) -> None:
     flow = _http_flow("flow-http-edit")
     _patch_pipeline(monkeypatch, message_text="short")
-    queue = broadcast.subscribe()
+    queue = broadcast.subscribe("run-http")
     bp.arm()
 
     task = asyncio.create_task(addon_handlers.handle_http_request(flow, None))
@@ -405,7 +405,7 @@ async def test_http_breakpoint_drop_deletes_provisional_exchange(
 ) -> None:
     flow = _http_flow("flow-http-drop")
     _patch_pipeline(monkeypatch)
-    queue = broadcast.subscribe()
+    queue = broadcast.subscribe("run-http")
     bp.arm()
 
     task = asyncio.create_task(addon_handlers.handle_http_request(flow, None))
@@ -427,6 +427,7 @@ async def test_http_breakpoint_drop_deletes_provisional_exchange(
     assert deleted == {
         "type": "exchange_deleted",
         "id": pending["id"],
+        "run_id": "run-http",
         "flow_id": flow.id,
     }
 
@@ -435,7 +436,7 @@ async def test_http_error_hook_deletes_provisional_exchange(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     flow = _http_flow("flow-http-error")
-    queue = broadcast.subscribe()
+    queue = broadcast.subscribe("run-http")
     _state, exchange_id, _ = await _request_pending(flow, monkeypatch, queue=queue)
 
     await TransportMattersAddon().error(flow)
@@ -446,6 +447,7 @@ async def test_http_error_hook_deletes_provisional_exchange(
     assert deleted == {
         "type": "exchange_deleted",
         "id": exchange_id,
+        "run_id": "run-http",
         "flow_id": flow.id,
     }
 
@@ -456,7 +458,7 @@ async def test_http_error_response_finalizes_instead_of_deleting(
     status_code: int,
 ) -> None:
     flow = _http_flow(f"flow-http-{status_code}")
-    queue = broadcast.subscribe()
+    queue = broadcast.subscribe("run-http")
     _state, exchange_id, pending = await _request_pending(flow, monkeypatch, queue=queue)
     assert pending is not None
     _set_response(
@@ -560,7 +562,7 @@ async def test_http_drop_wins_over_finalize(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     flow = _http_flow("flow-http-drop-wins")
-    queue = broadcast.subscribe()
+    queue = broadcast.subscribe("run-http")
     _state, exchange_id, _ = await _request_pending(flow, monkeypatch, queue=queue)
     state = update_request_flow_state(flow, dropped=True)
     assert state is not None

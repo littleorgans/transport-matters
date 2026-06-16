@@ -2,9 +2,9 @@
 
 import json
 import logging
-from typing import TYPE_CHECKING
 from unittest.mock import patch
 
+import pytest
 from mitmproxy import websocket
 from wsproto.frame_protocol import Opcode
 
@@ -14,9 +14,7 @@ from transport_matters.codex.transport import ensure_codex_transport_state
 from transport_matters.storage import get_storage
 
 pytest_plugins = ("transport_matters.codex.test_transport_support",)
-
-if TYPE_CHECKING:
-    import pytest
+pytestmark = pytest.mark.usefixtures("codex_run_id")
 
 
 async def test_addon_websocket_message_preserves_open_sidecars_when_derivation_fails(

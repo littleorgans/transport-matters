@@ -51,7 +51,7 @@ async def test_persist_http_provisional_exchange_stores_and_broadcasts_pending_r
         )
 
     monkeypatch.setattr(recorder, "persist_track_assignment", fake_track_assignment)
-    events = broadcast.subscribe()
+    events = broadcast.subscribe("run-http")
 
     exchange_id = await recorder.persist_http_provisional_exchange(flow, state)
 
@@ -116,7 +116,7 @@ async def test_persist_http_provisional_exchange_reuses_existing_id(
 ) -> None:
     state = _make_state(provisional_exchange_id="exchange-existing")
     flow = cast("http.HTTPFlow", _Flow())
-    events = broadcast.subscribe()
+    events = broadcast.subscribe("run-http")
 
     async def fail_persist(
         storage: StorageBackend,
@@ -150,7 +150,7 @@ async def test_persist_http_provisional_exchange_returns_none_on_failure(
 ) -> None:
     state = _make_state()
     flow = cast("http.HTTPFlow", _Flow())
-    events = broadcast.subscribe()
+    events = broadcast.subscribe("run-http")
 
     async def refuse_persist(
         storage: StorageBackend,

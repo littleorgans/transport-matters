@@ -40,7 +40,7 @@ from transport_matters.ir import (
     SamplingParams,
     TextBlock,
 )
-from transport_matters.shared_proxy import ProxyRunBinding, resolve_run_storage
+from transport_matters.shared_proxy import ProxyRunBinding, require_run_id, resolve_run_storage
 from transport_matters.storage import (
     CodexTurnListSummary,
     IndexEntry,
@@ -166,7 +166,7 @@ async def delete_codex_provisional_exchange(
         return True
 
     try:
-        storage, _run_id = await resolve_run_storage(binding)
+        storage, run_id = await resolve_run_storage(binding)
         await storage.delete_exchange(exchange_id)
     except Exception:
         logger.exception("Failed to delete provisional Codex exchange %s", exchange_id)
@@ -177,7 +177,7 @@ async def delete_codex_provisional_exchange(
         state.finalized_exchange_id = None
         state.current_turn_allocation = None
     clear_codex_breakpoint_lifecycle(flow)
-    emit_exchange_deleted(exchange_id, flow_id=flow.id)
+    emit_exchange_deleted(exchange_id, run_id=run_id, flow_id=flow.id)
     return True
 
 
@@ -469,7 +469,7 @@ def _emit_codex_entry_exchange(
         res_stats,
         entry.id,
         entry.ts,
-        entry.run_id,
+        require_run_id(entry.run_id),
         mutated_manually,
         pipeline_stats,
         flow_id=flow.id,

@@ -37,7 +37,7 @@ export function useExchangeStream({ runId, baseUrl }: UseExchangeStreamOptions):
       setConnected(false);
       return;
     }
-    const source = new EventSource(apiUrl("/api/stream", baseUrl));
+    const source = new EventSource(apiUrl(`/v1/runs/${encodeURIComponent(runId)}/stream`, baseUrl));
     source.onopen = () => setConnected(true);
     source.onerror = () => setConnected(false);
     source.onmessage = (event: MessageEvent<string>) =>

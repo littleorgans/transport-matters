@@ -12,10 +12,12 @@ from transport_matters import breakpoint as bp
 from transport_matters import broadcast
 from transport_matters.addon import TransportMattersAddon
 from transport_matters.codex.test_transport_support import _codex_flow, _wait_for_pause
+from transport_matters.override_state import root_scope
 from transport_matters.overrides import Override, get_store
 from transport_matters.storage import get_storage
 
 pytest_plugins = ("transport_matters.codex.test_transport_support",)
+pytestmark = pytest.mark.usefixtures("codex_run_id")
 
 
 async def test_addon_websocket_message_applies_pipeline_to_initial_frame() -> None:
@@ -23,7 +25,10 @@ async def test_addon_websocket_message_applies_pipeline_to_initial_frame() -> No
     flow = _codex_flow()
     assert flow.websocket is not None
     store = get_store()
-    store.upsert(Override(kind="system_part_text", target="system:0", value="patched"))
+    store.upsert(
+        Override(kind="system_part_text", target="system:0", value="patched"),
+        scope=root_scope("run-codex"),
+    )
 
     addon.websocket_start(flow)
     original = b'{"type":"response.create","model":"gpt-5-codex","instructions":"original"}'
@@ -57,7 +62,7 @@ async def test_addon_websocket_message_pauses_and_rewrites_on_release() -> None:
 
     task = asyncio.create_task(addon.websocket_message(flow))
     await _wait_for_pause(flow.id)
-    queue = broadcast.subscribe()
+    queue = broadcast.subscribe("run-codex")
 
     try:
         paused = await bp.get_paused()
@@ -217,7 +222,7 @@ async def test_addon_websocket_message_advances_provisional_codex_exchange_on_se
     assert len(provisional) == 1
     provisional_id = provisional[0].id
 
-    queue = broadcast.subscribe()
+    queue = broadcast.subscribe("run-codex")
     try:
         flow.websocket.messages.append(
             websocket.WebSocketMessage(
@@ -285,7 +290,7 @@ async def test_addon_websocket_message_projects_open_tool_activity_into_list_sum
     assert len(provisional) == 1
     provisional_id = provisional[0].id
 
-    queue = broadcast.subscribe()
+    queue = broadcast.subscribe("run-codex")
     try:
         flow.websocket.messages.append(
             websocket.WebSocketMessage(
