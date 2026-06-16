@@ -204,15 +204,14 @@ def test_start_home_dir_sets_claude_config_dir_and_manifest(
         ],
     )
     assert result.exit_code == 0, result.output
-    expected_source_home = (tmp_path / "homes" / "claude").resolve()
     client_env = spy_run_client_children.call_args.kwargs["client"].env
     storage_dir = Path(client_env["TRANSPORT_MATTERS_STORAGE_DIR"])
     overlay_home = storage_dir / "runtime-home" / "claude"
     # --agent-home-dir is the source home; the child runs from the per-run overlay built
     # from it, so daemon background workers inherit the overlay settings-env route.
     assert client_env["CLAUDE_CONFIG_DIR"] == str(overlay_home)
-    # The manifest records the operator's source home, never the run-scoped overlay.
-    assert captured["raw"]["home_dir"] == str(expected_source_home)
+    # The manifest records the same launched home the descriptor tails.
+    assert captured["raw"]["home_dir"] == str(overlay_home)
 
 
 def test_start_unset_home_dir_runs_from_runtime_overlay(

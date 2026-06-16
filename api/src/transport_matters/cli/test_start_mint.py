@@ -67,10 +67,10 @@ def test_claude_managed_mint_writes_durable_session_facts_under_home_dir(
     monkeypatch: pytest.MonkeyPatch,
     spy_run_client_children: MagicMock,
 ) -> None:
-    # §11.1 durable owned-launch facts: under --agent-home-dir the descriptor records the managed home AND
-    # <run_dir>/sessions.json carries the owned facts (native id, descriptor incl. home_dir, cli,
-    # minted) so a §10.5 rebuild reads owned state WITHOUT the live env. The home reaches the addon via
-    # the OWNED_* env channel (AGENT_HOME_DIR), not only the manifest (which unlinks on exit).
+    # §11.1 durable owned-launch facts: under --agent-home-dir the descriptor records the launched
+    # overlay home AND <run_dir>/sessions.json carries the owned facts (native id, descriptor incl.
+    # home_dir, cli, minted) so a §10.5 rebuild reads owned state WITHOUT the live env. The home
+    # reaches the addon via the OWNED_* env channel (AGENT_HOME_DIR), not only the manifest.
     monkeypatch.setattr(
         "transport_matters.cli.shutil.which",
         _which_by_name({"mitmdump": "/bin/mitmdump", "claude": "/bin/claude"}),
@@ -92,11 +92,11 @@ def test_claude_managed_mint_writes_durable_session_facts_under_home_dir(
         ],
     )
     assert result.exit_code == 0, result.output
-    expected_home = (tmp_path / "homes" / "claude").resolve()
-
     env = spy_run_client_children.call_args.kwargs["mitmdump_env"]
     native = env["TRANSPORT_MATTERS_OWNED_NATIVE_SESSION_ID"]
-    # the managed home reaches the addon via the env channel (not just the unlinked manifest)
+    storage_dir = Path(env["TRANSPORT_MATTERS_STORAGE_DIR"])
+    expected_home = storage_dir / "runtime-home" / "claude"
+    # the launched home reaches the addon via the env channel
     assert env["TRANSPORT_MATTERS_AGENT_HOME_DIR"] == str(expected_home)
     # the owned descriptor records the home explicitly and the path resolves under it
     source = decode_source_descriptor(env["TRANSPORT_MATTERS_OWNED_SOURCE_DESCRIPTOR"])

@@ -16,6 +16,7 @@ from transport_matters.captured_run import (
     prepare_captured_run,
 )
 from transport_matters.cli.net import loopback_http_url
+from transport_matters.index.adapters.base import FileTailSource, decode_source_descriptor
 
 
 class FakeSupervisor:
@@ -102,9 +103,11 @@ def test_prepare_captured_run_external_web_starts_capture_only_proxy(
         assert spawn_spec.client.env["ANTHROPIC_BASE_URL"] == loopback_http_url(
             spawn_spec.proxy_port
         )
-        # An explicit --agent-home-dir is the managed home and must surface on the
-        # AGENT_HOME_DIR channel (addon locate + the desktop event homeDir).
-        assert spawn_spec.launch_env[env_keys.AGENT_HOME_DIR] == str(tmp_path / "agent-home")
+        # An explicit --agent-home-dir is overlaid before launch. The addon
+        # descriptor and child env must share the actual launched home.
+        assert spawn_spec.launch_env[env_keys.AGENT_HOME_DIR] == str(
+            tmp_path / "storage" / "runtime-home" / CLAUDE_CLIENT_NAME
+        )
         assert started and started[0]["proxy_port"] == spawn_spec.proxy_port
     finally:
         lease.close()
@@ -176,6 +179,72 @@ def test_prepare_captured_run_native_home_does_not_publish_agent_home_dir(
         assert spawn_spec.client.env["CLAUDE_CONFIG_DIR"] == str(
             tmp_path / "storage" / "runtime-home" / CLAUDE_CLIENT_NAME
         )
+    finally:
+        lease.close()
+
+
+def test_prepare_captured_run_claude_manual_home_descriptor_matches_launch_home(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    source_home = tmp_path / "agent-home"
+    source_home.mkdir()
+    (source_home / ".claude.json").write_text("{}", encoding="utf-8")
+    addon_path = tmp_path / "addon.py"
+    addon_path.write_text("# addon\n")
+    storage = tmp_path / "storage"
+    supervisors: list[FakeSupervisor] = []
+
+    def supervisor_factory() -> FakeSupervisor:
+        supervisor = FakeSupervisor()
+        supervisors.append(supervisor)
+        return supervisor
+
+    spawn_spec, lease = prepare_captured_run(
+        CapturedRunRequest(
+            client_name=CLAUDE_CLIENT_NAME,
+            passthrough=("--dangerously-skip-permissions",),
+            directory=workspace,
+            proxy_port=None,
+            web_port=None,
+            upstream=CLAUDE_UPSTREAM_DEFAULT,
+            storage_dir=storage,
+            home_dir=source_home,
+            client_bin=None,
+            client_disabled=False,
+            no_system_prompt=False,
+            debug=False,
+            web_runtime=WEB_RUNTIME_EXTERNAL,
+            default_client_passthrough=("--dangerously-skip-permissions",),
+        ),
+        require_addon=lambda: addon_path,
+        resolve_mitmdump=lambda: "/usr/bin/mitmdump",
+        which=lambda *_args, **_kwargs: "/usr/bin/claude",
+        port_in_use=lambda _port: False,
+        allocate_port_pair=lambda: (39423, 49423),
+        inject_system_prompt=lambda *_a, **_k: ["--dangerously-skip-permissions"],
+        user_supplied_system_prompt=lambda _args: False,
+        supervisor_factory=supervisor_factory,
+        proxy_starter=lambda **_kwargs: None,
+        env={"CLAUDE_CONFIG_DIR": str(source_home)},
+    )
+
+    try:
+        assert spawn_spec.client is not None
+        assert spawn_spec.managed_session is not None
+        launch_home = Path(spawn_spec.client.env["CLAUDE_CONFIG_DIR"])
+        assert launch_home == storage / "runtime-home" / CLAUDE_CLIENT_NAME
+        assert launch_home != source_home
+        assert spawn_spec.launch_env[env_keys.AGENT_HOME_DIR] == str(launch_home)
+        assert (
+            spawn_spec.launch_env[env_keys.OWNED_SOURCE_DESCRIPTOR]
+            == spawn_spec.managed_session.source_descriptor
+        )
+        source = decode_source_descriptor(spawn_spec.managed_session.source_descriptor)
+        assert isinstance(source, FileTailSource)
+        assert source.home_dir == str(launch_home)
+        assert Path(source.path).is_relative_to(launch_home / "projects")
     finally:
         lease.close()
 

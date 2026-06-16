@@ -115,7 +115,7 @@ def plan_runtime_home(
         should_overlay=should_overlay,
     )
     descriptor_home = child_home if mode == RuntimeHomeMode.TEMPLATE else manual_home
-    if mode == RuntimeHomeMode.MANUAL and should_overlay and client_name == CLIENT_NAME_CODEX:
+    if mode == RuntimeHomeMode.MANUAL and should_overlay:
         descriptor_home = child_home
     auth_source = native_home if should_overlay or manual_home is not None else content_source
     return RuntimeHomePlan(
