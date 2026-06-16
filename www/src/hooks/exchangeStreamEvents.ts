@@ -234,12 +234,7 @@ function mutateExchangeLists(
   runId: string,
   transform: (entries: IndexEntry[]) => IndexEntry[],
 ) {
-  queryClient.setQueryData<IndexEntry[]>(exchangesKey(runId, false), (prev = []) =>
-    transform(prev),
-  );
-  queryClient.setQueriesData<IndexEntry[]>({ queryKey: exchangesKey(runId, true) }, (prev) =>
-    prev ? transform(prev) : prev,
-  );
+  queryClient.setQueryData<IndexEntry[]>(exchangesKey(runId), (prev = []) => transform(prev));
 }
 
 function dropExchangeDetail(queryClient: QueryClient, runId: string, id: string) {

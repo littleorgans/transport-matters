@@ -44,12 +44,7 @@ export function BrowserAppShell() {
   const pendingTrackStubs = useMemo(() => pendingTrackStubsForPausedFlow(pausedFlow), [pausedFlow]);
   const { meta } = useMeta();
   const runId = meta?.runId ?? null;
-  const { exchanges, trackTree, isLoading } = useExchanges(
-    runId,
-    includeHistory,
-    true,
-    pendingTrackStubs,
-  );
+  const { exchanges, trackTree, isLoading } = useExchanges(runId, true, pendingTrackStubs);
   const collapseSessionKey = exchangeListSessionKey(runId, exchanges);
   const collapsedTrackIds = useUIStore(
     (s) => s.collapsedTrackIdsBySession[collapseSessionKey] ?? EMPTY_COLLAPSED_TRACK_IDS,
@@ -66,7 +61,6 @@ export function BrowserAppShell() {
     !includeHistory && selectedId != null && !selectedExchangeVisible;
   const { exchanges: historyExchanges, isLoading: isHistoryLookupLoading } = useExchanges(
     runId,
-    true,
     shouldLookupHiddenSelection,
   );
   const selectedExchangeExistsInHistory =

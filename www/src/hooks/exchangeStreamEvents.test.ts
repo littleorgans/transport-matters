@@ -27,8 +27,8 @@ describe("exchange stream event application", () => {
       },
     );
 
-    expect(
-      queryClient.getQueryData<IndexEntry[]>(exchangesKey("run-current", false))?.[0]?.id,
-    ).toBe("exchange-boundary-1");
+    expect(queryClient.getQueryData<IndexEntry[]>(exchangesKey("run-current"))?.[0]?.id).toBe(
+      "exchange-boundary-1",
+    );
   });
 });

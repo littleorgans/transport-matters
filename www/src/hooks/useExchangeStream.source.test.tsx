@@ -36,7 +36,7 @@ describe("useExchangeStream browser source", () => {
         }),
       ),
     );
-    expect(qc.getQueryData<IndexEntry[]>(exchangesKey("run-current", false))?.[0]?.id).toBe(
+    expect(qc.getQueryData<IndexEntry[]>(exchangesKey("run-current"))?.[0]?.id).toBe(
       "stream-source-message",
     );
 

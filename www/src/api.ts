@@ -111,19 +111,11 @@ async function requestVoid(
   }
 }
 
-export async function fetchExchanges(
-  runId: string,
-  limit = 50,
-  offset = 0,
-  includeHistory = false,
-): Promise<IndexEntry[]> {
+export async function fetchExchanges(runId: string, limit = 50, offset = 0): Promise<IndexEntry[]> {
   const params = new URLSearchParams({
     limit: String(limit),
     offset: String(offset),
   });
-  if (includeHistory) {
-    params.set("include_history", "true");
-  }
   return requestJson<IndexEntry[]>(
     `/v1/runs/${encodeURIComponent(runId)}/exchanges?${params.toString()}`,
     undefined,

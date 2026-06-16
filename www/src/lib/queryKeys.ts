@@ -1,10 +1,7 @@
 export const exchangesPrefix = ["exchanges"] as const;
 
-export function exchangesKey(
-  runId: string | null,
-  includeHistory: boolean,
-): readonly ["exchanges", string | null, boolean] {
-  return ["exchanges", runId, includeHistory];
+export function exchangesKey(runId: string | null): readonly ["exchanges", string | null] {
+  return ["exchanges", runId];
 }
 
 export function exchangeKey(
