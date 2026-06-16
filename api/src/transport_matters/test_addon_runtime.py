@@ -113,6 +113,9 @@ async def test_load_capture_runtime_starts_capture_resources_without_uvicorn(
         def submit_blocking(self, _batch: object) -> object:
             return type("CommitResult", (), {"ok": True})()
 
+        async def submit(self, _batch: object) -> object:
+            return type("CommitResult", (), {"ok": True})()
+
         def quarantine_window_blocking(self, *_args: object) -> bool:
             return True
 

@@ -8,7 +8,7 @@ import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from types import MappingProxyType
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import httpx
 import uvicorn
@@ -18,6 +18,7 @@ from transport_matters.config import get_settings
 from transport_matters.counting import TokenCounter, set_counter, set_recent_auth
 from transport_matters.index.adapters import get_adapter
 from transport_matters.index.adapters.base import RunContext
+from transport_matters.index.commit_dispatcher import ShardedCommitDispatcher
 from transport_matters.index.tailer import TranscriptTailer, register_session_cursor
 from transport_matters.main import create_app
 from transport_matters.session.ingest import EventWrite, build_event, build_event_batch
@@ -31,6 +32,7 @@ from transport_matters.workspace import workspace_id
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+    from concurrent.futures import Future
     from pathlib import Path
 
     from transport_matters.config import Settings
@@ -150,6 +152,7 @@ class CaptureRuntime:
     binding: ProxyRunBinding | None = None
     session_writer: SessionWriter | None = None
     index_tailer: TranscriptTailer | None = None
+    commit_dispatcher: ShardedCommitDispatcher | None = None
 
 
 @dataclass(slots=True)
@@ -210,6 +213,7 @@ def load_capture_runtime(settings: Settings | None = None) -> CaptureRuntime:
     loop = _running_loop()
     session_writer: SessionWriter | None = None
     index_tailer: TranscriptTailer | None = None
+    commit_dispatcher: ShardedCommitDispatcher | None = None
     try:
         if loop is None:
             raise RuntimeError("server loop is unavailable for session writer")
@@ -225,28 +229,47 @@ def load_capture_runtime(settings: Settings | None = None) -> CaptureRuntime:
             make_transcript_snapshot_writer(storage_root) if storage_root is not None else None
         )
         quarantined_records = 0
+        shard_count = max(1, settings.session_pool_max_size)
+        commit_dispatcher = ShardedCommitDispatcher(
+            loop=loop,
+            submit=writer.submit,
+            shard_count=shard_count,
+            queue_size=shard_count,
+        )
 
-        def submit_events(binding: SessionBinding, events: list[EventWrite]) -> None:
+        def submit_events(binding: SessionBinding, events: list[EventWrite]) -> Future[Any]:
             nonlocal quarantined_records
-            result = writer.submit_blocking(
+            future = commit_dispatcher.submit(
                 build_event_batch(
                     binding,
                     events,
                     session_purpose=_session_purpose_for_binding(binding),
                 )
             )
+            future.add_done_callback(lambda done: log_commit_result(binding, done))
+            return future
+
+        def log_commit_result(binding: SessionBinding, future: Future[Any]) -> None:
+            nonlocal quarantined_records
+            if future.cancelled():
+                return
+            try:
+                result = future.result()
+            except Exception:
+                return
             if not result.ok:
-                raise RuntimeError("session writer commit failed")
-            if result.quarantined:
-                quarantined_records += result.quarantined
-                for sqlstate in result.quarantine_sqlstates:
-                    logger.warning(
-                        "quarantined transcript record run=%s session=%s sqlstate=%s total=%d",
-                        binding.run_id,
-                        binding.session_id,
-                        sqlstate,
-                        quarantined_records,
-                    )
+                return
+            if not result.quarantined:
+                return
+            quarantined_records += result.quarantined
+            for sqlstate in result.quarantine_sqlstates:
+                logger.warning(
+                    "quarantined transcript record run=%s session=%s sqlstate=%s total=%d",
+                    binding.run_id,
+                    binding.session_id,
+                    sqlstate,
+                    quarantined_records,
+                )
 
         index_tailer = TranscriptTailer(
             build_record=build_event,
@@ -269,6 +292,7 @@ def load_capture_runtime(settings: Settings | None = None) -> CaptureRuntime:
         binding=binding,
         session_writer=session_writer,
         index_tailer=index_tailer,
+        commit_dispatcher=commit_dispatcher,
     )
 
 
@@ -302,6 +326,9 @@ async def close_capture_runtime(runtime: CaptureRuntime | None) -> None:
     tailer = runtime.index_tailer
     if tailer is not None:
         await loop.run_in_executor(None, lambda: tailer.stop(drain=True))
+    dispatcher = runtime.commit_dispatcher
+    if dispatcher is not None:
+        await dispatcher.aclose()
     writer = runtime.session_writer
     if writer is not None:
         await writer.aclose()

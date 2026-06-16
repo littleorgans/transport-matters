@@ -56,12 +56,19 @@ class SessionWriter:
     def submit_blocking(self, batch: EventBatch) -> CommitResult:
         """Block the caller until the event batch is durably committed."""
         self._raise_if_target_loop("submit_blocking")
-        future = asyncio.run_coroutine_threadsafe(self._commit_batch(batch), self._loop)
+        future = asyncio.run_coroutine_threadsafe(self.submit(batch), self._loop)
         try:
             return future.result(timeout=self._commit_timeout_s)
         except FutureTimeoutError:
             future.cancel()
             raise
+
+    async def submit(self, batch: EventBatch) -> CommitResult:
+        """Commit an event batch from a worker running on the writer loop."""
+        running_loop = asyncio.get_running_loop()
+        if running_loop is not self._loop:
+            raise RuntimeError("submit must run on the target event loop")
+        return await self._commit_batch(batch)
 
     def quarantine_window_blocking(
         self,
