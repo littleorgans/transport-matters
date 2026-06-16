@@ -20,6 +20,7 @@ from transport_matters.index.adapters.base import RunContext
 from transport_matters.index.tailer import TranscriptTailer, register_session_cursor
 from transport_matters.main import create_app
 from transport_matters.session.ingest import EventWrite, build_event, build_event_batch
+from transport_matters.session.models import SessionPurpose
 from transport_matters.session.pool import create_async_pool
 from transport_matters.session.writer import SessionWriter
 from transport_matters.storage import init_storage
@@ -105,6 +106,21 @@ async def _register_owned_cursor(
         logger.exception("owned transcript cursor registration failed")
 
 
+def _session_purpose_for_binding(binding: SessionBinding) -> SessionPurpose:
+    value = getattr(binding, "session_purpose", None)
+    if value is None:
+        return SessionPurpose.USER
+    try:
+        return SessionPurpose(value)
+    except ValueError:
+        logger.warning(
+            "ignoring invalid session_purpose launch field session=%s value=%r",
+            binding.session_id,
+            value,
+        )
+        return SessionPurpose.USER
+
+
 @dataclass(slots=True)
 class CaptureRuntime:
     http_client: httpx.AsyncClient
@@ -184,7 +200,13 @@ def load_capture_runtime(settings: Settings | None = None) -> CaptureRuntime:
 
         def submit_events(binding: SessionBinding, events: list[EventWrite]) -> None:
             nonlocal quarantined_records
-            result = writer.submit_blocking(build_event_batch(binding, events))
+            result = writer.submit_blocking(
+                build_event_batch(
+                    binding,
+                    events,
+                    session_purpose=_session_purpose_for_binding(binding),
+                )
+            )
             if not result.ok:
                 raise RuntimeError("session writer commit failed")
             if result.quarantined:

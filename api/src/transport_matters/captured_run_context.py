@@ -127,7 +127,10 @@ def build_captured_run_context(
             write=write,
         )
         addon_path = stack.enter_context(as_file(prepared.addon_traversable))
-        launch_fields = runtime_home_plan.launch_fields
+        launch_fields = {
+            **dict(request.launch_fields),
+            **runtime_home_plan.launch_fields,
+        }
         if request.client_name == CLAUDE_CLIENT_NAME:
             build_invocation = build_claude_captured_invocation(
                 addon_path=addon_path,

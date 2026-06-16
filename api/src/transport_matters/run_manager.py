@@ -125,6 +125,8 @@ class SpawnRun:
     debug: bool = False
     web_runtime: CapturedRunWebRuntime = WEB_RUNTIME_EXTERNAL
     default_client_passthrough: tuple[str, ...] = ()
+    launch_fields: dict[str, object] = field(default_factory=dict)
+    idempotency_key: str | None = None
     # Bridge answers the CLI's OSC 10/11 color queries (see osc_color_responder).
     osc_color_replies: bool = True
 
@@ -236,10 +238,25 @@ class RunManager:
         self._read_chunk_size = read_chunk_size
         self._install_signal_handlers = install_signal_handlers
         self._runs: dict[str, ManagedRun] = {}
+        self._runs_by_idempotency_key: dict[str, ManagedRun] = {}
+        self._spawn_idempotency_lock = asyncio.Lock()
         self._teardown_lock = asyncio.Lock()
         self._closed = False
 
     async def spawn(self, request: SpawnRun) -> ManagedRun:
+        if self._closed:
+            raise RunManagerError("run_manager_closed", "run manager is closed")
+        if request.idempotency_key is None:
+            return await self._spawn_new(request)
+        async with self._spawn_idempotency_lock:
+            existing = self._runs_by_idempotency_key.get(request.idempotency_key)
+            if existing is not None:
+                return existing
+            run = await self._spawn_new(request)
+            self._runs_by_idempotency_key[request.idempotency_key] = run
+            return run
+
+    async def _spawn_new(self, request: SpawnRun) -> ManagedRun:
         if self._closed:
             raise RunManagerError("run_manager_closed", "run manager is closed")
 
@@ -421,6 +438,7 @@ class RunManager:
             debug=request.debug,
             web_runtime=request.web_runtime,
             default_client_passthrough=request.default_client_passthrough,
+            launch_fields=request.launch_fields,
         )
 
     def _resolve_cwd(self, cwd: Path | None) -> Path:

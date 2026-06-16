@@ -87,6 +87,7 @@ _MANAGED_CHILD_TRUST_ENV_KEYS = frozenset(
 )
 
 _MANAGED_CHILD_TRANSPORT_INTERNAL_ENV_KEYS = frozenset({env_keys.LAUNCH_FIELDS})
+_MANAGED_CHILD_SHELL_INTERNAL_ENV_KEYS = frozenset({env_keys.RESUME_CONTEXT})
 
 LOOPBACK_NO_PROXY = "127.0.0.1,localhost"
 
@@ -103,6 +104,7 @@ def managed_child_shell_env_excludes() -> tuple[str, ...]:
             _MANAGED_CHILD_PROXY_ENV_KEYS
             | _MANAGED_CHILD_TRUST_ENV_KEYS
             | _MANAGED_CHILD_TRANSPORT_INTERNAL_ENV_KEYS
+            | _MANAGED_CHILD_SHELL_INTERNAL_ENV_KEYS
         )
     )
 
@@ -160,8 +162,17 @@ def build_launch_env(
             dict(launch_fields),
             separators=(",", ":"),
         )
+        resume_context = launch_fields.get("resume_context")
+        if resume_context is not None:
+            env[env_keys.RESUME_CONTEXT] = json.dumps(
+                resume_context,
+                separators=(",", ":"),
+            )
+        else:
+            env.pop(env_keys.RESUME_CONTEXT, None)
     else:
         env.pop(env_keys.LAUNCH_FIELDS, None)
+        env.pop(env_keys.RESUME_CONTEXT, None)
     return env
 
 
