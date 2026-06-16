@@ -33,14 +33,15 @@ class ProxyRunBinding:
     run_id: str | None
     cli: str | None
     working_dir: Path | None
-    storage_dir: Path
     storage: StorageBackend
     listen_port: int | None
+    # Forward-carry for Slice 5 (shared-proxy mode_spec/routing); unused in Slice 1.
     upstream: str | None
     agent_home_dir: Path | None
     owned_native_session_id: str | None
     owned_source_descriptor: str | None
     launch_fields: Mapping[str, Any] = field(default_factory=lambda: MappingProxyType({}))
+    # Forward-carry for Slice 5 (shared-proxy mode_spec/routing); unused in Slice 1.
     default_client_passthrough: tuple[str, ...] = ()
     breakpoint_skip_models: tuple[str, ...] = ()
     recent_auth: RecentAuthHolder = field(

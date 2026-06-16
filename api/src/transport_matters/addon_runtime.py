@@ -75,7 +75,6 @@ def build_proxy_run_binding(settings: Settings, storage: StorageBackend) -> Prox
         run_id=settings.run_id,
         cli=settings.cli,
         working_dir=settings.cwd,
-        storage_dir=settings.storage_dir,
         storage=storage,
         listen_port=settings.proxy_port,
         upstream=settings.upstream_url,

@@ -1,6 +1,7 @@
 """Unit tests for the count_tokens wrapper."""
 
 import json
+from typing import TYPE_CHECKING, cast
 
 import httpx
 
@@ -8,8 +9,16 @@ from transport_matters.counting import (
     TokenCounter,
     _cache_key,
     _strip_for_count,
+    get_recent_auth,
     relevant_auth_headers,
+    set_recent_auth,
 )
+from transport_matters.shared_proxy.binding import ProxyRunBinding
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    from transport_matters.storage.base import StorageBackend
 
 # ── _strip_for_count ──────────────────────────────────────────────────
 
@@ -66,6 +75,52 @@ def test_auth_headers_skips_empty_values() -> None:
 
 def test_auth_headers_ignores_unrelated_headers() -> None:
     assert relevant_auth_headers({"cookie": "session=1"}) == {}
+
+
+# ── recent auth cache ────────────────────────────────────────────────
+
+
+def _auth_binding(tmp_path: Path) -> ProxyRunBinding:
+    return ProxyRunBinding(
+        run_id="run-auth",
+        cli="claude",
+        working_dir=None,
+        storage=cast("StorageBackend", object()),
+        listen_port=9191,
+        upstream=None,
+        agent_home_dir=None,
+        owned_native_session_id=None,
+        owned_source_descriptor=None,
+    )
+
+
+def test_empty_recent_auth_clear_without_binding_clears_global() -> None:
+    try:
+        set_recent_auth({"x-api-key": "global-key"})
+        assert get_recent_auth() == {"x-api-key": "global-key"}
+
+        set_recent_auth({})
+
+        assert get_recent_auth() is None
+    finally:
+        set_recent_auth(None)
+
+
+def test_empty_recent_auth_clear_with_binding_clears_holder_and_global(
+    tmp_path: Path,
+) -> None:
+    binding = _auth_binding(tmp_path)
+    try:
+        set_recent_auth({"x-api-key": "global-key"})
+        set_recent_auth({"x-api-key": "binding-key"}, binding=binding)
+        assert get_recent_auth() == {"x-api-key": "binding-key"}
+
+        set_recent_auth({}, binding=binding)
+
+        assert get_recent_auth(binding=binding) is None
+        assert get_recent_auth() is None
+    finally:
+        set_recent_auth(None)
 
 
 # ── _cache_key ────────────────────────────────────────────────────────

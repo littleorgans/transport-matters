@@ -10,14 +10,19 @@ Failures (network, rate limit, malformed response, schema drift) degrade
 to None so the UI can render an em dash instead of crashing the flow.
 """
 
+from __future__ import annotations
+
 import asyncio
 import hashlib
 import json
 import logging
 from collections import OrderedDict
-from typing import Any, Protocol, cast  # Any: raw JSON dicts, untyped header maps
+from typing import TYPE_CHECKING, Any, Protocol  # Any: raw JSON dicts, untyped header maps
 
 import httpx
+
+if TYPE_CHECKING:
+    from transport_matters.shared_proxy.binding import ProxyRunBinding
 
 logger = logging.getLogger(__name__)
 
@@ -156,7 +161,7 @@ _counter: TokenCounter | None = None
 # current ProxyRunBinding, then expose that binding to embedded routes through
 # _recent_auth_binding while Slice 1 still has one binding per process.
 _recent_auth: dict[str, str] | None = None
-_recent_auth_binding: Any | None = None
+_recent_auth_binding: ProxyRunBinding | None = None
 
 
 def set_counter(counter: TokenCounter | None) -> None:
@@ -170,7 +175,18 @@ def get_counter() -> TokenCounter | None:
     return _counter
 
 
-def set_recent_auth(auth: dict[str, str] | None, *, binding: Any | None = None) -> None:
+def _clear_recent_auth() -> None:
+    """Clear both recent auth cache holders."""
+    global _recent_auth, _recent_auth_binding
+    _recent_auth = None
+    _recent_auth_binding = None
+
+
+def set_recent_auth(
+    auth: dict[str, str] | None,
+    *,
+    binding: ProxyRunBinding | None = None,
+) -> None:
     """Cache the latest Anthropic auth headers for lazy count_tokens calls.
 
     Callers should pass the ``relevant_auth_headers`` filtered view, not
@@ -181,18 +197,22 @@ def set_recent_auth(auth: dict[str, str] | None, *, binding: Any | None = None) 
     global _recent_auth, _recent_auth_binding
     if binding is not None:
         binding.recent_auth.set(auth)
-        _recent_auth_binding = binding if auth else None
+        if not auth:
+            _clear_recent_auth()
+            return
+        _recent_auth_binding = binding
         return
-    _recent_auth = dict(auth) if auth else None
     if not auth:
-        _recent_auth_binding = None
+        _clear_recent_auth()
+        return
+    _recent_auth = dict(auth)
 
 
-def get_recent_auth(*, binding: Any | None = None) -> dict[str, str] | None:
+def get_recent_auth(*, binding: ProxyRunBinding | None = None) -> dict[str, str] | None:
     """Return the cached auth headers, or None if no flow has been seen."""
     source = binding or _recent_auth_binding
     if source is not None:
-        return cast("dict[str, str] | None", source.recent_auth.get())
+        return source.recent_auth.get()
     return _recent_auth
 
 
