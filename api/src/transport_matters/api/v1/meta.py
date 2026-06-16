@@ -15,9 +15,10 @@ semantics stay on the provider adapters and captured IR provider fields.
 
 from pathlib import Path
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from pydantic import BaseModel
 
+from transport_matters.api.v1.run_storage import resolve_run_storage_or_404, run_workspace_id
 from transport_matters.config import get_settings
 from transport_matters.harnesses import (
     HarnessCapabilities,
@@ -31,6 +32,7 @@ from transport_matters.harnesses import (
 from transport_matters.workspace import workspace_id as _workspace_id
 
 router = APIRouter()
+run_router = APIRouter()
 
 
 class HarnessDescriptorResponse(BaseModel):
@@ -88,6 +90,21 @@ async def get_meta() -> MetaResponse:
         cwd=str(cwd),
         workspace_id=f"{wid.slug}/{wid.hash}",
         run_id=settings.run_id,
+        harnesses=tuple(
+            HarnessDescriptorResponse.from_descriptor(descriptor)
+            for descriptor in list_harness_descriptors()
+        ),
+    )
+
+
+@run_router.get("")
+async def get_run_meta(run_id: str, request: Request) -> MetaResponse:
+    """Return the resolved identity for a run scoped API caller."""
+    context = await resolve_run_storage_or_404(request, run_id)
+    return MetaResponse(
+        cwd=str(context.cwd),
+        workspace_id=run_workspace_id(context),
+        run_id=run_id,
         harnesses=tuple(
             HarnessDescriptorResponse.from_descriptor(descriptor)
             for descriptor in list_harness_descriptors()

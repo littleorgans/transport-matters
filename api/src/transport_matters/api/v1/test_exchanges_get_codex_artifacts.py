@@ -183,7 +183,7 @@ async def test_get_existing_surfaces_supported_codex_sidecars(
     await storage.append_index(entry)
     await storage.write_exchange("ex-001", _make_codex_derived_artifacts())
 
-    response = await client.get("/api/exchanges/ex-001")
+    response = await client.get("/v1/runs/run-current/exchanges/ex-001")
     assert response.status_code == 200
     data = response.json()
     assert data["events"] is not None
@@ -213,7 +213,7 @@ async def test_get_existing_surfaces_incomplete_codex_sidecars(
     exchange_dir = storage._find_exchange_dir("ex-001")
     (exchange_dir / "turn.json").unlink()
 
-    response = await client.get("/api/exchanges/ex-001")
+    response = await client.get("/v1/runs/run-current/exchanges/ex-001")
     assert response.status_code == 200
     data = response.json()
     assert data["events"] is not None
@@ -246,7 +246,7 @@ async def test_get_existing_surfaces_unsupported_codex_sidecars(
     turn_payload["derivation_version"] = 99
     (exchange_dir / "turn.json").write_text(json.dumps(turn_payload))
 
-    response = await client.get("/api/exchanges/ex-001")
+    response = await client.get("/v1/runs/run-current/exchanges/ex-001")
     assert response.status_code == 200
     data = response.json()
     assert data["events"] is not None
@@ -274,7 +274,7 @@ async def test_get_existing_surfaces_legacy_transport_only_codex_exchange(
     await storage.append_index(entry)
     await storage.write_exchange("ex-001", _make_transport_only_codex_artifacts())
 
-    response = await client.get("/api/exchanges/ex-001")
+    response = await client.get("/v1/runs/run-current/exchanges/ex-001")
     assert response.status_code == 200
     data = response.json()
     assert data["transport"]["provider"] == "codex"
@@ -316,7 +316,7 @@ async def test_get_existing_surfaces_irreparable_codex_sidecars(
         ),
     )
 
-    response = await client.get("/api/exchanges/ex-001")
+    response = await client.get("/v1/runs/run-current/exchanges/ex-001")
     assert response.status_code == 200
     data = response.json()
     assert data["events"] is None

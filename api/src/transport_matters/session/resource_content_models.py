@@ -76,12 +76,14 @@ class JsonContentResponse(ResourceContentBase):
 
 class ExchangeRedirectResponse(ResourceContentBase):
     kind: Literal["exchange-redirect"] = "exchange-redirect"
+    run_id: str
     exchange_id: str
     route: str
     initial_view: InitialExchangeView | None
 
 
 class ExchangeRedirectDescriptor(ResourceContentBase):
+    run_id: str
     exchange_id: str
     initial_view: InitialExchangeView | None
 

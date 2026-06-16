@@ -1,6 +1,8 @@
+from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, cast
 
 import pytest
+from fastapi import Request
 
 from transport_matters import exchange_recorder as recorder
 from transport_matters._exchange_recorder_http_support import (
@@ -121,7 +123,11 @@ async def test_persist_http_exchange_stores_codex_derived_sidecars(
     assert artifacts.events is not None
     assert artifacts.turn is not None
     assert entries[0].codex_turn == CodexTurnListSummary.from_turn(artifacts.turn)
-    detail = await get_exchange(entries[0].id, storage)
+    assert entries[0].run_id is not None
+    request = Request(
+        {"type": "http", "headers": [], "app": SimpleNamespace(state=SimpleNamespace())}
+    )
+    detail = await get_exchange(entries[0].run_id, entries[0].id, request)
     assert detail.events == artifacts.events
     assert detail.turn == artifacts.turn
 

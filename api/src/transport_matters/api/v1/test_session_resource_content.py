@@ -56,6 +56,7 @@ def test_exchange_redirect_response_requires_non_null_route() -> None:
         "content_length": None,
         "content_provenance": "structured-wire",
         "provenance": {},
+        "run_id": "run1",
         "exchange_id": "exchange-1",
         "initial_view": "request",
     }
@@ -190,8 +191,9 @@ async def test_wire_resource_content_redirects_without_payload_duplication(test_
     payload = response.json()
     assert payload["kind"] == "exchange-redirect"
     assert payload["id"] == "wire:exchange-1"
+    assert payload["runId"] == "run1"
     assert payload["exchangeId"] == "exchange-1"
-    assert payload["route"] == exchange_detail_route("exchange-1")
+    assert payload["route"] == exchange_detail_route("exchange-1", run_id="run1")
     assert payload["initialView"] == "request"
     assert payload["contentProvenance"] == "structured-wire"
     assert "requestIr" not in payload

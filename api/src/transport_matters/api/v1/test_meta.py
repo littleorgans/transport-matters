@@ -83,6 +83,16 @@ class TestMeta:
         data = response.json()
         assert data["run_id"] == "run-123"
 
+    async def test_run_scoped_meta_uses_run_metadata(self, client: AsyncClient) -> None:
+        response = await client.get("/v1/runs/run-current/meta")
+        assert response.status_code == 200
+        data = response.json()
+        cwd = Path(data["cwd"])
+        wid = workspace_id(cwd)
+        assert data["run_id"] == "run-current"
+        assert cwd.name == "workspace"
+        assert data["workspace_id"] == f"{wid.slug}/{wid.hash}"
+
     async def test_harnesses_expose_current_capabilities(self, client: AsyncClient) -> None:
         response = await client.get("/api/meta")
         data = response.json()

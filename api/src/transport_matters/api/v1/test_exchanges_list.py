@@ -2,12 +2,9 @@
 
 from typing import TYPE_CHECKING
 
-from httpx import ASGITransport, AsyncClient
-
 from transport_matters import addon_handlers, config
 from transport_matters import breakpoint as bp
 from transport_matters.flow_state import get_request_flow_state
-from transport_matters.main import create_app
 from transport_matters.storage import CodexTurnListSummary
 from transport_matters.test_http_provisional import (
     _http_flow,
@@ -21,6 +18,7 @@ from .test_exchanges_support import make_index_entry
 
 if TYPE_CHECKING:
     import pytest
+    from httpx import AsyncClient
 
 
 class TestListExchanges:
@@ -35,7 +33,7 @@ class TestListExchanges:
         entry = make_index_entry(run_id="run-current")
         await storage.append_index(entry)
 
-        response = await client.get("/api/exchanges")
+        response = await client.get("/v1/runs/run-current/exchanges")
         assert response.status_code == 200
         data = response.json()
         assert len(data) == 1
@@ -52,12 +50,12 @@ class TestListExchanges:
         await storage.append_index(make_index_entry("ex-old", run_id="run-old"))
         await storage.append_index(make_index_entry("ex-new", run_id="run-current"))
 
-        response = await client.get("/api/exchanges")
+        response = await client.get("/v1/runs/run-current/exchanges")
         assert response.status_code == 200
         data = response.json()
         assert [row["id"] for row in data] == ["ex-new"]
 
-    async def test_list_include_history_returns_all_runs(
+    async def test_list_include_history_stays_run_scoped(
         self, client: AsyncClient, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         from transport_matters.storage import get_storage
@@ -68,10 +66,10 @@ class TestListExchanges:
         await storage.append_index(make_index_entry("ex-old", run_id="run-old"))
         await storage.append_index(make_index_entry("ex-new", run_id="run-current"))
 
-        response = await client.get("/api/exchanges?include_history=true")
+        response = await client.get("/v1/runs/run-current/exchanges?include_history=true")
         assert response.status_code == 200
         data = response.json()
-        assert [row["id"] for row in data] == ["ex-old", "ex-new"]
+        assert [row["id"] for row in data] == ["ex-new"]
 
     async def test_list_filters_by_track_id(
         self, client: AsyncClient, monkeypatch: pytest.MonkeyPatch
@@ -110,7 +108,9 @@ class TestListExchanges:
             )
         )
 
-        response = await client.get("/api/exchanges", params={"track_id": "agent-a"})
+        response = await client.get(
+            "/v1/runs/run-current/exchanges", params={"track_id": "agent-a"}
+        )
 
         assert response.status_code == 200
         assert [entry["id"] for entry in response.json()] == ["subagent-a"]
@@ -142,7 +142,7 @@ class TestListExchanges:
             )
         )
 
-        response = await client.get("/api/exchanges")
+        response = await client.get("/v1/runs/run-current/exchanges")
         assert response.status_code == 200
         data = response.json()
         assert [(row["id"], row["provider"]) for row in data] == [
@@ -150,12 +150,10 @@ class TestListExchanges:
             ("codex-current", "codex"),
         ]
 
-        history = await client.get("/api/exchanges?include_history=true")
+        history = await client.get("/v1/runs/run-current/exchanges?include_history=true")
         assert history.status_code == 200
         history_data = history.json()
         assert [(row["id"], row["run_id"], row["provider"]) for row in history_data] == [
-            ("anth-old", "run-old", "anthropic"),
-            ("codex-old", "run-old", "codex"),
             ("anth-current", "run-current", "anthropic"),
             ("codex-current", "run-current", "codex"),
         ]
@@ -187,7 +185,7 @@ class TestListExchanges:
             )
         )
 
-        response = await client.get("/api/exchanges")
+        response = await client.get("/v1/runs/run-current/exchanges")
         assert response.status_code == 200
         data = response.json()
         assert data[0]["id"] == "codex-current"
@@ -220,7 +218,7 @@ class TestListExchanges:
         exchange_id = state.provisional_exchange_id
         assert exchange_id is not None
 
-        provisional_response = await client.get("/api/exchanges")
+        provisional_response = await client.get("/v1/runs/run-http/exchanges")
         assert provisional_response.status_code == 200
         provisional_rows = [row for row in provisional_response.json() if row["id"] == exchange_id]
         assert len(provisional_rows) == 1
@@ -235,7 +233,7 @@ class TestListExchanges:
             "tokens_after": None,
         }
 
-        mid_flow_response = await client.get("/api/exchanges")
+        mid_flow_response = await client.get("/v1/runs/run-http/exchanges")
         assert mid_flow_response.status_code == 200
         mid_flow_rows = [row for row in mid_flow_response.json() if row["id"] == exchange_id]
         assert len(mid_flow_rows) == 1
@@ -245,7 +243,7 @@ class TestListExchanges:
         _set_response(flow, _response_body(text="index recovery final"))
         await addon_handlers.handle_response(flow, None)
 
-        finalized_response = await client.get("/api/exchanges")
+        finalized_response = await client.get("/v1/runs/run-http/exchanges")
         assert finalized_response.status_code == 200
         finalized_rows = [row for row in finalized_response.json() if row["id"] == exchange_id]
         assert len(finalized_rows) == 1
@@ -257,21 +255,24 @@ class TestListExchanges:
 
 
 class TestListExchangesStorageFailure:
-    async def test_storage_exception_returns_500(self) -> None:
+    async def test_storage_exception_returns_500(
+        self, client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """When storage.read_index() raises, the endpoint returns 500 with a structured error."""
-        from unittest.mock import AsyncMock
+        from transport_matters.storage.disk import DiskStorageBackend
 
-        from transport_matters.storage import get_storage
+        async def fail_read_index(
+            self: DiskStorageBackend,
+            limit: int,
+            offset: int,
+            run_id: str | None = None,
+            track_id: str | None = None,
+        ) -> list[object]:
+            raise RuntimeError("disk on fire")
 
-        broken_backend = AsyncMock()
-        broken_backend.read_index.side_effect = RuntimeError("disk on fire")
+        monkeypatch.setattr(DiskStorageBackend, "read_index", fail_read_index)
 
-        app = create_app()
-        app.dependency_overrides[get_storage] = lambda: broken_backend
-
-        transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as ac:
-            response = await ac.get("/api/exchanges")
+        response = await client.get("/v1/runs/run-current/exchanges")
 
         assert response.status_code == 500
         data = response.json()

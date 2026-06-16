@@ -237,9 +237,11 @@ async def _load_wire_redirect(
         content_provenance="structured-wire",
         provenance={
             "sessionId": session.session_id,
+            "runId": session.run_id,
             "seq": row["seq"],
             "exchangeId": parsed.exchange_id,
         },
+        run_id=session.run_id,
         exchange_id=parsed.exchange_id,
         initial_view="request",
     )

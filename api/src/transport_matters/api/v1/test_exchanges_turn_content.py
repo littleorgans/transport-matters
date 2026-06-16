@@ -1,4 +1,4 @@
-"""Tests for GET /api/exchanges/{id}/turn-content."""
+"""Tests for GET /v1/runs/run-current/exchanges/{id}/turn-content."""
 
 from typing import TYPE_CHECKING
 
@@ -36,7 +36,7 @@ async def test_turn_content_returns_user_and_response_text(
 ) -> None:
     await _seed_complete()
 
-    response = await client.get("/api/exchanges/ex-001/turn-content")
+    response = await client.get("/v1/runs/run-current/exchanges/ex-001/turn-content")
 
     assert response.status_code == 200
     assert response.json() == {
@@ -47,7 +47,7 @@ async def test_turn_content_returns_user_and_response_text(
 
 
 async def test_turn_content_returns_404_for_missing(client: AsyncClient) -> None:
-    response = await client.get("/api/exchanges/missing/turn-content")
+    response = await client.get("/v1/runs/run-current/exchanges/missing/turn-content")
 
     assert response.status_code == 404
 
@@ -66,7 +66,7 @@ async def test_turn_content_null_response_when_in_flight(
     )
     await storage.persist_exchange(entry, artifacts)
 
-    response = await client.get("/api/exchanges/ex-pending/turn-content")
+    response = await client.get("/v1/runs/run-current/exchanges/ex-pending/turn-content")
 
     assert response.status_code == 200
     assert response.json() == {
