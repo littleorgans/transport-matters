@@ -44,6 +44,7 @@ logger = logging.getLogger(__name__)
 # Wire provider → harness cli, for read-back transcript cursor registration (§9.2).
 _PROVIDER_CLI = {"anthropic": "claude", "codex": "codex"}
 _DIRECT_MINT_PROVIDERS = frozenset({"anthropic"})
+_SESSION_POOL_AUX_CONNECTION_RESERVE = 1
 
 
 def _running_loop() -> asyncio.AbstractEventLoop | None:
@@ -229,7 +230,7 @@ def load_capture_runtime(settings: Settings | None = None) -> CaptureRuntime:
             make_transcript_snapshot_writer(storage_root) if storage_root is not None else None
         )
         quarantined_records = 0
-        shard_count = max(1, settings.session_pool_max_size)
+        shard_count = settings.session_pool_max_size - _SESSION_POOL_AUX_CONNECTION_RESERVE
         commit_dispatcher = ShardedCommitDispatcher(
             loop=loop,
             submit=writer.submit,
@@ -248,6 +249,28 @@ def load_capture_runtime(settings: Settings | None = None) -> CaptureRuntime:
             )
             future.add_done_callback(lambda done: log_commit_result(binding, done))
             return future
+
+        def quarantine_window(
+            binding: SessionBinding,
+            source_path: str,
+            byte_start: int,
+            byte_end: int,
+            raw_excerpt: bytes,
+            exc: BaseException,
+            attempts: int,
+        ) -> Future[Any]:
+            return asyncio.run_coroutine_threadsafe(
+                writer.quarantine_window(
+                    binding,
+                    source_path,
+                    byte_start,
+                    byte_end,
+                    raw_excerpt,
+                    exc,
+                    attempts,
+                ),
+                loop,
+            )
 
         def log_commit_result(binding: SessionBinding, future: Future[Any]) -> None:
             nonlocal quarantined_records
@@ -274,7 +297,7 @@ def load_capture_runtime(settings: Settings | None = None) -> CaptureRuntime:
         index_tailer = TranscriptTailer(
             build_record=build_event,
             submit_batch=submit_events,
-            quarantine_window=writer.quarantine_window_blocking,
+            quarantine_window=quarantine_window,
             snapshot=snapshot_writer,
         )
         index_tailer.start()

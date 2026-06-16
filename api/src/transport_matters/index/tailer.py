@@ -100,6 +100,14 @@ class _PendingCommit:
     stat_signature: tuple[int, float]
 
 
+@dataclass(frozen=True, slots=True)
+class _PendingQuarantine:
+    future: Future[Any]
+    consumed: int
+    stat_signature: tuple[int, float]
+    attempts: int
+
+
 def iter_complete_records(data: bytes) -> tuple[list[CompleteRecord], int]:
     """Parse complete (newline-terminated) JSON records from a byte buffer.
 
@@ -163,6 +171,7 @@ class TailCursor:
     subagent_spawn_links: dict[str, SubagentSpawnLink] = field(default_factory=dict)
     pending_codex_spawn_calls: dict[str, SubagentSpawnLink] = field(default_factory=dict)
     pending_commit: _PendingCommit | None = None
+    pending_quarantine: _PendingQuarantine | None = None
 
 
 def ingest_records[RecordWrite: _ProvenanceWrite](
@@ -276,7 +285,7 @@ class TranscriptTailer:
         build_record: Callable[[RawRecord, NormalizedTurn | None, TurnContext], Any] | None = None,
         submit_batch: Callable[[SessionBinding, list[Any]], Future[Any] | None] | None = None,
         quarantine_window: Callable[
-            [SessionBinding, str, int, int, bytes, BaseException, int], bool
+            [SessionBinding, str, int, int, bytes, BaseException, int], bool | Future[Any]
         ]
         | None = None,
         snapshot: Callable[[str, int, bytes], None] | None = None,
@@ -340,6 +349,8 @@ class TranscriptTailer:
             return list(self._cursors.values())
 
     def _poll_cursor(self, cursor: TailCursor) -> None:
+        if not self._resolve_pending_quarantine(cursor):
+            return
         if not self._resolve_pending_commit(cursor):
             return
         source = cursor.source
@@ -389,7 +400,17 @@ class TranscriptTailer:
                 )
                 ack = self._submit_batch(cursor.binding, plan.writes) if plan.writes else None
             except Exception as exc:
-                self._handle_commit_failure(cursor, source.path, data[:consumed], consumed, exc)
+                quarantine_ack = self._handle_commit_failure(
+                    cursor, source.path, data[:consumed], consumed, exc
+                )
+                if isinstance(quarantine_ack, Future):
+                    cursor.pending_quarantine = _PendingQuarantine(
+                        future=quarantine_ack,
+                        consumed=consumed,
+                        stat_signature=signature,
+                        attempts=cursor.quarantine_attempts,
+                    )
+                    return
             else:
                 if isinstance(ack, Future):
                     cursor.pending_commit = _PendingCommit(
@@ -412,6 +433,23 @@ class TranscriptTailer:
         # next unchanged read. A mid-poll raise leaves the old signature so the stat guard re-enters.
         cursor.stat_signature = signature
 
+    def _resolve_pending_quarantine(self, cursor: TailCursor) -> bool:
+        pending = cursor.pending_quarantine
+        if pending is None:
+            return True
+        if not pending.future.done():
+            return False
+        cursor.pending_quarantine = None
+        try:
+            acknowledged = pending.future.result()
+        except Exception:
+            raise
+        if not acknowledged:
+            raise RuntimeError("transcript quarantine write failed")
+        self._log_quarantined_window(cursor, pending.consumed, pending.attempts)
+        self._mark_consumed(cursor, pending.consumed, pending.stat_signature)
+        return True
+
     def _resolve_pending_commit(self, cursor: TailCursor) -> bool:
         pending = cursor.pending_commit
         if pending is None:
@@ -424,13 +462,22 @@ class TranscriptTailer:
         except CommitQueueFull:
             return True
         except Exception as exc:
-            if self._handle_commit_failure(
+            quarantine_ack = self._handle_commit_failure(
                 cursor,
                 pending.source_path,
                 pending.raw_excerpt,
                 pending.consumed,
                 exc,
-            ):
+            )
+            if isinstance(quarantine_ack, Future):
+                cursor.pending_quarantine = _PendingQuarantine(
+                    future=quarantine_ack,
+                    consumed=pending.consumed,
+                    stat_signature=pending.stat_signature,
+                    attempts=cursor.quarantine_attempts,
+                )
+                return False
+            if quarantine_ack:
                 self._mark_consumed(cursor, pending.consumed, pending.stat_signature)
                 return True
             raise
@@ -448,25 +495,31 @@ class TranscriptTailer:
         raw_excerpt: bytes,
         consumed: int,
         exc: BaseException,
-    ) -> bool:
+    ) -> bool | Future[Any]:
         if classify(exc) == "transient":
             cursor.quarantine_attempts = 0
             raise exc
         cursor.quarantine_attempts += 1
         if cursor.quarantine_attempts < QUARANTINE_MAX_ATTEMPTS:
             raise exc
-        if not self._quarantine_window(cursor, source_path, raw_excerpt, consumed, exc):
+        quarantine_ack = self._quarantine_window(cursor, source_path, raw_excerpt, consumed, exc)
+        if isinstance(quarantine_ack, Future):
+            return quarantine_ack
+        if not quarantine_ack:
             raise exc
+        self._log_quarantined_window(cursor, consumed, cursor.quarantine_attempts)
+        cursor.quarantine_attempts = 0
+        return True
+
+    def _log_quarantined_window(self, cursor: TailCursor, consumed: int, attempts: int) -> None:
         _log.warning(
             "quarantined transcript window run=%s session=%s span=%d..%d attempts=%d",
             cursor.binding.run_id,
             cursor.binding.session_id,
             cursor.byte_offset,
             cursor.byte_offset + consumed,
-            cursor.quarantine_attempts,
+            attempts,
         )
-        cursor.quarantine_attempts = 0
-        return True
 
     def _mark_consumed(
         self,
@@ -487,7 +540,7 @@ class TranscriptTailer:
         data: bytes,
         consumed: int,
         exc: BaseException,
-    ) -> bool:
+    ) -> bool | Future[Any]:
         if self._quarantine_window_writer is None:
             return False
         return self._quarantine_window_writer(

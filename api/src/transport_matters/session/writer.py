@@ -82,28 +82,49 @@ class SessionWriter:
     ) -> bool:
         """Block until a whole transcript window is durably dead-lettered."""
         self._raise_if_target_loop("quarantine_window_blocking")
-        letter = DeadLetterWrite(
-            session_id=binding.session_id,
-            scope="window",
-            run_id=binding.run_id,
-            native_session_id=binding.native_session_id,
-            provider=binding.provider,
-            cli=binding.cli,
-            source_path=source_path,
-            byte_start=byte_start,
-            byte_end=byte_end,
-            error_sqlstate=_sqlstate(exc),
-            error_class=exc.__class__.__name__,
-            error_message=str(exc),
-            raw_excerpt=raw_excerpt,
-            attempts=attempts,
+        future = asyncio.run_coroutine_threadsafe(
+            self.quarantine_window(
+                binding,
+                source_path,
+                byte_start,
+                byte_end,
+                raw_excerpt,
+                exc,
+                attempts,
+            ),
+            self._loop,
         )
-        future = asyncio.run_coroutine_threadsafe(self._insert_dead_letter(letter), self._loop)
         try:
-            future.result(timeout=self._commit_timeout_s)
+            return future.result(timeout=self._commit_timeout_s)
         except FutureTimeoutError:
             future.cancel()
             raise
+
+    async def quarantine_window(
+        self,
+        binding: SessionBinding,
+        source_path: str,
+        byte_start: int,
+        byte_end: int,
+        raw_excerpt: bytes,
+        exc: BaseException,
+        attempts: int,
+    ) -> bool:
+        """Durably dead-letter a whole transcript window from the writer loop."""
+        running_loop = asyncio.get_running_loop()
+        if running_loop is not self._loop:
+            raise RuntimeError("quarantine_window must run on the target event loop")
+        await self._insert_dead_letter(
+            _dead_letter_from_window(
+                binding,
+                source_path,
+                byte_start,
+                byte_end,
+                raw_excerpt,
+                exc,
+                attempts,
+            )
+        )
         return True
 
     async def aclose(self) -> None:
@@ -226,6 +247,33 @@ def _dead_letter_from_event(
         error_class=exc.__class__.__name__,
         error_message=str(exc),
         raw_excerpt=_raw_excerpt(item),
+    )
+
+
+def _dead_letter_from_window(
+    binding: SessionBinding,
+    source_path: str,
+    byte_start: int,
+    byte_end: int,
+    raw_excerpt: bytes,
+    exc: BaseException,
+    attempts: int,
+) -> DeadLetterWrite:
+    return DeadLetterWrite(
+        session_id=binding.session_id,
+        scope="window",
+        run_id=binding.run_id,
+        native_session_id=binding.native_session_id,
+        provider=binding.provider,
+        cli=binding.cli,
+        source_path=source_path,
+        byte_start=byte_start,
+        byte_end=byte_end,
+        error_sqlstate=_sqlstate(exc),
+        error_class=exc.__class__.__name__,
+        error_message=str(exc),
+        raw_excerpt=raw_excerpt,
+        attempts=attempts,
     )
 
 

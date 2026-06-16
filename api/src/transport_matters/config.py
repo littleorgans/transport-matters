@@ -118,7 +118,7 @@ class Settings(BaseSettings):
     )
     captured_run_spawn_concurrency: int = Field(default=6, ge=1)
     session_pool_min_size: int = 0
-    session_pool_max_size: int = 10
+    session_pool_max_size: int = Field(default=10, ge=2)
 
     # DNS rebinding defense: a rebound origin reaches the loopback server
     # same-origin, where CORS never applies, so the Host header is the only

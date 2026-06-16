@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 from concurrent.futures import Future
 from dataclasses import dataclass
+from functools import partial
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -48,13 +49,7 @@ class ShardedCommitDispatcher:
         self._queues: list[asyncio.Queue[_CommitJob]] = [
             asyncio.Queue(maxsize=queue_size) for _ in range(shard_count)
         ]
-        self._tasks = [
-            loop.create_task(
-                self._worker(index, queue),
-                name=f"transcript-commit-shard-{index}",
-            )
-            for index, queue in enumerate(self._queues)
-        ]
+        self._tasks = [self._start_worker(index, queue) for index, queue in enumerate(self._queues)]
 
     def submit(self, batch: EventBatch) -> Future[Any]:
         """Try to enqueue a batch without blocking the caller."""
@@ -66,6 +61,24 @@ class ShardedCommitDispatcher:
 
     def _shard_index(self, session_id: str) -> int:
         return hash(session_id) % self._shard_count
+
+    def _start_worker(self, index: int, queue: asyncio.Queue[_CommitJob]) -> asyncio.Task[None]:
+        task = self._loop.create_task(
+            self._worker(index, queue),
+            name=f"transcript-commit-shard-{index}",
+        )
+        task.add_done_callback(partial(self._restart_worker, index))
+        return task
+
+    def _restart_worker(self, shard: int, task: asyncio.Future[None]) -> None:
+        if self._closed:
+            return
+        try:
+            task.result()
+        except asyncio.CancelledError:
+            return
+        except BaseException:
+            self._tasks[shard] = self._start_worker(shard, self._queues[shard])
 
     def _enqueue(self, shard: int, job: _CommitJob) -> None:
         if self._closed:
@@ -91,6 +104,12 @@ class ShardedCommitDispatcher:
             except Exception as exc:
                 if not job.future.done():
                     job.future.set_exception(exc)
+            except BaseException as exc:
+                if not job.future.done():
+                    wrapped = RuntimeError(f"commit worker aborted with {exc.__class__.__name__}")
+                    wrapped.__cause__ = exc
+                    job.future.set_exception(wrapped)
+                raise
             else:
                 if not job.future.done():
                     job.future.set_result(result)

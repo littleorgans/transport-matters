@@ -119,6 +119,9 @@ async def test_load_capture_runtime_starts_capture_resources_without_uvicorn(
         def quarantine_window_blocking(self, *_args: object) -> bool:
             return True
 
+        async def quarantine_window(self, *_args: object) -> bool:
+            return True
+
         async def aclose(self) -> None:
             self.closed = True
 
@@ -143,7 +146,8 @@ async def test_load_capture_runtime_starts_capture_resources_without_uvicorn(
     monkeypatch.setattr(addon_runtime, "SessionWriter", FakeWriter)
     monkeypatch.setattr(addon_runtime, "TranscriptTailer", FakeTailer)
 
-    runtime = load_capture_runtime(Settings(storage_dir=tmp_path, web_runtime="external"))
+    settings = Settings(storage_dir=tmp_path, web_runtime="external", session_pool_max_size=4)
+    runtime = load_capture_runtime(settings)
     try:
         assert isinstance(runtime.token_counter, TokenCounter)
         assert get_counter() is runtime.token_counter
@@ -151,6 +155,8 @@ async def test_load_capture_runtime_starts_capture_resources_without_uvicorn(
         assert id(runtime.session_writer) == id(writers[0])
         assert len(tailers) == 1
         assert id(runtime.index_tailer) == id(tailers[0])
+        assert runtime.commit_dispatcher is not None
+        assert runtime.commit_dispatcher._shard_count < settings.session_pool_max_size
         assert tailers[0].started is True
     finally:
         await close_capture_runtime(runtime)

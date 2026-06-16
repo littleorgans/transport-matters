@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+from concurrent.futures import Future
 from typing import TYPE_CHECKING, Any
+
+from psycopg import errors
 
 from transport_matters.index.adapters.base import FileTailSource, SessionBinding
 from transport_matters.index.adapters.claude import ClaudeAdapter
@@ -15,6 +18,7 @@ from transport_matters.index.tailer import (
 )
 from transport_matters.index.test_tailer import _user_line
 from transport_matters.session.ingest import EventBatch, build_event, build_event_batch
+from transport_matters.session.quarantine import QUARANTINE_MAX_ATTEMPTS
 from transport_matters.session.writer import CommitResult
 
 if TYPE_CHECKING:
@@ -166,6 +170,53 @@ async def test_async_commit_failure_does_not_advance_and_retries_same_batch(
         await dispatcher.aclose()
 
 
+async def test_worker_base_exception_resolves_cursor_and_restarts_for_retry(
+    tmp_path: Path,
+) -> None:
+    class WorkerAbort(BaseException):
+        pass
+
+    loop = asyncio.get_running_loop()
+    attempts: list[tuple[str, tuple[int, ...]]] = []
+
+    async def submit(batch: EventBatch) -> CommitResult:
+        attempts.append(
+            (batch.session.session_id, tuple(event.event.seq for event in batch.events))
+        )
+        if len(attempts) == 1:
+            raise WorkerAbort("worker aborted mid commit")
+        return _commit_result(batch)
+
+    dispatcher = ShardedCommitDispatcher(loop=loop, submit=submit, shard_count=1, queue_size=4)
+    try:
+        tailer = TranscriptTailer(
+            build_record=build_event,
+            submit_batch=lambda binding, events: dispatcher.submit(
+                build_event_batch(binding, events)
+            ),
+        )
+        path = tmp_path / "base-exception.jsonl"
+        path.write_text(_user_line("u1", "hi") + "\n")
+        cursor = _cursor(path, "session-base-exception")
+        tailer.register(cursor)
+
+        tailer.poll()
+        await _settle_dispatch()
+        tailer.poll()
+        tailer.poll()
+        await _settle_dispatch()
+        tailer.poll()
+
+        assert attempts == [
+            ("session-base-exception", (0,)),
+            ("session-base-exception", (0,)),
+        ]
+        assert cursor.byte_offset == len(path.read_bytes())
+        assert cursor.seq == 1
+    finally:
+        await dispatcher.aclose()
+
+
 async def test_per_session_ordering_waits_for_prior_commit_ack(tmp_path: Path) -> None:
     loop = asyncio.get_running_loop()
     release_first = asyncio.Event()
@@ -211,6 +262,65 @@ async def test_per_session_ordering_waits_for_prior_commit_ack(tmp_path: Path) -
         assert cursor.seq == 2
     finally:
         await dispatcher.aclose()
+
+
+async def test_async_quarantine_ack_does_not_stall_healthy_cursor_or_advance_early(
+    tmp_path: Path,
+) -> None:
+    poison_path = tmp_path / "poison.jsonl"
+    healthy_path = tmp_path / "healthy.jsonl"
+    poison_payload = _user_line("u1", "poison") + "\n"
+    healthy_payload = _user_line("u2", "healthy") + "\n"
+    poison_path.write_text(poison_payload)
+    healthy_path.write_text(healthy_payload)
+    dead_letter_ack: Future[bool] = Future()
+    submitted: list[str] = []
+    quarantine_calls = 0
+
+    def submit_batch(binding: SessionBinding, _events: list[Any]) -> None:
+        if binding.session_id == "session-poison":
+            raise errors.UniqueViolation("unexpected constraint failure")
+        submitted.append(binding.session_id)
+
+    def quarantine_window(
+        _binding: SessionBinding,
+        _source_path: str,
+        _byte_start: int,
+        _byte_end: int,
+        _raw_excerpt: bytes,
+        _exc: BaseException,
+        _attempts: int,
+    ) -> Future[bool]:
+        nonlocal quarantine_calls
+        quarantine_calls += 1
+        return dead_letter_ack
+
+    tailer = TranscriptTailer(
+        build_record=build_event,
+        submit_batch=submit_batch,
+        quarantine_window=quarantine_window,
+    )
+    poison_cursor = _cursor(poison_path, "session-poison")
+    healthy_cursor = _cursor(healthy_path, "session-healthy")
+    tailer.register(poison_cursor)
+
+    for _ in range(QUARANTINE_MAX_ATTEMPTS - 1):
+        tailer.poll()
+        assert poison_cursor.byte_offset == 0
+
+    tailer.register(healthy_cursor)
+    tailer.poll()
+
+    assert quarantine_calls == 1
+    assert submitted == ["session-healthy"]
+    assert poison_cursor.byte_offset == 0
+    assert healthy_cursor.byte_offset == len(healthy_payload.encode())
+
+    dead_letter_ack.set_result(True)
+    tailer.poll()
+
+    assert poison_cursor.byte_offset == len(poison_payload.encode())
+    assert poison_cursor.quarantine_attempts == 0
 
 
 async def test_concurrency_bound_never_exceeds_shard_count() -> None:
