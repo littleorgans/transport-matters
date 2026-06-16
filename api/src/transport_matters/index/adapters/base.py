@@ -39,6 +39,7 @@ class SessionBinding(BaseModel):
     source_descriptor: str | None = (
         None  # JSON locating the transcript source (set in §7.3, slice 4b)
     )
+    template_provenance: dict[str, Any] | None = None
     parent_session_id: str | None = None
     forked_at_seq: int | None = None
     title: str | None = None

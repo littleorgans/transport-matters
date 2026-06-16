@@ -7,6 +7,7 @@ import base64
 import binascii
 import contextlib
 import json
+import os
 from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, NoReturn, cast
@@ -43,10 +44,13 @@ from transport_matters.run_terminal import (
     AttachmentClosed,
     PtyChunk,
 )
+from transport_matters.runtime_registry import resolve_runtime_template
 from transport_matters.workspace import workspace_id
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
+
+    from transport_matters.runtime_templates import RuntimeTemplateRef
 
 RUNS_ROUTE_PREFIX = "/runs"
 DEFAULT_RUNS_LIMIT = 50
@@ -94,6 +98,7 @@ class CreateRunRequest(BaseModel):
     osc_color_replies: bool = Field(default=True, alias="oscColorReplies")
     continue_from_session_id: str | None = Field(default=None, alias="continueFromSessionId")
     idempotency_key: str | None = Field(default=None, alias="idempotencyKey")
+    runtime_template: str | None = Field(default=None, alias="runtimeTemplate")
 
 
 class RunViewModel(BaseModel):
@@ -310,11 +315,26 @@ async def _launch_fields(
     return continuation.fields
 
 
+def _runtime_template_ref(body: CreateRunRequest, cli: CapturedRunCli) -> RuntimeTemplateRef | None:
+    name = body.runtime_template
+    if name is None or name.strip() == "":
+        return None
+    try:
+        return resolve_runtime_template(name, cli, env=os.environ)
+    except ValueError as exc:
+        _raise_api_error(
+            http_status.HTTP_400_BAD_REQUEST,
+            "invalid_runtime_template",
+            str(exc),
+        )
+
+
 def _spawn_request(
     body: CreateRunRequest,
     settings: Settings,
     *,
     launch_fields: dict[str, object] | None = None,
+    runtime_template: RuntimeTemplateRef | None = None,
 ) -> SpawnRun:
     terminal = body.terminal or TerminalSizeModel()
     return SpawnRun(
@@ -326,6 +346,7 @@ def _spawn_request(
         home_dir=settings.agent_home_dir,
         debug=settings.debug,
         osc_color_replies=body.osc_color_replies,
+        runtime_template=runtime_template,
         launch_fields=launch_fields or {},
         idempotency_key=body.idempotency_key,
     )
@@ -390,7 +411,13 @@ async def create_run(
 ) -> dict[str, object]:
     manager = _run_manager(request)
     try:
-        spawn_request = _spawn_request(body, get_settings())
+        cli = _validated_cli(body.cli)
+        runtime_template = _runtime_template_ref(body, cli)
+        spawn_request = _spawn_request(
+            body,
+            get_settings(),
+            runtime_template=runtime_template,
+        )
         launch_fields = await _launch_fields(body, request=request, owner=owner)
         if launch_fields:
             spawn_request = replace(spawn_request, launch_fields=launch_fields)

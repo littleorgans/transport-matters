@@ -168,6 +168,23 @@ def test_session_upsert_strips_decoded_nuls(dao: SessionDao) -> None:
     }
 
 
+def test_session_upsert_persists_template_provenance(dao: SessionDao) -> None:
+    template_provenance = {
+        "template_id": "claude/base",
+        "template_home": "/templates/claude",
+        "registry_source": "agent-runtimes",
+    }
+
+    inserted = dao.upsert_session(
+        root_session().model_copy(update={"template_provenance": template_provenance})
+    )
+    persisted = dao.get_session("s1")
+
+    assert inserted.template_provenance == template_provenance
+    assert persisted is not None
+    assert persisted.template_provenance == template_provenance
+
+
 def test_event_insert_strips_decoded_nuls_from_payload_boundaries(
     dao: SessionDao,
 ) -> None:

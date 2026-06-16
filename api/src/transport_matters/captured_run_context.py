@@ -203,12 +203,18 @@ def persist_owned_session_facts(ctx: CapturedRunContext) -> None:
 
     if ctx.managed_session is None:
         return
+    template_provenance = (
+        ctx.runtime_home_plan.template_provenance_field
+        if ctx.runtime_home_plan is not None
+        else None
+    )
     persist_owned_session_facts(
         ctx.profile,
         ctx.managed_session,
         run_id=ctx.prepared.run_id,
         storage_root=ctx.prepared.resolved_storage,
         home_dir=_descriptor_home(ctx),
+        template_provenance=template_provenance,
     )
 
 

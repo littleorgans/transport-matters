@@ -516,6 +516,7 @@ def run_codex(
                     run_id=prepared.run_id,
                     storage_root=prepared.resolved_storage,
                     home_dir=launch_parts.runtime_home_plan.descriptor_home,
+                    template_provenance=launch_parts.runtime_home_plan.template_provenance_field,
                 )
             _run_codex_launch(
                 proxy_port=prepared.proxy_port,

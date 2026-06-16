@@ -85,6 +85,7 @@ def build_session(
         minted=binding.minted,
         source_descriptor=_descriptor_json(binding.source_descriptor),
         home_dir=binding.home_dir,
+        template_provenance=binding.template_provenance,
         session_purpose=session_purpose,
         session_visibility=session_visibility,
         title=binding.title,

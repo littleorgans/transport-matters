@@ -293,6 +293,7 @@ class TestPersistOwnedSessionFacts:
             run_id="run-1",
             storage_root=tmp_path,
             home_dir=tmp_path,
+            template_provenance={"template_id": "claude/base"},
         )
         assert path == tmp_path / "sessions.json"
         facts = read_run_session_facts(tmp_path)
@@ -304,6 +305,7 @@ class TestPersistOwnedSessionFacts:
         assert owned.minted is True
         assert owned.source_descriptor == descriptor
         assert owned.home_dir == str(tmp_path)
+        assert owned.template_provenance == {"template_id": "claude/base"}
 
     def test_native_home_records_none(self, tmp_path: Path) -> None:
         descriptor = encode_source_descriptor(FileTailSource(path="/p", format="codex_rollout"))

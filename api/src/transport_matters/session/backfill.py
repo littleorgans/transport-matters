@@ -151,6 +151,7 @@ def _binding(
         minted=owned.minted,
         source_descriptor=owned.source_descriptor,
         home_dir=owned.home_dir,
+        template_provenance=owned.template_provenance,
     )
 
 

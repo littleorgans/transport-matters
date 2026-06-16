@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
-from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
 from transport_matters.cli.home_seed import (
@@ -15,6 +14,10 @@ from transport_matters.cli.home_seed import (
     validate_runtime_home_template,
 )
 from transport_matters.launch_environment import CLIENT_NAME_CLAUDE, CLIENT_NAME_CODEX
+from transport_matters.runtime_templates import (
+    RuntimeTemplateProvenance as RuntimeTemplateProvenance,
+)
+from transport_matters.runtime_templates import RuntimeTemplateRef as RuntimeTemplateRef
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -26,29 +29,6 @@ class RuntimeHomeMode(StrEnum):
     MANUAL = "manual"
     TEMPLATE = "template"
     PROXY_ONLY = "proxy_only"
-
-
-@dataclass(frozen=True, slots=True)
-class RuntimeTemplateRef:
-    template_id: str
-    client_name: str
-    template_home: Path
-    provenance: Mapping[str, str] = MappingProxyType({})
-
-
-@dataclass(frozen=True, slots=True)
-class RuntimeTemplateProvenance:
-    template_id: str
-    template_home: Path
-    provenance: Mapping[str, str]
-
-    def as_launch_field(self) -> dict[str, str]:
-        field = {
-            "template_id": self.template_id,
-            "template_home": str(self.template_home),
-        }
-        field.update(self.provenance)
-        return field
 
 
 @dataclass(frozen=True, slots=True)
@@ -69,10 +49,17 @@ class RuntimeHomePlan:
         return self.child_home
 
     @property
-    def launch_fields(self) -> dict[str, Any]:  # Any: launch metadata is a JSON env carrier.
+    def template_provenance_field(self) -> dict[str, str] | None:
         if self.template_provenance is None:
+            return None
+        return self.template_provenance.as_launch_field() or None
+
+    @property
+    def launch_fields(self) -> dict[str, Any]:  # Any: launch metadata is a JSON env carrier.
+        template_provenance = self.template_provenance_field
+        if template_provenance is None:
             return {}
-        return {"runtime_template": self.template_provenance.as_launch_field()}
+        return {"template_provenance": template_provenance}
 
 
 def plan_runtime_home(
