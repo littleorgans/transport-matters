@@ -31,6 +31,8 @@ from transport_matters.launch_environment import (
     CLIENT_NAME_CLAUDE,
     CLIENT_NAME_CODEX,
     build_launch_env,
+    build_managed_child_env,
+    managed_child_shell_env_excludes,
 )
 
 
@@ -489,6 +491,7 @@ def test_build_launch_env_drops_stale_launch_fields(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv(env_keys.LAUNCH_FIELDS, '{"runtime_template":{"template_id":"stale"}}')
+    monkeypatch.setenv(env_keys.RESUME_CONTEXT, '{"transcriptRef":"stale"}')
 
     env = build_launch_env(
         working_dir=tmp_path / "workspace",
@@ -500,6 +503,32 @@ def test_build_launch_env_drops_stale_launch_fields(
     )
 
     assert env_keys.LAUNCH_FIELDS not in env
+    assert env_keys.RESUME_CONTEXT not in env
+
+
+def test_resume_context_launch_env_reaches_child_but_not_shell(tmp_path: Path) -> None:
+    context = {
+        "firstUserPrompt": "hello",
+        "lastAgentMessage": "done",
+        "transcriptRef": "parent-session",
+    }
+    env = build_launch_env(
+        working_dir=tmp_path / "workspace",
+        storage_dir=tmp_path / "storage",
+        proxy_port=8787,
+        web_port=8788,
+        run_id="run-1",
+        launch_fields={"resume_context": context},
+    )
+    child_env = build_managed_child_env(
+        env,
+        client_name=CLIENT_NAME_CLAUDE,
+        home_dir=tmp_path / "home",
+    )
+
+    assert json.loads(env[env_keys.RESUME_CONTEXT]) == context
+    assert json.loads(child_env[env_keys.RESUME_CONTEXT]) == context
+    assert env_keys.RESUME_CONTEXT in managed_child_shell_env_excludes()
 
 
 def test_run_codex_force_http_fallback_still_resolves_addons(
@@ -580,6 +609,9 @@ async def test_launch_fields_carrier_reaches_owned_cursor(
         _tailer: Any, _adapter: Any, binding: SessionBinding
     ) -> None:
         captured["runtime_template"] = cast("Any", binding).runtime_template
+        captured["parent_session_id"] = binding.parent_session_id
+        captured["forked_at_seq"] = binding.forked_at_seq
+        captured["session_purpose"] = cast("Any", binding).session_purpose
         captured["source_descriptor"] = binding.source_descriptor
 
     monkeypatch.setattr(addon_runtime, "get_adapter", lambda _cli: FakeAdapter())
@@ -595,12 +627,20 @@ async def test_launch_fields_carrier_reaches_owned_cursor(
         cli="codex",
         owned_native_session_id="native-1",
         owned_source_descriptor="descriptor-1",
-        launch_fields={"runtime_template": runtime_template},
+        launch_fields={
+            "runtime_template": runtime_template,
+            "parent_session_id": "parent-session",
+            "forked_at_seq": 4,
+            "session_purpose": "continuation",
+        },
     )
     await _register_owned_cursor(cast("Any", object()), settings, "2026-06-15T12:00:00+00:00")
 
     assert captured == {
         "runtime_template": runtime_template,
+        "parent_session_id": "parent-session",
+        "forked_at_seq": 4,
+        "session_purpose": "continuation",
         "source_descriptor": "descriptor-1",
     }
 
@@ -623,7 +663,9 @@ async def test_register_session_cursor_preserves_dynamic_launch_fields(tmp_path:
         cli="codex",
         native_session_id="native-1",
         source_descriptor=descriptor,
-    ).model_copy(update={"runtime_template": runtime_template})
+        parent_session_id="parent-session",
+        forked_at_seq=4,
+    ).model_copy(update={"runtime_template": runtime_template, "session_purpose": "continuation"})
 
     class FakeAdapter:
         provider = "codex"
@@ -644,3 +686,6 @@ async def test_register_session_cursor_preserves_dynamic_launch_fields(tmp_path:
 
     assert tailer.cursor is not None
     assert tailer.cursor.binding.runtime_template == runtime_template
+    assert tailer.cursor.binding.parent_session_id == "parent-session"
+    assert tailer.cursor.binding.forked_at_seq == 4
+    assert tailer.cursor.binding.session_purpose == "continuation"

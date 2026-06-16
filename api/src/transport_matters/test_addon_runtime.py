@@ -31,6 +31,7 @@ from transport_matters.index.adapters.base import (
 from transport_matters.index.sessions import synth_session_id
 from transport_matters.index.tailer import TranscriptTailer
 from transport_matters.main import create_app
+from transport_matters.session.models import SessionPurpose
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -419,3 +420,9 @@ async def test_register_owned_cursor_uses_launch_settings(
     assert binding.session_id == synth_session_id("run1", "codex", native)
     assert binding.source_descriptor == descriptor
     assert binding.home_dir == str(tmp_path / "home")
+
+
+def test_session_purpose_for_binding_uses_continuation_launch_field() -> None:
+    binding = _codex_binding().model_copy(update={"session_purpose": "continuation"})
+
+    assert addon_runtime._session_purpose_for_binding(binding) == SessionPurpose.CONTINUATION

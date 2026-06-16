@@ -229,6 +229,43 @@ async def test_session_writer_persists_internal_session_classification(
         await writer.aclose()
 
 
+async def test_session_writer_preserves_continuation_classification_on_repoll(
+    test_db: TestDb,
+) -> None:
+    parent = _binding().model_copy(
+        update={"session_id": "parent-session", "native_session_id": "native-parent"}
+    )
+    child = _binding().model_copy(
+        update={
+            "session_id": "continuation-session",
+            "native_session_id": "native-child",
+            "parent_session_id": "parent-session",
+            "forked_at_seq": 0,
+        }
+    )
+    loop = asyncio.get_running_loop()
+    writer = SessionWriter(
+        create_async_pool(test_db.database_url, min_size=1, max_size=1), loop=loop
+    )
+    try:
+        async with await async_connect(test_db.database_url, autocommit=True) as conn:
+            await AsyncSessionDao(conn).upsert_session(build_event_batch(parent, []).session)
+
+        first = build_event_batch(child, [], session_purpose=SessionPurpose.CONTINUATION)
+        repoll = build_event_batch(child, [])
+        await loop.run_in_executor(None, writer.submit_blocking, first)
+        await loop.run_in_executor(None, writer.submit_blocking, repoll)
+
+        async with await async_connect(test_db.database_url, autocommit=True) as conn:
+            row = await AsyncSessionDao(conn).get_session("continuation-session")
+            assert row is not None
+            assert row.session_purpose == SessionPurpose.CONTINUATION
+            assert row.parent_session_id == "parent-session"
+            assert row.forked_at_seq == 0
+    finally:
+        await writer.aclose()
+
+
 async def test_tailer_quarantines_program_limit_poison_and_advances(
     test_db: TestDb, tmp_path: Path, monkeypatch: Any
 ) -> None:

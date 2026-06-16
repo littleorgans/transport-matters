@@ -7,6 +7,7 @@ import base64
 import binascii
 import contextlib
 import json
+from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, NoReturn, cast
 
@@ -16,6 +17,11 @@ from pydantic import BaseModel, ConfigDict, Field
 from starlette.websockets import WebSocketDisconnect
 
 from transport_matters.api.v1 import terminal_bridge
+from transport_matters.api.v1.run_continuation import (
+    ContinuationSessionNotFound,
+    build_continuation_launch_fields,
+)
+from transport_matters.api.v1.session_store import optional_session_pool
 from transport_matters.captured_run import CLAUDE_CLIENT_NAME, CODEX_CLIENT_NAME
 from transport_matters.captured_run_models import CapturedRunCli
 from transport_matters.config import Settings, get_settings
@@ -45,6 +51,7 @@ if TYPE_CHECKING:
 RUNS_ROUTE_PREFIX = "/runs"
 DEFAULT_RUNS_LIMIT = 50
 MAX_RUNS_LIMIT = 100
+DEFAULT_OWNER = "local"
 _CAPTURED_RUN_CLI_ALLOWLIST = frozenset({CLAUDE_CLIENT_NAME, CODEX_CLIENT_NAME})
 _RUN_MANAGER_HTTP_STATUS: dict[RunManagerErrorCode, int] = {
     "bind_conflict": http_status.HTTP_409_CONFLICT,
@@ -85,6 +92,8 @@ class CreateRunRequest(BaseModel):
     terminal: TerminalSizeModel | None = None
     # Bridge answers the CLI's OSC 10/11 color queries (see osc_color_responder).
     osc_color_replies: bool = Field(default=True, alias="oscColorReplies")
+    continue_from_session_id: str | None = Field(default=None, alias="continueFromSessionId")
+    idempotency_key: str | None = Field(default=None, alias="idempotencyKey")
 
 
 class RunViewModel(BaseModel):
@@ -165,6 +174,14 @@ def _http_error_from_manager(exc: RunManagerError) -> NoReturn:
 
 def _not_found(run_id: str) -> NoReturn:
     _raise_api_error(http_status.HTTP_404_NOT_FOUND, "run_not_found", f"run not found: {run_id}")
+
+
+def _session_not_found(session_id: str) -> NoReturn:
+    _raise_api_error(
+        http_status.HTTP_404_NOT_FOUND,
+        "session_not_found",
+        f"session {session_id!r} was not found",
+    )
 
 
 async def require_http_origin(request: Request) -> None:
@@ -257,7 +274,48 @@ def _request_cwd(cwd: str | None, settings: Settings) -> Path | None:
     return _validated_existing_dir(str(settings.cwd))
 
 
-def _spawn_request(body: CreateRunRequest, settings: Settings) -> SpawnRun:
+def _required_non_empty(value: str | None, *, field_name: str) -> str:
+    if value is None or value.strip() == "":
+        _raise_api_error(
+            http_status.HTTP_400_BAD_REQUEST,
+            "invalid_request",
+            f"{field_name} is required",
+        )
+    return value
+
+
+async def _launch_fields(
+    body: CreateRunRequest, *, request: Request, owner: str
+) -> dict[str, object]:
+    if body.idempotency_key is not None:
+        _required_non_empty(body.idempotency_key, field_name="idempotencyKey")
+    parent_session_id = body.continue_from_session_id
+    if parent_session_id is None:
+        return {}
+    parent_session_id = _required_non_empty(parent_session_id, field_name="continueFromSessionId")
+    _required_non_empty(body.idempotency_key, field_name="idempotencyKey")
+    pool = optional_session_pool(request)
+    if pool is None:
+        _raise_api_error(
+            http_status.HTTP_503_SERVICE_UNAVAILABLE,
+            "session_store_unavailable",
+            "session store unavailable",
+        )
+    try:
+        continuation = await build_continuation_launch_fields(
+            pool, parent_session_id=parent_session_id, owner=owner
+        )
+    except ContinuationSessionNotFound:
+        _session_not_found(parent_session_id)
+    return continuation.fields
+
+
+def _spawn_request(
+    body: CreateRunRequest,
+    settings: Settings,
+    *,
+    launch_fields: dict[str, object] | None = None,
+) -> SpawnRun:
     terminal = body.terminal or TerminalSizeModel()
     return SpawnRun(
         cli=_validated_cli(body.cli),
@@ -268,6 +326,8 @@ def _spawn_request(body: CreateRunRequest, settings: Settings) -> SpawnRun:
         home_dir=settings.agent_home_dir,
         debug=settings.debug,
         osc_color_replies=body.osc_color_replies,
+        launch_fields=launch_fields or {},
+        idempotency_key=body.idempotency_key,
     )
 
 
@@ -325,11 +385,16 @@ def _response_payload(response: BaseModel) -> dict[str, object]:
 async def create_run(
     body: CreateRunRequest,
     request: Request,
+    owner: str = Query(default=DEFAULT_OWNER, min_length=1),
     _origin: None = Depends(require_http_origin),
 ) -> dict[str, object]:
     manager = _run_manager(request)
     try:
-        run = await manager.spawn(_spawn_request(body, get_settings()))
+        spawn_request = _spawn_request(body, get_settings())
+        launch_fields = await _launch_fields(body, request=request, owner=owner)
+        if launch_fields:
+            spawn_request = replace(spawn_request, launch_fields=launch_fields)
+        run = await manager.spawn(spawn_request)
     except RunManagerError as exc:
         _http_error_from_manager(exc)
     return _response_payload(CreateRunResponse(run=run_view_model(run.view())))

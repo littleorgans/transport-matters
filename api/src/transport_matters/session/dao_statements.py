@@ -263,6 +263,32 @@ ORDER BY e.seq DESC
 LIMIT 1
 """
 
+GET_FIRST_TURN_WITH_RAW_FOR_OWNER_SQL = f"""
+SELECT {EVENT_OWNER_COLUMNS}
+FROM "event" AS e
+JOIN "session" AS s ON s.session_id = e.session_id
+WHERE e.session_id = %(session_id)s
+  AND s.owner = %(owner)s
+  AND e.kind = 'turn'
+  AND e.is_sidechain = false
+  AND (%(role)s::text IS NULL OR e.role = %(role)s::text)
+ORDER BY e.seq
+LIMIT 1
+"""
+
+GET_LATEST_TURN_WITH_RAW_FOR_OWNER_SQL = f"""
+SELECT {EVENT_OWNER_COLUMNS}
+FROM "event" AS e
+JOIN "session" AS s ON s.session_id = e.session_id
+WHERE e.session_id = %(session_id)s
+  AND s.owner = %(owner)s
+  AND e.kind = 'turn'
+  AND e.is_sidechain = false
+  AND (%(role)s::text IS NULL OR e.role = %(role)s::text)
+ORDER BY e.seq DESC
+LIMIT 1
+"""
+
 COUNT_TURNS_BEFORE_FOR_OWNER_SQL = """
 SELECT count(*)::integer AS turn_count
 FROM "event" AS e

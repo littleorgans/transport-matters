@@ -105,12 +105,14 @@ class PreparedRunHarness:
         self.tmp_path = tmp_path
         self.events = events
         self.leases: list[FakeLease] = []
+        self.requests: list[CapturedRunRequest] = []
 
     def prepare(
         self,
         request: CapturedRunRequest,
         **_: object,
     ) -> tuple[CapturedRunSpawnSpec, CapturedRunLease]:
+        self.requests.append(request)
         lease = FakeLease(self.events)
         self.leases.append(lease)
         cwd = request.directory or self.tmp_path
@@ -287,6 +289,31 @@ async def test_post_prepare_spawn_failure_closes_lease(tmp_path: Path) -> None:
         await manager.spawn(SpawnRun(cli="claude", cwd=tmp_path))
 
     assert prepared.leases[0].close_count == 1
+
+
+async def test_idempotency_key_returns_existing_run_without_reprepare(tmp_path: Path) -> None:
+    pty = PtyHarness()
+    prepared = PreparedRunHarness(tmp_path)
+    manager = make_manager(tmp_path, pty, prepared)
+
+    first = await manager.spawn(SpawnRun(cli="claude", cwd=tmp_path, idempotency_key="retry-1"))
+    second = await manager.spawn(SpawnRun(cli="claude", cwd=tmp_path, idempotency_key="retry-1"))
+
+    assert second is first
+    assert len(prepared.requests) == 1
+    assert len(prepared.leases) == 1
+
+
+async def test_different_idempotency_keys_spawn_distinct_runs(tmp_path: Path) -> None:
+    pty = PtyHarness()
+    prepared = PreparedRunHarness(tmp_path)
+    manager = make_manager(tmp_path, pty, prepared)
+
+    first = await manager.spawn(SpawnRun(cli="claude", cwd=tmp_path, idempotency_key="fork-a"))
+    second = await manager.spawn(SpawnRun(cli="claude", cwd=tmp_path, idempotency_key="fork-b"))
+
+    assert second is not first
+    assert len(prepared.requests) == 2
 
 
 async def test_close_during_in_flight_spawn_rolls_back_prepared_run(

@@ -11,10 +11,11 @@ factory (:mod:`captured_run_dependencies`) and the orchestration
 from __future__ import annotations
 
 import contextlib
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Literal
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
     from contextlib import ExitStack
     from pathlib import Path
 
@@ -63,6 +64,7 @@ class CapturedRunRequest:
     web_runtime: CapturedRunWebRuntime = WEB_RUNTIME_EMBEDDED
     default_client_passthrough: tuple[str, ...] = ()
     runtime_template: RuntimeTemplateRef | None = None
+    launch_fields: Mapping[str, object] = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)
