@@ -15,6 +15,7 @@ import json
 import logging
 import threading
 import time
+from concurrent.futures import Future
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol, Self
@@ -26,6 +27,7 @@ from transport_matters.index.adapters.base import (
     TurnContext,
     decode_source_descriptor,
 )
+from transport_matters.index.commit_dispatcher import CommitQueueFull
 from transport_matters.index.subagents import (
     SubagentSpawnLink,
     discover_child_transcripts,
@@ -70,6 +72,40 @@ class CompleteRecord:
     byte_start: int
     byte_end: int
     line_index: int
+
+
+@dataclass(frozen=True, slots=True)
+class _CursorState:
+    seq: int
+    source_line: int
+    parent_id: str | None
+    parent_seq: int | None
+    model: str | None
+    skip_until_seen: bool
+
+
+@dataclass(frozen=True, slots=True)
+class _IngestPlan:
+    writes: list[Any]
+    state: _CursorState
+
+
+@dataclass(frozen=True, slots=True)
+class _PendingCommit:
+    future: Future[Any]
+    state: _CursorState
+    source_path: str
+    raw_excerpt: bytes
+    consumed: int
+    stat_signature: tuple[int, float]
+
+
+@dataclass(frozen=True, slots=True)
+class _PendingQuarantine:
+    future: Future[Any]
+    consumed: int
+    stat_signature: tuple[int, float]
+    attempts: int
 
 
 def iter_complete_records(data: bytes) -> tuple[list[CompleteRecord], int]:
@@ -134,6 +170,8 @@ class TailCursor:
     suppressed_fail_count: int = 0
     subagent_spawn_links: dict[str, SubagentSpawnLink] = field(default_factory=dict)
     pending_codex_spawn_calls: dict[str, SubagentSpawnLink] = field(default_factory=dict)
+    pending_commit: _PendingCommit | None = None
+    pending_quarantine: _PendingQuarantine | None = None
 
 
 def ingest_records[RecordWrite: _ProvenanceWrite](
@@ -153,19 +191,39 @@ def ingest_records[RecordWrite: _ProvenanceWrite](
     emits a meta event, advances ``seq``, and may set ``model`` (codex ``turn_context``), never
     ``parent_id``.
     """
+    plan = _plan_ingest_records(
+        records,
+        cursor,
+        source_path,
+        build_record=build_record,
+    )
+    if plan.writes:
+        submit_batch(cursor.binding, plan.writes)
+    _apply_cursor_state(cursor, plan.state)
+
+
+def _plan_ingest_records[RecordWrite: _ProvenanceWrite](
+    records: Iterable[CompleteRecord],
+    cursor: TailCursor,
+    source_path: str,
+    *,
+    build_record: Callable[[RawRecord, NormalizedTurn | None, TurnContext], RecordWrite],
+) -> _IngestPlan:
+    """Build event writes and the cursor state to apply after durable commit ack."""
     seq = cursor.seq
     source_line = cursor.source_line
     parent_id = cursor.parent_id
     parent_seq = cursor.parent_seq
     model = cursor.model
+    skip_until_seen = cursor.skip_until_seen
     writes: list[RecordWrite] = []
     from transport_matters.session.ingest import RecordProvenance
 
     for complete in records:
         record = complete.record
-        if cursor.skip_until_user_text is not None and not cursor.skip_until_seen:
-            cursor.skip_until_seen = is_replay_anchor(record, cursor.skip_until_user_text)
-            if not cursor.skip_until_seen:
+        if cursor.skip_until_user_text is not None and not skip_until_seen:
+            skip_until_seen = is_replay_anchor(record, cursor.skip_until_user_text)
+            if not skip_until_seen:
                 source_line += 1
                 continue
         hint = cursor.adapter.model_hint(record)
@@ -196,13 +254,26 @@ def ingest_records[RecordWrite: _ProvenanceWrite](
         if turn is not None:
             parent_id = turn.turn_id
             parent_seq = turn.seq
-    if writes:
-        submit_batch(cursor.binding, writes)
-    cursor.seq = seq
-    cursor.source_line = source_line
-    cursor.parent_id = parent_id
-    cursor.parent_seq = parent_seq
-    cursor.model = model
+    return _IngestPlan(
+        writes=list(writes),
+        state=_CursorState(
+            seq=seq,
+            source_line=source_line,
+            parent_id=parent_id,
+            parent_seq=parent_seq,
+            model=model,
+            skip_until_seen=skip_until_seen,
+        ),
+    )
+
+
+def _apply_cursor_state(cursor: TailCursor, state: _CursorState) -> None:
+    cursor.seq = state.seq
+    cursor.source_line = state.source_line
+    cursor.parent_id = state.parent_id
+    cursor.parent_seq = state.parent_seq
+    cursor.model = state.model
+    cursor.skip_until_seen = state.skip_until_seen
 
 
 class TranscriptTailer:
@@ -212,9 +283,9 @@ class TranscriptTailer:
         self,
         *,
         build_record: Callable[[RawRecord, NormalizedTurn | None, TurnContext], Any] | None = None,
-        submit_batch: Callable[[SessionBinding, list[Any]], None] | None = None,
+        submit_batch: Callable[[SessionBinding, list[Any]], Future[Any] | None] | None = None,
         quarantine_window: Callable[
-            [SessionBinding, str, int, int, bytes, BaseException, int], bool
+            [SessionBinding, str, int, int, bytes, BaseException, int], bool | Future[Any]
         ]
         | None = None,
         snapshot: Callable[[str, int, bytes], None] | None = None,
@@ -278,6 +349,10 @@ class TranscriptTailer:
             return list(self._cursors.values())
 
     def _poll_cursor(self, cursor: TailCursor) -> None:
+        if not self._resolve_pending_quarantine(cursor):
+            return
+        if not self._resolve_pending_commit(cursor):
+            return
         source = cursor.source
         if not isinstance(source, FileTailSource):
             return  # PullSource (opencode) polling is slice 7
@@ -317,32 +392,37 @@ class TranscriptTailer:
                 pending_codex_calls=cursor.pending_codex_spawn_calls,
             )
             try:
-                ingest_records(
+                plan = _plan_ingest_records(
                     complete,
                     cursor,
                     source.path,
                     build_record=self._build_record,
-                    submit_batch=self._submit_batch,
                 )
+                ack = self._submit_batch(cursor.binding, plan.writes) if plan.writes else None
             except Exception as exc:
-                if classify(exc) == "transient":
-                    cursor.quarantine_attempts = 0
-                    raise
-                cursor.quarantine_attempts += 1
-                if cursor.quarantine_attempts < QUARANTINE_MAX_ATTEMPTS:
-                    raise
-                if not self._quarantine_window(cursor, source.path, data, consumed, exc):
-                    raise
-                _log.warning(
-                    "quarantined transcript window run=%s session=%s span=%d..%d attempts=%d",
-                    cursor.binding.run_id,
-                    cursor.binding.session_id,
-                    cursor.byte_offset,
-                    cursor.byte_offset + consumed,
-                    cursor.quarantine_attempts,
+                quarantine_ack = self._handle_commit_failure(
+                    cursor, source.path, data[:consumed], consumed, exc
                 )
-                cursor.quarantine_attempts = 0
+                if isinstance(quarantine_ack, Future):
+                    cursor.pending_quarantine = _PendingQuarantine(
+                        future=quarantine_ack,
+                        consumed=consumed,
+                        stat_signature=signature,
+                        attempts=cursor.quarantine_attempts,
+                    )
+                    return
             else:
+                if isinstance(ack, Future):
+                    cursor.pending_commit = _PendingCommit(
+                        future=ack,
+                        state=plan.state,
+                        source_path=source.path,
+                        raw_excerpt=data[:consumed],
+                        consumed=consumed,
+                        stat_signature=signature,
+                    )
+                    return
+                _apply_cursor_state(cursor, plan.state)
                 cursor.quarantine_attempts = 0
                 self._register_child_cursors(cursor)
         cursor.byte_offset += consumed
@@ -353,6 +433,106 @@ class TranscriptTailer:
         # next unchanged read. A mid-poll raise leaves the old signature so the stat guard re-enters.
         cursor.stat_signature = signature
 
+    def _resolve_pending_quarantine(self, cursor: TailCursor) -> bool:
+        pending = cursor.pending_quarantine
+        if pending is None:
+            return True
+        if not pending.future.done():
+            return False
+        cursor.pending_quarantine = None
+        try:
+            acknowledged = pending.future.result()
+        except Exception:
+            raise
+        if not acknowledged:
+            raise RuntimeError("transcript quarantine write failed")
+        self._log_quarantined_window(cursor, pending.consumed, pending.attempts)
+        self._mark_consumed(cursor, pending.consumed, pending.stat_signature)
+        return True
+
+    def _resolve_pending_commit(self, cursor: TailCursor) -> bool:
+        pending = cursor.pending_commit
+        if pending is None:
+            return True
+        if not pending.future.done():
+            return False
+        cursor.pending_commit = None
+        try:
+            result = pending.future.result()
+        except CommitQueueFull:
+            return True
+        except Exception as exc:
+            quarantine_ack = self._handle_commit_failure(
+                cursor,
+                pending.source_path,
+                pending.raw_excerpt,
+                pending.consumed,
+                exc,
+            )
+            if isinstance(quarantine_ack, Future):
+                cursor.pending_quarantine = _PendingQuarantine(
+                    future=quarantine_ack,
+                    consumed=pending.consumed,
+                    stat_signature=pending.stat_signature,
+                    attempts=cursor.quarantine_attempts,
+                )
+                return False
+            if quarantine_ack:
+                self._mark_consumed(cursor, pending.consumed, pending.stat_signature)
+                return True
+            raise
+        if not result.ok:
+            raise RuntimeError("session writer commit failed")
+        _apply_cursor_state(cursor, pending.state)
+        self._mark_consumed(cursor, pending.consumed, pending.stat_signature)
+        self._register_child_cursors(cursor)
+        return True
+
+    def _handle_commit_failure(
+        self,
+        cursor: TailCursor,
+        source_path: str,
+        raw_excerpt: bytes,
+        consumed: int,
+        exc: BaseException,
+    ) -> bool | Future[Any]:
+        if classify(exc) == "transient":
+            cursor.quarantine_attempts = 0
+            raise exc
+        cursor.quarantine_attempts += 1
+        if cursor.quarantine_attempts < QUARANTINE_MAX_ATTEMPTS:
+            raise exc
+        quarantine_ack = self._quarantine_window(cursor, source_path, raw_excerpt, consumed, exc)
+        if isinstance(quarantine_ack, Future):
+            return quarantine_ack
+        if not quarantine_ack:
+            raise exc
+        self._log_quarantined_window(cursor, consumed, cursor.quarantine_attempts)
+        cursor.quarantine_attempts = 0
+        return True
+
+    def _log_quarantined_window(self, cursor: TailCursor, consumed: int, attempts: int) -> None:
+        _log.warning(
+            "quarantined transcript window run=%s session=%s span=%d..%d attempts=%d",
+            cursor.binding.run_id,
+            cursor.binding.session_id,
+            cursor.byte_offset,
+            cursor.byte_offset + consumed,
+            attempts,
+        )
+
+    def _mark_consumed(
+        self,
+        cursor: TailCursor,
+        consumed: int,
+        signature: tuple[int, float],
+    ) -> None:
+        cursor.byte_offset += consumed
+        if consumed:
+            cursor.quarantine_attempts = 0
+            self._reset_poll_failures(cursor)
+        cursor.stat_signature = signature
+
     def _quarantine_window(
         self,
         cursor: TailCursor,
@@ -360,7 +540,7 @@ class TranscriptTailer:
         data: bytes,
         consumed: int,
         exc: BaseException,
-    ) -> bool:
+    ) -> bool | Future[Any]:
         if self._quarantine_window_writer is None:
             return False
         return self._quarantine_window_writer(
