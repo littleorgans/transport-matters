@@ -115,7 +115,8 @@ class Settings(BaseSettings):
         default_factory=DatabaseSettings,
         description="Database values loaded from settings.toml. Call resolve_* for precedence.",
     )
-    session_pool_min_size: int = 1
+    captured_run_spawn_concurrency: int = Field(default=6, ge=1)
+    session_pool_min_size: int = 0
     session_pool_max_size: int = 10
 
     # DNS rebinding defense: a rebound origin reaches the loopback server

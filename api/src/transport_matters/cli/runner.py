@@ -28,6 +28,7 @@ from .bind_failure import (
     handle_bind_failure,
 )
 from .launch_outcomes import (
+    PROXY_START_TIMEOUT_MESSAGE,
     BindFailure,
     LaunchBindFailureOutcome,
     LaunchExitOutcome,
@@ -41,6 +42,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 __all__ = [
+    "PROXY_START_TIMEOUT_MESSAGE",
     "BindFailure",
     "LaunchBindFailureOutcome",
     "LaunchExitOutcome",
@@ -146,7 +148,7 @@ def _proxy_not_ready_outcome(
     sup.terminate_all()
     return LaunchExitOutcome(
         exit_code=1,
-        error="mitmdump did not come up within 5s.",
+        error=PROXY_START_TIMEOUT_MESSAGE,
         log_path=log_path,
     )
 

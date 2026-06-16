@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import contextlib
 import os
+import random
 import shutil
+import time
 from typing import TYPE_CHECKING, Any
 
 from transport_matters.captured_claude import build_claude_captured_invocation
@@ -26,6 +28,7 @@ from transport_matters.captured_run_models import (
     CapturedRunBindConflict,
     CapturedRunCli,
     CapturedRunLease,
+    CapturedRunProxyStartTimeout,
     CapturedRunRequest,
     CapturedRunSpawnSpec,
     CapturedRunWebRuntime,
@@ -54,6 +57,7 @@ __all__ = [
     "CapturedRunCli",
     "CapturedRunDependencies",
     "CapturedRunLease",
+    "CapturedRunProxyStartTimeout",
     "CapturedRunRequest",
     "CapturedRunSpawnSpec",
     "CapturedRunWebRuntime",
@@ -65,6 +69,8 @@ __all__ = [
 ]
 
 _BIND_RETRY_ATTEMPTS = 3
+_PROXY_TIMEOUT_RETRY_BASE_DELAY_S = 0.05
+_PROXY_TIMEOUT_RETRY_JITTER_S = 0.05
 
 
 def run_captured_run_on_local_tty(
@@ -169,6 +175,8 @@ def prepare_captured_run(
     supervisor_factory: Callable[[], Any] | None = None,
     proxy_starter: Callable[..., LaunchBindFailureOutcome | LaunchExitOutcome | None] | None = None,
     install_signal_handlers: bool = False,
+    readiness_timeout_sleep: Callable[[float], None] = time.sleep,
+    readiness_timeout_jitter: Callable[[], float] = random.random,
 ) -> tuple[CapturedRunSpawnSpec, CapturedRunLease]:
     """Prepare one captured run and return the client spawn spec plus lease."""
     from transport_matters.cli.runner import (
@@ -203,6 +211,7 @@ def prepare_captured_run(
     proxy_port = ctx.prepared.proxy_port
     web_port = ctx.prepared.web_port
     last_bind_failure: BindFailure | None = None
+    last_proxy_timeout: LaunchExitOutcome | None = None
 
     try:
         wslock = WorkspaceLock(run_root(ctx.prepared.working_dir, ctx.prepared.run_id)).__enter__()
@@ -260,10 +269,27 @@ def prepare_captured_run(
                 )
                 continue
             if isinstance(outcome, LaunchExitOutcome):
+                if _is_proxy_start_timeout(outcome):
+                    last_proxy_timeout = outcome
+                    if attempt + 1 >= _BIND_RETRY_ATTEMPTS:
+                        break
+                    readiness_timeout_sleep(
+                        _proxy_timeout_retry_delay(attempt, readiness_timeout_jitter)
+                    )
+                    proxy_port, web_port = _reallocate_proxy_timeout_ports(
+                        proxy_port=proxy_port,
+                        web_port=web_port,
+                        proxy_user_supplied=ctx.prepared.proxy_user_supplied,
+                        web_user_supplied=ctx.prepared.web_user_supplied,
+                        allocate_port_pair=allocate_port_pair,
+                    )
+                    continue
                 _raise_prepare_outcome(outcome)
 
         if last_bind_failure is not None:
             raise CapturedRunBindConflict(str(last_bind_failure)) from last_bind_failure
+        if last_proxy_timeout is not None:
+            raise CapturedRunProxyStartTimeout(_launch_exit_message(last_proxy_timeout))
         raise RuntimeError("captured run exhausted retry attempts without an outcome")
     except Exception:
         if supervisor is not None:
@@ -289,5 +315,39 @@ def _raise_prepare_outcome(outcome: LaunchBindFailureOutcome | LaunchExitOutcome
 
     if isinstance(outcome, LaunchBindFailureOutcome):
         raise CapturedRunBindConflict(str(outcome.failure)) from outcome.failure
-    message = outcome.error or f"captured run exited during prepare (code {outcome.exit_code})"
-    raise RuntimeError(message)
+    raise RuntimeError(_launch_exit_message(outcome))
+
+
+def _is_proxy_start_timeout(outcome: LaunchExitOutcome) -> bool:
+    from transport_matters.cli.runner import PROXY_START_TIMEOUT_MESSAGE
+
+    return outcome.error == PROXY_START_TIMEOUT_MESSAGE
+
+
+def _proxy_timeout_retry_delay(
+    attempt: int, readiness_timeout_jitter: Callable[[], float]
+) -> float:
+    jitter = max(0.0, min(readiness_timeout_jitter(), 1.0))
+    return (_PROXY_TIMEOUT_RETRY_BASE_DELAY_S * (attempt + 1)) + (
+        _PROXY_TIMEOUT_RETRY_JITTER_S * jitter
+    )
+
+
+def _reallocate_proxy_timeout_ports(
+    *,
+    proxy_port: int,
+    web_port: int | None,
+    proxy_user_supplied: bool,
+    web_user_supplied: bool,
+    allocate_port_pair: Callable[[], tuple[int, int]],
+) -> tuple[int, int | None]:
+    new_proxy, new_web = allocate_port_pair()
+    if not proxy_user_supplied:
+        proxy_port = new_proxy
+    if web_port is not None and not web_user_supplied:
+        web_port = new_web
+    return proxy_port, web_port
+
+
+def _launch_exit_message(outcome: LaunchExitOutcome) -> str:
+    return outcome.error or f"captured run exited during prepare (code {outcome.exit_code})"

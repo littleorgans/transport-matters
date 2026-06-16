@@ -6,7 +6,7 @@ import errno
 import logging
 import os
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, Protocol
@@ -20,6 +20,7 @@ from transport_matters.captured_run import (
     CapturedRunCli,
     CapturedRunDependencies,
     CapturedRunLease,
+    CapturedRunProxyStartTimeout,
     CapturedRunRequest,
     CapturedRunSpawnSpec,
     CapturedRunWebRuntime,
@@ -60,6 +61,7 @@ RunManagerErrorCode = Literal[
     "bind_conflict",
     "invalid_cwd",
     "launch_failed",
+    "proxy_start_timeout",
     "run_manager_closed",
     "run_not_attachable",
     "run_stale",
@@ -71,6 +73,9 @@ RunManagerErrorCode = Literal[
 
 def _utcnow() -> datetime:
     return datetime.now(UTC)
+
+
+_SESSION_STORE_PREFLIGHT_CACHE_TTL = timedelta(seconds=3)
 
 
 class PrepareCapturedRun(Protocol):
@@ -231,7 +236,11 @@ class RunManager:
         attachment_queue_size: int = DEFAULT_ATTACHMENT_QUEUE_SIZE,
         read_chunk_size: int = PTY_READ_CHUNK_SIZE,
         install_signal_handlers: bool = False,
+        spawn_concurrency: int = 6,
+        session_store_preflight_ttl: timedelta = _SESSION_STORE_PREFLIGHT_CACHE_TTL,
     ) -> None:
+        if spawn_concurrency < 1:
+            raise ValueError("spawn_concurrency must be at least 1")
         self._dependencies = dependencies or default_claude_run_dependencies()
         self._prepare_run = prepare_run
         self._spawn_pty = spawn_pty
@@ -243,6 +252,10 @@ class RunManager:
         self._runs: dict[str, ManagedRun] = {}
         self._runs_by_idempotency_key: dict[str, ManagedRun] = {}
         self._spawn_idempotency_lock = asyncio.Lock()
+        self._spawn_semaphore = asyncio.Semaphore(spawn_concurrency)
+        self._session_store_preflight_lock = asyncio.Lock()
+        self._session_store_preflight_ttl = session_store_preflight_ttl
+        self._session_store_preflight_ok_until: datetime | None = None
         self._teardown_lock = asyncio.Lock()
         self._closed = False
 
@@ -260,6 +273,10 @@ class RunManager:
             return run
 
     async def _spawn_new(self, request: SpawnRun) -> ManagedRun:
+        async with self._spawn_semaphore:
+            return await self._spawn_new_admitted(request)
+
+    async def _spawn_new_admitted(self, request: SpawnRun) -> ManagedRun:
         if self._closed:
             raise RunManagerError("run_manager_closed", "run manager is closed")
 
@@ -393,6 +410,7 @@ class RunManager:
     async def _prepare_request(
         self, request: SpawnRun
     ) -> tuple[CapturedRunSpawnSpec, CapturedRunLease]:
+        await self._ensure_session_store_available()
         captured_request = self._captured_request(request)
         try:
             return await asyncio.to_thread(
@@ -409,6 +427,8 @@ class RunManager:
             )
         except CapturedRunBindConflict as exc:
             raise RunManagerError("bind_conflict", str(exc)) from exc
+        except CapturedRunProxyStartTimeout as exc:
+            raise RunManagerError("proxy_start_timeout", str(exc)) from exc
         except RunManagerError:
             raise
         except Exception as exc:
@@ -417,10 +437,6 @@ class RunManager:
     def _captured_request(self, request: SpawnRun) -> CapturedRunRequest:
         if request.cli not in _VALID_CAPTURED_RUN_CLIS:
             raise RunManagerError("unsupported_cli", f"unsupported captured run cli: {request.cli}")
-
-        store_error = self._dependencies.check_session_store()
-        if store_error is not None:
-            raise RunManagerError("session_store_unavailable", store_error)
 
         cwd = self._resolve_cwd(request.cwd)
         upstream = request.upstream
@@ -444,6 +460,23 @@ class RunManager:
             runtime_template=request.runtime_template,
             launch_fields=request.launch_fields,
         )
+
+    async def _ensure_session_store_available(self) -> None:
+        if self._session_store_preflight_cache_valid():
+            return
+        async with self._session_store_preflight_lock:
+            if self._session_store_preflight_cache_valid():
+                return
+            store_error = await asyncio.to_thread(self._dependencies.check_session_store)
+            if store_error is not None:
+                raise RunManagerError("session_store_unavailable", store_error)
+            self._session_store_preflight_ok_until = (
+                self._clock() + self._session_store_preflight_ttl
+            )
+
+    def _session_store_preflight_cache_valid(self) -> bool:
+        ok_until = self._session_store_preflight_ok_until
+        return ok_until is not None and self._clock() < ok_until
 
     def _resolve_cwd(self, cwd: Path | None) -> Path:
         working_dir = Path.cwd() if cwd is None else cwd.expanduser()

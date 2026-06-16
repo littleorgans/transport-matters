@@ -61,6 +61,7 @@ _RUN_MANAGER_HTTP_STATUS: dict[RunManagerErrorCode, int] = {
     "bind_conflict": http_status.HTTP_409_CONFLICT,
     "invalid_cwd": http_status.HTTP_400_BAD_REQUEST,
     "launch_failed": http_status.HTTP_500_INTERNAL_SERVER_ERROR,
+    "proxy_start_timeout": http_status.HTTP_503_SERVICE_UNAVAILABLE,
     "run_manager_closed": http_status.HTTP_503_SERVICE_UNAVAILABLE,
     "run_not_attachable": http_status.HTTP_409_CONFLICT,
     "run_stale": http_status.HTTP_409_CONFLICT,
@@ -132,7 +133,8 @@ class TerminateRunResponse(BaseModel):
 
 
 def create_run_manager() -> RunManager:
-    return RunManager()
+    settings = get_settings()
+    return RunManager(spawn_concurrency=settings.captured_run_spawn_concurrency)
 
 
 async def close_run_manager(app: Any) -> None:

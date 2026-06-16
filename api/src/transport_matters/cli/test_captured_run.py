@@ -10,13 +10,15 @@ from typer.testing import CliRunner
 
 from transport_matters import env_keys
 from transport_matters.captured_run import (
+    CapturedRunProxyStartTimeout,
     CapturedRunRequest,
     build_claude_captured_invocation,
     prepare_captured_run,
 )
 from transport_matters.cli import BindFailure, main
+from transport_matters.cli.launch_outcomes import PROXY_START_TIMEOUT_MESSAGE
 from transport_matters.cli.launch_profile import ClaudeLaunchProfile
-from transport_matters.cli.runner import LaunchBindFailureOutcome
+from transport_matters.cli.runner import LaunchBindFailureOutcome, LaunchExitOutcome
 from transport_matters.lock import WorkspaceLock, WorkspaceLocked
 from transport_matters.workspace import run_root
 
@@ -271,6 +273,49 @@ def test_prepare_captured_run_preserves_owned_session_across_retries(
         assert len(attempts) == 2
     finally:
         lease.close()
+
+
+def test_prepare_captured_run_retries_proxy_start_timeout_with_fresh_ports(
+    tmp_storage: Path,
+    tmp_path: Path,
+) -> None:
+    workdir = tmp_path / "project"
+    workdir.mkdir()
+    addon = tmp_path / "addon.py"
+    request = _request(
+        workdir=workdir,
+        storage=tmp_storage,
+        addon=addon,
+        proxy_port=None,
+        web_port=None,
+    )
+    pairs = iter([(54321, 54322), (60001, 60002), (61001, 61002)])
+    attempts: list[dict[str, Any]] = []
+    sleeps: list[float] = []
+    supervisors = [FakeSupervisor(), FakeSupervisor(), FakeSupervisor()]
+
+    def _proxy_starter(**kwargs: Any) -> Any:
+        attempts.append(kwargs)
+        return LaunchExitOutcome(exit_code=1, error=PROXY_START_TIMEOUT_MESSAGE)
+
+    with pytest.raises(CapturedRunProxyStartTimeout):
+        prepare_captured_run(
+            request,
+            require_addon=lambda: addon,
+            resolve_mitmdump=lambda: "/bin/mitmdump",
+            which=_which_by_name({"claude": "/bin/claude"}),
+            port_in_use=lambda _port: False,
+            allocate_port_pair=lambda: next(pairs),
+            inject_system_prompt=lambda passthrough, **_kwargs: list(passthrough),
+            user_supplied_system_prompt=lambda _passthrough: False,
+            supervisor_factory=lambda: supervisors.pop(0),
+            proxy_starter=_proxy_starter,
+            readiness_timeout_sleep=sleeps.append,
+            readiness_timeout_jitter=lambda: 0.0,
+        )
+
+    assert [attempt["proxy_port"] for attempt in attempts] == [54321, 60001, 61001]
+    assert len(sleeps) == 2
 
 
 def test_captured_run_c1_keeps_print_command_dry_run_unchanged(

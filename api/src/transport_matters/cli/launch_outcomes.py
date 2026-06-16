@@ -14,12 +14,15 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 __all__ = [
+    "PROXY_START_TIMEOUT_MESSAGE",
     "BindFailure",
     "LaunchBindFailureOutcome",
     "LaunchExitOutcome",
     "LaunchOutcome",
     "LaunchRetryExhaustedOutcome",
 ]
+
+PROXY_START_TIMEOUT_MESSAGE = "mitmdump did not come up within 5s."
 
 
 class BindFailure(RuntimeError):
