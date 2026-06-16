@@ -7,7 +7,7 @@ import os
 import random
 import shutil
 import time
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 from transport_matters.captured_claude import build_claude_captured_invocation
 from transport_matters.captured_run_context import (
@@ -210,6 +210,7 @@ def prepare_captured_run(
     supervisor: Any | None = None
     proxy_port = ctx.prepared.proxy_port
     web_port = ctx.prepared.web_port
+    last_failure_kind: Literal["bind", "timeout"] | None = None
     last_bind_failure: BindFailure | None = None
     last_proxy_timeout: LaunchExitOutcome | None = None
 
@@ -257,6 +258,7 @@ def prepare_captured_run(
             completed_supervisor.terminate_all()
             completed_supervisor.restore_signal_handlers()
             if isinstance(outcome, LaunchBindFailureOutcome):
+                last_failure_kind = "bind"
                 last_bind_failure = outcome.failure
                 if attempt + 1 >= _BIND_RETRY_ATTEMPTS:
                     break
@@ -270,6 +272,7 @@ def prepare_captured_run(
                 continue
             if isinstance(outcome, LaunchExitOutcome):
                 if _is_proxy_start_timeout(outcome):
+                    last_failure_kind = "timeout"
                     last_proxy_timeout = outcome
                     if attempt + 1 >= _BIND_RETRY_ATTEMPTS:
                         break
@@ -286,9 +289,9 @@ def prepare_captured_run(
                     continue
                 _raise_prepare_outcome(outcome)
 
-        if last_bind_failure is not None:
+        if last_failure_kind == "bind" and last_bind_failure is not None:
             raise CapturedRunBindConflict(str(last_bind_failure)) from last_bind_failure
-        if last_proxy_timeout is not None:
+        if last_failure_kind == "timeout" and last_proxy_timeout is not None:
             raise CapturedRunProxyStartTimeout(_launch_exit_message(last_proxy_timeout))
         raise RuntimeError("captured run exhausted retry attempts without an outcome")
     except Exception:

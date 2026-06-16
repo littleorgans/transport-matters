@@ -159,3 +159,69 @@ async def test_session_store_preflight_does_not_cache_failures(tmp_path: Path) -
     assert first.value.code == "session_store_unavailable"
     assert second.value.code == "launch_failed"
     assert calls == 2
+
+
+async def test_unsupported_cli_rejects_before_preflight_and_admission(tmp_path: Path) -> None:
+    calls = 0
+    invalid_phase = True
+    release_preflight = threading.Event()
+    prepare_started = threading.Event()
+
+    def check_session_store() -> str | None:
+        nonlocal calls
+        calls += 1
+        if invalid_phase:
+            release_preflight.wait(timeout=1)
+        return None
+
+    def prepare(
+        request: CapturedRunRequest, **_kwargs: object
+    ) -> tuple[CapturedRunSpawnSpec, CapturedRunLease]:
+        prepare_started.set()
+        return _prepared_without_client(request, tmp_path)
+
+    manager = RunManager(
+        dependencies=_dependencies(check_session_store),
+        prepare_run=prepare,
+        spawn_concurrency=1,
+    )
+    invalid_task = asyncio.create_task(
+        manager.spawn(SpawnRun(cli=cast("Any", "not-a-cli"), cwd=tmp_path))
+    )
+    await asyncio.sleep(0.05)
+    invalid_preflight_calls = calls
+    invalid_phase = False
+    valid_task = asyncio.create_task(manager.spawn(SpawnRun(cli=CLAUDE_CLI, cwd=tmp_path)))
+
+    try:
+        valid_reached_prepare = await asyncio.to_thread(prepare_started.wait, 0.3)
+    finally:
+        release_preflight.set()
+    invalid_result, valid_result = await asyncio.gather(
+        invalid_task, valid_task, return_exceptions=True
+    )
+
+    assert valid_reached_prepare
+    assert isinstance(invalid_result, RunManagerError)
+    assert invalid_result.code == "unsupported_cli"
+    assert isinstance(valid_result, RunManagerError)
+    assert valid_result.code == "launch_failed"
+    assert invalid_preflight_calls == 0
+    assert calls == 1
+
+
+async def test_invalid_cwd_rejects_before_session_store_preflight(tmp_path: Path) -> None:
+    calls = 0
+
+    def check_session_store() -> str | None:
+        nonlocal calls
+        calls += 1
+        return None
+
+    manager = RunManager(dependencies=_dependencies(check_session_store))
+
+    with pytest.raises(RunManagerError) as exc:
+        await manager.spawn(SpawnRun(cli=CLAUDE_CLI, cwd=tmp_path / "missing"))
+
+    assert exc.value.code == "invalid_cwd"
+    assert calls == 0

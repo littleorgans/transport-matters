@@ -140,6 +140,13 @@ class SpawnRun:
 
 
 @dataclass(frozen=True, slots=True)
+class _ValidatedSpawnRun:
+    request: SpawnRun
+    cwd: Path
+    upstream: str
+
+
+@dataclass(frozen=True, slots=True)
 class RunFilters:
     cli: CapturedRunCli | None = None
     cwd: Path | None = None
@@ -263,24 +270,25 @@ class RunManager:
         if self._closed:
             raise RunManagerError("run_manager_closed", "run manager is closed")
         if request.idempotency_key is None:
-            return await self._spawn_new(request)
+            return await self._spawn_new(self._validate_spawn_request(request))
         async with self._spawn_idempotency_lock:
             existing = self._runs_by_idempotency_key.get(request.idempotency_key)
             if existing is not None:
                 return existing
-            run = await self._spawn_new(request)
+            run = await self._spawn_new(self._validate_spawn_request(request))
             self._runs_by_idempotency_key[request.idempotency_key] = run
             return run
 
-    async def _spawn_new(self, request: SpawnRun) -> ManagedRun:
+    async def _spawn_new(self, validated: _ValidatedSpawnRun) -> ManagedRun:
         async with self._spawn_semaphore:
-            return await self._spawn_new_admitted(request)
+            return await self._spawn_new_admitted(validated)
 
-    async def _spawn_new_admitted(self, request: SpawnRun) -> ManagedRun:
+    async def _spawn_new_admitted(self, validated: _ValidatedSpawnRun) -> ManagedRun:
+        request = validated.request
         if self._closed:
             raise RunManagerError("run_manager_closed", "run manager is closed")
 
-        spawn_spec, lease = await self._prepare_request(request)
+        spawn_spec, lease = await self._prepare_request(validated)
         terminal: TerminalPty | None = None
         drain_task: asyncio.Task[None] | None = None
         registered_run_id: str | None = None
@@ -408,10 +416,10 @@ class RunManager:
             await self._teardown_run(run, force=True, reason="shutdown")
 
     async def _prepare_request(
-        self, request: SpawnRun
+        self, validated: _ValidatedSpawnRun
     ) -> tuple[CapturedRunSpawnSpec, CapturedRunLease]:
         await self._ensure_session_store_available()
-        captured_request = self._captured_request(request)
+        captured_request = self._captured_request(validated)
         try:
             return await asyncio.to_thread(
                 self._prepare_run,
@@ -434,21 +442,24 @@ class RunManager:
         except Exception as exc:
             raise RunManagerError("launch_failed", str(exc)) from exc
 
-    def _captured_request(self, request: SpawnRun) -> CapturedRunRequest:
+    def _validate_spawn_request(self, request: SpawnRun) -> _ValidatedSpawnRun:
         if request.cli not in _VALID_CAPTURED_RUN_CLIS:
             raise RunManagerError("unsupported_cli", f"unsupported captured run cli: {request.cli}")
-
         cwd = self._resolve_cwd(request.cwd)
         upstream = request.upstream
         if upstream is None:
             upstream = CLAUDE_UPSTREAM_DEFAULT if request.cli == CLAUDE_CLIENT_NAME else ""
+        return _ValidatedSpawnRun(request=request, cwd=cwd, upstream=upstream)
+
+    def _captured_request(self, validated: _ValidatedSpawnRun) -> CapturedRunRequest:
+        request = validated.request
         return CapturedRunRequest(
             client_name=request.cli,
             passthrough=request.passthrough,
-            directory=cwd,
+            directory=validated.cwd,
             proxy_port=request.proxy_port,
             web_port=request.web_port,
-            upstream=upstream,
+            upstream=validated.upstream,
             storage_dir=request.storage_dir,
             home_dir=request.home_dir,
             client_bin=request.client_bin,

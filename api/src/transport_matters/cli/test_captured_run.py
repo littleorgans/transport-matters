@@ -10,6 +10,7 @@ from typer.testing import CliRunner
 
 from transport_matters import env_keys
 from transport_matters.captured_run import (
+    CapturedRunBindConflict,
     CapturedRunProxyStartTimeout,
     CapturedRunRequest,
     build_claude_captured_invocation,
@@ -316,6 +317,116 @@ def test_prepare_captured_run_retries_proxy_start_timeout_with_fresh_ports(
 
     assert [attempt["proxy_port"] for attempt in attempts] == [54321, 60001, 61001]
     assert len(sleeps) == 2
+
+
+def test_prepare_captured_run_raises_latest_timeout_after_prior_bind_failure(
+    tmp_storage: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    workdir = tmp_path / "project"
+    workdir.mkdir()
+    addon = tmp_path / "addon.py"
+    request = _request(
+        workdir=workdir,
+        storage=tmp_storage,
+        addon=addon,
+        proxy_port=None,
+        web_port=None,
+    )
+    pairs = iter([(54321, 54322), (60001, 60002), (61001, 61002)])
+    monkeypatch.setattr(
+        "transport_matters.cli.bind_failure.allocate_port_pair", lambda: next(pairs)
+    )
+    attempts: list[dict[str, Any]] = []
+    sleeps: list[float] = []
+    supervisors = [FakeSupervisor(), FakeSupervisor(), FakeSupervisor()]
+
+    def _proxy_starter(**kwargs: Any) -> Any:
+        attempts.append(kwargs)
+        if len(attempts) == 1:
+            return LaunchBindFailureOutcome(
+                BindFailure(
+                    proxy_port=kwargs["proxy_port"],
+                    web_port=kwargs["web_port"],
+                    failing_ports=(),
+                    log_path=tmp_path / "mitmdump.log",
+                )
+            )
+        return LaunchExitOutcome(exit_code=1, error=PROXY_START_TIMEOUT_MESSAGE)
+
+    with pytest.raises(CapturedRunProxyStartTimeout):
+        prepare_captured_run(
+            request,
+            require_addon=lambda: addon,
+            resolve_mitmdump=lambda: "/bin/mitmdump",
+            which=_which_by_name({"claude": "/bin/claude"}),
+            port_in_use=lambda _port: False,
+            allocate_port_pair=lambda: next(pairs),
+            inject_system_prompt=lambda passthrough, **_kwargs: list(passthrough),
+            user_supplied_system_prompt=lambda _passthrough: False,
+            supervisor_factory=lambda: supervisors.pop(0),
+            proxy_starter=_proxy_starter,
+            readiness_timeout_sleep=sleeps.append,
+            readiness_timeout_jitter=lambda: 0.0,
+        )
+
+    assert [attempt["proxy_port"] for attempt in attempts] == [54321, 60001, 61001]
+    assert len(sleeps) == 1
+
+
+def test_prepare_captured_run_raises_latest_bind_after_prior_timeout(
+    tmp_storage: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    workdir = tmp_path / "project"
+    workdir.mkdir()
+    addon = tmp_path / "addon.py"
+    request = _request(
+        workdir=workdir,
+        storage=tmp_storage,
+        addon=addon,
+        proxy_port=None,
+        web_port=None,
+    )
+    pairs = iter([(54321, 54322), (60001, 60002), (61001, 61002)])
+    monkeypatch.setattr(
+        "transport_matters.cli.bind_failure.allocate_port_pair", lambda: next(pairs)
+    )
+    attempts: list[dict[str, Any]] = []
+    supervisors = [FakeSupervisor(), FakeSupervisor(), FakeSupervisor()]
+
+    def _proxy_starter(**kwargs: Any) -> Any:
+        attempts.append(kwargs)
+        if len(attempts) == 1:
+            return LaunchExitOutcome(exit_code=1, error=PROXY_START_TIMEOUT_MESSAGE)
+        return LaunchBindFailureOutcome(
+            BindFailure(
+                proxy_port=kwargs["proxy_port"],
+                web_port=kwargs["web_port"],
+                failing_ports=(),
+                log_path=tmp_path / "mitmdump.log",
+            )
+        )
+
+    with pytest.raises(CapturedRunBindConflict):
+        prepare_captured_run(
+            request,
+            require_addon=lambda: addon,
+            resolve_mitmdump=lambda: "/bin/mitmdump",
+            which=_which_by_name({"claude": "/bin/claude"}),
+            port_in_use=lambda _port: False,
+            allocate_port_pair=lambda: next(pairs),
+            inject_system_prompt=lambda passthrough, **_kwargs: list(passthrough),
+            user_supplied_system_prompt=lambda _passthrough: False,
+            supervisor_factory=lambda: supervisors.pop(0),
+            proxy_starter=_proxy_starter,
+            readiness_timeout_sleep=lambda _delay: None,
+            readiness_timeout_jitter=lambda: 0.0,
+        )
+
+    assert [attempt["proxy_port"] for attempt in attempts] == [54321, 60001, 61001]
 
 
 def test_captured_run_c1_keeps_print_command_dry_run_unchanged(
