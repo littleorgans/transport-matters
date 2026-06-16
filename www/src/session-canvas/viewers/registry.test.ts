@@ -21,8 +21,14 @@ describe("registry pane ids", () => {
       ],
       [{ kind: "resource", owner: "local", sessionId: "s1", resourceId: "r1" }, "resource:s1:r1"],
       [
-        { kind: "provider-exchange", owner: "local", sessionId: "s1", exchangeId: "e1" },
-        "exchange:s1:e1",
+        {
+          kind: "provider-exchange",
+          owner: "local",
+          sessionId: "s1",
+          runId: "run-1",
+          exchangeId: "e1",
+        },
+        "exchange:run-1:e1",
       ],
     ];
 
@@ -52,6 +58,7 @@ describe("registry pane ids", () => {
       kind: "provider-exchange",
       owner: "local",
       sessionId: "s1",
+      runId: "run-1",
       exchangeId: "e1",
     };
     const b: PaneContentRef = { ...a, initialView: "raw" };
@@ -78,6 +85,7 @@ describe("registry pane ids", () => {
       kind: "provider-exchange",
       owner: "local",
       sessionId: "s1",
+      runId: "run-1",
       exchangeId: "e1",
     };
     expect(viewerIdForRef(subagent)).toBe("placeholder");

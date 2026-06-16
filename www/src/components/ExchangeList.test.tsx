@@ -10,7 +10,8 @@ const turnContentById = vi.hoisted(() => new Map<string, unknown>());
 
 vi.mock("../hooks/useTurnContent", () => ({
   useTurnContent: vi.fn(
-    (id: string) => turnContentById.get(id) ?? { data: undefined, isLoading: false },
+    (_runId: string | null, id: string) =>
+      turnContentById.get(id) ?? { data: undefined, isLoading: false },
   ),
 }));
 
@@ -592,7 +593,7 @@ describe("ExchangeList — row behavior", () => {
     ]);
     const row = screen.getByTestId("exchange-row-with-preview");
     const previewGrid = row.querySelector(".grid-cols-2");
-    expect(useTurnContent).toHaveBeenCalledWith("with-preview");
+    expect(useTurnContent).toHaveBeenCalledWith("run-current", "with-preview");
     expect(previewGrid).toBeInTheDocument();
     expect(previewGrid?.firstElementChild).toHaveClass("border-r", "border-edge");
     expect(previewGrid?.firstElementChild).toHaveTextContent("write me a parser");

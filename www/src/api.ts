@@ -112,6 +112,7 @@ async function requestVoid(
 }
 
 export async function fetchExchanges(
+  runId: string,
   limit = 50,
   offset = 0,
   includeHistory = false,
@@ -124,23 +125,23 @@ export async function fetchExchanges(
     params.set("include_history", "true");
   }
   return requestJson<IndexEntry[]>(
-    `/api/exchanges?${params.toString()}`,
+    `/v1/runs/${encodeURIComponent(runId)}/exchanges?${params.toString()}`,
     undefined,
     "Failed to fetch exchanges",
   );
 }
 
-export async function fetchExchange(id: string): Promise<ExchangeDetail> {
+export async function fetchExchange(runId: string, id: string): Promise<ExchangeDetail> {
   return requestJson<ExchangeDetail>(
-    `/api/exchanges/${encodeURIComponent(id)}`,
+    `/v1/runs/${encodeURIComponent(runId)}/exchanges/${encodeURIComponent(id)}`,
     undefined,
     `Failed to fetch exchange ${id}`,
   );
 }
 
-export async function fetchTurnContent(id: string): Promise<TurnContent> {
+export async function fetchTurnContent(runId: string, id: string): Promise<TurnContent> {
   return requestJson<TurnContent>(
-    `/api/exchanges/${encodeURIComponent(id)}/turn-content`,
+    `/v1/runs/${encodeURIComponent(runId)}/exchanges/${encodeURIComponent(id)}/turn-content`,
     undefined,
     `Failed to fetch turn content for ${id}`,
   );
@@ -174,9 +175,12 @@ export interface PipelineTokensResponse {
  * the server has no auth to replay, both fields are null and the caller
  * should keep displaying chars.
  */
-export async function fetchPipelineTokens(id: string): Promise<PipelineTokensResponse> {
+export async function fetchPipelineTokens(
+  runId: string,
+  id: string,
+): Promise<PipelineTokensResponse> {
   return requestJson<PipelineTokensResponse>(
-    `/api/exchanges/${encodeURIComponent(id)}/pipeline_tokens`,
+    `/v1/runs/${encodeURIComponent(runId)}/exchanges/${encodeURIComponent(id)}/pipeline_tokens`,
     undefined,
     `Failed to fetch pipeline tokens for ${id}`,
   );
@@ -350,13 +354,14 @@ export interface Meta {
  * pipeline will use to scope overlays; the UI does not read it today. Harness
  * ids describe executable clients separately from captured provider fields.
  */
-export async function fetchMeta(): Promise<Meta> {
+export async function fetchMeta(runId?: string): Promise<Meta> {
+  const path = runId === undefined ? "/api/meta" : `/v1/runs/${encodeURIComponent(runId)}/meta`;
   const raw = await requestJson<{
     cwd: string;
     harnesses: HarnessDescriptor[];
     workspace_id: string;
     run_id: string | null;
-  }>("/api/meta", undefined, "Failed to fetch meta");
+  }>(path, undefined, "Failed to fetch meta");
   return {
     cwd: raw.cwd,
     harnesses: raw.harnesses,

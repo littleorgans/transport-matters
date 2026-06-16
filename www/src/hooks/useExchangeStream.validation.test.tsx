@@ -8,7 +8,9 @@ import { fireSSE, makeWrapper } from "./useExchangeStream.testSupport";
 
 describe("useExchangeStream SSE validation", () => {
   it("ignores exchange events with missing required fields", () => {
-    renderHook(() => useExchangeStream(), { wrapper: makeWrapper().wrapper });
+    renderHook(() => useExchangeStream({ runId: "run-current" }), {
+      wrapper: makeWrapper().wrapper,
+    });
 
     // Missing req field
     fireSSE({
@@ -25,7 +27,7 @@ describe("useExchangeStream SSE validation", () => {
     const { qc, wrapper } = makeWrapper();
     useUIStore.setState({ selectedId: "manual-selection" });
 
-    renderHook(() => useExchangeStream(), { wrapper });
+    renderHook(() => useExchangeStream({ runId: "run-current" }), { wrapper });
 
     fireSSE({
       type: "exchange",
@@ -36,7 +38,9 @@ describe("useExchangeStream SSE validation", () => {
       req: { total_chars: 1 },
     });
 
-    expect(qc.getQueryData<IndexEntry[]>(exchangesKey(false))?.[0]?.id).toBe("exchange-live-new");
+    expect(qc.getQueryData<IndexEntry[]>(exchangesKey("run-current", false))?.[0]?.id).toBe(
+      "exchange-live-new",
+    );
     expect(useUIStore.getState().selectedId).toBe("manual-selection");
   });
 
@@ -44,7 +48,7 @@ describe("useExchangeStream SSE validation", () => {
     const { qc, wrapper } = makeWrapper();
     const removeSpy = vi.spyOn(qc, "removeQueries");
 
-    renderHook(() => useExchangeStream(), { wrapper });
+    renderHook(() => useExchangeStream({ runId: "run-current" }), { wrapper });
 
     fireSSE({
       type: "exchange",
@@ -59,9 +63,9 @@ describe("useExchangeStream SSE validation", () => {
     fireSSE({ type: "exchange_deleted", id: "exchange-live-1" });
 
     expect(useUIStore.getState().selectedId).toBeNull();
-    expect(qc.getQueryData(exchangesKey(false))).toEqual([]);
+    expect(qc.getQueryData(exchangesKey("run-current", false))).toEqual([]);
     expect(removeSpy).toHaveBeenCalledWith({
-      queryKey: turnContentKey("exchange-live-1"),
+      queryKey: turnContentKey("run-current", "exchange-live-1"),
       exact: true,
     });
   });
@@ -70,7 +74,7 @@ describe("useExchangeStream SSE validation", () => {
     const { qc, wrapper } = makeWrapper();
     const invalidateSpy = vi.spyOn(qc, "invalidateQueries");
 
-    renderHook(() => useExchangeStream(), { wrapper });
+    renderHook(() => useExchangeStream({ runId: "run-current" }), { wrapper });
 
     fireSSE({
       type: "exchange",
@@ -82,17 +86,17 @@ describe("useExchangeStream SSE validation", () => {
     });
 
     expect(invalidateSpy).toHaveBeenCalledWith({
-      queryKey: exchangeKey("exchange-live-2"),
+      queryKey: exchangeKey("run-current", "exchange-live-2"),
     });
     expect(invalidateSpy).toHaveBeenCalledWith({
-      queryKey: turnContentKey("exchange-live-2"),
+      queryKey: turnContentKey("run-current", "exchange-live-2"),
     });
   });
 
   it("stores Codex turn summaries from exchange events", () => {
     const { qc, wrapper } = makeWrapper();
 
-    renderHook(() => useExchangeStream(), { wrapper });
+    renderHook(() => useExchangeStream({ runId: "run-current" }), { wrapper });
 
     fireSSE({
       type: "exchange",
@@ -113,7 +117,7 @@ describe("useExchangeStream SSE validation", () => {
       },
     });
 
-    const rows = qc.getQueryData<IndexEntry[]>(exchangesKey(false));
+    const rows = qc.getQueryData<IndexEntry[]>(exchangesKey("run-current", false));
     expect(rows?.[0]?.codex_turn?.status).toBe("open");
     expect(rows?.[0]?.codex_turn?.message_range_end).toBe(4);
   });
@@ -121,14 +125,14 @@ describe("useExchangeStream SSE validation", () => {
   it("stores track fields from exchange events", () => {
     const { qc, wrapper } = makeWrapper();
 
-    renderHook(() => useExchangeStream(), { wrapper });
+    renderHook(() => useExchangeStream({ runId: "run-current" }), { wrapper });
 
     fireSSE({
       type: "exchange",
       id: "exchange-live-track",
-      run_id: "run-1",
+      run_id: "run-current",
       track_id: "agent-1",
-      parent_track_id: "run-1",
+      parent_track_id: "run-current",
       track_display_name: "backend-engineer",
       track_role: "subagent",
       ts: "2026-01-01T00:00:00Z",
@@ -137,11 +141,11 @@ describe("useExchangeStream SSE validation", () => {
       req: { total_chars: 1 },
     });
 
-    const rows = qc.getQueryData<IndexEntry[]>(exchangesKey(false));
+    const rows = qc.getQueryData<IndexEntry[]>(exchangesKey("run-current", false));
     expect(rows?.[0]).toMatchObject({
-      run_id: "run-1",
+      run_id: "run-current",
       track_id: "agent-1",
-      parent_track_id: "run-1",
+      parent_track_id: "run-current",
       track_display_name: "backend-engineer",
       track_role: "subagent",
     });
@@ -150,14 +154,14 @@ describe("useExchangeStream SSE validation", () => {
   it("preserves nested spawn anchors from live exchange events", () => {
     const { qc, wrapper } = makeWrapper();
 
-    renderHook(() => useExchangeStream(), { wrapper });
+    renderHook(() => useExchangeStream({ runId: "run-current" }), { wrapper });
 
     fireSSE({
       type: "exchange",
       id: "exchange-anchored",
-      run_id: "run-1",
+      run_id: "run-current",
       track_id: "agent-2",
-      parent_track_id: "run-1",
+      parent_track_id: "run-current",
       track_display_name: "researcher",
       track_role: "subagent",
       spawn_anchor: {
@@ -171,7 +175,7 @@ describe("useExchangeStream SSE validation", () => {
       req: { total_chars: 1 },
     });
 
-    const rows = qc.getQueryData<IndexEntry[]>(exchangesKey(false));
+    const rows = qc.getQueryData<IndexEntry[]>(exchangesKey("run-current", false));
     expect(rows?.[0]).toMatchObject({
       spawn_anchor: {
         track_spawn_exchange_id: "exchange-parent-7",
@@ -183,16 +187,16 @@ describe("useExchangeStream SSE validation", () => {
 
   it("propagates nested spawn anchors into the history cache when present", () => {
     const { qc, wrapper } = makeWrapper();
-    qc.setQueryData<IndexEntry[]>(exchangesKey(true), []);
+    qc.setQueryData<IndexEntry[]>(exchangesKey("run-current", true), []);
 
-    renderHook(() => useExchangeStream(), { wrapper });
+    renderHook(() => useExchangeStream({ runId: "run-current" }), { wrapper });
 
     fireSSE({
       type: "exchange",
       id: "exchange-history-anchored",
-      run_id: "run-1",
+      run_id: "run-current",
       track_id: "agent-3",
-      parent_track_id: "run-1",
+      parent_track_id: "run-current",
       track_role: "subagent",
       spawn_anchor: {
         track_spawn_exchange_id: "exchange-parent-9",
@@ -205,9 +209,9 @@ describe("useExchangeStream SSE validation", () => {
       req: { total_chars: 1 },
     });
 
-    const live = qc.getQueryData<IndexEntry[]>(exchangesKey(false));
+    const live = qc.getQueryData<IndexEntry[]>(exchangesKey("run-current", false));
     expect(live?.[0]?.spawn_anchor?.track_spawn_tool_use_id).toBe("toolu_child_b");
-    const history = qc.getQueryData<IndexEntry[]>(exchangesKey(true));
+    const history = qc.getQueryData<IndexEntry[]>(exchangesKey("run-current", true));
     expect(history?.[0]).toMatchObject({
       spawn_anchor: {
         track_spawn_exchange_id: "exchange-parent-9",
@@ -220,7 +224,7 @@ describe("useExchangeStream SSE validation", () => {
   it("defaults spawn anchor to null when the event omits it", () => {
     const { qc, wrapper } = makeWrapper();
 
-    renderHook(() => useExchangeStream(), { wrapper });
+    renderHook(() => useExchangeStream({ runId: "run-current" }), { wrapper });
 
     fireSSE({
       type: "exchange",
@@ -231,14 +235,14 @@ describe("useExchangeStream SSE validation", () => {
       req: { total_chars: 1 },
     });
 
-    const rows = qc.getQueryData<IndexEntry[]>(exchangesKey(false));
+    const rows = qc.getQueryData<IndexEntry[]>(exchangesKey("run-current", false));
     expect(rows?.[0]?.spawn_anchor).toBeNull();
   });
 
   it("leaves track role null when exchange event omits it", () => {
     const { qc, wrapper } = makeWrapper();
 
-    renderHook(() => useExchangeStream(), { wrapper });
+    renderHook(() => useExchangeStream({ runId: "run-current" }), { wrapper });
 
     fireSSE({
       type: "exchange",
@@ -249,14 +253,14 @@ describe("useExchangeStream SSE validation", () => {
       req: { total_chars: 1 },
     });
 
-    const rows = qc.getQueryData<IndexEntry[]>(exchangesKey(false));
+    const rows = qc.getQueryData<IndexEntry[]>(exchangesKey("run-current", false));
     expect(rows?.[0]?.track_role).toBeNull();
   });
 
   it("drops malformed Codex turn summaries without rejecting the exchange event", () => {
     const { qc, wrapper } = makeWrapper();
 
-    renderHook(() => useExchangeStream(), { wrapper });
+    renderHook(() => useExchangeStream({ runId: "run-current" }), { wrapper });
 
     fireSSE({
       type: "exchange",
@@ -277,7 +281,7 @@ describe("useExchangeStream SSE validation", () => {
       },
     });
 
-    const rows = qc.getQueryData<IndexEntry[]>(exchangesKey(false));
+    const rows = qc.getQueryData<IndexEntry[]>(exchangesKey("run-current", false));
     expect(rows).toHaveLength(1);
     expect(rows?.[0]?.id).toBe("exchange-live-codex-malformed");
     expect(rows?.[0]?.codex_turn).toBeNull();
@@ -286,7 +290,7 @@ describe("useExchangeStream SSE validation", () => {
   it("keeps a live Codex row in sync across open updates and finalization", () => {
     const { qc, wrapper } = makeWrapper();
 
-    renderHook(() => useExchangeStream(), { wrapper });
+    renderHook(() => useExchangeStream({ runId: "run-current" }), { wrapper });
 
     fireSSE({
       type: "exchange",
@@ -326,7 +330,7 @@ describe("useExchangeStream SSE validation", () => {
       },
     });
 
-    let rows = qc.getQueryData<IndexEntry[]>(exchangesKey(false));
+    let rows = qc.getQueryData<IndexEntry[]>(exchangesKey("run-current", false));
     expect(rows).toHaveLength(1);
     expect(rows?.[0]?.codex_turn?.status).toBe("open");
     expect(rows?.[0]?.codex_turn?.message_range_end).toBe(4);
@@ -361,7 +365,7 @@ describe("useExchangeStream SSE validation", () => {
       },
     });
 
-    rows = qc.getQueryData<IndexEntry[]>(exchangesKey(false));
+    rows = qc.getQueryData<IndexEntry[]>(exchangesKey("run-current", false));
     expect(rows).toHaveLength(1);
     expect(rows?.[0]?.res?.stop_reason).toBe("failed");
     expect(rows?.[0]?.codex_turn?.status).toBe("failed");
@@ -372,14 +376,14 @@ describe("useExchangeStream SSE validation", () => {
   it("accepts stable subagent tool counts during finalization", () => {
     const { qc, wrapper } = makeWrapper();
 
-    renderHook(() => useExchangeStream(), { wrapper });
+    renderHook(() => useExchangeStream({ runId: "run-current" }), { wrapper });
 
     fireSSE({
       type: "exchange",
       id: "exchange-live-subagent",
-      run_id: "run-1",
+      run_id: "run-current",
       track_id: "agent-1",
-      parent_track_id: "run-1",
+      parent_track_id: "run-current",
       track_role: "subagent",
       ts: "2026-01-01T00:00:01Z",
       provider: "codex",
@@ -400,9 +404,9 @@ describe("useExchangeStream SSE validation", () => {
     fireSSE({
       type: "exchange",
       id: "exchange-live-subagent",
-      run_id: "run-1",
+      run_id: "run-current",
       track_id: "agent-1",
-      parent_track_id: "run-1",
+      parent_track_id: "run-current",
       track_role: "subagent",
       ts: "2026-01-01T00:00:02Z",
       provider: "codex",
@@ -429,7 +433,7 @@ describe("useExchangeStream SSE validation", () => {
       },
     });
 
-    const rows = qc.getQueryData<IndexEntry[]>(exchangesKey(false));
+    const rows = qc.getQueryData<IndexEntry[]>(exchangesKey("run-current", false));
     expect(rows).toHaveLength(1);
     expect(rows?.[0]?.track_role).toBe("subagent");
     expect(rows?.[0]?.codex_turn?.status).toBe("completed");

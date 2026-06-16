@@ -51,14 +51,18 @@ beforeEach(() => {
       if (url.includes("include_history=true")) {
         return Promise.resolve(
           makeJsonResponse([
-            makeEntry({ id: "history-1", run_id: "run-old", path: "exchanges/history-1/" }),
+            makeEntry({ id: "history-1", run_id: "run-current", path: "exchanges/history-1/" }),
           ]),
         );
       }
-      if (url.endsWith("/api/exchanges/history-1")) {
+      if (url.endsWith("/v1/runs/run-current/exchanges/history-1")) {
         return Promise.resolve(
           makeJsonResponse({
-            entry: makeEntry({ id: "history-1", run_id: "run-old", path: "exchanges/history-1/" }),
+            entry: makeEntry({
+              id: "history-1",
+              run_id: "run-current",
+              path: "exchanges/history-1/",
+            }),
             request_ir: {
               model: "anthropic/claude-sonnet-4-20250514",
               provider: "anthropic",
@@ -89,7 +93,7 @@ beforeEach(() => {
           }),
         );
       }
-      if (url.startsWith("/api/exchanges?")) {
+      if (url.startsWith("/v1/runs/run-current/exchanges?")) {
         return Promise.resolve(makeJsonResponse([]));
       }
       return Promise.resolve(makeJsonResponse({}));
@@ -111,10 +115,10 @@ describe("App", () => {
     expect(screen.getByText("Waiting for exchanges")).toBeInTheDocument();
   });
 
-  it("opens the browser stream from the browser shell", () => {
+  it("opens the browser stream from the browser shell", async () => {
     renderWithProviders(<App />);
 
-    expect(eventSourceUrls).toEqual(["/api/stream"]);
+    await waitFor(() => expect(eventSourceUrls).toEqual(["/api/stream"]));
   });
 
   it("surfaces prior-run history from the waiting screen", async () => {
@@ -125,7 +129,7 @@ describe("App", () => {
     await waitFor(() => {
       expect(screen.getByText("claude-sonnet-4-20250514")).toBeInTheDocument();
     });
-    expect(screen.getByText("prior")).toBeInTheDocument();
+    expect(screen.queryByText("prior")).not.toBeInTheDocument();
   });
 
   it("keeps a persisted prior-run selection latent until history is re-enabled", async () => {
@@ -207,7 +211,7 @@ describe("App", () => {
             }),
           );
         }
-        if (url.startsWith("/api/exchanges?")) {
+        if (url.startsWith("/v1/runs/run-current/exchanges?")) {
           return Promise.resolve(makeJsonResponse(liveRows));
         }
         return Promise.resolve(makeJsonResponse({}));
@@ -307,11 +311,11 @@ describe("App", () => {
         if (url.includes("include_history=true")) {
           return Promise.resolve(
             makeJsonResponse([
-              makeEntry({ id: "history-1", run_id: "run-old", path: "exchanges/history-1/" }),
+              makeEntry({ id: "history-1", run_id: "run-current", path: "exchanges/history-1/" }),
             ]),
           );
         }
-        if (url.startsWith("/api/exchanges?")) {
+        if (url.startsWith("/v1/runs/run-current/exchanges?")) {
           return Promise.resolve(
             makeJsonResponse([
               makeEntry({ id: "live-1", run_id: "run-current", path: "exchanges/live-1/" }),

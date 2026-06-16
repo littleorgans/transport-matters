@@ -42,14 +42,20 @@ export function BrowserAppShell() {
   const setSelectedId = useUIStore((s) => s.setSelectedId);
   const clearPausedFlow = useUIStore((s) => s.clearPausedFlow);
   const pendingTrackStubs = useMemo(() => pendingTrackStubsForPausedFlow(pausedFlow), [pausedFlow]);
-  const { exchanges, trackTree, isLoading } = useExchanges(includeHistory, true, pendingTrackStubs);
   const { meta } = useMeta();
-  const collapseSessionKey = exchangeListSessionKey(meta?.runId ?? null, exchanges);
+  const runId = meta?.runId ?? null;
+  const { exchanges, trackTree, isLoading } = useExchanges(
+    runId,
+    includeHistory,
+    true,
+    pendingTrackStubs,
+  );
+  const collapseSessionKey = exchangeListSessionKey(runId, exchanges);
   const collapsedTrackIds = useUIStore(
     (s) => s.collapsedTrackIdsBySession[collapseSessionKey] ?? EMPTY_COLLAPSED_TRACK_IDS,
   );
   const toggleCollapsedTrack = useUIStore((s) => s.toggleCollapsedTrack);
-  const { connected } = useExchangeStream();
+  const { connected } = useExchangeStream({ runId });
   const { mode, arm, disarm, error: breakpointError } = useBreakpoint();
 
   useRouteHotkeys();
@@ -59,6 +65,7 @@ export function BrowserAppShell() {
   const shouldLookupHiddenSelection =
     !includeHistory && selectedId != null && !selectedExchangeVisible;
   const { exchanges: historyExchanges, isLoading: isHistoryLookupLoading } = useExchanges(
+    runId,
     true,
     shouldLookupHiddenSelection,
   );
@@ -68,7 +75,7 @@ export function BrowserAppShell() {
     shouldLookupHiddenSelection && selectedExchangeExistsInHistory;
 
   useEffect(() => {
-    if (isLoading || !selectedId) return;
+    if (runId === null || isLoading || !selectedId) return;
     if (selectedExchangeVisible) return;
     if (!includeHistory) {
       if (isHistoryLookupLoading) return;
@@ -77,6 +84,7 @@ export function BrowserAppShell() {
     setSelectedId(null);
   }, [
     includeHistory,
+    runId,
     isHistoryLookupLoading,
     isLoading,
     selectedExchangeExistsInHistory,

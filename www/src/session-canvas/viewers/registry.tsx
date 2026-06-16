@@ -82,10 +82,11 @@ const registry: ViewerRegistration[] = [
   defineViewer<ExchangeRef>({
     id: "provider-exchange",
     canRender: (ref): ref is ExchangeRef => ref.kind === "provider-exchange",
-    paneId: (ref) => `${EXCHANGE_PANE_PREFIX}${ref.sessionId}:${ref.exchangeId}`,
+    paneId: (ref) => `${EXCHANGE_PANE_PREFIX}${ref.runId}:${ref.exchangeId}`,
     title: (ref) => `Exchange ${ref.exchangeId.slice(0, 8)}`,
     render: (props) => (
       <ProviderExchangeResourceViewer
+        runId={props.pane.contentRef.runId}
         exchangeId={props.pane.contentRef.exchangeId}
         initialView={props.pane.contentRef.initialView}
       />

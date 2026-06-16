@@ -78,6 +78,7 @@ export type PaneContentRef =
       kind: "provider-exchange";
       owner: "local";
       sessionId: string;
+      runId: string;
       exchangeId: string;
       initialView?: string;
     }
@@ -129,6 +130,7 @@ export function isPaneContentRef(value: unknown): value is PaneContentRef {
     case "provider-exchange":
       return (
         typeof value.sessionId === "string" &&
+        typeof value.runId === "string" &&
         typeof value.exchangeId === "string" &&
         isOptionalString(value.initialView)
       );

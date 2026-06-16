@@ -22,7 +22,7 @@ const { ProviderExchangeResourceViewer } = await import("./ProviderExchangeResou
 
 describe("ProviderExchangeResourceViewer", () => {
   it("reuses ExchangeDetail with the exchange id and a no-op onMissing (no legacy route coupling)", () => {
-    render(<ProviderExchangeResourceViewer exchangeId="ex-1" />);
+    render(<ProviderExchangeResourceViewer runId="run-current" exchangeId="ex-1" />);
     const detail = screen.getByTestId("exchange-detail");
     expect(detail).toHaveAttribute("data-id", "ex-1");
     // onMissing is supplied, so ExchangeDetail never falls back to mutating the
@@ -43,7 +43,11 @@ describe("ProviderExchangeResourceViewer", () => {
     ];
     for (const [initialView, expectedTab] of cases) {
       const { unmount } = render(
-        <ProviderExchangeResourceViewer exchangeId="ex-2" initialView={initialView} />,
+        <ProviderExchangeResourceViewer
+          runId="run-current"
+          exchangeId="ex-2"
+          initialView={initialView}
+        />,
       );
       expect(screen.getByTestId("exchange-detail")).toHaveAttribute("data-tab", expectedTab);
       unmount();

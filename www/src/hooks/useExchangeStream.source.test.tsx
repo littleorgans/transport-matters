@@ -8,7 +8,7 @@ import { getMockSource, makeWrapper } from "./useExchangeStream.testSupport";
 describe("useExchangeStream browser source", () => {
   it("keeps EventSource lifecycle and messages behind the hook", () => {
     const { qc, wrapper } = makeWrapper();
-    const { result, unmount } = renderHook(() => useExchangeStream(), {
+    const { result, unmount } = renderHook(() => useExchangeStream({ runId: "run-current" }), {
       wrapper,
     });
     const source = getMockSource();
@@ -36,7 +36,7 @@ describe("useExchangeStream browser source", () => {
         }),
       ),
     );
-    expect(qc.getQueryData<IndexEntry[]>(exchangesKey(false))?.[0]?.id).toBe(
+    expect(qc.getQueryData<IndexEntry[]>(exchangesKey("run-current", false))?.[0]?.id).toBe(
       "stream-source-message",
     );
 
@@ -45,9 +45,12 @@ describe("useExchangeStream browser source", () => {
   });
 
   it("constructs the browser stream from a configured API base URL", () => {
-    renderHook(() => useExchangeStream({ baseUrl: "http://127.0.0.1:4321/" }), {
-      wrapper: makeWrapper().wrapper,
-    });
+    renderHook(
+      () => useExchangeStream({ runId: "run-current", baseUrl: "http://127.0.0.1:4321/" }),
+      {
+        wrapper: makeWrapper().wrapper,
+      },
+    );
 
     expect(getMockSource().url).toBe("http://127.0.0.1:4321/api/stream");
   });

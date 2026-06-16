@@ -6,7 +6,9 @@ import { fireSSE, makePausedFlow, makeWrapper } from "./useExchangeStream.testSu
 
 describe("useExchangeStream paused_tokens follow-up", () => {
   it("attaches tokens_before to the matching paused flow", () => {
-    renderHook(() => useExchangeStream(), { wrapper: makeWrapper().wrapper });
+    renderHook(() => useExchangeStream({ runId: "run-current" }), {
+      wrapper: makeWrapper().wrapper,
+    });
 
     useUIStore.setState({
       pausedFlow: makePausedFlow("flow-T"),
@@ -18,7 +20,9 @@ describe("useExchangeStream paused_tokens follow-up", () => {
   });
 
   it("ignores paused_tokens for a flow that no longer matches the pause state", () => {
-    renderHook(() => useExchangeStream(), { wrapper: makeWrapper().wrapper });
+    renderHook(() => useExchangeStream({ runId: "run-current" }), {
+      wrapper: makeWrapper().wrapper,
+    });
 
     useUIStore.setState({
       pausedFlow: makePausedFlow("flow-CURRENT"),
@@ -32,7 +36,9 @@ describe("useExchangeStream paused_tokens follow-up", () => {
   });
 
   it("ignores paused_tokens when no flow is paused at all", () => {
-    renderHook(() => useExchangeStream(), { wrapper: makeWrapper().wrapper });
+    renderHook(() => useExchangeStream({ runId: "run-current" }), {
+      wrapper: makeWrapper().wrapper,
+    });
 
     useUIStore.setState({ pausedFlow: null });
 
@@ -42,7 +48,9 @@ describe("useExchangeStream paused_tokens follow-up", () => {
   });
 
   it("paused event preserves tokens_before when provided", () => {
-    renderHook(() => useExchangeStream(), { wrapper: makeWrapper().wrapper });
+    renderHook(() => useExchangeStream({ runId: "run-current" }), {
+      wrapper: makeWrapper().wrapper,
+    });
 
     fireSSE({
       type: "paused",
@@ -58,7 +66,9 @@ describe("useExchangeStream paused_tokens follow-up", () => {
   });
 
   it("paused websocket event carries the provisional exchange id", () => {
-    renderHook(() => useExchangeStream(), { wrapper: makeWrapper().wrapper });
+    renderHook(() => useExchangeStream({ runId: "run-current" }), {
+      wrapper: makeWrapper().wrapper,
+    });
 
     fireSSE({
       type: "paused",
@@ -75,7 +85,9 @@ describe("useExchangeStream paused_tokens follow-up", () => {
   });
 
   it("paused event carries track scope", () => {
-    renderHook(() => useExchangeStream(), { wrapper: makeWrapper().wrapper });
+    renderHook(() => useExchangeStream({ runId: "run-current" }), {
+      wrapper: makeWrapper().wrapper,
+    });
 
     fireSSE({
       type: "paused",
@@ -110,7 +122,9 @@ describe("useExchangeStream paused_tokens follow-up", () => {
   });
 
   it("paused event without tokens_before defaults to null", () => {
-    renderHook(() => useExchangeStream(), { wrapper: makeWrapper().wrapper });
+    renderHook(() => useExchangeStream({ runId: "run-current" }), {
+      wrapper: makeWrapper().wrapper,
+    });
 
     fireSSE({
       type: "paused",

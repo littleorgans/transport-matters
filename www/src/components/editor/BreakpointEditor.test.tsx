@@ -252,7 +252,7 @@ describe("BreakpointEditor — cache invalidation", () => {
 
     await waitFor(() => expect(useUIStore.getState().forwardingFlowId).toBe("flow-abc123"));
     expect(invalidateSpy).toHaveBeenCalledWith({
-      queryKey: exchangeKey(mockPausedFlow.flow_id),
+      queryKey: exchangeKey("run-1", mockPausedFlow.flow_id),
     });
   });
 
@@ -276,7 +276,7 @@ describe("BreakpointEditor — cache invalidation", () => {
 
     await waitFor(() => expect(api.releaseFlow).toHaveBeenCalled());
     expect(invalidateSpy).toHaveBeenCalledWith({
-      queryKey: exchangeKey("exchange-provisional-3"),
+      queryKey: exchangeKey("run-1", "exchange-provisional-3"),
     });
   });
 });

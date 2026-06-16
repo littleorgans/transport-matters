@@ -168,6 +168,7 @@ export function buildExchangeTrackTree(
 }
 
 export function useExchanges(
+  runId: string | null,
   includeHistory: boolean,
   enabled = true,
   trackStubs: ExchangeTrackStub[] = EMPTY_TRACK_STUBS,
@@ -177,13 +178,13 @@ export function useExchanges(
   isLoading: boolean;
 } {
   const { data: exchanges = [], isLoading } = useQuery({
-    queryKey: exchangesKey(includeHistory),
+    queryKey: exchangesKey(runId, includeHistory),
     queryFn: () =>
-      fetchExchanges(MAX_ENTRIES, 0, includeHistory).then((data) =>
+      fetchExchanges(runId ?? "", MAX_ENTRIES, 0, includeHistory).then((data) =>
         data.slice().reverse().slice(0, MAX_ENTRIES),
       ),
     staleTime: Number.POSITIVE_INFINITY, // SSE keeps data fresh via setQueryData
-    enabled,
+    enabled: enabled && runId !== null,
   });
   const trackTree = useMemo(
     () => buildExchangeTrackTree(exchanges, trackStubs),

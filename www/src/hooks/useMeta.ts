@@ -12,7 +12,7 @@ import { fetchMeta, type Meta } from "../api";
 export function useMeta(): { meta: Meta | undefined; isLoading: boolean } {
   const { data, isLoading } = useQuery({
     queryKey: ["meta"],
-    queryFn: fetchMeta,
+    queryFn: () => fetchMeta(),
     staleTime: Number.POSITIVE_INFINITY,
   });
   return { meta: data, isLoading };

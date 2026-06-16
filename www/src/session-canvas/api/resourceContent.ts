@@ -75,6 +75,7 @@ export interface JsonContentResponse extends ResourceContentBase {
 
 export interface ExchangeRedirectResponse extends ResourceContentBase {
   kind: "exchange-redirect";
+  runId: string;
   exchangeId: string;
   route: string;
   initialView: InitialExchangeView | null;

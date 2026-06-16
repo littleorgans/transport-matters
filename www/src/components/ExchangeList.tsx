@@ -212,6 +212,7 @@ export function ExchangeList({
               return (
                 <ExchangeTurnCard
                   key={vRow.key}
+                  runId={currentRunId}
                   entry={entry}
                   depth={row.depth}
                   isHistorical={

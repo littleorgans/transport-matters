@@ -5,6 +5,7 @@ import { useUIStore } from "../stores/uiStore";
 import type { CodexTurnListSummary, IndexEntry, PausedFlow, SpawnAnchor } from "../types";
 
 export interface ExchangeStreamEventContext {
+  runId: string;
   queryClient: QueryClient;
   setPausedFlow: (flow: PausedFlow | null) => void;
   clearPausedFlow: () => void;
@@ -119,6 +120,7 @@ function parseCodexTurnSummary(value: unknown): CodexTurnListSummary | null {
 function isValidExchangeDeletedEvent(data: Record<string, unknown>): data is {
   type: "exchange_deleted";
   id: string;
+  run_id?: string | null;
   flow_id?: string;
 } {
   return typeof data.id === "string";
@@ -229,31 +231,35 @@ function buildExchangeEntry(data: {
 
 function mutateExchangeLists(
   queryClient: QueryClient,
+  runId: string,
   transform: (entries: IndexEntry[]) => IndexEntry[],
 ) {
-  queryClient.setQueryData<IndexEntry[]>(exchangesKey(false), (prev = []) => transform(prev));
-  queryClient.setQueriesData<IndexEntry[]>({ queryKey: exchangesKey(true) }, (prev) =>
+  queryClient.setQueryData<IndexEntry[]>(exchangesKey(runId, false), (prev = []) =>
+    transform(prev),
+  );
+  queryClient.setQueriesData<IndexEntry[]>({ queryKey: exchangesKey(runId, true) }, (prev) =>
     prev ? transform(prev) : prev,
   );
 }
 
-function dropExchangeDetail(queryClient: QueryClient, id: string) {
-  queryClient.removeQueries({ queryKey: exchangeKey(id), exact: true });
-  queryClient.removeQueries({ queryKey: turnContentKey(id), exact: true });
+function dropExchangeDetail(queryClient: QueryClient, runId: string, id: string) {
+  queryClient.removeQueries({ queryKey: exchangeKey(runId, id), exact: true });
+  queryClient.removeQueries({ queryKey: turnContentKey(runId, id), exact: true });
 }
 
-function upsertExchangeCache(queryClient: QueryClient, entry: IndexEntry) {
-  mutateExchangeLists(queryClient, (prev) =>
+function upsertExchangeCache(queryClient: QueryClient, runId: string, entry: IndexEntry) {
+  mutateExchangeLists(queryClient, runId, (prev) =>
     [entry, ...prev.filter((e) => e.id !== entry.id)].slice(0, MAX_ENTRIES),
   );
-  void queryClient.invalidateQueries({ queryKey: exchangeKey(entry.id) });
-  void queryClient.invalidateQueries({ queryKey: turnContentKey(entry.id) });
+  void queryClient.invalidateQueries({ queryKey: exchangeKey(runId, entry.id) });
+  void queryClient.invalidateQueries({ queryKey: turnContentKey(runId, entry.id) });
 }
 
 function applyExchangeEvent(data: Record<string, unknown>, context: ExchangeStreamEventContext) {
   if (!isValidExchangeEvent(data)) return;
   const entry = buildExchangeEntry(data);
-  upsertExchangeCache(context.queryClient, entry);
+  if (entry.run_id !== null && entry.run_id !== context.runId) return;
+  upsertExchangeCache(context.queryClient, context.runId, entry);
 
   const { forwardingFlowId, pausedFlow } = useUIStore.getState();
   if (forwardingFlowId && data.flow_id === forwardingFlowId) {
@@ -271,8 +277,11 @@ function applyExchangeDeletedEvent(
   context: ExchangeStreamEventContext,
 ) {
   if (!isValidExchangeDeletedEvent(data)) return;
-  mutateExchangeLists(context.queryClient, (prev) => prev.filter((entry) => entry.id !== data.id));
-  dropExchangeDetail(context.queryClient, data.id);
+  if (typeof data.run_id === "string" && data.run_id !== context.runId) return;
+  mutateExchangeLists(context.queryClient, context.runId, (prev) =>
+    prev.filter((entry) => entry.id !== data.id),
+  );
+  dropExchangeDetail(context.queryClient, context.runId, data.id);
   if (useUIStore.getState().selectedId === data.id) {
     context.setSelectedId(null);
   }

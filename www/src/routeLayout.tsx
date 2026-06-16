@@ -186,8 +186,8 @@ function InterceptRoute({
             pausedFlow={pausedFlow}
             onResolved={onPausedFlowResolved}
           />
-        ) : selectedExchangeVisible && selectedId ? (
-          <ExchangeDetail id={selectedId} />
+        ) : selectedExchangeVisible && selectedId && metaRunId ? (
+          <ExchangeDetail id={selectedId} runId={metaRunId} />
         ) : selectedExchangeHiddenByFilter ? (
           <div className="flex h-full items-center justify-center px-8">
             <div className="max-w-md border border-edge bg-surface px-5 py-4 text-center">
