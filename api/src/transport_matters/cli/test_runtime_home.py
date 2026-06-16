@@ -61,6 +61,23 @@ def _tree_fingerprint(root: Path) -> tuple[tuple[str, str, bytes | str | None], 
     return tuple(entries)
 
 
+def _stub_codex_addons_and_ca(
+    monkeypatch: pytest.MonkeyPatch,
+    fallback: Path | None,
+) -> dict[str, Any]:
+    from transport_matters.cli import codex_cmd
+
+    captured: dict[str, Any] = {}
+
+    def fake_resolve_codex_addons_and_ca(**kwargs: Any) -> tuple[Path | None, str | None]:
+        captured["force_http_fallback"] = kwargs["force_http_fallback"]
+        captured["client_path"] = kwargs["client_path"]
+        return fallback, None
+
+    monkeypatch.setattr(codex_cmd, "resolve_codex_addons_and_ca", fake_resolve_codex_addons_and_ca)
+    return captured
+
+
 def test_codex_template_overlay_links_native_auth_fallback(tmp_path: Path) -> None:
     native = tmp_path / "native-codex"
     native.mkdir()
@@ -312,6 +329,7 @@ def test_codex_template_tree_is_byte_identical_after_full_launch_prep(
 
 def test_codex_captured_run_template_launch_records_provenance_and_runtime_descriptor(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     native = tmp_path / "native-codex"
     native.mkdir()
@@ -330,6 +348,7 @@ def test_codex_captured_run_template_launch_records_provenance_and_runtime_descr
         template_home=template,
         provenance={"registry_source": "agent-runtimes"},
     )
+    _stub_codex_addons_and_ca(monkeypatch, fallback=None)
 
     spawn_spec, lease = prepare_captured_run(
         CapturedRunRequest(
@@ -619,14 +638,7 @@ def test_run_codex_force_http_fallback_still_resolves_addons(
     addon.write_text("# addon\n", encoding="utf-8")
     fallback = tmp_path / "fallback.py"
     fallback.write_text("# fallback\n", encoding="utf-8")
-    captured: dict[str, Any] = {}
-
-    def fake_resolve_codex_addons_and_ca(**kwargs: Any) -> tuple[Path | None, str | None]:
-        captured["force_http_fallback"] = kwargs["force_http_fallback"]
-        captured["client_path"] = kwargs["client_path"]
-        return fallback, None
-
-    monkeypatch.setattr(codex_cmd, "resolve_codex_addons_and_ca", fake_resolve_codex_addons_and_ca)
+    captured = _stub_codex_addons_and_ca(monkeypatch, fallback)
 
     with pytest.raises(Exit):
         codex_cmd.run_codex(
