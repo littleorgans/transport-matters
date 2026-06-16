@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FRONTEND_STORAGE_KEYS } from "../../stores/persistence";
 import {
+  CAPTURED_RUN_SPAWN_CONCURRENCY,
   createCapturedRunKey,
   resetCapturedRunStoreForTests,
   useCapturedRunStore,
@@ -101,6 +102,41 @@ describe("capturedRunStore", () => {
     expect(await first).toBe("run-1");
     expect(await second).toBe("run-1");
     expect(createCapturedRunMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("caps concurrent createCapturedRun calls while queueing distinct panes", async () => {
+    const total = CAPTURED_RUN_SPAWN_CONCURRENCY + 3;
+    const resolvers: Array<(id: string) => void> = [];
+    let active = 0;
+    let maxActive = 0;
+    createCapturedRunMock.mockImplementation(
+      () =>
+        new Promise<string>((resolve) => {
+          active += 1;
+          maxActive = Math.max(maxActive, active);
+          resolvers.push((id: string) => {
+            active -= 1;
+            resolve(id);
+          });
+        }),
+    );
+
+    const spawns = Array.from({ length: total }, (_, index) =>
+      store().ensureRun(`claude:k${index}`, "claude"),
+    );
+    await Promise.resolve();
+
+    expect(createCapturedRunMock).toHaveBeenCalledTimes(CAPTURED_RUN_SPAWN_CONCURRENCY);
+    for (let index = 0; index < total; index += 1) {
+      resolvers[index]?.(`run-${index}`);
+      await Promise.resolve();
+    }
+
+    await expect(Promise.all(spawns)).resolves.toEqual(
+      Array.from({ length: total }, (_, index) => `run-${index}`),
+    );
+    expect(maxActive).toBe(CAPTURED_RUN_SPAWN_CONCURRENCY);
+    expect(createCapturedRunMock).toHaveBeenCalledTimes(total);
   });
 
   it("clears the in-flight guard on spawn failure so a retry can spawn", async () => {

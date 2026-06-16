@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
+import pytest
+
 from transport_matters.api.v1 import run_routes
 from transport_matters.api.v1.test_run_routes import (
     BACKEND_ORIGIN,
@@ -16,8 +18,10 @@ from transport_matters.api.v1.test_run_routes import (
 from transport_matters.api.v1.test_terminal import _receive_until_disconnect, _wait_until
 from transport_matters.captured_run import (
     CLAUDE_CLIENT_NAME,
+    CapturedRunBindConflict,
     CapturedRunDependencies,
     CapturedRunLease,
+    CapturedRunProxyStartTimeout,
     CapturedRunRequest,
     CapturedRunSpawnSpec,
 )
@@ -26,8 +30,6 @@ from transport_matters.run_manager import RunManager, RunState
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
-
-    import pytest
 
 
 def test_websocket_binary_input_reaches_child(
@@ -81,6 +83,48 @@ def test_post_launch_failure_returns_machine_error(
 
     assert response.status_code == 500
     assert response.json()["detail"]["code"] == "launch_failed"
+    assert manager.list() == []
+
+
+@pytest.mark.parametrize(
+    ("prepare_error", "status_code", "code"),
+    [
+        (CapturedRunBindConflict("proxy busy"), 409, "bind_conflict"),
+        (
+            CapturedRunProxyStartTimeout("mitmdump did not come up within 5s."),
+            503,
+            "proxy_start_timeout",
+        ),
+    ],
+)
+def test_post_launch_typed_prepare_errors_return_machine_status(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    prepare_error: Exception,
+    status_code: int,
+    code: str,
+) -> None:
+    def raise_prepare_error(
+        _request: CapturedRunRequest,
+        **_kwargs: object,
+    ) -> tuple[CapturedRunSpawnSpec, CapturedRunLease]:
+        raise prepare_error
+
+    manager = RunManager(
+        dependencies=_fake_dependencies(), prepare_run=cast("Any", raise_prepare_error)
+    )
+    monkeypatch.setattr(run_routes, "create_run_manager", lambda: manager)
+    client = _client(monkeypatch, tmp_path)
+
+    with client:
+        response = client.post(
+            "/v1/runs",
+            json={"cli": "claude", "cwd": str(tmp_path)},
+            headers=_http_headers(BACKEND_ORIGIN),
+        )
+
+    assert response.status_code == status_code
+    assert response.json()["detail"]["code"] == code
     assert manager.list() == []
 
 

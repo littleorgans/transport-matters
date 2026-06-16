@@ -33,6 +33,7 @@ __all__ = [
     "CapturedRunBindConflict",
     "CapturedRunCli",
     "CapturedRunLease",
+    "CapturedRunProxyStartTimeout",
     "CapturedRunRequest",
     "CapturedRunSpawnSpec",
     "CapturedRunWebRuntime",
@@ -104,3 +105,7 @@ class CapturedRunLease:
 
 class CapturedRunBindConflict(RuntimeError):
     """Raised when captured-run proxy bind retries exhaust without a free pair."""
+
+
+class CapturedRunProxyStartTimeout(RuntimeError):
+    """Raised when captured-run proxy readiness retries exhaust."""

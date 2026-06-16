@@ -30,6 +30,40 @@ export interface CapturedRunRecord {
 // single spawn for that pane while same-provider sibling panes stay independent.
 const pendingSpawns = new Map<CapturedRunKey, Promise<string>>();
 
+export const CAPTURED_RUN_SPAWN_CONCURRENCY = 5;
+
+let activeCapturedRunSpawns = 0;
+let queuedCapturedRunSpawnSlots: Array<() => void> = [];
+
+function withCapturedRunSpawnSlot(task: () => Promise<string>): Promise<string> {
+  return acquireCapturedRunSpawnSlot().then(async () => {
+    try {
+      return await task();
+    } finally {
+      releaseCapturedRunSpawnSlot();
+    }
+  });
+}
+
+function acquireCapturedRunSpawnSlot(): Promise<void> {
+  if (activeCapturedRunSpawns < CAPTURED_RUN_SPAWN_CONCURRENCY) {
+    activeCapturedRunSpawns += 1;
+    return Promise.resolve();
+  }
+  return new Promise((resolve) => {
+    queuedCapturedRunSpawnSlots.push(() => {
+      activeCapturedRunSpawns += 1;
+      resolve();
+    });
+  });
+}
+
+function releaseCapturedRunSpawnSlot(): void {
+  activeCapturedRunSpawns -= 1;
+  const next = queuedCapturedRunSpawnSlots.shift();
+  if (next) next();
+}
+
 // Keys whose pane was closed while their spawn POST was still in flight. The spawn's
 // resolve handler honours this: it terminates the just-born run (POST /terminate) and skips persisting
 // it, so a close that races a spawn leaves neither an orphaned server run nor a zombie
@@ -105,7 +139,9 @@ export const useCapturedRunStore = create<CapturedRunState>()(
         // a retry after a failed spawn): the user is opening it anew, so it persists open by default.
         cancelledKeys.delete(runKey);
         minimizedPendingKeys.delete(runKey);
-        const spawn = createCapturedRun(provider, cwd, oscColorReplies)
+        const spawn = withCapturedRunSpawnSlot(() =>
+          createCapturedRun(provider, cwd, oscColorReplies),
+        )
           .then((runId) => {
             pendingSpawns.delete(runKey);
             // Closed mid-spawn: terminate the just-born run and do NOT persist it. .delete
@@ -201,5 +237,7 @@ export function resetCapturedRunStoreForTests(): void {
   pendingSpawns.clear();
   cancelledKeys.clear();
   minimizedPendingKeys.clear();
+  activeCapturedRunSpawns = 0;
+  queuedCapturedRunSpawnSlots = [];
   useCapturedRunStore.setState({ runs: {}, oscColorReplies: true });
 }

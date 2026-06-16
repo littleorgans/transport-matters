@@ -6,7 +6,7 @@ import errno
 import logging
 import os
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, Protocol
@@ -20,6 +20,7 @@ from transport_matters.captured_run import (
     CapturedRunCli,
     CapturedRunDependencies,
     CapturedRunLease,
+    CapturedRunProxyStartTimeout,
     CapturedRunRequest,
     CapturedRunSpawnSpec,
     CapturedRunWebRuntime,
@@ -60,6 +61,7 @@ RunManagerErrorCode = Literal[
     "bind_conflict",
     "invalid_cwd",
     "launch_failed",
+    "proxy_start_timeout",
     "run_manager_closed",
     "run_not_attachable",
     "run_stale",
@@ -71,6 +73,9 @@ RunManagerErrorCode = Literal[
 
 def _utcnow() -> datetime:
     return datetime.now(UTC)
+
+
+_SESSION_STORE_PREFLIGHT_CACHE_TTL = timedelta(seconds=3)
 
 
 class PrepareCapturedRun(Protocol):
@@ -132,6 +137,13 @@ class SpawnRun:
     idempotency_key: str | None = None
     # Bridge answers the CLI's OSC 10/11 color queries (see osc_color_responder).
     osc_color_replies: bool = True
+
+
+@dataclass(frozen=True, slots=True)
+class _ValidatedSpawnRun:
+    request: SpawnRun
+    cwd: Path
+    upstream: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -231,7 +243,11 @@ class RunManager:
         attachment_queue_size: int = DEFAULT_ATTACHMENT_QUEUE_SIZE,
         read_chunk_size: int = PTY_READ_CHUNK_SIZE,
         install_signal_handlers: bool = False,
+        spawn_concurrency: int = 6,
+        session_store_preflight_ttl: timedelta = _SESSION_STORE_PREFLIGHT_CACHE_TTL,
     ) -> None:
+        if spawn_concurrency < 1:
+            raise ValueError("spawn_concurrency must be at least 1")
         self._dependencies = dependencies or default_claude_run_dependencies()
         self._prepare_run = prepare_run
         self._spawn_pty = spawn_pty
@@ -243,6 +259,10 @@ class RunManager:
         self._runs: dict[str, ManagedRun] = {}
         self._runs_by_idempotency_key: dict[str, ManagedRun] = {}
         self._spawn_idempotency_lock = asyncio.Lock()
+        self._spawn_semaphore = asyncio.Semaphore(spawn_concurrency)
+        self._session_store_preflight_lock = asyncio.Lock()
+        self._session_store_preflight_ttl = session_store_preflight_ttl
+        self._session_store_preflight_ok_until: datetime | None = None
         self._teardown_lock = asyncio.Lock()
         self._closed = False
 
@@ -250,20 +270,25 @@ class RunManager:
         if self._closed:
             raise RunManagerError("run_manager_closed", "run manager is closed")
         if request.idempotency_key is None:
-            return await self._spawn_new(request)
+            return await self._spawn_new(self._validate_spawn_request(request))
         async with self._spawn_idempotency_lock:
             existing = self._runs_by_idempotency_key.get(request.idempotency_key)
             if existing is not None:
                 return existing
-            run = await self._spawn_new(request)
+            run = await self._spawn_new(self._validate_spawn_request(request))
             self._runs_by_idempotency_key[request.idempotency_key] = run
             return run
 
-    async def _spawn_new(self, request: SpawnRun) -> ManagedRun:
+    async def _spawn_new(self, validated: _ValidatedSpawnRun) -> ManagedRun:
+        async with self._spawn_semaphore:
+            return await self._spawn_new_admitted(validated)
+
+    async def _spawn_new_admitted(self, validated: _ValidatedSpawnRun) -> ManagedRun:
+        request = validated.request
         if self._closed:
             raise RunManagerError("run_manager_closed", "run manager is closed")
 
-        spawn_spec, lease = await self._prepare_request(request)
+        spawn_spec, lease = await self._prepare_request(validated)
         terminal: TerminalPty | None = None
         drain_task: asyncio.Task[None] | None = None
         registered_run_id: str | None = None
@@ -391,9 +416,10 @@ class RunManager:
             await self._teardown_run(run, force=True, reason="shutdown")
 
     async def _prepare_request(
-        self, request: SpawnRun
+        self, validated: _ValidatedSpawnRun
     ) -> tuple[CapturedRunSpawnSpec, CapturedRunLease]:
-        captured_request = self._captured_request(request)
+        await self._ensure_session_store_available()
+        captured_request = self._captured_request(validated)
         try:
             return await asyncio.to_thread(
                 self._prepare_run,
@@ -409,30 +435,31 @@ class RunManager:
             )
         except CapturedRunBindConflict as exc:
             raise RunManagerError("bind_conflict", str(exc)) from exc
+        except CapturedRunProxyStartTimeout as exc:
+            raise RunManagerError("proxy_start_timeout", str(exc)) from exc
         except RunManagerError:
             raise
         except Exception as exc:
             raise RunManagerError("launch_failed", str(exc)) from exc
 
-    def _captured_request(self, request: SpawnRun) -> CapturedRunRequest:
+    def _validate_spawn_request(self, request: SpawnRun) -> _ValidatedSpawnRun:
         if request.cli not in _VALID_CAPTURED_RUN_CLIS:
             raise RunManagerError("unsupported_cli", f"unsupported captured run cli: {request.cli}")
-
-        store_error = self._dependencies.check_session_store()
-        if store_error is not None:
-            raise RunManagerError("session_store_unavailable", store_error)
-
         cwd = self._resolve_cwd(request.cwd)
         upstream = request.upstream
         if upstream is None:
             upstream = CLAUDE_UPSTREAM_DEFAULT if request.cli == CLAUDE_CLIENT_NAME else ""
+        return _ValidatedSpawnRun(request=request, cwd=cwd, upstream=upstream)
+
+    def _captured_request(self, validated: _ValidatedSpawnRun) -> CapturedRunRequest:
+        request = validated.request
         return CapturedRunRequest(
             client_name=request.cli,
             passthrough=request.passthrough,
-            directory=cwd,
+            directory=validated.cwd,
             proxy_port=request.proxy_port,
             web_port=request.web_port,
-            upstream=upstream,
+            upstream=validated.upstream,
             storage_dir=request.storage_dir,
             home_dir=request.home_dir,
             client_bin=request.client_bin,
@@ -444,6 +471,23 @@ class RunManager:
             runtime_template=request.runtime_template,
             launch_fields=request.launch_fields,
         )
+
+    async def _ensure_session_store_available(self) -> None:
+        if self._session_store_preflight_cache_valid():
+            return
+        async with self._session_store_preflight_lock:
+            if self._session_store_preflight_cache_valid():
+                return
+            store_error = await asyncio.to_thread(self._dependencies.check_session_store)
+            if store_error is not None:
+                raise RunManagerError("session_store_unavailable", store_error)
+            self._session_store_preflight_ok_until = (
+                self._clock() + self._session_store_preflight_ttl
+            )
+
+    def _session_store_preflight_cache_valid(self) -> bool:
+        ok_until = self._session_store_preflight_ok_until
+        return ok_until is not None and self._clock() < ok_until
 
     def _resolve_cwd(self, cwd: Path | None) -> Path:
         working_dir = Path.cwd() if cwd is None else cwd.expanduser()
