@@ -11,6 +11,7 @@ vi.mock("../../api", () => ({
 function makeDetail(pipeline: PipelineStats | null): ExchangeDetail {
   const entry: IndexEntry = {
     id: "ex-1",
+    run_id: "run-current",
     ts: new Date().toISOString(),
     provider: "anthropic",
     model: "anthropic/claude-3",
@@ -101,7 +102,7 @@ describe("ExchangeCard pipeline tokens", () => {
     );
     fireEvent.click(screen.getByRole("button", pipelineTabMatcher));
 
-    await waitFor(() => expect(fetchPipelineTokens).toHaveBeenCalledWith("ex-1"));
+    await waitFor(() => expect(fetchPipelineTokens).toHaveBeenCalledWith("run-current", "ex-1"));
     // Chars format: 2048 → "2.0K", 1024 → "1.0K", saved 1024 → "1.0K".
     expect(screen.getAllByText("2.0K").length).toBeGreaterThan(0);
     expect(screen.getAllByText("1.0K").length).toBeGreaterThan(0);

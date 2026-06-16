@@ -6,7 +6,9 @@ import { fireSSE, makePausedFlow, makeWrapper } from "./useExchangeStream.testSu
 
 describe("useExchangeStream forwarding activity", () => {
   it("bumps lastActivityAt when any event's flow_id matches forwardingFlowId", () => {
-    renderHook(() => useExchangeStream(), { wrapper: makeWrapper().wrapper });
+    renderHook(() => useExchangeStream({ runId: "run-current" }), {
+      wrapper: makeWrapper().wrapper,
+    });
 
     useUIStore.setState({
       pausedFlow: makePausedFlow("flow-LIVE"),
@@ -22,7 +24,9 @@ describe("useExchangeStream forwarding activity", () => {
   });
 
   it("does not bump lastActivityAt when the event's flow_id does not match", () => {
-    renderHook(() => useExchangeStream(), { wrapper: makeWrapper().wrapper });
+    renderHook(() => useExchangeStream({ runId: "run-current" }), {
+      wrapper: makeWrapper().wrapper,
+    });
 
     useUIStore.setState({
       pausedFlow: makePausedFlow("flow-A"),
@@ -36,7 +40,9 @@ describe("useExchangeStream forwarding activity", () => {
   });
 
   it("does not bump lastActivityAt when nothing is being forwarded", () => {
-    renderHook(() => useExchangeStream(), { wrapper: makeWrapper().wrapper });
+    renderHook(() => useExchangeStream({ runId: "run-current" }), {
+      wrapper: makeWrapper().wrapper,
+    });
 
     useUIStore.setState({
       forwardingFlowId: null,

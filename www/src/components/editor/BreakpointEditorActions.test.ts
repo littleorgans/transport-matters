@@ -7,6 +7,7 @@ const pausedFlow = {
   flow_id: "flow-abc123",
   transport: "http",
   provisional_exchange_id: null,
+  run_id: "run-current",
 } as PausedFlow;
 
 describe("BreakpointEditor action boundaries", () => {
@@ -16,7 +17,7 @@ describe("BreakpointEditor action boundaries", () => {
         ...pausedFlow,
         provisional_exchange_id: "exchange-provisional-1",
       }),
-    ).toEqual(exchangeKey("exchange-provisional-1"));
+    ).toEqual(exchangeKey("run-current", "exchange-provisional-1"));
   });
 
   it("waits for stream completion after an HTTP release", () => {

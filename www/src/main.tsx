@@ -16,7 +16,7 @@ import { selectRootRoute } from "./session-canvas/route";
 // even if this races the first paint, the in-flight promise is
 // deduplicated by the query client.
 if (selectRootRoute(window.location.pathname) === "legacy") {
-  queryClient.prefetchQuery({ queryKey: ["meta"], queryFn: fetchMeta });
+  queryClient.prefetchQuery({ queryKey: ["meta"], queryFn: () => fetchMeta() });
 }
 
 // Window chrome, not app UI: the drag strip mounts in its own host BEFORE #root, so every

@@ -20,7 +20,7 @@ if TYPE_CHECKING:
 
 class TestGetPipelineTokens:
     async def test_404_when_exchange_missing(self, client: AsyncClient) -> None:
-        response = await client.get("/api/exchanges/nonexistent/pipeline_tokens")
+        response = await client.get("/v1/runs/run-current/exchanges/nonexistent/pipeline_tokens")
         assert response.status_code == 404
 
     async def test_404_when_no_pipeline(self, client: AsyncClient) -> None:
@@ -30,7 +30,7 @@ class TestGetPipelineTokens:
         storage = await get_storage()
         await storage.append_index(make_index_entry("ex-nopipe"))
 
-        response = await client.get("/api/exchanges/ex-nopipe/pipeline_tokens")
+        response = await client.get("/v1/runs/run-current/exchanges/ex-nopipe/pipeline_tokens")
         assert response.status_code == 404
 
     async def test_non_anthropic_provider_returns_unsupported_reason(
@@ -41,7 +41,7 @@ class TestGetPipelineTokens:
             model="codex/gpt-5-codex",
         )
 
-        response = await client.get("/api/exchanges/ex-pipe/pipeline_tokens")
+        response = await client.get("/v1/runs/run-current/exchanges/ex-pipe/pipeline_tokens")
         assert response.status_code == 200
         assert response.json() == {
             "tokens_before": None,
@@ -59,7 +59,7 @@ class TestGetPipelineTokens:
 
         await seed_pipeline_entry(tokens_before=111, tokens_after=88)
 
-        response = await client.get("/api/exchanges/ex-pipe/pipeline_tokens")
+        response = await client.get("/v1/runs/run-current/exchanges/ex-pipe/pipeline_tokens")
         assert response.status_code == 200
         assert response.json() == {
             "tokens_before": 111,
@@ -79,7 +79,7 @@ class TestGetPipelineTokens:
 
         await seed_pipeline_entry()
 
-        response = await client.get("/api/exchanges/ex-pipe/pipeline_tokens")
+        response = await client.get("/v1/runs/run-current/exchanges/ex-pipe/pipeline_tokens")
         assert response.status_code == 200
         assert response.json() == {
             "tokens_before": 42,
@@ -95,7 +95,7 @@ class TestGetPipelineTokens:
         assert stored.pipeline.tokens_before == 42
         assert stored.pipeline.tokens_after == 42
 
-        response = await client.get("/api/exchanges/ex-pipe/pipeline_tokens")
+        response = await client.get("/v1/runs/run-current/exchanges/ex-pipe/pipeline_tokens")
         assert response.status_code == 200
         assert stub.calls == 1
 
@@ -111,7 +111,7 @@ class TestGetPipelineTokens:
 
         await seed_pipeline_entry()
 
-        response = await client.get("/api/exchanges/ex-pipe/pipeline_tokens")
+        response = await client.get("/v1/runs/run-current/exchanges/ex-pipe/pipeline_tokens")
         gc.collect()
 
         assert response.status_code == 200
@@ -129,7 +129,7 @@ class TestGetPipelineTokens:
 
         await seed_pipeline_entry(curated_differs=True)
 
-        response = await client.get("/api/exchanges/ex-pipe/pipeline_tokens")
+        response = await client.get("/v1/runs/run-current/exchanges/ex-pipe/pipeline_tokens")
         assert response.status_code == 200
         assert response.json() == {
             "tokens_before": 7,
@@ -146,7 +146,7 @@ class TestGetPipelineTokens:
 
         await seed_pipeline_entry()
 
-        response = await client.get("/api/exchanges/ex-pipe/pipeline_tokens")
+        response = await client.get("/v1/runs/run-current/exchanges/ex-pipe/pipeline_tokens")
         assert response.status_code == 200
         assert response.json() == {
             "tokens_before": None,
@@ -163,7 +163,7 @@ class TestGetPipelineTokens:
 
         await seed_pipeline_entry()
 
-        response = await client.get("/api/exchanges/ex-pipe/pipeline_tokens")
+        response = await client.get("/v1/runs/run-current/exchanges/ex-pipe/pipeline_tokens")
         assert response.status_code == 200
         assert response.json() == {
             "tokens_before": None,
@@ -185,7 +185,7 @@ class TestGetPipelineTokens:
 
         await seed_pipeline_entry()
 
-        response = await client.get("/api/exchanges/ex-pipe/pipeline_tokens")
+        response = await client.get("/v1/runs/run-current/exchanges/ex-pipe/pipeline_tokens")
         assert response.status_code == 200
         assert response.json() == {
             "tokens_before": None,
@@ -212,7 +212,7 @@ class TestGetPipelineTokens:
 
         await seed_pipeline_entry(curated_differs=True)
 
-        response = await client.get("/api/exchanges/ex-pipe/pipeline_tokens")
+        response = await client.get("/v1/runs/run-current/exchanges/ex-pipe/pipeline_tokens")
         assert response.status_code == 200
         assert response.json() == {
             "tokens_before": 42,
@@ -239,7 +239,7 @@ class TestGetPipelineTokens:
 
         await seed_pipeline_entry(curated_differs=True)
 
-        response = await client.get("/api/exchanges/ex-pipe/pipeline_tokens")
+        response = await client.get("/v1/runs/run-current/exchanges/ex-pipe/pipeline_tokens")
         assert response.status_code == 200
         assert response.json() == {
             "tokens_before": None,
@@ -279,7 +279,7 @@ class TestGetPipelineTokens:
             await original_rewrite(entries)
 
         with patch.object(storage, "_rewrite_index", side_effect=flaky_rewrite):
-            response = await client.get("/api/exchanges/ex-pipe/pipeline_tokens")
+            response = await client.get("/v1/runs/run-current/exchanges/ex-pipe/pipeline_tokens")
             assert response.status_code == 200
             assert response.json() == {
                 "tokens_before": 42,
@@ -293,7 +293,7 @@ class TestGetPipelineTokens:
             assert stored.pipeline.tokens_before is None
             assert stored.pipeline.tokens_after is None
 
-            response = await client.get("/api/exchanges/ex-pipe/pipeline_tokens")
+            response = await client.get("/v1/runs/run-current/exchanges/ex-pipe/pipeline_tokens")
             assert response.status_code == 200
             assert response.json() == {
                 "tokens_before": 42,
@@ -331,7 +331,7 @@ class TestGetPipelineTokens:
         )
         await storage.append_index(entry)
 
-        response = await client.get("/api/exchanges/ex-orphan/pipeline_tokens")
+        response = await client.get("/v1/runs/run-current/exchanges/ex-orphan/pipeline_tokens")
         assert response.status_code == 200
         assert response.json() == {
             "tokens_before": None,
@@ -361,8 +361,12 @@ class TestGetPipelineTokens:
 
         await seed_pipeline_entry()
 
-        req_a = asyncio.create_task(client.get("/api/exchanges/ex-pipe/pipeline_tokens"))
-        req_b = asyncio.create_task(client.get("/api/exchanges/ex-pipe/pipeline_tokens"))
+        req_a = asyncio.create_task(
+            client.get("/v1/runs/run-current/exchanges/ex-pipe/pipeline_tokens")
+        )
+        req_b = asyncio.create_task(
+            client.get("/v1/runs/run-current/exchanges/ex-pipe/pipeline_tokens")
+        )
         await asyncio.sleep(0.05)
         gate.set()
 

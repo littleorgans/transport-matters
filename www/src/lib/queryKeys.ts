@@ -1,15 +1,21 @@
 export const exchangesPrefix = ["exchanges"] as const;
 
-export function exchangesKey(includeHistory: boolean): readonly ["exchanges", boolean] {
-  return ["exchanges", includeHistory];
+export function exchangesKey(runId: string | null): readonly ["exchanges", string | null] {
+  return ["exchanges", runId];
 }
 
-export function exchangeKey(id: string): readonly ["exchange", string] {
-  return ["exchange", id];
+export function exchangeKey(
+  runId: string | null,
+  id: string,
+): readonly ["exchange", string | null, string] {
+  return ["exchange", runId, id];
 }
 
-export function turnContentKey(id: string): readonly ["turn-content", string] {
-  return ["turn-content", id];
+export function turnContentKey(
+  runId: string | null,
+  id: string,
+): readonly ["turn-content", string | null, string] {
+  return ["turn-content", runId, id];
 }
 
 export function resourceContentKey(args: {

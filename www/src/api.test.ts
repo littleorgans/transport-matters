@@ -35,9 +35,11 @@ describe("fetchTurnContent", () => {
     };
     const fetchMock = stubFetch(body);
 
-    await expect(fetchTurnContent("exchange/id 1")).resolves.toEqual(body);
+    await expect(fetchTurnContent("run-current", "exchange/id 1")).resolves.toEqual(body);
 
-    expect(fetchMock).toHaveBeenCalledWith("/api/exchanges/exchange%2Fid%201/turn-content");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/v1/runs/run-current/exchanges/exchange%2Fid%201/turn-content",
+    );
   });
 
   it("uses a configured base URL without changing endpoint callers", async () => {
@@ -49,17 +51,17 @@ describe("fetchTurnContent", () => {
     const fetchMock = stubFetch(body);
     setApiTransport(createApiTransport({ baseUrl: "http://127.0.0.1:4321/" }));
 
-    await expect(fetchTurnContent("exchange/id 1")).resolves.toEqual(body);
+    await expect(fetchTurnContent("run-current", "exchange/id 1")).resolves.toEqual(body);
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "http://127.0.0.1:4321/api/exchanges/exchange%2Fid%201/turn-content",
+      "http://127.0.0.1:4321/v1/runs/run-current/exchanges/exchange%2Fid%201/turn-content",
     );
   });
 
   it("throws on non OK responses", async () => {
     stubFetch({ detail: "not found" }, 404);
 
-    await expect(fetchTurnContent("missing")).rejects.toThrow(
+    await expect(fetchTurnContent("run-current", "missing")).rejects.toThrow(
       "Failed to fetch turn content for missing: 404",
     );
   });

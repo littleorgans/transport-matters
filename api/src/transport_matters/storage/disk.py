@@ -9,7 +9,7 @@ import json
 import logging
 import shutil
 from concurrent.futures import Executor, ThreadPoolExecutor
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from transport_matters.codex.derivation_codec import (
     serialize_codex_events_jsonl,
@@ -45,6 +45,7 @@ class DiskStorageBackend(DiskStorageRecoveryMixin, StorageBackend):
         self._root.mkdir(parents=True, exist_ok=True)
         self._index_lock = asyncio.Lock()
         self._index_cache: dict[str, IndexEntry] | None = None
+        self._index_cache_signature: tuple[int, int] | None = None
         self._io_executor: Executor = ThreadPoolExecutor(
             max_workers=4,
             thread_name_prefix="transport-matters-storage",
@@ -54,6 +55,16 @@ class DiskStorageBackend(DiskStorageRecoveryMixin, StorageBackend):
     @property
     def root(self) -> Path:
         return self._root
+
+    async def _index_file_signature(self) -> tuple[int, int] | None:
+        return cast("tuple[int, int] | None", await self._run_io(self._stat_index_path))
+
+    def _stat_index_path(self) -> tuple[int, int] | None:
+        try:
+            stat = self._layout.index_path.stat()
+        except FileNotFoundError:
+            return None
+        return stat.st_mtime_ns, stat.st_size
 
     def _drop_legacy_flat_anchor_cache(self) -> None:
         index_path = self._layout.index_path
@@ -90,7 +101,8 @@ class DiskStorageBackend(DiskStorageRecoveryMixin, StorageBackend):
 
         Must be called while holding ``_index_lock``.
         """
-        if self._index_cache is not None:
+        signature = await self._index_file_signature()
+        if self._index_cache is not None and signature == self._index_cache_signature:
             return self._index_cache
         entries: dict[str, IndexEntry] = {}
         index_path = self._layout.index_path
@@ -135,6 +147,7 @@ class DiskStorageBackend(DiskStorageRecoveryMixin, StorageBackend):
             )
 
         self._index_cache = entries
+        self._index_cache_signature = await self._index_file_signature()
         return entries
 
     async def _backfill_cache_creation(self, entries: dict[str, IndexEntry]) -> int:
@@ -190,6 +203,7 @@ class DiskStorageBackend(DiskStorageRecoveryMixin, StorageBackend):
         body = "".join(entry.model_dump_json() + "\n" for entry in entries.values())
         await self._write_text(tmp_path, body)
         tmp_path.rename(index_path)
+        self._index_cache_signature = await self._index_file_signature()
 
     async def append_index(self, entry: IndexEntry) -> None:
         index_path = self._layout.index_path
@@ -198,6 +212,7 @@ class DiskStorageBackend(DiskStorageRecoveryMixin, StorageBackend):
             await self._write_text(index_path, line, mode="a")
             if self._index_cache is not None:
                 self._index_cache[entry.id] = entry
+            self._index_cache_signature = await self._index_file_signature()
 
     async def upsert_index(self, entry: IndexEntry) -> None:
         index_path = self._layout.index_path
@@ -210,6 +225,7 @@ class DiskStorageBackend(DiskStorageRecoveryMixin, StorageBackend):
                 return
             await self._write_text(index_path, line, mode="a")
             cache[entry.id] = entry
+            self._index_cache_signature = await self._index_file_signature()
 
     async def persist_exchange(self, entry: IndexEntry, artifacts: ExchangeArtifacts) -> None:
         artifacts.validate_codex_derived_artifacts()

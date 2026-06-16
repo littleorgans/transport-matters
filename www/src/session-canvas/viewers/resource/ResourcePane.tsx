@@ -139,6 +139,7 @@ function ResourceBody({ view }: { view: ResourceView }): ReactElement {
     case "exchange":
       return (
         <ProviderExchangeResourceViewer
+          runId={view.content.runId}
           exchangeId={view.content.exchangeId}
           initialView={view.content.initialView}
         />

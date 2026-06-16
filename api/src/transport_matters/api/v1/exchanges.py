@@ -3,12 +3,14 @@
 import asyncio
 import logging
 from typing import TYPE_CHECKING
+from urllib.parse import quote
 from weakref import WeakValueDictionary
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, HTTPException, Query, Request, status
 from pydantic import BaseModel
 
 from transport_matters.adapters.anthropic import AnthropicAdapter
+from transport_matters.api.v1.run_storage import resolve_run_storage_or_404
 from transport_matters.codex.diagnostics import build_codex_transport_diagnostics
 from transport_matters.codex.events import CodexSemanticEvent, CodexTurnSummary
 from transport_matters.codex.repair import (
@@ -18,7 +20,6 @@ from transport_matters.codex.repair import (
     repair_codex_derived_artifacts,
     resolve_codex_derived_artifacts,
 )
-from transport_matters.config import get_settings
 from transport_matters.counting import count_before_after, get_counter, get_recent_auth
 from transport_matters.exceptions import NotFoundError
 from transport_matters.exchange_stats import (
@@ -27,7 +28,6 @@ from transport_matters.exchange_stats import (
 )
 from transport_matters.ir import InternalRequest, InternalResponse
 from transport_matters.overrides import OverrideAudit
-from transport_matters.storage import StorageBackend, get_storage
 from transport_matters.storage.base import (
     ExchangeArtifacts,
     IndexEntry,
@@ -38,12 +38,16 @@ from transport_matters.storage.base import (
 if TYPE_CHECKING:
     from transport_matters.codex.derivation import CodexDerivedTurnArtifacts
 
+if TYPE_CHECKING:
+    from transport_matters.storage import StorageBackend
+
 logger = logging.getLogger(__name__)
 
 EXCHANGES_ROUTE_PREFIX = "/exchanges"
+RUN_EXCHANGES_ROUTE_PREFIX = "/runs/{run_id}/exchanges"
 EXCHANGE_DETAIL_ROUTE_PATH = "/{exchange_id}"
 
-router = APIRouter()
+run_router = APIRouter()
 
 # Per-exchange locks serialize concurrent lazy recounts so the second
 # caller picks up the first caller's result from the index instead of
@@ -53,8 +57,10 @@ _compute_locks: WeakValueDictionary[str, asyncio.Lock] = WeakValueDictionary()
 _compute_locks_meta: asyncio.Lock = asyncio.Lock()
 
 
-def exchange_detail_route(exchange_id: str) -> str:
-    return f"/api{EXCHANGES_ROUTE_PREFIX}/{exchange_id}"
+def exchange_detail_route(exchange_id: str, *, run_id: str) -> str:
+    return (
+        f"/v1/runs/{quote(run_id, safe='')}{EXCHANGES_ROUTE_PREFIX}/{quote(exchange_id, safe='')}"
+    )
 
 
 async def _lock_for(exchange_id: str) -> asyncio.Lock:
@@ -116,11 +122,30 @@ async def _resolved_codex_derived_artifacts(
     )
 
 
+def _exchange_not_found(exchange_id: str) -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail={
+            "code": "exchange_not_found",
+            "message": f"Exchange {exchange_id} not found",
+        },
+    )
+
+
 async def _load_exchange_or_404(storage: StorageBackend, exchange_id: str) -> ExchangeArtifacts:
     try:
         return await storage.read_exchange(exchange_id)
     except FileNotFoundError as exc:
-        raise NotFoundError(detail=f"Exchange {exchange_id} not found") from exc
+        raise _exchange_not_found(exchange_id) from exc
+
+
+async def _run_index_entry_or_404(
+    storage: StorageBackend, *, run_id: str, exchange_id: str
+) -> IndexEntry:
+    entry = await storage.read_index_entry(exchange_id)
+    if entry is None or entry.run_id != run_id:
+        raise _exchange_not_found(exchange_id)
+    return entry
 
 
 class ExchangeDetailResponse(BaseModel):
@@ -136,17 +161,17 @@ class ExchangeDetailResponse(BaseModel):
     transport_diagnostics: list[TransportDiagnostic]
 
 
-@router.get("")
+@run_router.get("")
 async def list_exchanges(
+    run_id: str,
+    request: Request,
     limit: int = Query(default=50, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
-    include_history: bool = Query(default=False),
     track_id: str | None = Query(default=None),
-    storage: StorageBackend = Depends(get_storage),
 ) -> list[IndexEntry]:
+    context = await resolve_run_storage_or_404(request, run_id)
     try:
-        run_id = None if include_history else get_settings().run_id
-        return await storage.read_index(
+        return await context.storage.read_index(
             limit=limit,
             offset=offset,
             run_id=run_id,
@@ -160,16 +185,17 @@ async def list_exchanges(
         ) from exc
 
 
-@router.get(EXCHANGE_DETAIL_ROUTE_PATH)
+@run_router.get(EXCHANGE_DETAIL_ROUTE_PATH)
 async def get_exchange(
+    run_id: str,
     exchange_id: str,
-    storage: StorageBackend = Depends(get_storage),
+    request: Request,
 ) -> ExchangeDetailResponse:
-    artifacts = await _load_exchange_or_404(storage, exchange_id)
+    context = await resolve_run_storage_or_404(request, run_id)
+    storage = context.storage
+    entry = await _run_index_entry_or_404(storage, run_id=run_id, exchange_id=exchange_id)
 
-    entry = await storage.read_index_entry(exchange_id)
-    if entry is None:
-        raise NotFoundError(detail=f"Exchange {exchange_id} not found")
+    artifacts = await _load_exchange_or_404(storage, exchange_id)
     derived, codex_derived_artifacts = await _resolved_codex_derived_artifacts(
         exchange_id, artifacts, storage
     )
@@ -213,11 +239,15 @@ class TurnContentResponse(BaseModel):
     stop_reason: str | None
 
 
-@router.get("/{exchange_id}/turn-content")
+@run_router.get("/{exchange_id}/turn-content")
 async def get_turn_content(
+    run_id: str,
     exchange_id: str,
-    storage: StorageBackend = Depends(get_storage),
+    request: Request,
 ) -> TurnContentResponse:
+    context = await resolve_run_storage_or_404(request, run_id)
+    storage = context.storage
+    await _run_index_entry_or_404(storage, run_id=run_id, exchange_id=exchange_id)
     artifacts = await _load_exchange_or_404(storage, exchange_id)
 
     if artifacts.response_ir is None:
@@ -234,10 +264,11 @@ async def get_turn_content(
     )
 
 
-@router.get("/{exchange_id}/pipeline_tokens")
+@run_router.get("/{exchange_id}/pipeline_tokens")
 async def get_pipeline_tokens(
+    run_id: str,
     exchange_id: str,
-    storage: StorageBackend = Depends(get_storage),
+    request: Request,
 ) -> PipelineTokensResponse:
     """Return stored pipeline token counts, lazily computing them if missing.
 
@@ -258,9 +289,9 @@ async def get_pipeline_tokens(
     record — pipeline-less rows never ran through the override stage
     and have nothing meaningful to count twice.
     """
-    entry = await storage.read_index_entry(exchange_id)
-    if entry is None:
-        raise NotFoundError(detail=f"Exchange {exchange_id} not found")
+    context = await resolve_run_storage_or_404(request, run_id)
+    storage = context.storage
+    entry = await _run_index_entry_or_404(storage, run_id=run_id, exchange_id=exchange_id)
     if entry.pipeline is None:
         raise NotFoundError(
             detail=f"Exchange {exchange_id} has no pipeline record",
@@ -286,17 +317,24 @@ async def get_pipeline_tokens(
         # non-null) counts as "already computed"; a partial stamp would
         # mean the other side failed last time and deserves a retry,
         # not a sticky null.
-        entry = await storage.read_index_entry(exchange_id)
-        if entry is None or entry.pipeline is None:
+        refreshed_entry = await storage.read_index_entry(exchange_id)
+        if (
+            refreshed_entry is None
+            or refreshed_entry.run_id != run_id
+            or refreshed_entry.pipeline is None
+        ):
             # Race with a mid-flight delete. Report as artifact_missing
             # since the underlying data is gone from disk.
             return PipelineTokensResponse(
                 tokens_before=None, tokens_after=None, reason="artifact_missing"
             )
-        if entry.pipeline.tokens_before is not None and entry.pipeline.tokens_after is not None:
+        if (
+            refreshed_entry.pipeline.tokens_before is not None
+            and refreshed_entry.pipeline.tokens_after is not None
+        ):
             return PipelineTokensResponse(
-                tokens_before=entry.pipeline.tokens_before,
-                tokens_after=entry.pipeline.tokens_after,
+                tokens_before=refreshed_entry.pipeline.tokens_before,
+                tokens_after=refreshed_entry.pipeline.tokens_after,
             )
 
         counter = get_counter()

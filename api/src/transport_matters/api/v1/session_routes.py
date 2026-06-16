@@ -300,7 +300,7 @@ def _api_resource_content_response(
         return ExchangeRedirectResponse.model_validate(
             {
                 **content.model_dump(),
-                "route": exchange_detail_route(content.exchange_id),
+                "route": exchange_detail_route(content.exchange_id, run_id=content.run_id),
             }
         )
     return content

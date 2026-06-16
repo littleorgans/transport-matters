@@ -31,8 +31,13 @@ interface UseBreakpointEditorActionsResult {
   handleDrop: () => void;
 }
 
-export function getExchangeDetailQueryKey(pausedFlow: PausedFlow): readonly ["exchange", string] {
-  return exchangeKey(pausedFlow.provisional_exchange_id ?? pausedFlow.flow_id);
+export function getExchangeDetailQueryKey(
+  pausedFlow: PausedFlow,
+): readonly ["exchange", string | null, string] {
+  return exchangeKey(
+    pausedFlow.run_id ?? null,
+    pausedFlow.provisional_exchange_id ?? pausedFlow.flow_id,
+  );
 }
 
 export function getReleasedFlowCompletion(pausedFlow: PausedFlow): ReleasedFlowCompletion {

@@ -3,11 +3,11 @@ import { fetchTurnContent } from "../api";
 import { turnContentKey } from "../lib/queryKeys";
 import type { TurnContent } from "../types";
 
-export function useTurnContent(id: string) {
+export function useTurnContent(runId: string | null, id: string) {
   return useQuery<TurnContent>({
-    queryKey: turnContentKey(id),
-    queryFn: () => fetchTurnContent(id),
-    enabled: id.length > 0,
+    queryKey: turnContentKey(runId, id),
+    queryFn: () => fetchTurnContent(runId ?? "", id),
+    enabled: runId !== null && id.length > 0,
     staleTime: Number.POSITIVE_INFINITY,
   });
 }

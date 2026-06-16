@@ -19,6 +19,7 @@ describe("exchange stream event application", () => {
         req: { total_chars: 1 },
       }),
       {
+        runId: "run-current",
         queryClient,
         setPausedFlow: useUIStore.getState().setPausedFlow,
         clearPausedFlow: useUIStore.getState().clearPausedFlow,
@@ -26,7 +27,7 @@ describe("exchange stream event application", () => {
       },
     );
 
-    expect(queryClient.getQueryData<IndexEntry[]>(exchangesKey(false))?.[0]?.id).toBe(
+    expect(queryClient.getQueryData<IndexEntry[]>(exchangesKey("run-current"))?.[0]?.id).toBe(
       "exchange-boundary-1",
     );
   });

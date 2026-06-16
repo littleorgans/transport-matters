@@ -64,6 +64,7 @@ function exchange(overrides: Partial<ExchangeRedirectResponse> = {}): ExchangeRe
   return {
     ...base,
     kind: "exchange-redirect",
+    runId: "run-current",
     exchangeId: "e1",
     route: "/inspect/e1",
     initialView: null,

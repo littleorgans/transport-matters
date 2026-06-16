@@ -6,6 +6,7 @@ import { useUIStore } from "../stores/uiStore";
 import { applyExchangeStreamEvent } from "./exchangeStreamEvents";
 
 export type UseExchangeStreamOptions = {
+  runId: string | null;
   baseUrl?: string;
 };
 
@@ -13,7 +14,7 @@ export type UseExchangeStreamOptions = {
  * Browser SSE pump. EventSource construction stays here; shared event
  * application lives in exchangeStreamEvents.
  */
-export function useExchangeStream({ baseUrl }: UseExchangeStreamOptions = {}): {
+export function useExchangeStream({ runId, baseUrl }: UseExchangeStreamOptions): {
   connected: boolean;
 } {
   const [connected, setConnected] = useState(false);
@@ -32,11 +33,16 @@ export function useExchangeStream({ baseUrl }: UseExchangeStreamOptions = {}): {
   }, [connected, queryClient]);
 
   useEffect(() => {
+    if (runId === null) {
+      setConnected(false);
+      return;
+    }
     const source = new EventSource(apiUrl("/api/stream", baseUrl));
     source.onopen = () => setConnected(true);
     source.onerror = () => setConnected(false);
     source.onmessage = (event: MessageEvent<string>) =>
       applyExchangeStreamEvent(event.data, {
+        runId,
         queryClient,
         setPausedFlow,
         clearPausedFlow,
@@ -44,7 +50,7 @@ export function useExchangeStream({ baseUrl }: UseExchangeStreamOptions = {}): {
       });
 
     return () => source.close();
-  }, [baseUrl, queryClient, setPausedFlow, clearPausedFlow, setSelectedId]);
+  }, [baseUrl, runId, queryClient, setPausedFlow, clearPausedFlow, setSelectedId]);
 
   return { connected };
 }

@@ -10,15 +10,22 @@ import "./exchange-viewer.css";
  * legacy selection store.
  */
 export function ProviderExchangeResourceViewer({
+  runId,
   exchangeId,
   initialView,
 }: {
+  runId: string;
   exchangeId: string;
   initialView?: string | null;
 }): ReactElement {
   return (
     <div className="canvas-exchange">
-      <ExchangeDetail id={exchangeId} initialTab={toDetailTab(initialView)} onMissing={noop} />
+      <ExchangeDetail
+        runId={runId}
+        id={exchangeId}
+        initialTab={toDetailTab(initialView)}
+        onMissing={noop}
+      />
     </div>
   );
 }

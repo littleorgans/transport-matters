@@ -65,7 +65,7 @@ describe("ExchangeDetail", () => {
     const qc = makeClient();
     render(
       <QueryClientProvider client={qc}>
-        <ExchangeDetail id="exchange-001" />
+        <ExchangeDetail runId="run-current" id="exchange-001" />
       </QueryClientProvider>,
     );
 
@@ -145,7 +145,7 @@ describe("ExchangeDetail", () => {
     const qc = makeClient();
     render(
       <QueryClientProvider client={qc}>
-        <ExchangeDetail id="exchange-codex-header" />
+        <ExchangeDetail runId="run-current" id="exchange-codex-header" />
       </QueryClientProvider>,
     );
 
@@ -168,7 +168,7 @@ describe("ExchangeDetail", () => {
 
     const { rerender } = render(
       <QueryClientProvider client={qc}>
-        <ExchangeDetail id="exchange-001" />
+        <ExchangeDetail runId="run-current" id="exchange-001" />
       </QueryClientProvider>,
     );
 
@@ -184,7 +184,7 @@ describe("ExchangeDetail", () => {
     // Re-render with same id — TanStack Query should serve from cache
     rerender(
       <QueryClientProvider client={qc}>
-        <ExchangeDetail id="exchange-001" />
+        <ExchangeDetail runId="run-current" id="exchange-001" />
       </QueryClientProvider>,
     );
 
@@ -197,14 +197,14 @@ describe("ExchangeDetail", () => {
 
     const { rerender } = render(
       <QueryClientProvider client={qc}>
-        <ExchangeDetail id="exchange-001" />
+        <ExchangeDetail runId="run-current" id="exchange-001" />
       </QueryClientProvider>,
     );
     await waitFor(() => expect(fetchExchange).toHaveBeenCalledTimes(1));
 
     rerender(
       <QueryClientProvider client={qc}>
-        <ExchangeDetail id="exchange-002" />
+        <ExchangeDetail runId="run-current" id="exchange-002" />
       </QueryClientProvider>,
     );
     await waitFor(() => expect(fetchExchange).toHaveBeenCalledTimes(2));
@@ -387,7 +387,7 @@ describe("ExchangeDetail", () => {
     const qc = makeClient();
     render(
       <QueryClientProvider client={qc}>
-        <ExchangeDetail id="exchange-transport" />
+        <ExchangeDetail runId="run-current" id="exchange-transport" />
       </QueryClientProvider>,
     );
 
@@ -511,7 +511,7 @@ describe("ExchangeDetail", () => {
     const qc = makeClient();
     render(
       <QueryClientProvider client={qc}>
-        <ExchangeDetail id="exchange-open" />
+        <ExchangeDetail runId="run-current" id="exchange-open" />
       </QueryClientProvider>,
     );
 
@@ -637,7 +637,7 @@ describe("ExchangeDetail", () => {
     const qc = makeClient();
     render(
       <QueryClientProvider client={qc}>
-        <ExchangeDetail id="exchange-legacy" />
+        <ExchangeDetail runId="run-current" id="exchange-legacy" />
       </QueryClientProvider>,
     );
 
@@ -699,7 +699,7 @@ describe("ExchangeDetail", () => {
     const qc = makeClient();
     render(
       <QueryClientProvider client={qc}>
-        <ExchangeDetail id="exchange-fullscreen" />
+        <ExchangeDetail runId="run-current" id="exchange-fullscreen" />
       </QueryClientProvider>,
     );
 

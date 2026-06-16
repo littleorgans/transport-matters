@@ -30,7 +30,7 @@ class TestGetExchange:
         await storage.append_index(entry)
         await storage.write_exchange("ex-001", artifacts)
 
-        response = await client.get("/api/exchanges/ex-001")
+        response = await client.get("/v1/runs/run-current/exchanges/ex-001")
         assert response.status_code == 200
         data = response.json()
         assert data["request_ir"]["model"] == "anthropic/claude-sonnet-4-20250514"
@@ -50,7 +50,21 @@ class TestGetExchange:
         )
         await storage.write_exchange("ex-orphan", artifacts)
 
-        response = await client.get("/api/exchanges/ex-orphan")
+        response = await client.get("/v1/runs/run-current/exchanges/ex-orphan")
+        assert response.status_code == 404
+
+    async def test_get_rejects_exchange_from_another_run(self, client: AsyncClient) -> None:
+        from transport_matters.storage import get_storage
+
+        storage = await get_storage()
+        artifacts = ExchangeArtifacts(
+            request_raw=b'{"model":"claude-sonnet-4-20250514","max_tokens":1024}',
+            request_ir=make_ir(),
+        )
+        await storage.append_index(make_index_entry("ex-other", run_id="run-old"))
+        await storage.write_exchange("ex-other", artifacts)
+
+        response = await client.get("/v1/runs/run-current/exchanges/ex-other")
         assert response.status_code == 404
 
     async def test_get_existing_surfaces_curated_ir(self, client: AsyncClient) -> None:
@@ -77,7 +91,7 @@ class TestGetExchange:
         await storage.append_index(entry)
         await storage.write_exchange("ex-001", artifacts)
 
-        response = await client.get("/api/exchanges/ex-001")
+        response = await client.get("/v1/runs/run-current/exchanges/ex-001")
         assert response.status_code == 200
         data = response.json()
         assert data["request_ir"]["messages"][0]["content"][0]["text"] == "hi"
@@ -137,7 +151,7 @@ class TestGetExchange:
         await storage.append_index(entry)
         await storage.write_exchange("ex-001", artifacts)
 
-        response = await client.get("/api/exchanges/ex-001")
+        response = await client.get("/v1/runs/run-current/exchanges/ex-001")
         assert response.status_code == 200
         data = response.json()
         assert data["request_audit"] is not None
@@ -320,7 +334,7 @@ class TestGetExchange:
         await storage.append_index(entry)
         await storage.write_exchange("ex-001", artifacts)
 
-        response = await client.get("/api/exchanges/ex-001")
+        response = await client.get("/v1/runs/run-current/exchanges/ex-001")
         assert response.status_code == 200
         data = response.json()
         assert data["transport"] is None
@@ -402,7 +416,7 @@ class TestGetExchange:
         await storage.append_index(entry)
         await storage.write_exchange("ex-001", artifacts)
 
-        response = await client.get("/api/exchanges/ex-001")
+        response = await client.get("/v1/runs/run-current/exchanges/ex-001")
         assert response.status_code == 200
         data = response.json()
         assert data["transport_diagnostics"][0]["code"] == "proxy_trust_failed"
@@ -450,7 +464,7 @@ class TestGetExchange:
         await storage.append_index(entry)
         await storage.write_exchange("ex-001", artifacts)
 
-        response = await client.get("/api/exchanges/ex-001")
+        response = await client.get("/v1/runs/run-current/exchanges/ex-001")
         assert response.status_code == 200
         data = response.json()
         assert data["transport_diagnostics"][0]["code"] == "chatgpt_auth_rejected"
@@ -502,7 +516,7 @@ class TestGetExchange:
         await storage.append_index(entry)
         await storage.write_exchange("ex-001", artifacts)
 
-        response = await client.get("/api/exchanges/ex-001")
+        response = await client.get("/v1/runs/run-current/exchanges/ex-001")
         assert response.status_code == 200
         data = response.json()
         assert data["transport_diagnostics"][0]["code"] == "websocket_handshake_failed"
@@ -567,7 +581,7 @@ class TestGetExchange:
         await storage.append_index(codex_entry)
         await storage.write_exchange("ex-codex", codex_artifacts)
 
-        anthropic_response = await client.get("/api/exchanges/ex-anth")
+        anthropic_response = await client.get("/v1/runs/run-current/exchanges/ex-anth")
         assert anthropic_response.status_code == 200
         anthropic_data = anthropic_response.json()
         assert anthropic_data["entry"]["provider"] == "anthropic"
@@ -576,7 +590,7 @@ class TestGetExchange:
         assert anthropic_data["transport"] is None
         assert anthropic_data["transport_diagnostics"] == []
 
-        codex_response = await client.get("/api/exchanges/ex-codex")
+        codex_response = await client.get("/v1/runs/run-old/exchanges/ex-codex")
         assert codex_response.status_code == 200
         codex_data = codex_response.json()
         assert codex_data["entry"]["provider"] == "codex"

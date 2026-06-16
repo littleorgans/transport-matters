@@ -6,7 +6,9 @@ import { fireSSE, makePausedFlow, makeWrapper } from "./useExchangeStream.testSu
 
 describe("useExchangeStream race condition guard", () => {
   it("clears pausedFlow when forwarding flow matches current pause", () => {
-    renderHook(() => useExchangeStream(), { wrapper: makeWrapper().wrapper });
+    renderHook(() => useExchangeStream({ runId: "run-current" }), {
+      wrapper: makeWrapper().wrapper,
+    });
 
     useUIStore.setState({
       pausedFlow: makePausedFlow("flow-X"),
@@ -30,7 +32,9 @@ describe("useExchangeStream race condition guard", () => {
   });
 
   it("preserves new pausedFlow when a different flow paused during forwarding", () => {
-    renderHook(() => useExchangeStream(), { wrapper: makeWrapper().wrapper });
+    renderHook(() => useExchangeStream({ runId: "run-current" }), {
+      wrapper: makeWrapper().wrapper,
+    });
 
     // Flow X was forwarded, but flow Y paused in the meantime
     useUIStore.setState({
@@ -56,7 +60,9 @@ describe("useExchangeStream race condition guard", () => {
   });
 
   it("does not clear pausedFlow when flow_id does not match forwardingFlowId", () => {
-    renderHook(() => useExchangeStream(), { wrapper: makeWrapper().wrapper });
+    renderHook(() => useExchangeStream({ runId: "run-current" }), {
+      wrapper: makeWrapper().wrapper,
+    });
 
     useUIStore.setState({
       pausedFlow: makePausedFlow("flow-A"),
@@ -79,7 +85,9 @@ describe("useExchangeStream race condition guard", () => {
   });
 
   it("does not clear pausedFlow when exchange has no flow_id", () => {
-    renderHook(() => useExchangeStream(), { wrapper: makeWrapper().wrapper });
+    renderHook(() => useExchangeStream({ runId: "run-current" }), {
+      wrapper: makeWrapper().wrapper,
+    });
 
     useUIStore.setState({
       pausedFlow: makePausedFlow("flow-A"),

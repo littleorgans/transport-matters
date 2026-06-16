@@ -18,7 +18,7 @@ from transport_matters.storage.base import (
 )
 
 
-def make_index_entry(entry_id: str = "ex-001", *, run_id: str | None = None) -> IndexEntry:
+def make_index_entry(entry_id: str = "ex-001", *, run_id: str | None = "run-current") -> IndexEntry:
     return IndexEntry(
         id=entry_id,
         run_id=run_id,

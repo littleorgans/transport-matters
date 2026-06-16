@@ -9,6 +9,7 @@ import { TokenBar, TokenStat } from "./TokenBar";
 
 export function ExchangeCard({ detail }: { detail: ExchangeDetail }) {
   const { entry } = detail;
+  const runId = entry.run_id;
   const res = entry.res;
   const pipeline = entry.pipeline;
 
@@ -27,9 +28,9 @@ export function ExchangeCard({ detail }: { detail: ExchangeDetail }) {
     pipeline.tokens_before === null &&
     pipeline.tokens_after === null;
   const pipelineTokensQuery = useQuery({
-    queryKey: ["pipeline-tokens", entry.id],
-    queryFn: () => fetchPipelineTokens(entry.id),
-    enabled: cardTab === "pipeline" && needsTokenRecount,
+    queryKey: ["pipeline-tokens", runId, entry.id],
+    queryFn: () => fetchPipelineTokens(runId ?? "", entry.id),
+    enabled: runId !== null && cardTab === "pipeline" && needsTokenRecount,
     staleTime: Number.POSITIVE_INFINITY,
   });
 

@@ -23,6 +23,7 @@ describe("ExchangeTurnCard", () => {
 
       render(
         <ExchangeTurnCard
+          runId="run-current"
           entry={entry}
           depth={0}
           isHistorical={false}

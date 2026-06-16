@@ -25,7 +25,7 @@ describe("useTurnContent", () => {
     );
 
     const { qc, wrapper } = makeWrapper();
-    const { result } = renderHook(() => useTurnContent("ex-001"), { wrapper });
+    const { result } = renderHook(() => useTurnContent("run-current", "ex-001"), { wrapper });
 
     await waitFor(() => expect(result.current.data).toBeDefined());
     expect(result.current.data).toEqual({
@@ -33,11 +33,11 @@ describe("useTurnContent", () => {
       response_text: "hello",
       stop_reason: "end_turn",
     });
-    expect(fetch).toHaveBeenCalledWith("/api/exchanges/ex-001/turn-content");
+    expect(fetch).toHaveBeenCalledWith("/v1/runs/run-current/exchanges/ex-001/turn-content");
 
-    const query = qc.getQueryCache().find({ queryKey: turnContentKey("ex-001") });
+    const query = qc.getQueryCache().find({ queryKey: turnContentKey("run-current", "ex-001") });
     const queryOptions = query?.options as { staleTime?: unknown } | undefined;
-    expect(query?.queryKey).toEqual(turnContentKey("ex-001"));
+    expect(query?.queryKey).toEqual(turnContentKey("run-current", "ex-001"));
     expect(queryOptions?.staleTime).toBe(Number.POSITIVE_INFINITY);
   });
 
@@ -45,7 +45,7 @@ describe("useTurnContent", () => {
     vi.stubGlobal("fetch", vi.fn());
 
     const { wrapper } = makeWrapper();
-    renderHook(() => useTurnContent(""), { wrapper });
+    renderHook(() => useTurnContent("run-current", ""), { wrapper });
 
     expect(fetch).not.toHaveBeenCalled();
   });

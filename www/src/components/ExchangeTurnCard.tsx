@@ -6,6 +6,7 @@ import type { CodexTurnListSummary, IndexEntry } from "../types";
 import { ExchangePreview } from "./ExchangePreview";
 
 interface ExchangeTurnCardProps {
+  runId: string | null;
   entry: IndexEntry;
   depth: number;
   isHistorical: boolean;
@@ -185,8 +186,8 @@ function TurnContentValue({
   return <ExchangePreview text={text} stopReason={stopReason} />;
 }
 
-function SettledTurnContentPreview({ entryId }: { entryId: string }) {
-  const { data, isLoading } = useTurnContent(entryId);
+function SettledTurnContentPreview({ runId, entryId }: { runId: string | null; entryId: string }) {
+  const { data, isLoading } = useTurnContent(runId, entryId);
   return (
     <span className="grid min-w-0 grid-cols-2 border-b border-edge">
       <span className="min-w-0 border-r border-edge px-4 py-3">
@@ -240,6 +241,7 @@ function WaitingTransportStrip({
 }
 
 export function ExchangeTurnCard({
+  runId,
   entry,
   depth,
   isHistorical,
@@ -329,7 +331,7 @@ export function ExchangeTurnCard({
             previewWaiting={previewWaiting}
           />
         ) : (
-          <SettledTurnContentPreview entryId={entry.id} />
+          <SettledTurnContentPreview runId={runId} entryId={entry.id} />
         )}
 
         <span

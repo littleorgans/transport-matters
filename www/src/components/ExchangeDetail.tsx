@@ -15,6 +15,7 @@ import { FullscreenOverlay } from "./FullscreenOverlay";
 import { ExpandWindowIcon } from "./icons";
 
 interface ExchangeDetailProps {
+  runId: string;
   id: string;
   /**
    * Called when the exchange 404s. Defaults to clearing the legacy route
@@ -200,7 +201,12 @@ function DownloadIcon({ className }: { className?: string }) {
   );
 }
 
-export function ExchangeDetail({ id, onMissing, initialTab = "inspect" }: ExchangeDetailProps) {
+export function ExchangeDetail({
+  runId,
+  id,
+  onMissing,
+  initialTab = "inspect",
+}: ExchangeDetailProps) {
   const [tab, setTab] = useState<DetailTab>(initialTab);
   const deferredTab = useDeferredValue(tab);
   const [transportFocus, setTransportFocus] = useState<{
@@ -215,8 +221,8 @@ export function ExchangeDetail({ id, onMissing, initialTab = "inspect" }: Exchan
     isLoading,
     error,
   } = useQuery({
-    queryKey: exchangeKey(id),
-    queryFn: () => fetchExchange(id),
+    queryKey: exchangeKey(runId, id),
+    queryFn: () => fetchExchange(runId, id),
     retry: false,
   });
 

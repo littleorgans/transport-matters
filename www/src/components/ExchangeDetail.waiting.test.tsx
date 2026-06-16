@@ -32,7 +32,7 @@ function makeClient() {
 function renderDetail(id: string, client = makeClient()) {
   render(
     <QueryClientProvider client={client}>
-      <ExchangeDetail id={id} />
+      <ExchangeDetail runId="run-current" id={id} />
     </QueryClientProvider>,
   );
   return client;
@@ -69,7 +69,7 @@ describe("ExchangeDetail waiting affordance", () => {
     const client = renderDetail("http-transition");
 
     expect(await screen.findByTestId("exchange-detail-waiting")).toBeInTheDocument();
-    await client.invalidateQueries({ queryKey: exchangeKey("http-transition") });
+    await client.invalidateQueries({ queryKey: exchangeKey("run-current", "http-transition") });
     await waitFor(() => expect(screen.queryByTestId("exchange-detail-waiting")).toBeNull());
     expect(screen.getByRole("button", { name: /response/i })).toBeEnabled();
   });

@@ -48,48 +48,7 @@ beforeEach(() => {
           }),
         );
       }
-      if (url.includes("include_history=true")) {
-        return Promise.resolve(
-          makeJsonResponse([
-            makeEntry({ id: "history-1", run_id: "run-old", path: "exchanges/history-1/" }),
-          ]),
-        );
-      }
-      if (url.endsWith("/api/exchanges/history-1")) {
-        return Promise.resolve(
-          makeJsonResponse({
-            entry: makeEntry({ id: "history-1", run_id: "run-old", path: "exchanges/history-1/" }),
-            request_ir: {
-              model: "anthropic/claude-sonnet-4-20250514",
-              provider: "anthropic",
-              system: [],
-              tools: [],
-              messages: [],
-              sampling: {
-                max_tokens: 1024,
-                temperature: null,
-                top_p: null,
-                top_k: null,
-                stop_sequences: [],
-              },
-              metadata: {
-                session_id: null,
-                device_id: null,
-                account_id: null,
-                provider_metadata: {},
-              },
-              stream: true,
-              provider_extras: {},
-            },
-            request_curated_ir: null,
-            request_audit: null,
-            response_ir: null,
-            transport: null,
-            transport_diagnostics: [],
-          }),
-        );
-      }
-      if (url.startsWith("/api/exchanges?")) {
+      if (url.startsWith("/v1/runs/run-current/exchanges?")) {
         return Promise.resolve(makeJsonResponse([]));
       }
       return Promise.resolve(makeJsonResponse({}));
@@ -111,59 +70,50 @@ describe("App", () => {
     expect(screen.getByText("Waiting for exchanges")).toBeInTheDocument();
   });
 
-  it("opens the browser stream from the browser shell", () => {
+  it("opens the browser stream from the browser shell", async () => {
     renderWithProviders(<App />);
 
-    expect(eventSourceUrls).toEqual(["/api/stream"]);
+    await waitFor(() => expect(eventSourceUrls).toEqual(["/api/stream"]));
   });
 
-  it("surfaces prior-run history from the waiting screen", async () => {
+  it("keeps exchange reads run scoped when history is toggled", async () => {
     renderWithProviders(<App />);
 
     fireEvent.click(screen.getByRole("button", { name: "Show history" }));
 
     await waitFor(() => {
-      expect(screen.getByText("claude-sonnet-4-20250514")).toBeInTheDocument();
+      expect(useUIStore.getState().includeHistory).toBe(true);
     });
-    expect(screen.getByText("prior")).toBeInTheDocument();
+    const fetchMock = vi.mocked(fetch);
+    expect(
+      fetchMock.mock.calls.some(([input]) => {
+        const url =
+          typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+        return url.includes("include_history");
+      }),
+    ).toBe(false);
   });
 
-  it("keeps a persisted prior-run selection latent until history is re-enabled", async () => {
+  it("clears a missing selection without a separate history fetch", async () => {
     useUIStore.setState({ selectedId: "history-1", includeHistory: false });
 
     renderWithProviders(<App />);
 
-    expect(screen.getByText("Waiting for exchanges")).toBeInTheDocument();
-    expect(useUIStore.getState().selectedId).toBe("history-1");
-
-    fireEvent.click(screen.getByRole("button", { name: "Show history" }));
-
     await waitFor(() => {
-      expect(screen.getByText("claude-sonnet-4-20250514")).toBeInTheDocument();
+      expect(useUIStore.getState().selectedId).toBeNull();
     });
-    expect(useUIStore.getState().selectedId).toBe("history-1");
+    expect(screen.getByText("Waiting for exchanges")).toBeInTheDocument();
   });
 
-  it("preserves a hidden prior-run selection across history toggles", async () => {
+  it("clears a missing selection when history starts enabled", async () => {
     useUIStore.setState({ selectedId: "history-1", includeHistory: true });
 
     renderWithProviders(<App />);
 
     await waitFor(() => {
-      expect(screen.getByText("claude-sonnet-4-20250514")).toBeInTheDocument();
+      expect(useUIStore.getState().selectedId).toBeNull();
     });
-
-    fireEvent.click(screen.getByRole("switch", { name: "Show prior runs" }));
-
-    expect(screen.getByText("Waiting for exchanges")).toBeInTheDocument();
-    expect(useUIStore.getState().selectedId).toBe("history-1");
-
-    fireEvent.click(screen.getByRole("button", { name: "Show history" }));
-
-    await waitFor(() => {
-      expect(screen.getByText("claude-sonnet-4-20250514")).toBeInTheDocument();
-    });
-    expect(useUIStore.getState().selectedId).toBe("history-1");
+    expect(screen.getByText("Select an exchange to inspect")).toBeInTheDocument();
   });
 
   it("anchors a paused subagent track from app state before its spawning exchange", async () => {
@@ -207,7 +157,7 @@ describe("App", () => {
             }),
           );
         }
-        if (url.startsWith("/api/exchanges?")) {
+        if (url.startsWith("/v1/runs/run-current/exchanges?")) {
           return Promise.resolve(makeJsonResponse(liveRows));
         }
         return Promise.resolve(makeJsonResponse({}));
@@ -304,14 +254,7 @@ describe("App", () => {
             }),
           );
         }
-        if (url.includes("include_history=true")) {
-          return Promise.resolve(
-            makeJsonResponse([
-              makeEntry({ id: "history-1", run_id: "run-old", path: "exchanges/history-1/" }),
-            ]),
-          );
-        }
-        if (url.startsWith("/api/exchanges?")) {
+        if (url.startsWith("/v1/runs/run-current/exchanges?")) {
           return Promise.resolve(
             makeJsonResponse([
               makeEntry({ id: "live-1", run_id: "run-current", path: "exchanges/live-1/" }),
