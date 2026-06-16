@@ -71,6 +71,7 @@ class Settings(BaseSettings):
     web_port: int = 8788
     web_runtime: Literal["embedded", "external"] = "embedded"
     default_client_passthrough: tuple[str, ...] = ()
+    upstream_url: str | None = None
     storage_dir: Path = Field(default_factory=default_storage_root)
     # Per-launch session boundary created by ``transport-matters claude``.
     # This is Transport Matters run identity, distinct from any provider

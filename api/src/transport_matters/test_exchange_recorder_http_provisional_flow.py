@@ -36,6 +36,7 @@ async def test_persist_http_exchange_deletes_when_request_state_dropped(
     async def fake_delete(
         delete_flow: http.HTTPFlow,
         delete_state: RequestFlowState,
+        binding: object | None = None,
     ) -> bool:
         calls.append((delete_flow, delete_state))
         return True
@@ -72,6 +73,7 @@ async def test_persist_http_exchange_drop_without_provisional_skips_fallback(
     async def fake_delete(
         delete_flow: http.HTTPFlow,
         delete_state: RequestFlowState,
+        binding: object | None = None,
     ) -> bool:
         calls.append((delete_flow, delete_state))
         return True
@@ -105,6 +107,7 @@ async def test_persist_http_exchange_finalizes_existing_provisional(
         finalize_flow: http.HTTPFlow,
         finalize_state: RequestFlowState,
         token_counter: object | None,
+        binding: object | None = None,
     ) -> bool:
         calls.append((finalize_flow, finalize_state, token_counter))
         return True
@@ -137,6 +140,7 @@ async def test_persist_http_exchange_falls_back_when_finalize_misses_record(
         finalize_flow: http.HTTPFlow,
         finalize_state: RequestFlowState,
         token_counter: object | None,
+        binding: object | None = None,
     ) -> bool:
         calls.append((finalize_flow, finalize_state, token_counter))
         return False

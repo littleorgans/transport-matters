@@ -286,7 +286,7 @@ async def test_http_request_hook_emits_when_breakpoint_skip_matches(
 ) -> None:
     flow = _http_flow("flow-http-skip")
     _patch_pipeline(monkeypatch)
-    monkeypatch.setattr(addon_handlers, "_should_skip_breakpoint", lambda model: True)
+    monkeypatch.setattr(addon_handlers, "_should_skip_breakpoint", lambda model, binding=None: True)
     bp.arm()
 
     await addon_handlers.handle_http_request(flow, None)
@@ -484,6 +484,7 @@ async def test_http_response_hook_falls_back_when_provisional_emit_failed(
     async def fake_persist(
         persist_flow: http.HTTPFlow,
         request_state: RequestFlowState,
+        binding: object | None = None,
     ) -> None:
         assert persist_flow is flow
         assert request_state.provisional_exchange_id is None
@@ -529,6 +530,7 @@ async def test_http_create_fresh_synthesizes_error_stats_when_provisional_missin
     async def fake_persist(
         persist_flow: http.HTTPFlow,
         request_state: RequestFlowState,
+        binding: object | None = None,
     ) -> None:
         assert persist_flow is flow
         assert request_state.provisional_exchange_id is None
@@ -568,6 +570,7 @@ async def test_http_drop_wins_over_finalize(
         finalize_flow: http.HTTPFlow,
         finalize_state: RequestFlowState,
         token_counter: TokenCountingClient | None,
+        binding: object | None = None,
     ) -> bool:
         raise AssertionError("dropped HTTP flow must not finalize")
 

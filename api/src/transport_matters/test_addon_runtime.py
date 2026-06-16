@@ -36,6 +36,8 @@ from transport_matters.session.models import SessionPurpose
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from transport_matters.storage.base import StorageBackend
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -410,8 +412,11 @@ async def test_register_owned_cursor_uses_launch_settings(
 
     monkeypatch.setattr(addon_runtime, "register_session_cursor", fake_register)
 
+    proxy_binding = addon_runtime.build_proxy_run_binding(
+        settings, cast("StorageBackend", object())
+    )
     await addon_runtime._register_owned_cursor(
-        TranscriptTailer(), settings, "2026-06-06T00:00:00+00:00"
+        TranscriptTailer(), proxy_binding, "2026-06-06T00:00:00+00:00"
     )
 
     assert len(calls) == 1

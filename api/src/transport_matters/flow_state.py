@@ -19,6 +19,8 @@ _REQUEST_IR_KEY = "transport_matters_ir"
 _RAW_REQUEST_KEY = "transport_matters_raw_req"
 _CURATED_REQUEST_IR_KEY = "transport_matters_curated_ir"
 _AUDIT_KEY = "transport_matters_audit"
+_RUN_ID_KEY = "transport_matters_run_id"
+_LISTEN_PORT_KEY = "transport_matters_listen_port"
 _MUTATED_MANUALLY_KEY = "transport_matters_mutated_manually"
 _TRACK_ASSIGNMENT_KEY = "transport_matters_track_assignment"
 _CODEX_REQUEST_HEADERS_KEY = "transport_matters_codex_request_headers"
@@ -35,6 +37,8 @@ class RequestFlowState:
     raw_request: bytes
     curated_request_ir: InternalRequest
     audit: OverrideAudit | None
+    run_id: str | None = None
+    listen_port: int | None = None
     track_assignment: TrackAssignment | None = None
     codex_request_headers: dict[str, str] = field(default_factory=dict)
     mutated_manually: bool = False
@@ -81,6 +85,8 @@ def capture_request_flow_state(
     raw_request: bytes,
     curated_request_ir: InternalRequest | None = None,
     audit: OverrideAudit | None = None,
+    run_id: str | None = None,
+    listen_port: int | None = None,
     track_assignment: TrackAssignment | None = None,
     codex_request_headers: dict[str, str] | None = None,
     mutated_manually: bool = False,
@@ -92,6 +98,8 @@ def capture_request_flow_state(
         raw_request=raw_request,
         curated_request_ir=curated_request_ir or request_ir,
         audit=audit,
+        run_id=run_id,
+        listen_port=listen_port,
         track_assignment=track_assignment,
         codex_request_headers=dict(codex_request_headers or {}),
         mutated_manually=mutated_manually,
@@ -101,6 +109,8 @@ def capture_request_flow_state(
     flow.metadata[_RAW_REQUEST_KEY] = state.raw_request
     flow.metadata[_CURATED_REQUEST_IR_KEY] = state.curated_request_ir
     flow.metadata[_AUDIT_KEY] = state.audit
+    flow.metadata[_RUN_ID_KEY] = state.run_id
+    flow.metadata[_LISTEN_PORT_KEY] = state.listen_port
     flow.metadata[_TRACK_ASSIGNMENT_KEY] = state.track_assignment
     flow.metadata[_CODEX_REQUEST_HEADERS_KEY] = state.codex_request_headers
     flow.metadata[_MUTATED_MANUALLY_KEY] = state.mutated_manually
@@ -118,6 +128,8 @@ def get_request_flow_state(flow: http.HTTPFlow) -> RequestFlowState | None:
         return None
     curated_request_ir = flow.metadata.get(_CURATED_REQUEST_IR_KEY, request_ir)
     audit = flow.metadata.get(_AUDIT_KEY)
+    run_id = flow.metadata.get(_RUN_ID_KEY)
+    listen_port = flow.metadata.get(_LISTEN_PORT_KEY)
     track_assignment = flow.metadata.get(_TRACK_ASSIGNMENT_KEY)
     codex_request_headers = _header_map(flow.metadata.get(_CODEX_REQUEST_HEADERS_KEY, {}))
     mutated_manually = flow.metadata.get(_MUTATED_MANUALLY_KEY, False)
@@ -129,6 +141,8 @@ def get_request_flow_state(flow: http.HTTPFlow) -> RequestFlowState | None:
         raw_request=raw_request,
         curated_request_ir=curated_request_ir,
         audit=audit,
+        run_id=run_id if isinstance(run_id, str) else None,
+        listen_port=listen_port if isinstance(listen_port, int) else None,
         track_assignment=track_assignment,
         codex_request_headers=codex_request_headers,
         mutated_manually=mutated_manually,
@@ -147,6 +161,8 @@ def clear_request_flow_state(flow: http.HTTPFlow) -> None:
         _RAW_REQUEST_KEY,
         _CURATED_REQUEST_IR_KEY,
         _AUDIT_KEY,
+        _RUN_ID_KEY,
+        _LISTEN_PORT_KEY,
         _TRACK_ASSIGNMENT_KEY,
         _CODEX_REQUEST_HEADERS_KEY,
         _MUTATED_MANUALLY_KEY,

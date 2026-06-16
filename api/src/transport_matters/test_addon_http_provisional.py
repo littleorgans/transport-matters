@@ -109,6 +109,7 @@ async def test_http_request_persists_provisional_exchange_before_breakpoint(
     async def fake_persist(
         persist_flow: http.HTTPFlow,
         state: RequestFlowState,
+        binding: object | None = None,
     ) -> str:
         assert persist_flow is flow
         assert state.curated_request_ir.system[0].text == "curated system"
@@ -144,6 +145,7 @@ async def test_http_request_leaves_flow_clean_when_provisional_persist_fails(
     async def fake_persist(
         persist_flow: http.HTTPFlow,
         state: RequestFlowState,
+        binding: object | None = None,
     ) -> None:
         nonlocal calls
         calls += 1
@@ -152,7 +154,7 @@ async def test_http_request_leaves_flow_clean_when_provisional_persist_fails(
         return
 
     monkeypatch.setattr(addon_handlers, "run_pipeline", _fake_run_pipeline)
-    monkeypatch.setattr(addon_handlers, "_should_skip_breakpoint", lambda model: True)
+    monkeypatch.setattr(addon_handlers, "_should_skip_breakpoint", lambda model, binding=None: True)
     monkeypatch.setattr(
         addon_handlers,
         "persist_http_provisional_exchange",
@@ -184,11 +186,12 @@ async def test_http_request_preserves_original_bytes_when_pipeline_is_noop(
     async def fake_persist(
         persist_flow: http.HTTPFlow,
         state: RequestFlowState,
+        binding: object | None = None,
     ) -> str:
         return "exchange-noop"
 
     monkeypatch.setattr(addon_handlers, "run_pipeline", noop_pipeline)
-    monkeypatch.setattr(addon_handlers, "_should_skip_breakpoint", lambda model: True)
+    monkeypatch.setattr(addon_handlers, "_should_skip_breakpoint", lambda model, binding=None: True)
     monkeypatch.setattr(
         addon_handlers,
         "persist_http_provisional_exchange",
@@ -227,6 +230,7 @@ async def test_codex_http_request_snapshots_current_identity_headers(
     async def fake_persist(
         persist_flow: http.HTTPFlow,
         state: RequestFlowState,
+        binding: object | None = None,
     ) -> None:
         assert persist_flow is flow
         assert state.codex_request_headers == {
@@ -237,7 +241,7 @@ async def test_codex_http_request_snapshots_current_identity_headers(
 
     monkeypatch.setattr(addon_handlers, "get_adapter", lambda flow: _FakeCodexAdapter())
     monkeypatch.setattr(addon_handlers, "run_pipeline", fake_pipeline)
-    monkeypatch.setattr(addon_handlers, "_should_skip_breakpoint", lambda model: True)
+    monkeypatch.setattr(addon_handlers, "_should_skip_breakpoint", lambda model, binding=None: True)
     monkeypatch.setattr(
         addon_handlers,
         "persist_http_provisional_exchange",
@@ -299,7 +303,10 @@ def _drive_codex_ws_noop(
     ) -> tuple[InternalRequest, None, None]:
         return curated_ir, None, None
 
-    async def noop_persist(persist_flow: http.HTTPFlow) -> None:
+    async def noop_persist(
+        persist_flow: http.HTTPFlow,
+        binding: object | None = None,
+    ) -> None:
         return None
 
     monkeypatch.setattr(
@@ -317,7 +324,7 @@ def _drive_codex_ws_noop(
     monkeypatch.setattr(addon_handlers, "run_pipeline", noop_pipeline)
     monkeypatch.setattr(addon_handlers, "update_request_flow_state", lambda *a, **k: None)
     monkeypatch.setattr(addon_handlers, "persist_codex_provisional_exchange", noop_persist)
-    monkeypatch.setattr(addon_handlers, "_should_skip_breakpoint", lambda model: True)
+    monkeypatch.setattr(addon_handlers, "_should_skip_breakpoint", lambda model, binding=None: True)
     return flow
 
 
@@ -492,6 +499,7 @@ async def test_addon_error_deletes_http_provisional_exchange(
     async def fake_delete(
         delete_flow: http.HTTPFlow,
         delete_state: RequestFlowState,
+        binding: object | None = None,
     ) -> bool:
         calls.append((delete_flow, delete_state))
         return True
@@ -570,6 +578,7 @@ async def test_http_request_records_unparsed_exchange_on_parse_failure(
         record_flow: http.HTTPFlow,
         adapter: object,
         codex_http: bool,
+        binding: object | None = None,
     ) -> None:
         calls.append((record_flow, adapter, codex_http))
 
@@ -605,7 +614,11 @@ async def test_codex_ws_records_unparsed_exchange_when_initial_frame_unparsable(
     )
     calls: list[tuple[http.HTTPFlow, bytes]] = []
 
-    async def fake_unparsed(record_flow: http.HTTPFlow, raw_frame: bytes) -> None:
+    async def fake_unparsed(
+        record_flow: http.HTTPFlow,
+        raw_frame: bytes,
+        binding: object | None = None,
+    ) -> None:
         calls.append((record_flow, raw_frame))
 
     async def fail_pipeline(*args: object, **kwargs: object) -> object:

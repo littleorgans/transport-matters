@@ -1,5 +1,7 @@
 """Addon request and transport orchestration helpers."""
 
+from __future__ import annotations
+
 import logging
 from typing import TYPE_CHECKING
 
@@ -56,10 +58,14 @@ from transport_matters.request_pipeline import (
 if TYPE_CHECKING:
     from mitmproxy import http
 
+    from transport_matters.shared_proxy import ProxyRunBinding
+
 logger = logging.getLogger(__name__)
 
 
-def _should_skip_breakpoint(model: str) -> bool:
+def _should_skip_breakpoint(model: str, binding: ProxyRunBinding | None = None) -> bool:
+    if binding is not None:
+        return any(s in model for s in binding.breakpoint_skip_models)
     settings = get_settings()
     return any(s in model for s in settings.breakpoint_skip_models)
 
@@ -67,6 +73,7 @@ def _should_skip_breakpoint(model: str) -> bool:
 async def handle_http_request(
     flow: http.HTTPFlow,
     token_counter: TokenCountingClient | None,
+    binding: ProxyRunBinding | None = None,
 ) -> None:
     codex_http = is_codex_http_responses_flow(flow)
     if not flow.request.path.startswith("/v1/messages") and not codex_http:
@@ -77,10 +84,10 @@ async def handle_http_request(
         logger.debug("No adapter matches flow %s, passing through", flow.id)
         return
 
-    set_recent_auth(relevant_auth_headers(flow.request.headers))
+    set_recent_auth(relevant_auth_headers(flow.request.headers), binding=binding)
     result = await parse_request_ir(flow, adapter)
     if result is None:
-        await persist_unparsed_http_exchange(flow, adapter, codex_http)
+        await persist_unparsed_http_exchange(flow, adapter, codex_http, binding)
         return
     raw, ir = result
 
@@ -93,7 +100,8 @@ async def handle_http_request(
         len(ir.messages),
     )
 
-    curated_ir, audit, track_assignment = await run_pipeline(ir, flow.id, get_settings().run_id)
+    run_id = binding.run_id if binding is not None else get_settings().run_id
+    curated_ir, audit, track_assignment = await run_pipeline(ir, flow.id, run_id)
     request_state = capture_request_flow_state(
         flow,
         adapter=adapter,
@@ -101,6 +109,8 @@ async def handle_http_request(
         raw_request=raw,
         curated_request_ir=curated_ir,
         audit=audit,
+        run_id=run_id,
+        listen_port=binding.listen_port if binding is not None else None,
         track_assignment=track_assignment,
         codex_request_headers=(
             snapshot_codex_http_request_headers(flow.request.headers) if codex_http else None
@@ -109,6 +119,7 @@ async def handle_http_request(
     provisional_exchange_id = await persist_http_provisional_exchange(
         flow,
         request_state,
+        binding,
     )
     if provisional_exchange_id is not None:
         update_request_flow_state(
@@ -116,12 +127,12 @@ async def handle_http_request(
             provisional_exchange_id=provisional_exchange_id,
         )
 
-    if _should_skip_breakpoint(ir.model):
+    if _should_skip_breakpoint(ir.model, binding):
         logger.info(
             "Breakpoint skip: %s matches breakpoint_skip_models filter",
             flow.id,
         )
-    if not _should_skip_breakpoint(ir.model) and bp.is_armed():
+    if not _should_skip_breakpoint(ir.model, binding) and bp.is_armed():
         logger.info("BREAKPOINT %s armed, pausing", flow.id)
         await handle_breakpoint(flow, adapter, ir, curated_ir, audit, token_counter)
         return
@@ -148,13 +159,16 @@ def log_websocket_start(flow: http.HTTPFlow) -> None:
     )
 
 
-async def handle_codex_websocket_message(flow: http.HTTPFlow) -> None:
+async def handle_codex_websocket_message(
+    flow: http.HTTPFlow,
+    binding: ProxyRunBinding | None = None,
+) -> None:
     update = record_codex_websocket_message(flow)
     if update is None:
         return
     state, message, captured_initial = update
     if state.provisional_exchange_id is not None and is_codex_turn_terminal_message(message):
-        finalized = await finalize_codex_provisional_exchange(flow, None)
+        finalized = await finalize_codex_provisional_exchange(flow, None, binding)
         if not finalized:
             logger.warning(
                 "Failed to finalize provisional Codex exchange on terminal server frame for %s",
@@ -166,7 +180,7 @@ async def handle_codex_websocket_message(flow: http.HTTPFlow) -> None:
         and not captured_initial
         and not message.from_client
     ):
-        rewritten = await rewrite_codex_provisional_exchange(flow)
+        rewritten = await rewrite_codex_provisional_exchange(flow, binding=binding)
         if not rewritten:
             logger.warning(
                 "Failed to rewrite provisional Codex exchange during live server advance for %s",
@@ -182,6 +196,7 @@ async def handle_codex_websocket_message(flow: http.HTTPFlow) -> None:
         finalized = await finalize_codex_provisional_exchange(
             flow,
             None,
+            binding,
             message_end=turn_start_index,
         )
         if not finalized:
@@ -199,7 +214,7 @@ async def handle_codex_websocket_message(flow: http.HTTPFlow) -> None:
         state.initial_client_frame or b"",
     )
     if ir is None:
-        await persist_unparsed_codex_exchange(flow, state.initial_client_frame or b"")
+        await persist_unparsed_codex_exchange(flow, state.initial_client_frame or b"", binding)
         clear_request_flow_state(flow)
         return
     request_state = get_request_flow_state(flow)
@@ -207,14 +222,15 @@ async def handle_codex_websocket_message(flow: http.HTTPFlow) -> None:
         return
     state.provisional_exchange_id = None
     adapter = request_state.adapter
-    curated_ir, audit, track_assignment = await run_pipeline(ir, flow.id, get_settings().run_id)
+    run_id = binding.run_id if binding is not None else get_settings().run_id
+    curated_ir, audit, track_assignment = await run_pipeline(ir, flow.id, run_id)
     update_request_flow_state(
         flow,
         curated_request_ir=curated_ir,
         audit=audit,
         track_assignment=track_assignment,
     )
-    await persist_codex_provisional_exchange(flow)
+    await persist_codex_provisional_exchange(flow, binding)
     level = logging.INFO if message.is_text else logging.WARNING
     kind = "text" if message.is_text else "binary"
     logger.log(
@@ -227,12 +243,12 @@ async def handle_codex_websocket_message(flow: http.HTTPFlow) -> None:
         len(ir.messages),
         len(ir.tools),
     )
-    if _should_skip_breakpoint(ir.model):
+    if _should_skip_breakpoint(ir.model, binding):
         logger.info(
             "Codex breakpoint skip: %s matches breakpoint_skip_models filter",
             flow.id,
         )
-    if not _should_skip_breakpoint(ir.model) and bp.is_armed():
+    if not _should_skip_breakpoint(ir.model, binding) and bp.is_armed():
         logger.info("CODEX BREAKPOINT %s armed, pausing", flow.id)
         await handle_websocket_breakpoint(flow, message, adapter, ir, curated_ir, audit)
         return
@@ -241,7 +257,10 @@ async def handle_codex_websocket_message(flow: http.HTTPFlow) -> None:
         message.content = outbound
 
 
-async def handle_codex_websocket_end(flow: http.HTTPFlow) -> None:
+async def handle_codex_websocket_end(
+    flow: http.HTTPFlow,
+    binding: ProxyRunBinding | None = None,
+) -> None:
     summary = close_codex_transport(flow)
     if summary is None:
         return
@@ -261,7 +280,7 @@ async def handle_codex_websocket_end(flow: http.HTTPFlow) -> None:
         )
         return
     if summary.initial_client_frame_dropped:
-        await delete_codex_provisional_exchange(flow)
+        await delete_codex_provisional_exchange(flow, binding)
         logger.info(
             "CODEX WS END %s close_code=%s closer=%s initial client frame dropped; skipping exchange persistence",
             flow.id,
@@ -279,24 +298,25 @@ async def handle_codex_websocket_end(flow: http.HTTPFlow) -> None:
         summary.server_message_count,
         summary.close_reason or "",
     )
-    await finalize_codex_provisional_exchange(flow, summary)
+    await finalize_codex_provisional_exchange(flow, summary, binding)
 
 
 async def handle_response(
     flow: http.HTTPFlow,
     token_counter: TokenCountingClient | None,
+    binding: ProxyRunBinding | None = None,
 ) -> None:
     if is_codex_http_responses_flow(flow):
         request_state = get_request_flow_state(flow)
         if request_state is None:
             return
-        await persist_http_exchange(flow, request_state, token_counter)
+        await persist_http_exchange(flow, request_state, token_counter, binding)
         return
     if is_codex_websocket_flow(flow) and getattr(flow, "websocket", None) is None:
-        await persist_codex_handshake_failure(flow)
+        await persist_codex_handshake_failure(flow, binding)
         return
 
     request_state = get_request_flow_state(flow)
     if request_state is None:
         return
-    await persist_http_exchange(flow, request_state, token_counter)
+    await persist_http_exchange(flow, request_state, token_counter, binding)
