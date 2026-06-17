@@ -13,8 +13,10 @@ mints the uuid, and threads the returned descriptor into the addon env + the res
 
 import json
 import subprocess
+import threading
 from dataclasses import dataclass
 from datetime import UTC
+from pathlib import Path
 from typing import TYPE_CHECKING, Any  # Any: a provider-shaped session_meta record
 
 from transport_matters.index.adapters.base import FileTailSource, encode_source_descriptor
@@ -22,7 +24,6 @@ from transport_matters.index.adapters.base import FileTailSource, encode_source_
 if TYPE_CHECKING:
     from collections.abc import Callable
     from datetime import datetime
-    from pathlib import Path
 
 # codex tags its rollout `session_meta.payload.originator`; the TUI value keeps the seeded session
 # indistinguishable from a natively-started one when `codex resume` reloads it.
@@ -30,6 +31,16 @@ _ORIGINATOR = "codex-tui"
 # Best-effort fallback when the codex binary cannot report its version (it is metadata in the
 # rollout, not a resume gate); never let a version probe fail the launch.
 _UNKNOWN_CODEX_VERSION = "0.0.0"
+
+
+@dataclass(frozen=True, slots=True)
+class _CodexCliVersionCacheKey:
+    resolved_path: str
+    mtime_ns: int
+
+
+_CODEX_CLI_VERSION_LOCK = threading.Lock()
+_CODEX_CLI_VERSION_CACHE: dict[_CodexCliVersionCacheKey, str] = {}
 
 
 @dataclass(frozen=True, slots=True)
@@ -107,6 +118,29 @@ def resolve_codex_cli_version(codex_path: str, *, run: Callable[..., Any] = subp
 
     The version is rollout metadata, not a resume gate, so any failure (missing binary, odd output)
     degrades to a sentinel rather than failing the launch."""
+    cache_key = _codex_cli_version_cache_key(codex_path)
+    if cache_key is None:
+        return _run_codex_cli_version(codex_path, run=run)
+
+    with _CODEX_CLI_VERSION_LOCK:
+        cached = _CODEX_CLI_VERSION_CACHE.get(cache_key)
+        if cached is not None:
+            return cached
+        version = _run_codex_cli_version(codex_path, run=run)
+        _CODEX_CLI_VERSION_CACHE[cache_key] = version
+        return version
+
+
+def _codex_cli_version_cache_key(codex_path: str) -> _CodexCliVersionCacheKey | None:
+    try:
+        resolved = Path(codex_path).resolve(strict=True)
+        stat = resolved.stat()
+    except OSError:
+        return None
+    return _CodexCliVersionCacheKey(str(resolved), stat.st_mtime_ns)
+
+
+def _run_codex_cli_version(codex_path: str, *, run: Callable[..., Any]) -> str:
     try:
         result = run(
             [codex_path, "--version"],
@@ -119,3 +153,8 @@ def resolve_codex_cli_version(codex_path: str, *, run: Callable[..., Any] = subp
         return _UNKNOWN_CODEX_VERSION
     out = (getattr(result, "stdout", "") or "").strip()
     return out.split()[-1] if out else _UNKNOWN_CODEX_VERSION
+
+
+def _reset_codex_cli_version_cache_for_tests() -> None:
+    with _CODEX_CLI_VERSION_LOCK:
+        _CODEX_CLI_VERSION_CACHE.clear()

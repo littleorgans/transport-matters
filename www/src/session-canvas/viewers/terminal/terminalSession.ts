@@ -17,6 +17,8 @@ export interface TerminalSessionOptions {
   buildUrl: (cols: number, rows: number) => string;
   /** Receive inbound JSON text frames (captured-run ready/error). Bare terminal omits it. */
   onTextFrame?: (text: string) => void;
+  /** Receive the first ordinary PTY output frame. */
+  onOutput?: () => void;
   /** Registers a drop-paste handle for this pane while mounted. */
   paneId?: string;
   /**
@@ -36,6 +38,7 @@ export interface TerminalSessionOptions {
  */
 export function useTerminalSession({
   buildUrl,
+  onOutput,
   onTextFrame,
   paneId,
   suppressColorQueryReplies,
@@ -48,6 +51,8 @@ export function useTerminalSession({
   buildUrlRef.current = buildUrl;
   const onTextFrameRef = useRef(onTextFrame);
   onTextFrameRef.current = onTextFrame;
+  const onOutputRef = useRef(onOutput);
+  onOutputRef.current = onOutput;
   const suppressColorRef = useRef(suppressColorQueryReplies);
   suppressColorRef.current = suppressColorQueryReplies;
 
@@ -104,6 +109,9 @@ export function useTerminalSession({
       },
       onTextFrame: (text) => {
         if (!disposed) onTextFrameRef.current?.(text);
+      },
+      onOutput: () => {
+        if (!disposed) onOutputRef.current?.();
       },
     });
     socket.sendResize(term.cols, term.rows);

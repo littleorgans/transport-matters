@@ -66,6 +66,9 @@ class MockWebSocket {
   emitText(text: string): void {
     this.onmessage?.({ data: text });
   }
+  emitBinary(data = new Uint8Array([65]).buffer): void {
+    this.onmessage?.({ data });
+  }
 }
 
 describe("CapturedRunPane", () => {
@@ -92,6 +95,17 @@ describe("CapturedRunPane", () => {
     await waitFor(() => expect(sockets).toHaveLength(1));
     expect(createCapturedRunMock).toHaveBeenCalledWith("claude", undefined, true);
     expect(only(sockets).url).toMatch(/\/v1\/runs\/run-abc123\/terminal\?cols=80&rows=24$/);
+  });
+
+  it("shows an initializing indicator until first terminal output", async () => {
+    createCapturedRunMock.mockResolvedValue("run-abc123");
+
+    render(<CapturedRunPane runKey="claude:k1" provider="claude" />);
+
+    await waitFor(() => expect(sockets).toHaveLength(1));
+    expect(screen.getByRole("status")).toHaveTextContent(/Starting Claude/);
+    act(() => only(sockets).emitBinary());
+    await waitFor(() => expect(screen.queryByRole("status")).toBeNull());
   });
 
   it("uses the core OSC color replies toggle at spawn time", async () => {

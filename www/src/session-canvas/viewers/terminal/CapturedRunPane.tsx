@@ -62,7 +62,13 @@ export function CapturedRunPane({ runKey, provider, cwd }: CapturedRunPaneProps)
     );
   }
   if (runId === null) {
-    return <div className="terminal-pane" aria-busy="true" />;
+    return (
+      <div className="terminal-pane" aria-busy="true">
+        <p className="terminal-pane__status terminal-pane__status--progress" role="status">
+          Starting {cliLabel(provider)}…
+        </p>
+      </div>
+    );
   }
   return <AttachedRunTerminal paneId={runKey} provider={provider} runId={runId} />;
 }
@@ -78,6 +84,7 @@ function AttachedRunTerminal({
   runId: string;
 }): ReactElement {
   const [errorFrame, setErrorFrame] = useState<RunErrorFrame | null>(null);
+  const [hasOutput, setHasOutput] = useState(false);
 
   const buildUrl = useCallback(
     (cols: number, rows: number) => runTerminalSocketUrl(runId, cols, rows),
@@ -89,9 +96,11 @@ function AttachedRunTerminal({
     const frame = parseRunErrorFrame(text);
     if (frame) setErrorFrame(frame);
   }, []);
+  const onOutput = useCallback(() => setHasOutput(true), []);
 
   const { surfaceRef, closedCode } = useTerminalSession({
     buildUrl,
+    onOutput,
     onTextFrame,
     paneId,
     suppressColorQueryReplies: true,
@@ -106,6 +115,11 @@ function AttachedRunTerminal({
           {status}
         </p>
       )}
+      {status === null && !hasOutput ? (
+        <p className="terminal-pane__status terminal-pane__status--progress" role="status">
+          Starting {cliLabel(provider)}…
+        </p>
+      ) : null}
     </div>
   );
 }

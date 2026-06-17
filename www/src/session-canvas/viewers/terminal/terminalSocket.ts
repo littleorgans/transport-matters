@@ -24,6 +24,8 @@ interface OpenTerminalSocketOptions {
   socketFactory?: SocketFactory;
   /** Connection lifecycle, so the pane can surface a refused/closed state. */
   onStatus?: (status: "open" | "closed", info?: { code: number; reason: string }) => void;
+  /** Ordinary PTY output, separate from JSON control frames. */
+  onOutput?: () => void;
   /**
    * Inbound JSON text frames (e.g. the captured-run ready/error frames). The bare
    * terminal omits this, so out-of-band control echoes stay ignored rather than
@@ -124,6 +126,7 @@ export function openTerminalSocket(
       options.onTextFrame?.(data);
       return;
     }
+    options.onOutput?.();
     term.write(toBytes(data as ArrayBuffer | ArrayBufferView));
   };
 

@@ -1,11 +1,13 @@
 """Managed-mint launch seam for codex (§5.2b): rollout path, session_meta seed, version resolve."""
 
 import json
+import os
 from datetime import UTC, datetime
 from pathlib import Path
 
 from transport_matters.cli.codex_session import (
     CodexSessionSeed,
+    _reset_codex_cli_version_cache_for_tests,
     build_session_meta,
     codex_rollout_path,
     resolve_codex_cli_version,
@@ -115,6 +117,39 @@ class TestSeed:
 
 
 class TestVersionResolve:
+    def test_caches_version_by_binary_path_and_mtime(self, tmp_path: Path) -> None:
+        _reset_codex_cli_version_cache_for_tests()
+        codex = tmp_path / "codex"
+        codex.write_text("#!/bin/sh\n", encoding="utf-8")
+        calls: list[list[str]] = []
+
+        def fake_run(args: list[str], **_kwargs: object) -> object:
+            calls.append(args)
+            return type("R", (), {"stdout": "codex-cli 0.137.0\n"})()
+
+        assert resolve_codex_cli_version(str(codex), run=fake_run) == "0.137.0"
+        assert resolve_codex_cli_version(str(codex), run=fake_run) == "0.137.0"
+        assert calls == [[str(codex), "--version"]]
+
+    def test_re_resolves_version_when_binary_path_or_mtime_changes(self, tmp_path: Path) -> None:
+        _reset_codex_cli_version_cache_for_tests()
+        codex_a = tmp_path / "codex-a"
+        codex_b = tmp_path / "codex-b"
+        codex_a.write_text("#!/bin/sh\n", encoding="utf-8")
+        codex_b.write_text("#!/bin/sh\n", encoding="utf-8")
+        calls = 0
+
+        def fake_run(*_args: object, **_kwargs: object) -> object:
+            nonlocal calls
+            calls += 1
+            return type("R", (), {"stdout": f"codex-cli 0.137.{calls}\n"})()
+
+        assert resolve_codex_cli_version(str(codex_a), run=fake_run) == "0.137.1"
+        assert resolve_codex_cli_version(str(codex_b), run=fake_run) == "0.137.2"
+        next_mtime_ns = codex_a.stat().st_mtime_ns + 1_000_000_000
+        os.utime(codex_a, ns=(next_mtime_ns, next_mtime_ns))
+        assert resolve_codex_cli_version(str(codex_a), run=fake_run) == "0.137.3"
+
     def test_parses_trailing_semver_from_version_output(self) -> None:
         def fake_run(*_args: object, **_kwargs: object) -> object:
             return type("R", (), {"stdout": "codex-cli 0.137.0\n"})()
