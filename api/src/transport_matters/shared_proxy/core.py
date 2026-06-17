@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
+from threading import Lock
 from typing import TYPE_CHECKING
 
 from transport_matters.addon_runtime import (
@@ -23,6 +24,7 @@ from transport_matters.shared_proxy.control import SharedProxyControlError
 from transport_matters.storage.transcript_snapshot import make_transcript_snapshot_writer
 
 if TYPE_CHECKING:
+    from _thread import LockType
     from collections.abc import Callable
 
     from transport_matters.counting import TokenCountingClient
@@ -36,32 +38,38 @@ class SharedTranscriptSnapshotWriter:
 
     _writers_by_run_id: dict[str, Callable[[str, int, bytes], None]] = field(default_factory=dict)
     _run_id_by_session: dict[str, str] = field(default_factory=dict)
+    _lock: LockType = field(default_factory=Lock, init=False, repr=False)
 
     def register_run(self, run_id: str, storage_root: Path) -> None:
-        self._writers_by_run_id[run_id] = make_transcript_snapshot_writer(storage_root)
+        writer = make_transcript_snapshot_writer(storage_root)
+        with self._lock:
+            self._writers_by_run_id[run_id] = writer
 
     def register_session(self, binding: SessionBinding) -> None:
         run_id = binding.run_id
-        if run_id in self._writers_by_run_id:
-            self._run_id_by_session[binding.session_id] = run_id
+        with self._lock:
+            if run_id in self._writers_by_run_id:
+                self._run_id_by_session[binding.session_id] = run_id
 
     def register_cursor(self, cursor: TailCursor) -> None:
         self.register_session(cursor.binding)
 
     def unregister(self, run_id: str) -> tuple[str, ...]:
-        self._writers_by_run_id.pop(run_id, None)
-        sessions = tuple(
-            session_id
-            for session_id, mapped_run_id in self._run_id_by_session.items()
-            if mapped_run_id == run_id
-        )
-        for session_id in sessions:
-            self._run_id_by_session.pop(session_id, None)
-        return sessions
+        with self._lock:
+            self._writers_by_run_id.pop(run_id, None)
+            sessions = tuple(
+                session_id
+                for session_id, mapped_run_id in list(self._run_id_by_session.items())
+                if mapped_run_id == run_id
+            )
+            for session_id in sessions:
+                self._run_id_by_session.pop(session_id, None)
+            return sessions
 
     def __call__(self, session_id: str, start_offset: int, consumed: bytes) -> None:
-        run_id = self._run_id_by_session.get(session_id)
-        writer = self._writers_by_run_id.get(run_id) if run_id is not None else None
+        with self._lock:
+            run_id = self._run_id_by_session.get(session_id)
+            writer = self._writers_by_run_id.get(run_id) if run_id is not None else None
         if writer is None:
             msg = f"no transcript snapshot writer registered for session {session_id!r}"
             raise RuntimeError(msg)
