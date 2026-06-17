@@ -6,16 +6,19 @@ import json
 from typing import TYPE_CHECKING, Any
 from urllib.parse import parse_qs, urlparse
 
+import pytest
+import typer
 from click.core import ParameterSource
 from typer.testing import CliRunner
 
 import transport_matters.cli as cli
 from transport_matters import env_keys
-from transport_matters.cli import main
+from transport_matters.cli import desktop_cmd, main
 from transport_matters.cli.desktop_cmd import (
     ElectronLaunch,
     prepare_desktop_launch,
     run_desktop_launch,
+    serve_desktop_backend,
 )
 
 from ._helpers import _plain
@@ -23,8 +26,6 @@ from ._helpers import _plain
 if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
-
-    import pytest
 
 runner = CliRunner()
 
@@ -219,6 +220,36 @@ def test_desktop_backend_env_has_no_initial_run_fields(tmp_path: Path) -> None:
     assert env_keys.CLI not in plan.env
     assert env_keys.DEFAULT_CLIENT_PASSTHROUGH not in plan.env
     assert env_keys.RUN_ID not in plan.env
+
+
+def test_desktop_backend_server_hard_blocks_on_session_store_preflight(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    plan = prepare_desktop_launch(
+        work_dir=tmp_path,
+        proxy_port=9900,
+        web_port=9901,
+        storage_dir=tmp_path / "storage",
+        launch_viewer=False,
+    )
+    preflight_calls: list[bool] = []
+
+    def fail_preflight() -> None:
+        preflight_calls.append(True)
+        raise typer.Exit(2)
+
+    def fail_create_app() -> None:
+        raise AssertionError("desktop backend must not serve after failed store preflight")
+
+    monkeypatch.setattr(desktop_cmd, "preflight_session_store_or_exit", fail_preflight)
+    monkeypatch.setattr("transport_matters.main.create_app", fail_create_app)
+
+    with pytest.raises(typer.Exit) as exc:
+        serve_desktop_backend(plan)
+
+    assert exc.value.exit_code == 2
+    assert preflight_calls == [True]
 
 
 def test_desktop_route_flag_targets_canvas_lab(

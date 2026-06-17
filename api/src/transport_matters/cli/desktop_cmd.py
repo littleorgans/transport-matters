@@ -20,6 +20,7 @@ from transport_matters import env_keys
 from transport_matters.storage_roots import default_storage_root
 from transport_matters.workspace import workspace_id
 
+from .launch_runtime import preflight_session_store_or_exit
 from .net import LOOPBACK_HOST, loopback_http_url, wait_for_port_ready
 
 if TYPE_CHECKING:
@@ -267,6 +268,7 @@ def serve_desktop_backend(
 ) -> None:
     """Serve the desktop backend, optionally notifying after readiness."""
     _apply_desktop_backend_env(plan.env)
+    preflight_session_store_or_exit()
 
     import uvicorn
 
