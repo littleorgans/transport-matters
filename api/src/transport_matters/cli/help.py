@@ -30,7 +30,7 @@ _ROOT_HELP = dedent(f"""\
     Commands
   claude    Run proxy + Claude Code together (one command, one session)
   codex     Run proxy + Codex together (ChatGPT transport path)
-  desktop   Run an interactive agent and open the Electron canvas
+  desktop   Open the desktop canvas and local backend
   list      List live Transport Matters instances
       doctor    Diagnose the local environment
       paths     Show storage and package locations
@@ -164,42 +164,19 @@ _CODEX_HELP = dedent(f"""\
 _DESKTOP_HELP = dedent(f"""\
     Start the Transport Matters desktop canvas.
 
-    Starts the selected agent in this terminal, exactly like the `claude`
-    or `codex` command, then opens the Electron canvas as a detached viewer
-    pointed at the same backend. The default agent is Claude.
+    Starts the local backend and opens the Electron canvas. Start Claude or
+    Codex from captured panes inside the desktop UI.
 
     Options
-          --agent claude|codex   Agent to launch (default: claude)
-          --work-dir PATH        Working dir for the agent and canvas (default: cwd)
-      -p, --proxy-port INT       Proxy listener port (default: kernel-allocated free port)
+          --work-dir PATH        Initial workspace hint for the canvas (default: cwd)
       -w, --web-port INT         Web UI port (default: kernel-allocated free port)
       -d, --storage-dir PATH     Data directory (default ~/.transport-matters/)
-          --agent-home-dir PATH        Agent home for config and transcripts
-          --debug                Verbose mitmproxy output
-          --print-command        Print the child invocations and exit
-
-    Claude options
-      -u, --upstream URL         Upstream provider URL (default https://api.anthropic.com)
-          --claude-bin PATH      Path to Claude Code (default: `claude` on PATH)
-          --no-claude            Run proxy only; skip spawning Claude Code
-          --no-system-prompt     Skip the auto-injected Transport Matters system prompt
-
-    Codex options
-          --codex-bin PATH       Path to Codex (default: `codex` on PATH)
-          --no-codex             Run proxy only; skip spawning Codex
-          --force-http-fallback  Test mode: force the HTTPS Responses path
       -h, --help                 Show this message and exit
-
-    Pass-through
-      Anything after `--` is forwarded verbatim to the selected agent.
-        $ {CLI_COMMAND} desktop -- --model sonnet
-        $ {CLI_COMMAND} desktop --agent codex -- exec "fix the failing test"
 
     Examples
       $ {CLI_COMMAND} desktop
       $ {CLI_COMMAND} desktop --work-dir ~/my-project
-      $ {CLI_COMMAND} desktop --agent codex
-      $ {CLI_COMMAND} desktop --proxy-port 9000 --web-port 9001
+      $ {CLI_COMMAND} desktop --web-port 9001
 """)
 
 _DOCTOR_HELP = dedent(f"""\

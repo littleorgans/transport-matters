@@ -582,7 +582,7 @@ def _websocket_headers(origin: str, *, host: str = "localhost:8788") -> dict[str
 
 
 @pytest.mark.parametrize("cli_name", [CLAUDE_CLIENT_NAME, "codex"])
-def test_spawn_request_uses_settings_default_passthrough(cli_name: str, tmp_path: Path) -> None:
+def test_spawn_request_ignores_settings_default_passthrough(cli_name: str, tmp_path: Path) -> None:
     settings = Settings(
         cwd=tmp_path,
         default_client_passthrough=("--dangerously-skip-permissions", "--model", "sonnet"),
@@ -591,14 +591,14 @@ def test_spawn_request_uses_settings_default_passthrough(cli_name: str, tmp_path
     request = run_routes._spawn_request(run_routes.CreateRunRequest(cli=cli_name), settings)
 
     assert request.cli == cli_name
-    assert request.passthrough == settings.default_client_passthrough
+    assert request.passthrough == ()
     assert request.cwd == tmp_path
 
 
 def test_spawn_request_is_nested_capture_only(tmp_path: Path) -> None:
     # A captured run never allocates a nested web port: it is capture-only, the CLI's
-    # web co-process stays external. The default lives in SpawnRun; assert it survives
-    # the POST request builder so a managed run can never leak a bound web port.
+    # web co-process stays external. Pane launch passthrough stays explicit and empty,
+    # so a managed run can never leak stale desktop passthrough or a bound web port.
     settings = Settings(cwd=tmp_path)
 
     request = run_routes._spawn_request(

@@ -49,8 +49,7 @@ revision; `transport-matters db upgrade` applies migrations explicitly.
 ## 4. Run
 
 ```bash
-transport-matters desktop                  # interactive agent + the canvas
-transport-matters desktop --agent codex
+transport-matters desktop                  # desktop canvas + local backend
 transport-matters claude --work-dir ~/project
 transport-matters codex
 ```

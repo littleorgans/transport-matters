@@ -8,7 +8,6 @@ from urllib.parse import parse_qs, urlparse
 
 import pytest
 import typer
-from click.core import ParameterSource
 from typer.testing import CliRunner
 
 import transport_matters.cli as cli
@@ -30,42 +29,45 @@ if TYPE_CHECKING:
 runner = CliRunner()
 
 
-class _DefaultOptionContext:
-    def get_parameter_source(self, _name: str) -> ParameterSource:
-        return ParameterSource.DEFAULT
-
-
-def test_desktop_help_lists_canvas_and_agent_options() -> None:
+def test_desktop_help_lists_backend_shell_options() -> None:
     result = runner.invoke(main, ["desktop", "--help"])
     assert result.exit_code == 0
     output = _plain(result.output)
-    assert "--agent" in output
     assert "--work-dir" in output
-    assert "--agent-home-dir" in output
-    assert "--claude-bin" in output
-    assert "--codex-bin" in output
-    assert "--force-http-fallback" in output
+    assert "--web-port" in output
+    assert "--storage-dir" in output
     assert "Electron canvas" in output
+    assert "--agent" not in output
+    assert "--agent-home-dir" not in output
+    assert "--claude-bin" not in output
+    assert "--codex-bin" not in output
+    assert "--force-http-fallback" not in output
+    assert "--print-command" not in output
+    assert "Pass-through" not in output
 
 
-def test_desktop_accepts_codex_options_as_noops_for_default_claude(tmp_path: Path) -> None:
-    codex_bin = tmp_path / "codex"
-    codex_bin.write_text("#!/bin/sh\n")
+@pytest.mark.parametrize(
+    "args",
+    [
+        ["--agent", "codex"],
+        ["--agent-home-dir", "/tmp/agent-home"],
+        ["--debug"],
+        ["--print-command"],
+        ["--upstream", "http://example.invalid"],
+        ["--claude-bin", "/bin/echo"],
+        ["--no-claude"],
+        ["--no-system-prompt"],
+        ["--codex-bin", "/bin/echo"],
+        ["--no-codex"],
+        ["--force-http-fallback"],
+        ["--", "exec", "hello"],
+    ],
+)
+def test_desktop_rejects_provider_flags_and_passthrough(args: list[str]) -> None:
+    result = runner.invoke(main, ["desktop", *args])
 
-    result = runner.invoke(main, ["desktop", "--print-command", "--codex-bin", str(codex_bin)])
-
-    assert result.exit_code == 0
-    assert "_desktop-backend" in result.output
-
-
-def test_desktop_accepts_claude_options_as_noops_for_codex() -> None:
-    result = runner.invoke(
-        main,
-        ["desktop", "--agent", "codex", "--no-system-prompt", "--print-command"],
-    )
-
-    assert result.exit_code == 0
-    assert "_desktop-backend" in result.output
+    assert result.exit_code == 2
+    assert "No such option" in result.output or "Got unexpected extra argument" in result.output
 
 
 def test_desktop_ignores_ambient_cross_agent_env(
@@ -80,19 +82,15 @@ def test_desktop_ignores_ambient_cross_agent_env(
 
     result = runner.invoke(
         main,
-        ["desktop", "--agent", "codex", "--print-command"],
+        ["desktop"],
         env={env_keys.UPSTREAM_URL: "http://ambient.example"},
     )
 
     assert result.exit_code == 0
     assert calls == {
-        "route": "canvas",
         "work_dir": None,
-        "proxy_port": None,
         "web_port": None,
         "storage_dir": None,
-        "debug": False,
-        "print_command": True,
         "allocate_port_pair_func": cli.allocate_port_pair,
     }
 
@@ -115,17 +113,16 @@ def test_desktop_command_uses_backend_server_path_not_provider_launches(
 
     result = runner.invoke(
         main,
-        ["desktop", "--agent", "codex", "--work-dir", str(tmp_path), "--", "exec", "hello"],
+        ["desktop", "--work-dir", str(tmp_path)],
     )
 
     assert result.exit_code == 0
     assert calls["work_dir"] == tmp_path
-    assert calls["proxy_port"] is None
     assert calls["web_port"] is None
     assert calls["allocate_port_pair_func"] is cli.allocate_port_pair
 
 
-def test_desktop_command_ignores_passthrough_without_provider_launch(
+def test_desktop_command_passes_only_backend_launch_options(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -142,16 +139,18 @@ def test_desktop_command_ignores_passthrough_without_provider_launch(
             "desktop",
             "--work-dir",
             str(tmp_path),
-            "--",
-            "--dangerously-skip-permissions",
-            "--model",
-            "sonnet",
+            "--web-port",
+            "9901",
+            "--storage-dir",
+            str(tmp_path / "storage"),
         ],
     )
 
     assert result.exit_code == 0
     assert calls["work_dir"] == tmp_path
-    assert "default_client_passthrough" not in calls
+    assert calls["web_port"] == 9901
+    assert calls["storage_dir"] == tmp_path / "storage"
+    assert set(calls) == {"work_dir", "web_port", "storage_dir", "allocate_port_pair_func"}
 
 
 def test_desktop_startup_hook_emits_json_and_spawns_electron(

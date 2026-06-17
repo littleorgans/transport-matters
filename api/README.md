@@ -26,9 +26,8 @@ curl -fsSL https://github.com/littleorgans/transport-matters/releases/latest/dow
 transport-matters claude                         # in the current directory
 transport-matters claude --work-dir ~/my-project # in a specific working directory
 
-# Desktop canvas: keeps the agent interactive in this terminal
+# Desktop canvas with a local backend
 transport-matters desktop --work-dir ~/my-project
-transport-matters desktop --agent codex --work-dir ~/my-project
 
 # Proxy-only (bring your own client)
 transport-matters claude --no-claude
