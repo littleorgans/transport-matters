@@ -1,5 +1,6 @@
 """Implementation of the `transport-matters codex` command."""
 
+import atexit
 import contextlib
 import hashlib
 import os
@@ -89,6 +90,8 @@ class _CodexCACacheKey:
 
 _CODEX_CA_CACHE_LOCK = threading.Lock()
 _CODEX_CA_CACHE: dict[_CodexCACacheKey, str] = {}
+_CODEX_CA_CACHE_BUNDLE_DIRS: set[Path] = set()
+_CODEX_CA_CLEANUP_REGISTERED = False
 
 
 def _resolve_codex_ca_certificate_or_exit(
@@ -175,13 +178,18 @@ def _resolve_generated_codex_ca_certificate(
         if cached is not None and Path(cached).is_file():
             return cached
         bundle_dir = Path(tempfile.mkdtemp(prefix="transport-matters-codex-ca-"))
-        resolved = str(
-            resolve_codex_ca_certificate(
-                env=env,
-                bundle_dir=bundle_dir,
+        try:
+            resolved = str(
+                resolve_codex_ca_certificate(
+                    env=env,
+                    bundle_dir=bundle_dir,
+                )
             )
-        )
+        except Exception:
+            shutil.rmtree(bundle_dir, ignore_errors=True)
+            raise
         _CODEX_CA_CACHE[cache_key] = resolved
+        _register_codex_ca_bundle_dir_for_exit_cleanup(bundle_dir)
         return resolved
 
 
@@ -235,8 +243,26 @@ def _path_fingerprint(path: Path) -> _PathFingerprint:
 
 
 def _reset_codex_ca_certificate_cache_for_tests() -> None:
+    global _CODEX_CA_CLEANUP_REGISTERED
+    _cleanup_codex_ca_cache_for_process_exit()
+    _CODEX_CA_CLEANUP_REGISTERED = False
+
+
+def _register_codex_ca_bundle_dir_for_exit_cleanup(bundle_dir: Path) -> None:
+    global _CODEX_CA_CLEANUP_REGISTERED
+    _CODEX_CA_CACHE_BUNDLE_DIRS.add(bundle_dir)
+    if not _CODEX_CA_CLEANUP_REGISTERED:
+        atexit.register(_cleanup_codex_ca_cache_for_process_exit)
+        _CODEX_CA_CLEANUP_REGISTERED = True
+
+
+def _cleanup_codex_ca_cache_for_process_exit() -> None:
     with _CODEX_CA_CACHE_LOCK:
+        bundle_dirs = tuple(_CODEX_CA_CACHE_BUNDLE_DIRS)
+        _CODEX_CA_CACHE_BUNDLE_DIRS.clear()
         _CODEX_CA_CACHE.clear()
+    for bundle_dir in bundle_dirs:
+        shutil.rmtree(bundle_dir, ignore_errors=True)
 
 
 def _resolve_proxy_only_codex_ca_hint(*, env: Mapping[str, str]) -> str | None:
