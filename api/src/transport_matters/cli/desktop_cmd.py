@@ -1,19 +1,15 @@
-"""Desktop canvas launch glue.
-
-The desktop command deliberately reuses the existing Claude and Codex
-foreground launch paths. This module only validates the union CLI surface,
-emits the canvas launch contract once the backend is ready, and starts the
-detached Electron viewer.
-"""
+"""Desktop canvas launch glue."""
 
 from __future__ import annotations
 
 import json
 import os
+import shlex
 import shutil
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
+from threading import Thread
 from typing import TYPE_CHECKING, Any, cast
 from urllib.parse import urlencode
 
@@ -21,21 +17,36 @@ import typer
 from click.core import ParameterSource
 
 from transport_matters import env_keys
+from transport_matters.storage_roots import default_storage_root
 from transport_matters.workspace import workspace_id
 
-from .net import loopback_http_url
+from .net import LOOPBACK_HOST, loopback_http_url, wait_for_port_ready
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
 
-    from .launch_options import AgentName
-    from .runner import ManagedClient
+    from .launch_options import AgentName, RouteName
 
 DESKTOP_APP_BIN_ENV = env_keys.DESKTOP_APP_BIN
 DESKTOP_APP_DIR_ENV = env_keys.DESKTOP_APP_DIR
 DESKTOP_ELECTRON_BIN_ENV = env_keys.DESKTOP_ELECTRON_BIN
 DESKTOP_ROUTE_URL_ENV = env_keys.DESKTOP_ROUTE_URL
 DESKTOP_CLIENT_ENV = env_keys.DESKTOP_CLIENT
+DESKTOP_BACKEND_COMMAND = "_desktop-backend"
+DEBUG_ENV = f"{env_keys.ENV_PREFIX}DEBUG"
+_BACKEND_READY_TIMEOUT_S = 15.0
+_DESKTOP_BACKEND_STALE_ENV_KEYS = (
+    DESKTOP_CLIENT_ENV,
+    DESKTOP_ROUTE_URL_ENV,
+    env_keys.AGENT_HOME_DIR,
+    env_keys.CLI,
+    env_keys.DEFAULT_CLIENT_PASSTHROUGH,
+    env_keys.LAUNCH_FIELDS,
+    env_keys.OWNED_NATIVE_SESSION_ID,
+    env_keys.OWNED_SOURCE_DESCRIPTOR,
+    env_keys.RESUME_CONTEXT,
+    env_keys.RUN_ID,
+)
 
 _CLAUDE_ONLY_OPTIONS = frozenset({"upstream", "claude_bin", "no_claude", "no_system_prompt"})
 _CODEX_ONLY_OPTIONS = frozenset({"codex_bin", "no_codex", "force_http_fallback"})
@@ -60,103 +71,103 @@ class ElectronLaunch:
 
 @dataclass(frozen=True)
 class DesktopLaunchPlan:
-    """Validated desktop command plan."""
+    """Resolved desktop backend launch plan."""
 
-    agent: AgentName
-    run_client_with_retry: Callable[..., None]
+    command: tuple[str, ...]
+    electron_launch: ElectronLaunch | None
+    env: dict[str, str]
+    event: dict[str, Any]
+    web_port: int
 
 
 class ElectronResolutionError(RuntimeError):
     """Raised when the Electron viewer cannot be resolved before launch."""
 
 
+class DesktopBackendStartError(RuntimeError):
+    """Raised when the desktop backend does not become reachable."""
+
+
 def prepare_desktop_launch(
     *,
-    ctx: typer.Context,
-    agent: AgentName,
-    base_run_client_with_retry: Callable[..., None],
-    route: str = "canvas",
+    route: RouteName = "canvas",
+    work_dir: Path | None = None,
+    proxy_port: int | None = None,
+    web_port: int | None = None,
+    storage_dir: Path | None = None,
+    debug: bool = False,
+    env: Mapping[str, str] | None = None,
+    allocate_port_pair_func: Callable[[], tuple[int, int]] | None = None,
     launch_viewer: bool = True,
     resolve_electron_launch_func: Callable[[], ElectronLaunch] | None = None,
-    spawn_electron_func: Callable[[ElectronLaunch, dict[str, Any]], None] | None = None,
 ) -> DesktopLaunchPlan:
-    """Validate desktop options and wrap the launch retry hook."""
-    normalized_agent = _normalize_agent(agent)
+    """Resolve the backend server launch used by the desktop shell."""
     normalized_route = _normalize_route(route)
-    _reject_irrelevant_options(ctx, normalized_agent)
+    resolved_proxy_port, resolved_web_port = _resolve_backend_ports(
+        proxy_port,
+        web_port,
+        allocate_port_pair_func=allocate_port_pair_func,
+    )
+    resolved_cwd = _resolve_work_dir(work_dir)
+    resolved_storage = _resolve_storage_dir(storage_dir)
+    launch_env = _build_desktop_backend_env(
+        cwd=resolved_cwd,
+        storage_dir=resolved_storage,
+        proxy_port=resolved_proxy_port,
+        web_port=resolved_web_port,
+        debug=debug,
+        env=env,
+    )
+    event = build_backend_started_event(
+        route=normalized_route,
+        cwd=resolved_cwd,
+        resolved_storage=resolved_storage,
+        web_port=resolved_web_port,
+    )
     resolve_electron = resolve_electron_launch_func or resolve_electron_launch
-    spawn_electron = spawn_electron_func or spawn_detached_electron
     electron_launch = _resolve_or_exit(resolve_electron) if launch_viewer else None
-
-    def run_client_with_retry(**kwargs: Any) -> None:
-        previous_hook = kwargs.pop("on_backend_ready", None)
-
-        def on_backend_ready(
-            launch_env: dict[str, str],
-            resolved_storage: Path,
-            client: ManagedClient | None,
-            proxy_port: int,
-            web_port: int,
-        ) -> None:
-            if previous_hook is not None:
-                previous_hook(launch_env, resolved_storage, client, proxy_port, web_port)
-            event = build_backend_started_event(
-                agent=normalized_agent,
-                route=normalized_route,
-                launch_env=launch_env,
-                resolved_storage=resolved_storage,
-                proxy_port=proxy_port,
-                web_port=web_port,
-            )
-            typer.echo(json.dumps(event, separators=(",", ":"), sort_keys=True))
-            if electron_launch is not None:
-                _spawn_or_exit(spawn_electron, electron_launch, event)
-
-        kwargs["on_backend_ready"] = on_backend_ready
-        base_run_client_with_retry(**kwargs)
-
     return DesktopLaunchPlan(
-        agent=normalized_agent,
-        run_client_with_retry=run_client_with_retry,
+        command=_build_desktop_backend_command(
+            work_dir=resolved_cwd,
+            storage_dir=resolved_storage,
+            proxy_port=resolved_proxy_port,
+            web_port=resolved_web_port,
+            debug=debug,
+        ),
+        electron_launch=electron_launch,
+        env=launch_env,
+        event=event,
+        web_port=resolved_web_port,
     )
 
 
 def build_backend_started_event(
     *,
-    agent: AgentName,
     route: str,
-    launch_env: Mapping[str, str],
+    cwd: Path,
     resolved_storage: Path,
-    proxy_port: int,
     web_port: int,
 ) -> dict[str, Any]:
     """Build the one-line startup JSON contract for the desktop canvas."""
-    cwd = launch_env[env_keys.CWD]
-    wid = workspace_id(Path(cwd))
+    wid = workspace_id(cwd)
     base_url = loopback_http_url(web_port)
     route_query = urlencode(
         {
             "owner": "local",
             "workspace_hash": wid.hash,
-            "cli": agent,
-            "run_id": launch_env[env_keys.RUN_ID],
         }
     )
     return {
         "type": "transport_matters.backend_started",
-        "agent": agent,
-        "cwd": cwd,
+        "cwd": str(cwd),
         "workspace": {
             "slug": wid.slug,
             "hash": wid.hash,
         },
-        "runId": launch_env[env_keys.RUN_ID],
-        "proxyPort": proxy_port,
         "webPort": web_port,
         "baseUrl": base_url,
         "routeUrl": f"{base_url}/{route}?{route_query}",
         "storageDir": str(resolved_storage),
-        "homeDir": launch_env.get(env_keys.AGENT_HOME_DIR),
     }
 
 
@@ -164,16 +175,11 @@ def spawn_detached_electron(launch: ElectronLaunch, event: dict[str, Any]) -> No
     """Start the desktop shell as a detached viewer for an existing backend."""
     env = {
         **os.environ,
-        DESKTOP_CLIENT_ENV: str(event["agent"]),
         DESKTOP_ROUTE_URL_ENV: str(event["routeUrl"]),
         env_keys.CWD: str(event["cwd"]),
-        env_keys.PROXY_PORT: str(event["proxyPort"]),
-        env_keys.RUN_ID: str(event["runId"]),
         env_keys.STORAGE_DIR: str(event["storageDir"]),
         env_keys.WEB_PORT: str(event["webPort"]),
     }
-    if event["homeDir"] is not None:
-        env[env_keys.AGENT_HOME_DIR] = str(event["homeDir"])
 
     try:
         subprocess.Popen(
@@ -189,6 +195,208 @@ def spawn_detached_electron(launch: ElectronLaunch, event: dict[str, Any]) -> No
     except OSError as exc:
         msg = f"could not launch Transport Matters desktop viewer: {exc}"
         raise ElectronResolutionError(msg) from exc
+
+
+def run_desktop_launch(
+    *,
+    route: RouteName = "canvas",
+    work_dir: Path | None = None,
+    proxy_port: int | None = None,
+    web_port: int | None = None,
+    storage_dir: Path | None = None,
+    debug: bool = False,
+    print_command: bool = False,
+    allocate_port_pair_func: Callable[[], tuple[int, int]] | None = None,
+    resolve_electron_launch_func: Callable[[], ElectronLaunch] | None = None,
+    spawn_electron_func: Callable[[ElectronLaunch, dict[str, Any]], None] | None = None,
+    serve_backend_func: Callable[[DesktopLaunchPlan, Callable[[], None] | None], None]
+    | None = None,
+) -> None:
+    """Run the desktop backend server and open the hosted Electron viewer."""
+    plan = prepare_desktop_launch(
+        route=route,
+        work_dir=work_dir,
+        proxy_port=proxy_port,
+        web_port=web_port,
+        storage_dir=storage_dir,
+        debug=debug,
+        allocate_port_pair_func=allocate_port_pair_func,
+        launch_viewer=not print_command,
+        resolve_electron_launch_func=resolve_electron_launch_func,
+    )
+    if print_command:
+        typer.echo(shlex.join(plan.command))
+        return
+
+    spawn_electron = spawn_electron_func or spawn_detached_electron
+    serve_backend = serve_backend_func or serve_desktop_backend
+
+    def on_backend_ready() -> None:
+        typer.echo(json.dumps(plan.event, separators=(",", ":"), sort_keys=True))
+        if plan.electron_launch is not None:
+            _spawn_or_exit(spawn_electron, plan.electron_launch, plan.event)
+
+    serve_backend(plan, on_backend_ready)
+
+
+def run_desktop_backend_server(
+    *,
+    work_dir: Path | None = None,
+    proxy_port: int | None = None,
+    web_port: int | None = None,
+    storage_dir: Path | None = None,
+    debug: bool = False,
+    allocate_port_pair_func: Callable[[], tuple[int, int]] | None = None,
+) -> None:
+    """Run only the desktop backend server for the Electron owned child path."""
+    plan = prepare_desktop_launch(
+        work_dir=work_dir,
+        proxy_port=proxy_port,
+        web_port=web_port,
+        storage_dir=storage_dir,
+        debug=debug,
+        allocate_port_pair_func=allocate_port_pair_func,
+        launch_viewer=False,
+    )
+    serve_desktop_backend(plan, None)
+
+
+def serve_desktop_backend(
+    plan: DesktopLaunchPlan,
+    on_backend_ready: Callable[[], None] | None = None,
+) -> None:
+    """Serve the desktop backend, optionally notifying after readiness."""
+    _apply_desktop_backend_env(plan.env)
+
+    import uvicorn
+
+    from transport_matters.config import get_settings
+    from transport_matters.main import LOG_CONFIG, create_app
+
+    get_settings.cache_clear()
+    server = uvicorn.Server(
+        uvicorn.Config(
+            create_app(),
+            host=LOOPBACK_HOST,
+            port=plan.web_port,
+            log_config=LOG_CONFIG,
+        )
+    )
+    if on_backend_ready is None:
+        server.run()
+        return
+
+    thread = Thread(target=server.run, name="transport-matters-desktop-backend", daemon=True)
+    thread.start()
+    try:
+        if not wait_for_port_ready(
+            LOOPBACK_HOST,
+            plan.web_port,
+            timeout=_BACKEND_READY_TIMEOUT_S,
+        ):
+            server.should_exit = True
+            msg = f"desktop backend did not become ready on {loopback_http_url(plan.web_port)}"
+            raise DesktopBackendStartError(msg)
+        try:
+            on_backend_ready()
+        except Exception:
+            server.should_exit = True
+            raise
+        thread.join()
+    except KeyboardInterrupt:
+        server.should_exit = True
+        raise
+    finally:
+        if server.should_exit and thread.is_alive():
+            thread.join(timeout=5.0)
+
+
+def _resolve_backend_ports(
+    proxy_port: int | None,
+    web_port: int | None,
+    *,
+    allocate_port_pair_func: Callable[[], tuple[int, int]] | None = None,
+) -> tuple[int, int]:
+    if proxy_port is not None and web_port is not None:
+        return proxy_port, web_port
+    allocate = allocate_port_pair_func or _allocate_port_pair
+    allocated_proxy_port, allocated_web_port = allocate()
+    return proxy_port or allocated_proxy_port, web_port or allocated_web_port
+
+
+def _allocate_port_pair() -> tuple[int, int]:
+    from .ports import allocate_port_pair
+
+    return allocate_port_pair()
+
+
+def _resolve_work_dir(work_dir: Path | None) -> Path:
+    resolved = (work_dir if work_dir is not None else Path.cwd()).expanduser().resolve()
+    if not resolved.exists():
+        msg = f"work directory does not exist: {resolved}"
+        raise typer.BadParameter(msg)
+    if not resolved.is_dir():
+        msg = f"work directory is not a directory: {resolved}"
+        raise typer.BadParameter(msg)
+    return resolved
+
+
+def _resolve_storage_dir(storage_dir: Path | None) -> Path:
+    return (
+        (storage_dir if storage_dir is not None else default_storage_root()).expanduser().resolve()
+    )
+
+
+def _build_desktop_backend_env(
+    *,
+    cwd: Path,
+    storage_dir: Path,
+    proxy_port: int,
+    web_port: int,
+    debug: bool,
+    env: Mapping[str, str] | None,
+) -> dict[str, str]:
+    backend_env = dict(os.environ if env is None else env)
+    for key in _DESKTOP_BACKEND_STALE_ENV_KEYS:
+        backend_env.pop(key, None)
+    backend_env[env_keys.CWD] = str(cwd)
+    backend_env[env_keys.PROXY_PORT] = str(proxy_port)
+    backend_env[env_keys.STORAGE_DIR] = str(storage_dir)
+    backend_env[env_keys.WEB_PORT] = str(web_port)
+    if debug:
+        backend_env[DEBUG_ENV] = "1"
+    return backend_env
+
+
+def _build_desktop_backend_command(
+    *,
+    work_dir: Path,
+    storage_dir: Path,
+    proxy_port: int,
+    web_port: int,
+    debug: bool,
+) -> tuple[str, ...]:
+    command = [
+        "transport-matters",
+        DESKTOP_BACKEND_COMMAND,
+        "--work-dir",
+        str(work_dir),
+        "--web-port",
+        str(web_port),
+        "--proxy-port",
+        str(proxy_port),
+        "--storage-dir",
+        str(storage_dir),
+    ]
+    if debug:
+        command.append("--debug")
+    return tuple(command)
+
+
+def _apply_desktop_backend_env(env: Mapping[str, str]) -> None:
+    for key in _DESKTOP_BACKEND_STALE_ENV_KEYS:
+        os.environ.pop(key, None)
+    os.environ.update(env)
 
 
 def resolve_electron_launch(
