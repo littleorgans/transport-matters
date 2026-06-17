@@ -1,6 +1,6 @@
 """Override management endpoints."""
 
-from fastapi import APIRouter, Query, Response
+from fastapi import APIRouter, Query, Request, Response
 from pydantic import BaseModel
 
 from transport_matters import breakpoint as bp
@@ -18,6 +18,8 @@ from transport_matters.overrides import (
     get_store,
     identity_audit,
 )
+from transport_matters.shared_proxy.manager import SharedProxyManager
+from transport_matters.shared_proxy.models import OverrideScopePayload, OverrideSnapshotPayload
 
 router = APIRouter()
 
@@ -86,6 +88,40 @@ async def _update_scoped_paused_preview(
     return audit, curated_ir
 
 
+def _snapshot_scope(scope: OverrideScope) -> OverrideSnapshotPayload:
+    store = get_store()
+    return OverrideSnapshotPayload(
+        enabled=store.is_enabled(scope=scope),
+        overrides=tuple(store.get_all(scope=scope)),
+    )
+
+
+def _restore_scope(scope: OverrideScope, snapshot: OverrideSnapshotPayload) -> None:
+    store = get_store()
+    store.clear(scope=scope)
+    for override in snapshot.overrides:
+        store.upsert(override, scope=scope)
+    store.set_enabled(snapshot.enabled, scope=scope)
+
+
+async def _sync_shared_overrides(
+    request: Request,
+    *,
+    run_id: str | None,
+    track_id: str | None,
+    snapshot: OverrideSnapshotPayload,
+) -> None:
+    if run_id is None:
+        return
+    manager = getattr(request.app.state, "shared_proxy_manager", None)
+    if not isinstance(manager, SharedProxyManager):
+        return
+    if run_id not in manager.by_run_id:
+        return
+    scope = OverrideScopePayload(run_id=run_id, track_id=track_id)
+    await manager.set_overrides(scope, snapshot)
+
+
 # ── Routes ───────────────────────────────────────────────────────
 
 
@@ -105,18 +141,30 @@ async def get_overrides(
 @router.patch("")
 async def patch_overrides(
     body: OverrideBatchRequest,
+    request: Request,
     run_id: str | None = Query(default=None),
     track_id: str | None = Query(default=None),
 ) -> OverrideMutateResponse:
     store = get_store()
     scope = scope_from_params(run_id, track_id)
-    for override in body.overrides:
-        store.upsert(override, scope=scope)
+    previous = _snapshot_scope(scope)
+    try:
+        for override in body.overrides:
+            store.upsert(override, scope=scope)
 
-    audit, curated_ir = await _update_scoped_paused_preview(
-        scope,
-        explicit_scope=run_id is not None or track_id is not None,
-    )
+        audit, curated_ir = await _update_scoped_paused_preview(
+            scope,
+            explicit_scope=run_id is not None or track_id is not None,
+        )
+        await _sync_shared_overrides(
+            request,
+            run_id=run_id,
+            track_id=track_id,
+            snapshot=_snapshot_scope(scope),
+        )
+    except Exception:
+        _restore_scope(scope, previous)
+        raise
     return OverrideMutateResponse(
         overrides=store.get_all(scope=scope),
         enabled=store.is_enabled(scope=scope),
@@ -127,30 +175,55 @@ async def patch_overrides(
 
 @router.delete("", status_code=204)
 async def delete_overrides(
+    request: Request,
     run_id: str | None = Query(default=None),
     track_id: str | None = Query(default=None),
 ) -> Response:
     store = get_store()
-    if run_id is None and track_id is None:
-        store.clear()
-    else:
-        store.clear(scope=scope_from_params(run_id, track_id))
+    scope = scope_from_params(run_id, track_id)
+    previous = _snapshot_scope(scope)
+    try:
+        if run_id is None and track_id is None:
+            store.clear()
+        else:
+            store.clear(scope=scope)
+        await _sync_shared_overrides(
+            request,
+            run_id=run_id,
+            track_id=track_id,
+            snapshot=_snapshot_scope(scope),
+        )
+    except Exception:
+        _restore_scope(scope, previous)
+        raise
     return Response(status_code=204)
 
 
 @router.post("/toggle")
 async def toggle_overrides(
+    request: Request,
     run_id: str | None = Query(default=None),
     track_id: str | None = Query(default=None),
 ) -> ToggleResponse:
     store = get_store()
     scope = scope_from_params(run_id, track_id)
-    store.set_enabled(not store.is_enabled(scope=scope), scope=scope)
+    previous = _snapshot_scope(scope)
+    try:
+        store.set_enabled(not store.is_enabled(scope=scope), scope=scope)
 
-    audit, curated_ir = await _update_scoped_paused_preview(
-        scope,
-        explicit_scope=run_id is not None or track_id is not None,
-    )
+        audit, curated_ir = await _update_scoped_paused_preview(
+            scope,
+            explicit_scope=run_id is not None or track_id is not None,
+        )
+        await _sync_shared_overrides(
+            request,
+            run_id=run_id,
+            track_id=track_id,
+            snapshot=_snapshot_scope(scope),
+        )
+    except Exception:
+        _restore_scope(scope, previous)
+        raise
     return ToggleResponse(
         enabled=store.is_enabled(scope=scope),
         audit=audit,

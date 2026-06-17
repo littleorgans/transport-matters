@@ -1,4 +1,5 @@
 import asyncio
+import inspect
 import logging
 import logging.config
 from contextlib import asynccontextmanager
@@ -16,6 +17,7 @@ from transport_matters.config import MissingDatabaseConfigError, get_settings, r
 from transport_matters.session.listen import SessionEventHub, SessionEventListener
 from transport_matters.session.migrate import MigrationError, apply_migrations
 from transport_matters.session.pool import create_async_pool
+from transport_matters.shared_proxy.manager import SharedProxyManager
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -141,22 +143,29 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.session_event_hub = SessionEventHub()
     app.state.session_pool = None
     app.state.session_event_listener = None
-    app.state.run_manager = run_routes.create_run_manager()
+    shared_proxy_manager = SharedProxyManager.create(
+        runtime_dir=get_settings().storage_dir / "runtime" / "shared-proxy",
+    )
+    app.state.shared_proxy_manager = shared_proxy_manager
+    app.state.run_manager = _create_run_manager(shared_proxy_manager)
     try:
-        database_url = resolve_database_url(get_settings())
-    except MissingDatabaseConfigError as exc:
-        logger.info("Session store disabled: %s", exc)
-    else:
-        session_pool = await _start_session_store(app, database_url)
-        session_listener = app.state.session_event_listener
-    try:
+        try:
+            database_url = resolve_database_url(get_settings())
+        except MissingDatabaseConfigError as exc:
+            logger.info("Session store disabled: %s", exc)
+        else:
+            session_pool = await _start_session_store(app, database_url)
+            session_listener = app.state.session_event_listener
+            if session_pool is not None:
+                await shared_proxy_manager.start()
         yield
     finally:
+        await run_routes.close_run_manager(app)
+        await shared_proxy_manager.close()
         if session_listener is not None:
             await session_listener.aclose()
         if session_pool is not None:
             await session_pool.close()
-        await run_routes.close_run_manager(app)
         logger.info("Shutting down %s", app.title)
 
 
@@ -217,6 +226,14 @@ def create_app() -> FastAPI:
         app.mount("/", SpaStaticFiles(directory=www_dir, html=True), name="www")
 
     return app
+
+
+def _create_run_manager(shared_proxy_manager: SharedProxyManager) -> object:
+    factory = run_routes.create_run_manager
+    parameters = inspect.signature(factory).parameters
+    if "shared_proxy_manager" in parameters:
+        return factory(shared_proxy_manager=shared_proxy_manager)
+    return factory()
 
 
 def __getattr__(name: str) -> object:

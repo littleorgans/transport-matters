@@ -132,9 +132,12 @@ class TerminateRunResponse(BaseModel):
     run: RunViewModel
 
 
-def create_run_manager() -> RunManager:
+def create_run_manager(shared_proxy_manager: Any | None = None) -> RunManager:
     settings = get_settings()
-    return RunManager(spawn_concurrency=settings.captured_run_spawn_concurrency)
+    return RunManager(
+        spawn_concurrency=settings.captured_run_spawn_concurrency,
+        shared_proxy_manager=shared_proxy_manager,
+    )
 
 
 async def close_run_manager(app: Any) -> None:

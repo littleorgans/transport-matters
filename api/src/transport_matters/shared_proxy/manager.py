@@ -4,8 +4,11 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import hashlib
 import logging
+import os
 import time
+from pathlib import Path
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Protocol
 
@@ -24,10 +27,10 @@ from transport_matters.shared_proxy.models import (
 from transport_matters.shared_proxy.process import SharedProxyProcess, SupervisorSharedProxyProcess
 
 LOGGER = logging.getLogger(__name__)
+CONTROL_SOCKET_MAX_PATH = 100
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
-    from pathlib import Path
 
     from transport_matters.shared_proxy.binding import ProxyRunBinding
 
@@ -86,7 +89,7 @@ class SharedProxyManager:
         monitor_max_backoff_s: float = 1.0,
         accept_probe_timeout_s: float = 5.0,
     ) -> SharedProxyManager:
-        control_socket = runtime_dir / "shared-proxy.sock"
+        control_socket = _control_socket_path(runtime_dir)
         process = SupervisorSharedProxyProcess(
             control_socket=control_socket,
             runtime_dir=runtime_dir,
@@ -257,3 +260,11 @@ class SharedProxyManager:
         if exit_status is None:
             return
         raise SharedProxyProcessExited(exit_status.message())
+
+
+def _control_socket_path(runtime_dir: Path) -> Path:
+    candidate = runtime_dir / "shared-proxy.sock"
+    if len(str(candidate)) <= CONTROL_SOCKET_MAX_PATH:
+        return candidate
+    digest = hashlib.sha256(str(runtime_dir).encode()).hexdigest()[:16]
+    return Path("/tmp") / f"tm-sp-{os.getpid()}-{digest}" / "s.sock"

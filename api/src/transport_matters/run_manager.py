@@ -19,7 +19,6 @@ from transport_matters.captured_run import (
     CapturedRunBindConflict,
     CapturedRunCli,
     CapturedRunDependencies,
-    CapturedRunLease,
     CapturedRunProxyStartTimeout,
     CapturedRunRequest,
     CapturedRunSpawnSpec,
@@ -47,11 +46,13 @@ from transport_matters.run_terminal import (
     TerminalAttachment,
     TerminalFanout,
 )
+from transport_matters.shared_proxy.run_preparation import prepare_shared_captured_run
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
     from transport_matters.runtime_templates import RuntimeTemplateRef
+    from transport_matters.shared_proxy.manager import SharedProxyManager
 
 logger = logging.getLogger(__name__)
 
@@ -91,7 +92,11 @@ class PrepareCapturedRun(Protocol):
         inject_system_prompt: Callable[..., list[str]],
         user_supplied_system_prompt: Callable[[list[str]], bool],
         install_signal_handlers: bool = False,
-    ) -> tuple[CapturedRunSpawnSpec, CapturedRunLease]: ...
+    ) -> tuple[CapturedRunSpawnSpec, CapturedRunLeaseHandle]: ...
+
+
+class CapturedRunLeaseHandle(Protocol):
+    def close(self) -> None: ...
 
 
 class RunState(StrEnum):
@@ -182,7 +187,7 @@ class ManagedRun:
     cwd: Path
     state: RunState
     spawn_spec: CapturedRunSpawnSpec
-    lease: CapturedRunLease
+    lease: CapturedRunLeaseHandle
     terminal: TerminalPty
     terminal_output: TerminalFanout
     created_at: datetime
@@ -245,6 +250,7 @@ class RunManager:
         install_signal_handlers: bool = False,
         spawn_concurrency: int = 6,
         session_store_preflight_ttl: timedelta = _SESSION_STORE_PREFLIGHT_CACHE_TTL,
+        shared_proxy_manager: SharedProxyManager | None = None,
     ) -> None:
         if spawn_concurrency < 1:
             raise ValueError("spawn_concurrency must be at least 1")
@@ -263,6 +269,7 @@ class RunManager:
         self._session_store_preflight_lock = asyncio.Lock()
         self._session_store_preflight_ttl = session_store_preflight_ttl
         self._session_store_preflight_ok_until: datetime | None = None
+        self._shared_proxy_manager = shared_proxy_manager
         self._teardown_lock = asyncio.Lock()
         self._closed = False
 
@@ -417,9 +424,27 @@ class RunManager:
 
     async def _prepare_request(
         self, validated: _ValidatedSpawnRun
-    ) -> tuple[CapturedRunSpawnSpec, CapturedRunLease]:
+    ) -> tuple[CapturedRunSpawnSpec, CapturedRunLeaseHandle]:
         await self._ensure_session_store_available()
         captured_request = self._captured_request(validated)
+        if (
+            captured_request.web_runtime == WEB_RUNTIME_EXTERNAL
+            and self._shared_proxy_manager is not None
+        ):
+            try:
+                return await prepare_shared_captured_run(
+                    captured_request,
+                    shared_proxy=self._shared_proxy_manager,
+                    dependencies=self._dependencies,
+                )
+            except CapturedRunBindConflict as exc:
+                raise RunManagerError("bind_conflict", str(exc)) from exc
+            except CapturedRunProxyStartTimeout as exc:
+                raise RunManagerError("proxy_start_timeout", str(exc)) from exc
+            except RunManagerError:
+                raise
+            except Exception as exc:
+                raise RunManagerError("launch_failed", str(exc)) from exc
         try:
             return await asyncio.to_thread(
                 self._prepare_run,
@@ -594,7 +619,7 @@ class RunManager:
                 await asyncio.to_thread(terminate_terminal_pty, run.terminal)
             else:
                 await asyncio.to_thread(close_terminal_master, run.terminal)
-            await asyncio.to_thread(run.lease.close)
+            await self._close_lease(run.lease)
 
             run.exit_code = run.terminal.process.poll()
             if run.state is RunState.TERMINATING:
@@ -606,7 +631,7 @@ class RunManager:
         *,
         terminal: TerminalPty | None,
         drain_task: asyncio.Task[None] | None,
-        lease: CapturedRunLease,
+        lease: CapturedRunLeaseHandle,
     ) -> None:
         if drain_task is not None and not drain_task.done():
             drain_task.cancel()
@@ -617,6 +642,13 @@ class RunManager:
         if terminal is not None:
             self._remove_reader(terminal.master_fd)
             await asyncio.to_thread(terminate_terminal_pty, terminal)
+        await self._close_lease(lease)
+
+    async def _close_lease(self, lease: CapturedRunLeaseHandle) -> None:
+        aclose = getattr(lease, "aclose", None)
+        if aclose is not None:
+            await aclose()
+            return
         await asyncio.to_thread(lease.close)
 
     def _close_all_attachments(
