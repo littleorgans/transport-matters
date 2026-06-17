@@ -31,6 +31,11 @@
   text-align: center;
 }
 
+.terminal-pane__status--progress {
+  border-color: rgb(var(--shadow-rgb) / 0.24);
+  color: var(--color-txt-2);
+}
+
 .terminal-pane__surface {
   flex: 1;
   min-width: 0;

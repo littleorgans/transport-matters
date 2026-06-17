@@ -10,6 +10,7 @@ import pytest
 from typer.testing import CliRunner
 
 from transport_matters.cli import BindFailure, main, workspace_root
+from transport_matters.cli.codex_cmd import _reset_codex_ca_certificate_cache_for_tests
 from transport_matters.cli.trust import (
     ConfiguredCACertificateMissingError,
     MitmproxyCAMissingError,
@@ -589,36 +590,40 @@ def test_codex_no_codex_uses_existing_ca_hint_when_present(
     assert spy_run_client_children.call_args.kwargs["client"] is None
 
 
-def test_codex_cleans_generated_bundle_after_exit(
+def test_codex_reuses_generated_bundle_after_exit(
     tmp_storage: Path,
     monkeypatch: pytest.MonkeyPatch,
     spy_run_client_children: MagicMock,
 ) -> None:
+    _reset_codex_ca_certificate_cache_for_tests()
     monkeypatch.setattr(
         "transport_matters.cli.shutil.which",
         _which_by_name({"mitmdump": "/bin/mitmdump", "codex": "/bin/codex"}),
     )
     monkeypatch.setattr("transport_matters.cli.port_in_use", lambda _: False)
     monkeypatch.delenv("CODEX_CA_CERTIFICATE", raising=False)
-    captured: dict[str, str] = {}
+    captured: list[str] = []
 
     def fake_resolve(*, env: dict[str, str], bundle_dir: Path | None) -> Path:
         assert bundle_dir is not None
         bundle_path = bundle_dir / "codex-ca-bundle.pem"
         bundle_path.write_text("generated", encoding="utf-8")
-        captured["path"] = str(bundle_path)
+        captured.append(str(bundle_path))
         return bundle_path
 
     monkeypatch.setattr("transport_matters.cli.resolve_codex_ca_certificate", fake_resolve)
 
     result = runner.invoke(main, ["codex", "--proxy-port", "9000", "--web-port", "9001"])
     assert result.exit_code == 0, result.output
+    second = runner.invoke(main, ["codex", "--proxy-port", "9000", "--web-port", "9001"])
+    assert second.exit_code == 0, second.output
 
-    bundle_path = Path(captured["path"])
+    assert len(captured) == 1
+    bundle_path = Path(captured[0])
     assert spy_run_client_children.call_args.kwargs["client"].env["CODEX_CA_CERTIFICATE"] == str(
         bundle_path
     )
-    assert not bundle_path.exists()
+    assert bundle_path.exists()
 
 
 @pytest.mark.parametrize(

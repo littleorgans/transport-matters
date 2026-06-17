@@ -1,9 +1,13 @@
 """Implementation of the `transport-matters codex` command."""
 
+import atexit
 import contextlib
+import hashlib
 import os
 import shutil
+import ssl
 import tempfile
+import threading
 from dataclasses import dataclass
 from datetime import datetime
 from importlib.resources import as_file
@@ -46,6 +50,7 @@ from .trust import (
     MitmproxyCAMissingError,
     SystemTrustSnapshotError,
     TrustBundleWriteError,
+    mitmproxy_ca_cert_path,
 )
 
 if TYPE_CHECKING:
@@ -67,6 +72,28 @@ class _CodexLaunchParts:
     ]
 
 
+@dataclass(frozen=True, slots=True)
+class _PathFingerprint:
+    path: str
+    mtime_ns: int | None
+    size: int | None
+    inode: int | None
+
+
+@dataclass(frozen=True, slots=True)
+class _CodexCACacheKey:
+    resolver_id: int
+    env_digest: str
+    mitmproxy_ca: _PathFingerprint
+    trust_paths: tuple[_PathFingerprint, ...]
+
+
+_CODEX_CA_CACHE_LOCK = threading.Lock()
+_CODEX_CA_CACHE: dict[_CodexCACacheKey, str] = {}
+_CODEX_CA_CACHE_BUNDLE_DIRS: set[Path] = set()
+_CODEX_CA_CLEANUP_REGISTERED = False
+
+
 def _resolve_codex_ca_certificate_or_exit(
     *,
     stack: contextlib.ExitStack,
@@ -77,18 +104,19 @@ def _resolve_codex_ca_certificate_or_exit(
     """Resolve the Codex trust bundle or surface a user-facing error."""
     if print_command:
         return None
+    _ = stack
 
-    bundle_dir: Path | None = None
-    if not env.get("CODEX_CA_CERTIFICATE"):
-        bundle_dir = Path(
-            stack.enter_context(tempfile.TemporaryDirectory(prefix="transport-matters-codex-ca-"))
-        )
     try:
-        return str(
-            resolve_codex_ca_certificate(
-                env=env,
-                bundle_dir=bundle_dir,
+        if env.get("CODEX_CA_CERTIFICATE"):
+            return str(
+                resolve_codex_ca_certificate(
+                    env=env,
+                    bundle_dir=None,
+                )
             )
+        return _resolve_generated_codex_ca_certificate(
+            resolve_codex_ca_certificate=resolve_codex_ca_certificate,
+            env=env,
         )
     except ConfiguredCACertificateMissingError as exc:
         typer.secho(
@@ -135,6 +163,106 @@ def _resolve_codex_ca_certificate_or_exit(
         )
         typer.echo(f"  {exc}", err=True)
         raise typer.Exit(2) from exc
+
+
+def _resolve_generated_codex_ca_certificate(
+    *,
+    resolve_codex_ca_certificate: Callable[..., Path],
+    env: Mapping[str, str],
+) -> str:
+    cache_key = _codex_ca_cache_key(
+        resolve_codex_ca_certificate=resolve_codex_ca_certificate, env=env
+    )
+    with _CODEX_CA_CACHE_LOCK:
+        cached = _CODEX_CA_CACHE.get(cache_key)
+        if cached is not None and Path(cached).is_file():
+            return cached
+        bundle_dir = Path(tempfile.mkdtemp(prefix="transport-matters-codex-ca-"))
+        try:
+            resolved = str(
+                resolve_codex_ca_certificate(
+                    env=env,
+                    bundle_dir=bundle_dir,
+                )
+            )
+        except Exception:
+            shutil.rmtree(bundle_dir, ignore_errors=True)
+            raise
+        _CODEX_CA_CACHE[cache_key] = resolved
+        _register_codex_ca_bundle_dir_for_exit_cleanup(bundle_dir)
+        return resolved
+
+
+def _codex_ca_cache_key(
+    *, resolve_codex_ca_certificate: Callable[..., Path], env: Mapping[str, str]
+) -> _CodexCACacheKey:
+    verify_paths = ssl.get_default_verify_paths()
+    trust_path_values = (
+        verify_paths.cafile,
+        verify_paths.capath,
+        verify_paths.openssl_cafile,
+        verify_paths.openssl_capath,
+    )
+    return _CodexCACacheKey(
+        resolver_id=id(resolve_codex_ca_certificate),
+        env_digest=_env_digest(env),
+        mitmproxy_ca=_path_fingerprint(mitmproxy_ca_cert_path()),
+        trust_paths=tuple(
+            _path_fingerprint(Path(path))
+            for path in dict.fromkeys(path for path in trust_path_values if path)
+        ),
+    )
+
+
+def _env_digest(env: Mapping[str, str]) -> str:
+    digest = hashlib.blake2b(digest_size=16)
+    for key, value in sorted(env.items()):
+        digest.update(str(key).encode("utf-8", errors="surrogateescape"))
+        digest.update(b"\0")
+        digest.update(str(value).encode("utf-8", errors="surrogateescape"))
+        digest.update(b"\0")
+    return digest.hexdigest()
+
+
+def _path_fingerprint(path: Path) -> _PathFingerprint:
+    candidate = path.expanduser()
+    try:
+        stat = candidate.stat()
+    except OSError:
+        return _PathFingerprint(str(candidate), None, None, None)
+    try:
+        display_path = str(candidate.resolve())
+    except OSError:
+        display_path = str(candidate)
+    return _PathFingerprint(
+        display_path,
+        stat.st_mtime_ns,
+        stat.st_size,
+        getattr(stat, "st_ino", None),
+    )
+
+
+def _reset_codex_ca_certificate_cache_for_tests() -> None:
+    global _CODEX_CA_CLEANUP_REGISTERED
+    _cleanup_codex_ca_cache_for_process_exit()
+    _CODEX_CA_CLEANUP_REGISTERED = False
+
+
+def _register_codex_ca_bundle_dir_for_exit_cleanup(bundle_dir: Path) -> None:
+    global _CODEX_CA_CLEANUP_REGISTERED
+    _CODEX_CA_CACHE_BUNDLE_DIRS.add(bundle_dir)
+    if not _CODEX_CA_CLEANUP_REGISTERED:
+        atexit.register(_cleanup_codex_ca_cache_for_process_exit)
+        _CODEX_CA_CLEANUP_REGISTERED = True
+
+
+def _cleanup_codex_ca_cache_for_process_exit() -> None:
+    with _CODEX_CA_CACHE_LOCK:
+        bundle_dirs = tuple(_CODEX_CA_CACHE_BUNDLE_DIRS)
+        _CODEX_CA_CACHE_BUNDLE_DIRS.clear()
+        _CODEX_CA_CACHE.clear()
+    for bundle_dir in bundle_dirs:
+        shutil.rmtree(bundle_dir, ignore_errors=True)
 
 
 def _resolve_proxy_only_codex_ca_hint(*, env: Mapping[str, str]) -> str | None:
