@@ -34,14 +34,14 @@ First-run welcome flow in the desktop.
 - Returning user: diff the current first frame against the cached baseline. If it moved, "system prompts updated by provider", route to edit overlays to reconcile.
 - `--yolo`: auto-capture the first frame, skip the guided walk.
 
-## 2. Desktop cleanup — IN FLIGHT (specs authored, run-ahead build next)
+## 2. Desktop cleanup — run-ahead ✓ MERGED (#140 + #141, pending owner live-smoke); UI parked
 
 Make the desktop opinionated. tm owns the launch config; it is not a flag passthrough. Specs: `~/.mdx/projects/transport-matters-desktop-cleanup/` (`spec-backend.md`, `spec-frontend.md`).
 
-**Run-ahead (build now, backend/CLI only — no UI):**
-- Stop spawning Claude/Codex in the local terminal from the desktop. Electron owns the backend child; `transport-matters desktop` becomes a thin opener. The captured pane path (`prepare_captured_run` → `RunManager` → PTY → xterm) is the only desktop launch.
-- Remove the `desktop` passthrough + provider-flag surface (`ctx.args`/`_split_passthrough` → `Settings.default_client_passthrough` → `_spawn_request`). tm manages options in-app; no raw flag forwarding. Standalone `transport-matters claude`/`codex` **KEEP** (separate terminal command contract; desktop just stops depending on them).
-- Run lifecycle uses the B6 runs family vocab (`terminate`/`interrupt`/`detach`). **Live-launch smoke is the required gate** (desktop bugs ship CI-green).
+**Run-ahead ✓ merged** — Slice A (#140 `3c4148b`) + Slice B (#141 `4c8feec`), both MoE dual-clean:
+- Desktop no longer spawns Claude/Codex in the terminal. Electron owns the backend child via a new server seam (`run_desktop_backend_server`/`serve_desktop_backend` → `create_app`, with `preflight_session_store_or_exit` retained so a misconfigured DB hard-blocks rather than 503s); `transport-matters desktop` is a thin opener; the captured pane path (`prepare_captured_run` → `RunManager` → PTY → xterm) is the only desktop launch.
+- Removed the `desktop` passthrough + provider-flag surface: `desktop` now rejects `--agent`/provider flags/`-- args`; the dead validator cluster + `AgentName` import deleted; `_spawn_request` no longer sources `default_client_passthrough` (field/env/param kept for standalone + shared proxy). Standalone `transport-matters claude`/`codex` untouched.
+- **Pending owner live-smoke** (the required launch-wiring gate): clean-shell `tm desktop` → no agent attached to the terminal → spawn Claude + Codex panes → `--agent` rejected → standalone `tm claude -- …` passthrough still works.
 
 **Parked — focused UI effort after run-ahead** (informed by `~/.mdx/projects/tm-ui-component-strategy.md`: adopt Ark UI headless + vanilla CSS, `session-canvas` only):
 - The "nasty" canvas command bar → a beautifully designed **CMD+K palette** (Ark `combobox`/`listbox`, the strategy doc's migration step 2).
