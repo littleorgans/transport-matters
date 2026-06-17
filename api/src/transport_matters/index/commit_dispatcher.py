@@ -19,6 +19,13 @@ class CommitQueueFull(RuntimeError):
     """Raised through a commit future when a shard queue applies backpressure."""
 
 
+def commit_shard_index(session_id: str, shard_count: int) -> int:
+    """Return the dispatcher shard for a session id."""
+    if shard_count < 1:
+        raise ValueError("shard_count must be positive")
+    return hash(session_id) % shard_count
+
+
 @dataclass(frozen=True, slots=True)
 class _CommitJob:
     batch: EventBatch
@@ -60,7 +67,7 @@ class ShardedCommitDispatcher:
         return future
 
     def _shard_index(self, session_id: str) -> int:
-        return hash(session_id) % self._shard_count
+        return commit_shard_index(session_id, self._shard_count)
 
     def _start_worker(self, index: int, queue: asyncio.Queue[_CommitJob]) -> asyncio.Task[None]:
         task = self._loop.create_task(

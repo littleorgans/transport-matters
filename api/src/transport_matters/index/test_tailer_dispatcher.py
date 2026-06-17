@@ -10,7 +10,11 @@ from psycopg import errors
 
 from transport_matters.index.adapters.base import FileTailSource, SessionBinding
 from transport_matters.index.adapters.claude import ClaudeAdapter
-from transport_matters.index.commit_dispatcher import CommitQueueFull, ShardedCommitDispatcher
+from transport_matters.index.commit_dispatcher import (
+    CommitQueueFull,
+    ShardedCommitDispatcher,
+    commit_shard_index,
+)
 from transport_matters.index.conftest import make_binding
 from transport_matters.index.tailer import (
     TailCursor,
@@ -62,6 +66,22 @@ def _commit_result(batch: EventBatch) -> CommitResult:
         committed=len(batch.events),
         last_seq=batch.events[-1].event.seq if batch.events else None,
     )
+
+
+async def test_commit_shard_index_matches_dispatcher_routing() -> None:
+    dispatcher = ShardedCommitDispatcher(
+        loop=asyncio.get_running_loop(),
+        submit=lambda batch: asyncio.sleep(0, result=_commit_result(batch)),
+        shard_count=7,
+        queue_size=1,
+    )
+    try:
+        assert dispatcher._shard_index("session-00042") == commit_shard_index(
+            "session-00042",
+            7,
+        )
+    finally:
+        await dispatcher.aclose()
 
 
 async def test_slow_shard_does_not_head_of_line_other_shards(tmp_path: Path) -> None:

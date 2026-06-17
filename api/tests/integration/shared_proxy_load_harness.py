@@ -10,6 +10,11 @@ mitmdump subprocess, registers mixed Claude reverse and Codex regular listeners,
 drives concurrent local proxy traffic through all listeners, validates run-scoped
 capture indexes, measures a websocket echo path while proxy load is in flight,
 and runs a sharded session-writer head-of-line probe with one poison session.
+
+Fidelity caveats: terminal websocket echo measures harness event-loop contention,
+not proxy traversal; Codex regular listener traffic is plain HTTP through a forward
+proxy to the mock origin; each request uses a fresh client and connection close, so
+cold handshake CPU is inflated. The verdict is directional and not a tight bound.
 """
 
 from __future__ import annotations
@@ -18,6 +23,7 @@ import argparse
 import asyncio
 import contextlib
 import json
+import logging
 import os
 import shutil
 import subprocess
@@ -34,7 +40,7 @@ from websockets.asyncio.client import connect
 from websockets.asyncio.server import serve
 
 from tests.integration.test_shared_proxy_subprocess import free_port, make_binding
-from transport_matters.index.commit_dispatcher import ShardedCommitDispatcher
+from transport_matters.index.commit_dispatcher import ShardedCommitDispatcher, commit_shard_index
 from transport_matters.session.ingest import EventBatch
 from transport_matters.session.models import SessionRow
 from transport_matters.session.writer import CommitResult
@@ -43,6 +49,14 @@ from transport_matters.storage.disk import DiskStorageBackend
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Iterable
+
+
+logger = logging.getLogger(__name__)
+
+_HARNESS_CAVEAT = (
+    "directional, not a tight bound: terminal echo bypasses proxy, codex forward-proxy "
+    "traffic uses plain HTTP to the mock origin, and no keep-alive inflates cold-handshake CPU"
+)
 
 
 @dataclass(frozen=True)
@@ -251,6 +265,13 @@ async def _drive_one_request(origin: str, run: LoadRun, seq: int) -> tuple[float
         return elapsed_ms, False, contaminated
     except Exception:
         elapsed_ms = (time.perf_counter() - started) * 1000
+        logger.warning(
+            "load request failed for run_id=%s cli=%s seq=%s",
+            run.run_id,
+            run.cli,
+            seq,
+            exc_info=True,
+        )
         return elapsed_ms, True, False
 
 
@@ -340,7 +361,7 @@ def _unique_shard_session_ids(count: int, shard_count: int) -> list[str]:
     candidate = 0
     while len(ids) < count:
         session_id = f"session-{candidate:05d}"
-        shard = hash(session_id) % shard_count
+        shard = commit_shard_index(session_id, shard_count)
         if shard not in used_shards:
             ids.append(session_id)
             used_shards.add(shard)
@@ -429,6 +450,12 @@ async def _sample_process_cpu(pid: int, stop: asyncio.Event) -> list[float]:
     return samples
 
 
+def _proxy_cpu_peak_percent(samples: list[float]) -> float:
+    if not samples:
+        raise RuntimeError("CPU sampling failed, verdict indeterminate")
+    return max(samples)
+
+
 def _verdict(metrics: LoadMetrics) -> str:
     traffic_ok = metrics.traffic.failed_requests == 0 and metrics.traffic.contamination_count == 0
     capture_ok = metrics.capture.missing_entries == 0 and metrics.capture.wrong_run_entries == 0
@@ -440,10 +467,10 @@ def _verdict(metrics: LoadMetrics) -> str:
     )
     saturated = metrics.proxy_cpu_peak_percent >= 95.0
     if traffic_ok and capture_ok and hol_ok and not saturated:
-        return f"one subprocess sufficient for {metrics.runs}"
+        return f"one subprocess sufficient for {metrics.runs}; {_HARNESS_CAVEAT}"
     if saturated:
-        return f"saturates at ~{metrics.runs}, bounded pool recommended"
-    return f"load test failed at {metrics.runs}, bounded pool recommended"
+        return f"saturates at ~{metrics.runs}, bounded pool recommended; {_HARNESS_CAVEAT}"
+    return f"load test failed at {metrics.runs}, bounded pool recommended; {_HARNESS_CAVEAT}"
 
 
 async def run_load_test(args: argparse.Namespace) -> LoadMetrics:
@@ -492,7 +519,7 @@ async def run_load_test(args: argparse.Namespace) -> LoadMetrics:
                 terminal_ws_echo_p95_ms=echo_p95,
                 terminal_ws_echo_mean_ms=echo_mean,
                 head_of_line=head_of_line,
-                proxy_cpu_peak_percent=max(cpu_samples) if cpu_samples else 0.0,
+                proxy_cpu_peak_percent=_proxy_cpu_peak_percent(cpu_samples),
                 verdict="pending",
             )
             return LoadMetrics(**{**metrics.__dict__, "verdict": _verdict(metrics)})
