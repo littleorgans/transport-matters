@@ -11,7 +11,7 @@ from transport_matters.captured_run_models import (
     CapturedRunRequest,
     CapturedRunSpawnSpec,
 )
-from transport_matters.run_manager import RunManager, SpawnRun
+from transport_matters.run_manager import RunManager, RunManagerError, SpawnRun
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -83,7 +83,8 @@ async def test_run_manager_keeps_embedded_runs_on_per_run_preparation(tmp_path: 
     manager = RunManager(
         dependencies=_dependencies(),
         prepare_run=prepare_run,
-        shared_proxy_manager=cast("Any", object()),
+        shared_proxy_manager=None,
+        shared_proxy_unavailable_reason="startup failed",
     )
 
     spec, lease = await manager._prepare_request(
@@ -95,6 +96,38 @@ async def test_run_manager_keeps_embedded_runs_on_per_run_preparation(tmp_path: 
     assert spec.run_id == "embedded-run"
     assert lease is embedded_lease
     assert calls == ["embedded:claude"]
+
+
+@pytest.mark.asyncio
+async def test_run_manager_fails_external_when_shared_proxy_unavailable(
+    tmp_path: Path,
+) -> None:
+    calls: list[str] = []
+
+    def forbidden_prepare(
+        request: CapturedRunRequest,
+        **_: object,
+    ) -> tuple[CapturedRunSpawnSpec, FakeLease]:
+        calls.append(request.web_runtime)
+        raise AssertionError("per-run prepare should not be used for degraded external runs")
+
+    manager = RunManager(
+        dependencies=_dependencies(),
+        prepare_run=forbidden_prepare,
+        shared_proxy_manager=None,
+        shared_proxy_unavailable_reason="mitmdump missing",
+    )
+
+    with pytest.raises(RunManagerError) as exc_info:
+        await manager._prepare_request(
+            manager._validate_spawn_request(
+                SpawnRun(cli="claude", cwd=tmp_path, web_runtime=WEB_RUNTIME_EXTERNAL)
+            )
+        )
+
+    assert exc_info.value.code == "proxy_start_timeout"
+    assert str(exc_info.value) == "shared proxy unavailable: mitmdump missing"
+    assert calls == []
 
 
 def _spawn_spec(tmp_path: Path, *, run_id: str) -> CapturedRunSpawnSpec:

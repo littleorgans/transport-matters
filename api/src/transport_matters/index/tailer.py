@@ -289,6 +289,7 @@ class TranscriptTailer:
         ]
         | None = None,
         snapshot: Callable[[str, int, bytes], None] | None = None,
+        on_cursor_registered: Callable[[TailCursor], None] | None = None,
         interval_s: float = _DEFAULT_FILE_INTERVAL_S,
     ) -> None:
         self._build_record = build_record
@@ -299,6 +300,7 @@ class TranscriptTailer:
         # index-layer tailer (DAG); built + injected at load_runtime, None when no disk backend.
         # (Named ``_snapshot_writer``, ``_snapshot`` is the unrelated cursor-list snapshot below.)
         self._snapshot_writer = snapshot
+        self._on_cursor_registered = on_cursor_registered
         self._interval_s = interval_s
         self._cursors: dict[str, TailCursor] = {}
         self._lock = threading.Lock()
@@ -308,7 +310,9 @@ class TranscriptTailer:
     def register(self, cursor: TailCursor) -> None:
         """Begin tailing a bound session (idempotent on session_id; thread-safe)."""
         with self._lock:
-            self._cursors.setdefault(cursor.binding.session_id, cursor)
+            registered = self._cursors.setdefault(cursor.binding.session_id, cursor)
+        if registered is cursor and self._on_cursor_registered is not None:
+            self._on_cursor_registered(cursor)
 
     def unregister(self, session_id: str) -> None:
         with self._lock:

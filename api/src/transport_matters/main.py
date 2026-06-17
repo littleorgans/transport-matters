@@ -1,5 +1,4 @@
 import asyncio
-import inspect
 import logging
 import logging.config
 from contextlib import asynccontextmanager
@@ -20,7 +19,7 @@ from transport_matters.session.pool import create_async_pool
 from transport_matters.shared_proxy.manager import SharedProxyManager
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator
+    from collections.abc import AsyncIterator, Awaitable, Callable
 
     from psycopg import AsyncConnection
     from psycopg.rows import DictRow
@@ -140,14 +139,16 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     logger.info("Starting %s", app.title)
     session_pool = None
     session_listener = None
+    shared_proxy_manager = None
+    shared_proxy_unavailable_reason = None
     app.state.session_event_hub = SessionEventHub()
     app.state.session_pool = None
     app.state.session_event_listener = None
-    shared_proxy_manager = SharedProxyManager.create(
+    app.state.shared_proxy_manager = None
+    pending_shared_proxy_manager = SharedProxyManager.create(
         runtime_dir=get_settings().storage_dir / "runtime" / "shared-proxy",
     )
-    app.state.shared_proxy_manager = shared_proxy_manager
-    app.state.run_manager = _create_run_manager(shared_proxy_manager)
+    pending_shared_proxy_manager_closed = False
     try:
         try:
             database_url = resolve_database_url(get_settings())
@@ -157,15 +158,35 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             session_pool = await _start_session_store(app, database_url)
             session_listener = app.state.session_event_listener
             if session_pool is not None:
-                await shared_proxy_manager.start()
+                try:
+                    await pending_shared_proxy_manager.start()
+                except Exception as exc:
+                    logger.exception("Shared proxy failed to start; canvas runs disabled")
+                    shared_proxy_unavailable_reason = str(exc)
+                    await _close_lifespan_resource(
+                        "shared proxy manager",
+                        pending_shared_proxy_manager.close,
+                    )
+                    pending_shared_proxy_manager_closed = True
+                else:
+                    shared_proxy_manager = pending_shared_proxy_manager
+                    app.state.shared_proxy_manager = shared_proxy_manager
+        app.state.run_manager = run_routes.create_run_manager(
+            shared_proxy_manager=shared_proxy_manager,
+            shared_proxy_unavailable_reason=shared_proxy_unavailable_reason,
+        )
         yield
     finally:
-        await run_routes.close_run_manager(app)
-        await shared_proxy_manager.close()
+        await _close_lifespan_resource("run manager", lambda: run_routes.close_run_manager(app))
+        if not pending_shared_proxy_manager_closed:
+            await _close_lifespan_resource(
+                "shared proxy manager",
+                pending_shared_proxy_manager.close,
+            )
         if session_listener is not None:
-            await session_listener.aclose()
+            await _close_lifespan_resource("session event listener", session_listener.aclose)
         if session_pool is not None:
-            await session_pool.close()
+            await _close_lifespan_resource("session pool", session_pool.close)
         logger.info("Shutting down %s", app.title)
 
 
@@ -228,12 +249,11 @@ def create_app() -> FastAPI:
     return app
 
 
-def _create_run_manager(shared_proxy_manager: SharedProxyManager) -> object:
-    factory = run_routes.create_run_manager
-    parameters = inspect.signature(factory).parameters
-    if "shared_proxy_manager" in parameters:
-        return factory(shared_proxy_manager=shared_proxy_manager)
-    return factory()
+async def _close_lifespan_resource(name: str, close: Callable[[], Awaitable[object]]) -> None:
+    try:
+        await close()
+    except Exception:
+        logger.exception("Failed to close %s", name)
 
 
 def __getattr__(name: str) -> object:

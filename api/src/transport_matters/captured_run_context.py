@@ -191,10 +191,14 @@ def build_captured_run_context(
     )
 
 
-def _descriptor_home(ctx: CapturedRunContext) -> Path | None:
+def descriptor_home(ctx: CapturedRunContext) -> Path | None:
     if ctx.runtime_home_plan is None:
         return ctx.request.home_dir
     return ctx.runtime_home_plan.descriptor_home
+
+
+def _descriptor_home(ctx: CapturedRunContext) -> Path | None:
+    return descriptor_home(ctx)
 
 
 def persist_owned_session_facts(ctx: CapturedRunContext) -> None:

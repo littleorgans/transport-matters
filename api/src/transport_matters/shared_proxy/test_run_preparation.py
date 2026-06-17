@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from contextlib import ExitStack
+from dataclasses import replace
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, cast
 
@@ -78,6 +79,64 @@ async def test_prepare_shared_captured_run_registers_binding_and_lease_deregiste
     assert isinstance(lease, SharedCapturedRunLease)
     await lease.aclose()
     assert manager.deregistered == ["run-1"]
+
+
+@pytest.mark.asyncio
+async def test_prepare_shared_captured_run_preserves_explicit_home_without_runtime_plan(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    explicit_home = tmp_path / "explicit-home"
+    request = replace(_request(tmp_path), home_dir=explicit_home)
+    ctx = replace(
+        _context(tmp_path, request=request),
+        runtime_home_dir=None,
+        runtime_home_plan=None,
+    )
+    monkeypatch.setattr(
+        "transport_matters.shared_proxy.run_preparation.build_captured_run_context",
+        lambda *args, **kwargs: ctx,
+    )
+    monkeypatch.setattr(
+        "transport_matters.shared_proxy.run_preparation.persist_owned_session_facts",
+        lambda ctx: None,
+    )
+    manager = FakeSharedProxyManager()
+
+    _spawn_spec, lease = await prepare_shared_captured_run(
+        request,
+        shared_proxy=cast("Any", manager),
+        dependencies=_dependencies(),
+    )
+
+    assert manager.registered[0].agent_home_dir == explicit_home
+    await lease.aclose()
+
+
+@pytest.mark.asyncio
+async def test_shared_captured_run_lease_sync_close_is_loop_safe(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    request = _request(tmp_path)
+    ctx = _context(tmp_path, request=request)
+    monkeypatch.setattr(
+        "transport_matters.shared_proxy.run_preparation.build_captured_run_context",
+        lambda *args, **kwargs: ctx,
+    )
+    monkeypatch.setattr(
+        "transport_matters.shared_proxy.run_preparation.persist_owned_session_facts",
+        lambda ctx: None,
+    )
+    manager = FakeSharedProxyManager()
+
+    _spawn_spec, lease = await prepare_shared_captured_run(
+        request,
+        shared_proxy=cast("Any", manager),
+        dependencies=_dependencies(),
+    )
+
+    lease.close()
+    await lease.aclose()
+    assert manager.deregistered == []
 
 
 @pytest.mark.asyncio

@@ -27,6 +27,8 @@ from transport_matters.shared_proxy.models import (
 from transport_matters.shared_proxy.process import SharedProxyProcess, SupervisorSharedProxyProcess
 
 LOGGER = logging.getLogger(__name__)
+# macOS sockaddr_un.sun_path is 104 bytes including the NUL terminator.
+# Keep a small margin and move long test or worktree paths under /tmp.
 CONTROL_SOCKET_MAX_PATH = 100
 
 if TYPE_CHECKING:

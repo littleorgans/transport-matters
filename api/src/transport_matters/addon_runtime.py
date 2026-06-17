@@ -37,6 +37,7 @@ if TYPE_CHECKING:
 
     from transport_matters.config import Settings
     from transport_matters.index.adapters.base import SessionBinding
+    from transport_matters.index.tailer import TailCursor
     from transport_matters.storage.base import StorageBackend
 
 logger = logging.getLogger(__name__)
@@ -227,6 +228,7 @@ def _start_session_capture(
     settings: Settings,
     *,
     snapshot_writer: Callable[[str, int, bytes], None] | None,
+    on_cursor_registered: Callable[[TailCursor], None] | None = None,
 ) -> SessionCaptureRuntime:
     loop = _running_loop()
     if loop is None:
@@ -302,6 +304,7 @@ def _start_session_capture(
         submit_batch=submit_events,
         quarantine_window=quarantine_window,
         snapshot=snapshot_writer,
+        on_cursor_registered=on_cursor_registered,
     )
     index_tailer.start()
     return SessionCaptureRuntime(
@@ -369,6 +372,7 @@ def load_shared_capture_runtime(
     settings: Settings | None = None,
     *,
     snapshot_writer: Callable[[str, int, bytes], None] | None = None,
+    on_cursor_registered: Callable[[TailCursor], None] | None = None,
 ) -> CaptureRuntime:
     settings = settings or get_settings()
     http_client, token_counter = _build_capture_primitives()
@@ -376,6 +380,7 @@ def load_shared_capture_runtime(
         session_capture = _start_session_capture(
             settings,
             snapshot_writer=snapshot_writer,
+            on_cursor_registered=on_cursor_registered,
         )
     except Exception:
         logger.exception("shared session capture failed to start")

@@ -124,8 +124,8 @@ class SharedProxySubprocess:
         binding = self._bindings.by_run_id.get(run_id)
         if binding is None:
             return
-        runtime_binding = self._bindings.snapshot().runtime_by_run_id.get(run_id)
         previous_bindings = self._bindings.snapshot()
+        runtime_binding = previous_bindings.runtime_by_run_id.get(run_id)
         self._bindings.deregister(run_id)
         try:
             self._apply_modes()

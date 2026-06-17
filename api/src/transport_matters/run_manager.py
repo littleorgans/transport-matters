@@ -251,6 +251,7 @@ class RunManager:
         spawn_concurrency: int = 6,
         session_store_preflight_ttl: timedelta = _SESSION_STORE_PREFLIGHT_CACHE_TTL,
         shared_proxy_manager: SharedProxyManager | None = None,
+        shared_proxy_unavailable_reason: str | None = None,
     ) -> None:
         if spawn_concurrency < 1:
             raise ValueError("spawn_concurrency must be at least 1")
@@ -270,6 +271,7 @@ class RunManager:
         self._session_store_preflight_ttl = session_store_preflight_ttl
         self._session_store_preflight_ok_until: datetime | None = None
         self._shared_proxy_manager = shared_proxy_manager
+        self._shared_proxy_unavailable_reason = shared_proxy_unavailable_reason
         self._teardown_lock = asyncio.Lock()
         self._closed = False
 
@@ -427,24 +429,28 @@ class RunManager:
     ) -> tuple[CapturedRunSpawnSpec, CapturedRunLeaseHandle]:
         await self._ensure_session_store_available()
         captured_request = self._captured_request(validated)
-        if (
-            captured_request.web_runtime == WEB_RUNTIME_EXTERNAL
-            and self._shared_proxy_manager is not None
-        ):
-            try:
-                return await prepare_shared_captured_run(
-                    captured_request,
-                    shared_proxy=self._shared_proxy_manager,
-                    dependencies=self._dependencies,
-                )
-            except CapturedRunBindConflict as exc:
-                raise RunManagerError("bind_conflict", str(exc)) from exc
-            except CapturedRunProxyStartTimeout as exc:
-                raise RunManagerError("proxy_start_timeout", str(exc)) from exc
-            except RunManagerError:
-                raise
-            except Exception as exc:
-                raise RunManagerError("launch_failed", str(exc)) from exc
+        if captured_request.web_runtime == WEB_RUNTIME_EXTERNAL:
+            if self._shared_proxy_manager is None:
+                if self._shared_proxy_unavailable_reason is not None:
+                    raise RunManagerError(
+                        "proxy_start_timeout",
+                        f"shared proxy unavailable: {self._shared_proxy_unavailable_reason}",
+                    )
+            else:
+                try:
+                    return await prepare_shared_captured_run(
+                        captured_request,
+                        shared_proxy=self._shared_proxy_manager,
+                        dependencies=self._dependencies,
+                    )
+                except CapturedRunBindConflict as exc:
+                    raise RunManagerError("bind_conflict", str(exc)) from exc
+                except CapturedRunProxyStartTimeout as exc:
+                    raise RunManagerError("proxy_start_timeout", str(exc)) from exc
+                except RunManagerError:
+                    raise
+                except Exception as exc:
+                    raise RunManagerError("launch_failed", str(exc)) from exc
         try:
             return await asyncio.to_thread(
                 self._prepare_run,

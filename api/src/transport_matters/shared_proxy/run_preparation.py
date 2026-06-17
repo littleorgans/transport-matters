@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 from transport_matters.captured_run_context import (
     CapturedRunContext,
     build_captured_run_context,
+    descriptor_home,
     persist_owned_session_facts,
     write_captured_run_manifest,
 )
@@ -31,7 +32,6 @@ from transport_matters.workspace import run_root
 
 if TYPE_CHECKING:
     from contextlib import ExitStack
-    from pathlib import Path
 
     from transport_matters.captured_run_dependencies import CapturedRunDependencies
 
@@ -62,14 +62,20 @@ class SharedCapturedRunLease:
         try:
             await self._shared_proxy.deregister(self.spawn_spec.run_id)
         finally:
-            with contextlib.suppress(FileNotFoundError):
-                self._workspace_lock.manifest_path.unlink()
-            self._workspace_lock.__exit__(None, None, None)
-            self._resource_stack.close()
+            self._release_local_resources()
 
     def close(self) -> None:
-        """Sync compatibility for callers that still close leases from a worker thread."""
-        asyncio.run(self.aclose())
+        """Idempotently release local resources when async deregistration is unavailable."""
+        if self._closed:
+            return
+        self._closed = True
+        self._release_local_resources()
+
+    def _release_local_resources(self) -> None:
+        with contextlib.suppress(FileNotFoundError):
+            self._workspace_lock.manifest_path.unlink()
+        self._workspace_lock.__exit__(None, None, None)
+        self._resource_stack.close()
 
 
 async def prepare_shared_captured_run(
@@ -160,7 +166,7 @@ def _binding_from_context(ctx: CapturedRunContext, *, proxy_port: int) -> ProxyR
         storage=DiskStorageBackend(ctx.prepared.resolved_storage),
         listen_port=proxy_port,
         upstream=ctx.request.upstream,
-        agent_home_dir=_descriptor_home(ctx),
+        agent_home_dir=descriptor_home(ctx),
         owned_native_session_id=(
             ctx.managed_session.native_session_id if ctx.managed_session is not None else None
         ),
@@ -181,12 +187,6 @@ def _require_owned_session(ctx: CapturedRunContext) -> None:
         return
     msg = "shared captured run requires launcher owned transcript metadata"
     raise RuntimeError(msg)
-
-
-def _descriptor_home(ctx: CapturedRunContext) -> Path | None:
-    if ctx.runtime_home_plan is None:
-        return None
-    return ctx.runtime_home_plan.descriptor_home
 
 
 def _launch_fields(ctx: CapturedRunContext) -> dict[str, object]:
