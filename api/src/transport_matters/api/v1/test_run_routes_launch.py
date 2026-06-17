@@ -71,7 +71,7 @@ def test_post_launch_failure_returns_machine_error(
     manager = RunManager(
         dependencies=_fake_dependencies(), prepare_run=cast("Any", _raise_prepare_error)
     )
-    monkeypatch.setattr(run_routes, "create_run_manager", lambda: manager)
+    monkeypatch.setattr(run_routes, "create_run_manager", lambda **_: manager)
     client = _client(monkeypatch, tmp_path)
 
     with client:
@@ -113,7 +113,7 @@ def test_post_launch_typed_prepare_errors_return_machine_status(
     manager = RunManager(
         dependencies=_fake_dependencies(), prepare_run=cast("Any", raise_prepare_error)
     )
-    monkeypatch.setattr(run_routes, "create_run_manager", lambda: manager)
+    monkeypatch.setattr(run_routes, "create_run_manager", lambda **_: manager)
     client = _client(monkeypatch, tmp_path)
 
     with client:
@@ -222,7 +222,7 @@ def install_real_pty_manager(
         prepare_run=fake_prepare,
         spawn_pty=tracking_spawn,
     )
-    monkeypatch.setattr(run_routes, "create_run_manager", lambda: manager)
+    monkeypatch.setattr(run_routes, "create_run_manager", lambda **_: manager)
     return manager, fake_lease
 
 

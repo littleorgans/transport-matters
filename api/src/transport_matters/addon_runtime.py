@@ -37,6 +37,7 @@ if TYPE_CHECKING:
 
     from transport_matters.config import Settings
     from transport_matters.index.adapters.base import SessionBinding
+    from transport_matters.index.tailer import TailCursor
     from transport_matters.storage.base import StorageBackend
 
 logger = logging.getLogger(__name__)
@@ -55,6 +56,11 @@ def _running_loop() -> asyncio.AbstractEventLoop | None:
         return None
 
 
+def _consume_task_result(task: asyncio.Task[object]) -> None:
+    with contextlib.suppress(asyncio.CancelledError):
+        task.exception()
+
+
 def _make_cursor_registrar(
     tailer: TranscriptTailer, loop: asyncio.AbstractEventLoop | None
 ) -> Callable[[SessionBinding], None]:
@@ -69,6 +75,13 @@ def _make_cursor_registrar(
         )
 
     return register
+
+
+@dataclass(slots=True)
+class SessionCaptureRuntime:
+    session_writer: SessionWriter | None = None
+    index_tailer: TranscriptTailer | None = None
+    commit_dispatcher: ShardedCommitDispatcher | None = None
 
 
 def build_proxy_run_binding(settings: Settings, storage: StorageBackend) -> ProxyRunBinding:
@@ -109,24 +122,36 @@ def _launch_run_context(binding: ProxyRunBinding, started_at: str) -> RunContext
     )
 
 
+async def register_owned_cursor(
+    tailer: TranscriptTailer,
+    binding: ProxyRunBinding,
+    started_at: str,
+    *,
+    on_session_bound: Callable[[SessionBinding], None] | None = None,
+) -> None:
+    """Register the launcher-owned transcript cursor without the retired exchange sink."""
+    run = _launch_run_context(binding, started_at)
+    if run is None:
+        return
+    adapter = get_adapter(run.cli)
+    session_binding = await adapter.bind(run)
+    session_binding = session_binding.model_copy(
+        update={
+            **binding.launch_fields,
+            "minted": adapter.provider in _DIRECT_MINT_PROVIDERS,
+            "source_descriptor": binding.owned_source_descriptor,
+        }
+    )
+    if on_session_bound is not None:
+        on_session_bound(session_binding)
+    await register_session_cursor(tailer, adapter, session_binding)
+
+
 async def _register_owned_cursor(
     tailer: TranscriptTailer, binding: ProxyRunBinding, started_at: str
 ) -> None:
-    """Register the launcher-owned transcript cursor without the retired exchange sink."""
     try:
-        run = _launch_run_context(binding, started_at)
-        if run is None:
-            return
-        adapter = get_adapter(run.cli)
-        session_binding = await adapter.bind(run)
-        session_binding = session_binding.model_copy(
-            update={
-                **binding.launch_fields,
-                "minted": adapter.provider in _DIRECT_MINT_PROVIDERS,
-                "source_descriptor": binding.owned_source_descriptor,
-            }
-        )
-        await register_session_cursor(tailer, adapter, session_binding)
+        await register_owned_cursor(tailer, binding, started_at)
     except Exception:
         logger.exception("owned transcript cursor registration failed")
 
@@ -188,6 +213,107 @@ class AddonRuntime:
         return self.capture.binding
 
 
+def _build_capture_primitives() -> tuple[httpx.AsyncClient, TokenCounter]:
+    http_client = httpx.AsyncClient(
+        base_url="https://api.anthropic.com",
+        timeout=httpx.Timeout(connect=3.0, read=10.0, write=5.0, pool=3.0),
+        trust_env=False,
+    )
+    token_counter = TokenCounter(http_client)
+    set_counter(token_counter)
+    return http_client, token_counter
+
+
+def _start_session_capture(
+    settings: Settings,
+    *,
+    snapshot_writer: Callable[[str, int, bytes], None] | None,
+    on_cursor_registered: Callable[[TailCursor], None] | None = None,
+) -> SessionCaptureRuntime:
+    loop = _running_loop()
+    if loop is None:
+        raise RuntimeError("server loop is unavailable for session writer")
+
+    writer = SessionWriter(create_async_pool(), loop=loop)
+    shard_count = settings.session_pool_max_size - _SESSION_POOL_AUX_CONNECTION_RESERVE
+    commit_dispatcher = ShardedCommitDispatcher(
+        loop=loop,
+        submit=writer.submit,
+        shard_count=shard_count,
+        queue_size=shard_count,
+    )
+    quarantined_records = 0
+
+    def submit_events(binding: SessionBinding, events: list[EventWrite]) -> Future[Any]:
+        future = commit_dispatcher.submit(
+            build_event_batch(
+                binding,
+                events,
+                session_purpose=_session_purpose_for_binding(binding),
+            )
+        )
+        future.add_done_callback(lambda done: log_commit_result(binding, done))
+        return future
+
+    def quarantine_window(
+        binding: SessionBinding,
+        source_path: str,
+        byte_start: int,
+        byte_end: int,
+        raw_excerpt: bytes,
+        exc: BaseException,
+        attempts: int,
+    ) -> Future[Any]:
+        return asyncio.run_coroutine_threadsafe(
+            writer.quarantine_window(
+                binding,
+                source_path,
+                byte_start,
+                byte_end,
+                raw_excerpt,
+                exc,
+                attempts,
+            ),
+            loop,
+        )
+
+    def log_commit_result(binding: SessionBinding, future: Future[Any]) -> None:
+        nonlocal quarantined_records
+        if future.cancelled():
+            return
+        try:
+            result = future.result()
+        except Exception:
+            return
+        if not result.ok:
+            return
+        if not result.quarantined:
+            return
+        quarantined_records += result.quarantined
+        for sqlstate in result.quarantine_sqlstates:
+            logger.warning(
+                "quarantined transcript record run=%s session=%s sqlstate=%s total=%d",
+                binding.run_id,
+                binding.session_id,
+                sqlstate,
+                quarantined_records,
+            )
+
+    index_tailer = TranscriptTailer(
+        build_record=build_event,
+        submit_batch=submit_events,
+        quarantine_window=quarantine_window,
+        snapshot=snapshot_writer,
+        on_cursor_registered=on_cursor_registered,
+    )
+    index_tailer.start()
+    return SessionCaptureRuntime(
+        session_writer=writer,
+        index_tailer=index_tailer,
+        commit_dispatcher=commit_dispatcher,
+    )
+
+
 def load_capture_runtime(settings: Settings | None = None) -> CaptureRuntime:
     settings = settings or get_settings()
     storage = init_storage(root=settings.storage_dir)
@@ -201,26 +327,13 @@ def load_capture_runtime(settings: Settings | None = None) -> CaptureRuntime:
         storage_root = storage.root
         logger.info("Storage root: %s", storage.root)
 
-    http_client = httpx.AsyncClient(
-        base_url="https://api.anthropic.com",
-        timeout=httpx.Timeout(connect=3.0, read=10.0, write=5.0, pool=3.0),
-        trust_env=False,
-    )
-    token_counter = TokenCounter(http_client)
-    set_counter(token_counter)
+    http_client, token_counter = _build_capture_primitives()
 
     # Session capture: the Postgres writer, transcript tailer, and tier-1 transcript snapshot.
     # Best-effort startup failure must never stop the proxy (§7.1).
-    loop = _running_loop()
-    session_writer: SessionWriter | None = None
-    index_tailer: TranscriptTailer | None = None
-    commit_dispatcher: ShardedCommitDispatcher | None = None
+    session_capture = SessionCaptureRuntime()
     try:
-        if loop is None:
-            raise RuntimeError("server loop is unavailable for session writer")
         started_at = datetime.now(UTC).isoformat()
-        writer = SessionWriter(create_async_pool(), loop=loop)
-        session_writer = writer
         # Tier-1 transcript snapshot (§7.1/§11, slice 8b-i): tee consumed transcript bytes into the
         # run dir so tier-1 owns the transcript even if the CLI GCs its own file. Built here closing
         # over the workspace-scoped storage_root (same root the wire artifacts use), injected into
@@ -229,93 +342,55 @@ def load_capture_runtime(settings: Settings | None = None) -> CaptureRuntime:
         snapshot_writer = (
             make_transcript_snapshot_writer(storage_root) if storage_root is not None else None
         )
-        quarantined_records = 0
-        shard_count = settings.session_pool_max_size - _SESSION_POOL_AUX_CONNECTION_RESERVE
-        commit_dispatcher = ShardedCommitDispatcher(
-            loop=loop,
-            submit=writer.submit,
-            shard_count=shard_count,
-            queue_size=shard_count,
+        session_capture = _start_session_capture(
+            settings,
+            snapshot_writer=snapshot_writer,
         )
-
-        def submit_events(binding: SessionBinding, events: list[EventWrite]) -> Future[Any]:
-            nonlocal quarantined_records
-            future = commit_dispatcher.submit(
-                build_event_batch(
-                    binding,
-                    events,
-                    session_purpose=_session_purpose_for_binding(binding),
-                )
+        loop = asyncio.get_running_loop()
+        tailer = session_capture.index_tailer
+        if tailer is not None:
+            register_task = loop.create_task(
+                _register_owned_cursor(tailer, binding, started_at),
+                name="register-owned-transcript-cursor",
             )
-            future.add_done_callback(lambda done: log_commit_result(binding, done))
-            return future
-
-        def quarantine_window(
-            binding: SessionBinding,
-            source_path: str,
-            byte_start: int,
-            byte_end: int,
-            raw_excerpt: bytes,
-            exc: BaseException,
-            attempts: int,
-        ) -> Future[Any]:
-            return asyncio.run_coroutine_threadsafe(
-                writer.quarantine_window(
-                    binding,
-                    source_path,
-                    byte_start,
-                    byte_end,
-                    raw_excerpt,
-                    exc,
-                    attempts,
-                ),
-                loop,
-            )
-
-        def log_commit_result(binding: SessionBinding, future: Future[Any]) -> None:
-            nonlocal quarantined_records
-            if future.cancelled():
-                return
-            try:
-                result = future.result()
-            except Exception:
-                return
-            if not result.ok:
-                return
-            if not result.quarantined:
-                return
-            quarantined_records += result.quarantined
-            for sqlstate in result.quarantine_sqlstates:
-                logger.warning(
-                    "quarantined transcript record run=%s session=%s sqlstate=%s total=%d",
-                    binding.run_id,
-                    binding.session_id,
-                    sqlstate,
-                    quarantined_records,
-                )
-
-        index_tailer = TranscriptTailer(
-            build_record=build_event,
-            submit_batch=submit_events,
-            quarantine_window=quarantine_window,
-            snapshot=snapshot_writer,
-        )
-        index_tailer.start()
-        loop.create_task(
-            _register_owned_cursor(index_tailer, binding, started_at),
-            name="register-owned-transcript-cursor",
-        )
+            register_task.add_done_callback(_consume_task_result)
     except Exception:
         logger.exception("session capture failed to start; transcript capture disabled this run")
-        session_writer = index_tailer = None
+        session_capture = SessionCaptureRuntime()
 
     return CaptureRuntime(
         http_client=http_client,
         token_counter=token_counter,
         binding=binding,
-        session_writer=session_writer,
-        index_tailer=index_tailer,
-        commit_dispatcher=commit_dispatcher,
+        session_writer=session_capture.session_writer,
+        index_tailer=session_capture.index_tailer,
+        commit_dispatcher=session_capture.commit_dispatcher,
+    )
+
+
+def load_shared_capture_runtime(
+    settings: Settings | None = None,
+    *,
+    snapshot_writer: Callable[[str, int, bytes], None] | None = None,
+    on_cursor_registered: Callable[[TailCursor], None] | None = None,
+) -> CaptureRuntime:
+    settings = settings or get_settings()
+    http_client, token_counter = _build_capture_primitives()
+    try:
+        session_capture = _start_session_capture(
+            settings,
+            snapshot_writer=snapshot_writer,
+            on_cursor_registered=on_cursor_registered,
+        )
+    except Exception:
+        logger.exception("shared session capture failed to start")
+        session_capture = SessionCaptureRuntime()
+    return CaptureRuntime(
+        http_client=http_client,
+        token_counter=token_counter,
+        session_writer=session_capture.session_writer,
+        index_tailer=session_capture.index_tailer,
+        commit_dispatcher=session_capture.commit_dispatcher,
     )
 
 

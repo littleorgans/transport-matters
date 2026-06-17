@@ -12,7 +12,7 @@ from transport_matters.api.v1.test_terminal import _wait_until
 from transport_matters.captured_run import CLAUDE_CLIENT_NAME
 from transport_matters.config import Settings
 from transport_matters.main import create_app
-from transport_matters.run_manager import RunManagerErrorCode, RunState
+from transport_matters.run_manager import RunManagerError, RunManagerErrorCode, RunState
 from transport_matters.session.async_dao import AsyncSessionDao
 from transport_matters.session.pool import create_async_pool
 from transport_matters.session.test_foundation import event, root_session
@@ -37,7 +37,7 @@ class ManagedRunHarness:
         patch_pty_teardown(monkeypatch, self.pty)
         self.prepared = PreparedRunHarness(tmp_path)
         self.manager = make_manager(tmp_path, self.pty, self.prepared)
-        monkeypatch.setattr(run_routes, "create_run_manager", lambda: self.manager)
+        monkeypatch.setattr(run_routes, "create_run_manager", lambda **_: self.manager)
 
 
 def test_post_get_attach_detach_and_terminate(
@@ -604,6 +604,33 @@ def test_post_after_manager_close_returns_machine_error(
 
     assert response.status_code == 503
     assert response.json()["detail"]["code"] == "run_manager_closed"
+
+
+def test_post_proxy_unavailable_returns_machine_error(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    class UnavailableManager:
+        async def spawn(self, _request: object) -> object:
+            raise RunManagerError(
+                "proxy_start_timeout",
+                "shared proxy unavailable: mitmdump missing",
+            )
+
+    monkeypatch.setattr(run_routes, "create_run_manager", lambda **_: UnavailableManager())
+    client = _client(monkeypatch, tmp_path)
+
+    with client:
+        response = client.post(
+            "/v1/runs",
+            json={"cli": "claude", "cwd": str(tmp_path)},
+            headers=_http_headers(BACKEND_ORIGIN),
+        )
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == {
+        "code": "proxy_start_timeout",
+        "message": "shared proxy unavailable: mitmdump missing",
+    }
 
 
 def test_run_manager_http_mapping_covers_declared_codes() -> None:

@@ -15,9 +15,11 @@ from transport_matters.overrides import Override
 from transport_matters.shared_proxy.binding import ProxyRunBinding
 from transport_matters.shared_proxy.control import SharedProxyControlError, SharedProxyControlServer
 from transport_matters.shared_proxy.manager import (
+    CONTROL_SOCKET_MAX_PATH,
     SharedProxyManager,
     SharedProxyProcessExited,
     SharedProxyRegistryError,
+    _control_socket_path,
 )
 from transport_matters.shared_proxy.models import (
     OverrideScopePayload,
@@ -128,6 +130,22 @@ async def test_manager_registers_binding_and_rejects_duplicate_ports(tmp_path: P
 
     with pytest.raises(SharedProxyRegistryError):
         await manager.register(make_binding(tmp_path, run_id="run-b", port=38101))
+
+
+async def test_manager_registers_multiple_runs_on_one_process(tmp_path: Path) -> None:
+    process = FakeProcess()
+    control = FakeControl()
+    manager = SharedProxyManager(process=process, control=control, monitor_interval_s=None)
+
+    await manager.register(make_binding(tmp_path, run_id="run-a", port=38101))
+    await manager.register(make_binding(tmp_path, run_id="run-b", port=38102))
+
+    assert process.starts == 1
+    assert manager.by_listen_port == {38101: "run-a", 38102: "run-b"}
+    assert [type(request) for request in control.requests] == [
+        RegisterListenerRequest,
+        RegisterListenerRequest,
+    ]
 
 
 async def test_manager_rehydrates_bindings_and_overrides_after_restart(tmp_path: Path) -> None:
@@ -253,6 +271,15 @@ async def test_start_surfaces_early_process_exit(tmp_path: Path) -> None:
 
     with pytest.raises(SharedProxyProcessExited, match=r"returncode=17.*boom"):
         await manager.start()
+
+
+def test_control_socket_path_moves_long_runtime_paths_to_tmp() -> None:
+    runtime_dir = Path("/very") / ("long" * 40) / "runtime" / "shared-proxy"
+
+    control_socket = _control_socket_path(runtime_dir)
+
+    assert len(str(control_socket)) <= CONTROL_SOCKET_MAX_PATH
+    assert control_socket.name == "s.sock"
 
 
 async def test_control_server_closes_idle_connection_on_read_timeout() -> None:

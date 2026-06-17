@@ -16,6 +16,7 @@ from mitmproxy.tools.dump import DumpMaster
 from transport_matters.override_state import get_store, scope_from_params
 from transport_matters.shared_proxy.addon import SharedProxyAddon, SharedProxyBindingTable
 from transport_matters.shared_proxy.control import SharedProxyControlError, SharedProxyControlServer
+from transport_matters.shared_proxy.core import SharedProxyCore, load_shared_proxy_core
 from transport_matters.shared_proxy.models import (
     DeregisterListenerRequest,
     OverrideScopePayload,
@@ -42,6 +43,7 @@ class SharedProxySubprocess:
         self.accept_probe_timeout_s = accept_probe_timeout_s
         self._bindings = SharedProxyBindingTable()
         self._master: DumpMaster | None = None
+        self._core: SharedProxyCore | None = None
         self._server = SharedProxyControlServer(control_socket, self.handle_request)
         self.proxy_generation = 0
         self.mode_generation = 0
@@ -49,13 +51,16 @@ class SharedProxySubprocess:
 
     async def run(self) -> None:
         options = Options(listen_host="127.0.0.1", mode=[])
+        self._core = load_shared_proxy_core()
         self._master = DumpMaster(
             options,
             loop=asyncio.get_running_loop(),
             with_termlog=False,
             with_dumper=False,
         )
-        cast("Callable[[object], None]", self._master.addons.add)(SharedProxyAddon(self._bindings))
+        cast("Callable[[object], None]", self._master.addons.add)(
+            SharedProxyAddon(self._bindings, token_counter=self._core.token_counter)
+        )
         master_task = asyncio.create_task(self._master.run())
         await self._server.start()
         try:
@@ -66,6 +71,9 @@ class SharedProxySubprocess:
             master_any.shutdown()
             with contextlib.suppress(Exception):
                 await master_task
+            if self._core is not None:
+                await self._core.close()
+                self._core = None
 
     async def handle_request(self, request: SharedProxyControlRequest) -> SharedProxyControlAck:
         if isinstance(request, PingRequest):
@@ -83,8 +91,9 @@ class SharedProxySubprocess:
 
     async def register_listener(self, binding: SharedProxyBindingPayload) -> None:
         self._validate_register(binding)
+        core = self._require_core()
         previous_bindings = self._bindings.snapshot()
-        self._bindings.register(binding)
+        runtime_binding = self._bindings.register(binding)
         try:
             self._apply_modes()
             await wait_for_tcp_accept(
@@ -96,8 +105,19 @@ class SharedProxySubprocess:
         except Exception as exc:
             self._bindings.restore(previous_bindings)
             self._apply_modes()
-            msg = f"listener {binding.listen_port} failed readiness probe"
+            msg = f"listener {binding.listen_port} failed readiness probe: {exc}"
             raise SharedProxyControlError("listener_ready_timeout", msg) from exc
+        try:
+            await core.register_binding(runtime_binding)
+        except SharedProxyControlError:
+            self._bindings.restore(previous_bindings)
+            self._apply_modes()
+            raise
+        except Exception as exc:
+            self._bindings.restore(previous_bindings)
+            self._apply_modes()
+            msg = f"owned transcript cursor registration failed for run {binding.run_id!r}"
+            raise SharedProxyControlError("owned_cursor_registration_failed", msg) from exc
         self.mode_generation += 1
 
     async def deregister_listener(self, run_id: str) -> None:
@@ -105,6 +125,7 @@ class SharedProxySubprocess:
         if binding is None:
             return
         previous_bindings = self._bindings.snapshot()
+        runtime_binding = previous_bindings.runtime_by_run_id.get(run_id)
         self._bindings.deregister(run_id)
         try:
             self._apply_modes()
@@ -119,6 +140,8 @@ class SharedProxySubprocess:
             self._apply_modes()
             msg = f"listener {binding.listen_port} failed close probe"
             raise SharedProxyControlError("listener_close_timeout", msg) from exc
+        if self._core is not None and runtime_binding is not None:
+            self._core.unregister_binding(runtime_binding)
         self.mode_generation += 1
 
     def set_overrides(
@@ -157,6 +180,12 @@ class SharedProxySubprocess:
         modes = self._bindings.mode_specs()
         options_any = cast("Any", self._master.options)  # Any: mitmproxy options.update is untyped.
         options_any.update(mode=modes)
+
+    def _require_core(self) -> SharedProxyCore:
+        if self._core is None:
+            msg = "shared proxy core is not running"
+            raise SharedProxyControlError("core_not_running", msg)
+        return self._core
 
     def _ack(self) -> SharedProxyControlAck:
         return SharedProxyControlAck(
