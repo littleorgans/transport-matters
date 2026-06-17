@@ -31,6 +31,11 @@ spike:
 test *args:
     uv run python -m pytest {{args}}
 
+# Opt-in Tier 2 load harness, intentionally outside the default test gate.
+# Usage: just shared-proxy-load-test --runs 50 --requests-per-run 2 --ws-echo-samples 100 --pool-limit 50
+shared-proxy-load-test *args:
+    uv run python -m tests.integration.shared_proxy_load_harness {{args}}
+
 migration-smoke:
     uv run python -m pytest src/transport_matters/session/test_migrate.py -q
 

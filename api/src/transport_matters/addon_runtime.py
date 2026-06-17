@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import os
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from types import MappingProxyType
@@ -15,7 +16,13 @@ import uvicorn
 
 from transport_matters import breakpoint as bp
 from transport_matters.config import get_settings
-from transport_matters.counting import TokenCounter, set_counter, set_recent_auth
+from transport_matters.counting import (
+    NoopTokenCounter,
+    TokenCounter,
+    TokenCountingClient,
+    set_counter,
+    set_recent_auth,
+)
 from transport_matters.index.adapters import get_adapter
 from transport_matters.index.adapters.base import RunContext
 from transport_matters.index.commit_dispatcher import ShardedCommitDispatcher
@@ -46,6 +53,7 @@ logger = logging.getLogger(__name__)
 _PROVIDER_CLI = {"anthropic": "claude", "codex": "codex"}
 _DIRECT_MINT_PROVIDERS = frozenset({"anthropic"})
 _SESSION_POOL_AUX_CONNECTION_RESERVE = 1
+_DISABLE_TOKEN_COUNTER_ENV = "TRANSPORT_MATTERS_DISABLE_TOKEN_COUNTER"
 
 
 def _running_loop() -> asyncio.AbstractEventLoop | None:
@@ -174,7 +182,7 @@ def _session_purpose_for_binding(binding: SessionBinding) -> SessionPurpose:
 @dataclass(slots=True)
 class CaptureRuntime:
     http_client: httpx.AsyncClient
-    token_counter: TokenCounter
+    token_counter: TokenCountingClient
     binding: ProxyRunBinding | None = None
     session_writer: SessionWriter | None = None
     index_tailer: TranscriptTailer | None = None
@@ -197,7 +205,7 @@ class AddonRuntime:
         return self.capture.http_client
 
     @property
-    def token_counter(self) -> TokenCounter:
+    def token_counter(self) -> TokenCountingClient:
         return self.capture.token_counter
 
     @property
@@ -213,12 +221,15 @@ class AddonRuntime:
         return self.capture.binding
 
 
-def _build_capture_primitives() -> tuple[httpx.AsyncClient, TokenCounter]:
+def _build_capture_primitives() -> tuple[httpx.AsyncClient, TokenCountingClient]:
     http_client = httpx.AsyncClient(
         base_url="https://api.anthropic.com",
         timeout=httpx.Timeout(connect=3.0, read=10.0, write=5.0, pool=3.0),
         trust_env=False,
     )
+    if os.environ.get(_DISABLE_TOKEN_COUNTER_ENV) == "1":
+        set_counter(None)
+        return http_client, NoopTokenCounter()
     token_counter = TokenCounter(http_client)
     set_counter(token_counter)
     return http_client, token_counter
