@@ -34,13 +34,19 @@ First-run welcome flow in the desktop.
 - Returning user: diff the current first frame against the cached baseline. If it moved, "system prompts updated by provider", route to edit overlays to reconcile.
 - `--yolo`: auto-capture the first frame, skip the guided walk.
 
-## 2. Desktop cleanup
+## 2. Desktop cleanup — IN FLIGHT (specs authored, run-ahead build next)
 
-Make the desktop opinionated. tm owns the launch config; it is not a flag passthrough.
+Make the desktop opinionated. tm owns the launch config; it is not a flag passthrough. Specs: `~/.mdx/projects/transport-matters-desktop-cleanup/` (`spec-backend.md`, `spec-frontend.md`).
 
-- Stop spawning Claude in the terminal. The canvas/pane path (`prepare_captured_run` → PTY → xterm via `RunManager`) becomes the only desktop launch.
-- Remove the current options and passthroughs (`transport-matters desktop --help`). tm manages and optimizes options inside the app instead of forwarding raw flags.
-- Run lifecycle + curated run API land via the B6 runs family (`terminate`/`interrupt`/`detach` vocab — see *Ready to build*).
+**Run-ahead (build now, backend/CLI only — no UI):**
+- Stop spawning Claude/Codex in the local terminal from the desktop. Electron owns the backend child; `transport-matters desktop` becomes a thin opener. The captured pane path (`prepare_captured_run` → `RunManager` → PTY → xterm) is the only desktop launch.
+- Remove the `desktop` passthrough + provider-flag surface (`ctx.args`/`_split_passthrough` → `Settings.default_client_passthrough` → `_spawn_request`). tm manages options in-app; no raw flag forwarding. Standalone `transport-matters claude`/`codex` **KEEP** (separate terminal command contract; desktop just stops depending on them).
+- Run lifecycle uses the B6 runs family vocab (`terminate`/`interrupt`/`detach`). **Live-launch smoke is the required gate** (desktop bugs ship CI-green).
+
+**Parked — focused UI effort after run-ahead** (informed by `~/.mdx/projects/tm-ui-component-strategy.md`: adopt Ark UI headless + vanilla CSS, `session-canvas` only):
+- The "nasty" canvas command bar → a beautifully designed **CMD+K palette** (Ark `combobox`/`listbox`, the strategy doc's migration step 2).
+- The **template-picker** lands inside that palette, sending `runtimeTemplate` on `CreateRunRequest` (Slice 4 already shipped the field; absent → NATIVE).
+- The `GET /v1/runtime-templates` list endpoint builds **with** its consumer (no premature endpoint). `spec-frontend.md` feeds this effort.
 
 ## 3. Session transcripts (read surface)
 
@@ -63,3 +69,4 @@ Browse and read past sessions. Non-interactive. Served by the B6 sessions family
 ## To think about
 
 - **Per-agent resource monitoring.** Captured agents occasionally spawn CPU/IO-heavy work (e.g. a `find` from `$HOME`); explore surfacing per-run resource consumption (CPU/mem/IO), a natural fit for the `RunManager` seam.
+- **Bounded shared-proxy pool (HQ5 headroom) — nice to have, circle back.** Canvas runs now share one `mitmdump` subprocess (Tier 2, shipped); the load harness shows one subprocess hits the CPU knee around ~50 concurrent *active* streams (not open panes). The fallback is K shared subprocesses — `SharedProxyManager` generalized 1→K with **K=1 as a byte-for-byte identity default** so it ships dark and flips on via `shared_proxy_pool_size`. Buys CPU headroom + crash-isolation (a member crash hits ~runs/K, not all). **Not the focus now** — realistic single-user load won't stream 50 panes at once — but the design is execution-ready: ~4 engineer-days / ~650 LoC / medium risk, 3 PRs, change concentrated in `manager.py` (per-member subprocess/control/core/addon reused unchanged). Spec: `~/.mdx/projects/tm-tier2-bounded-pool-design.md`.
