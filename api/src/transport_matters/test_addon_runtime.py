@@ -22,7 +22,13 @@ from transport_matters.addon_runtime import (
     start_web_runtime,
 )
 from transport_matters.config import Settings
-from transport_matters.counting import TokenCounter, get_counter, set_counter, set_recent_auth
+from transport_matters.counting import (
+    NoopTokenCounter,
+    TokenCounter,
+    get_counter,
+    set_counter,
+    set_recent_auth,
+)
 from transport_matters.index.adapters.base import (
     FileTailSource,
     SessionBinding,
@@ -163,6 +169,20 @@ async def test_load_capture_runtime_starts_capture_resources_without_uvicorn(
 
     assert writers[0].closed is True
     assert tailers[0].stopped_with_drain is True
+
+
+async def test_capture_primitives_can_disable_token_counter(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TRANSPORT_MATTERS_DISABLE_TOKEN_COUNTER", "1")
+
+    client, counter = addon_runtime._build_capture_primitives()
+    try:
+        assert isinstance(counter, NoopTokenCounter)
+        assert get_counter() is None
+        assert await counter.count(b"{}", {}) is None
+    finally:
+        await client.aclose()
 
 
 async def test_start_and_close_web_runtime_use_requested_port(

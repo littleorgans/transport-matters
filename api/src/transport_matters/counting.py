@@ -69,6 +69,13 @@ class TokenCountingClient(Protocol):
     async def count(self, payload: bytes, auth_headers: dict[str, str]) -> int | None: ...
 
 
+class NoopTokenCounter:
+    """Offline token counter for load tests and diagnostics that must not call upstream."""
+
+    async def count(self, payload: bytes, auth_headers: dict[str, str]) -> int | None:
+        return None
+
+
 async def count_before_after(
     counter: TokenCountingClient,
     auth: dict[str, str],

@@ -9,6 +9,7 @@ from typing import Any, cast
 import pytest
 
 from transport_matters.captured_run import (
+    WEB_RUNTIME_EMBEDDED,
     CapturedRunCli,
     CapturedRunDependencies,
     CapturedRunLease,
@@ -91,7 +92,10 @@ async def test_spawn_admission_control_bounds_keyless_prepare_work(tmp_path: Pat
         spawn_concurrency=limit,
     )
     tasks = [
-        asyncio.create_task(manager.spawn(SpawnRun(cli=CLAUDE_CLI, cwd=tmp_path))) for _ in range(8)
+        asyncio.create_task(
+            manager.spawn(SpawnRun(cli=CLAUDE_CLI, cwd=tmp_path, web_runtime=WEB_RUNTIME_EMBEDDED))
+        )
+        for _ in range(8)
     ]
 
     assert await asyncio.to_thread(first_wave_entered.wait, 2)
@@ -124,7 +128,10 @@ async def test_session_store_preflight_runs_off_loop_and_caches_success(
         prepare_run=prepare,
     )
     results = await asyncio.gather(
-        *[manager.spawn(SpawnRun(cli=CLAUDE_CLI, cwd=tmp_path)) for _ in range(6)],
+        *[
+            manager.spawn(SpawnRun(cli=CLAUDE_CLI, cwd=tmp_path, web_runtime=WEB_RUNTIME_EMBEDDED))
+            for _ in range(6)
+        ],
         return_exceptions=True,
     )
 
@@ -152,9 +159,13 @@ async def test_session_store_preflight_does_not_cache_failures(tmp_path: Path) -
     )
 
     with pytest.raises(RunManagerError) as first:
-        await manager.spawn(SpawnRun(cli=CLAUDE_CLI, cwd=tmp_path))
+        await manager.spawn(
+            SpawnRun(cli=CLAUDE_CLI, cwd=tmp_path, web_runtime=WEB_RUNTIME_EMBEDDED)
+        )
     with pytest.raises(RunManagerError) as second:
-        await manager.spawn(SpawnRun(cli=CLAUDE_CLI, cwd=tmp_path))
+        await manager.spawn(
+            SpawnRun(cli=CLAUDE_CLI, cwd=tmp_path, web_runtime=WEB_RUNTIME_EMBEDDED)
+        )
 
     assert first.value.code == "session_store_unavailable"
     assert second.value.code == "launch_failed"
@@ -191,7 +202,9 @@ async def test_unsupported_cli_rejects_before_preflight_and_admission(tmp_path: 
     await asyncio.sleep(0.05)
     invalid_preflight_calls = calls
     invalid_phase = False
-    valid_task = asyncio.create_task(manager.spawn(SpawnRun(cli=CLAUDE_CLI, cwd=tmp_path)))
+    valid_task = asyncio.create_task(
+        manager.spawn(SpawnRun(cli=CLAUDE_CLI, cwd=tmp_path, web_runtime=WEB_RUNTIME_EMBEDDED))
+    )
 
     try:
         valid_reached_prepare = await asyncio.to_thread(prepare_started.wait, 0.3)

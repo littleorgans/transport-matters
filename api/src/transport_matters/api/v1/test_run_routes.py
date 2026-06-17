@@ -9,7 +9,12 @@ from fastapi.testclient import TestClient
 from transport_matters import config, env_keys
 from transport_matters.api.v1 import run_routes, terminal_bridge
 from transport_matters.api.v1.test_terminal import _wait_until
-from transport_matters.captured_run import CLAUDE_CLIENT_NAME
+from transport_matters.captured_run import (
+    CLAUDE_CLIENT_NAME,
+    CapturedRunLease,
+    CapturedRunRequest,
+    CapturedRunSpawnSpec,
+)
 from transport_matters.config import Settings
 from transport_matters.main import create_app
 from transport_matters.run_manager import RunManagerError, RunManagerErrorCode, RunState
@@ -36,7 +41,23 @@ class ManagedRunHarness:
         self.pty = PtyHarness()
         patch_pty_teardown(monkeypatch, self.pty)
         self.prepared = PreparedRunHarness(tmp_path)
-        self.manager = make_manager(tmp_path, self.pty, self.prepared)
+
+        async def prepare_shared(
+            request: CapturedRunRequest,
+            **_: object,
+        ) -> tuple[CapturedRunSpawnSpec, CapturedRunLease]:
+            return self.prepared.prepare(request)
+
+        monkeypatch.setattr(
+            "transport_matters.run_manager.prepare_shared_captured_run",
+            prepare_shared,
+        )
+        self.manager = make_manager(
+            tmp_path,
+            self.pty,
+            self.prepared,
+            shared_proxy_manager=object(),
+        )
         monkeypatch.setattr(run_routes, "create_run_manager", lambda **_: self.manager)
 
 

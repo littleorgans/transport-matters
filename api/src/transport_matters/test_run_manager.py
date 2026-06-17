@@ -14,6 +14,7 @@ import pytest
 
 import transport_matters.run_manager as run_manager_module
 from transport_matters.captured_run import (
+    WEB_RUNTIME_EMBEDDED,
     CapturedRunDependencies,
     CapturedRunLease,
     CapturedRunRequest,
@@ -185,6 +186,8 @@ def make_manager(
     prepared: PreparedRunHarness,
     *,
     events: list[str] | None = None,
+    shared_proxy_manager: object | None = None,
+    shared_proxy_unavailable_reason: str | None = None,
 ) -> RunManager:
     manager_type = RecordingRunManager if events is not None else RunManager
     kwargs: dict[str, Any] = {"events": events} if events is not None else {}
@@ -194,6 +197,8 @@ def make_manager(
         spawn_pty=pty.spawn,
         scrollback_bytes=64,
         attachment_queue_size=8,
+        shared_proxy_manager=cast("Any", shared_proxy_manager),
+        shared_proxy_unavailable_reason=shared_proxy_unavailable_reason,
         **kwargs,
     )
 
@@ -213,7 +218,9 @@ def patch_pty_teardown(monkeypatch: pytest.MonkeyPatch, pty: PtyHarness) -> None
 
 
 async def spawn_run(manager: RunManager, tmp_path: Path) -> ManagedRun:
-    return await manager.spawn(SpawnRun(cli="claude", cwd=tmp_path))
+    return await manager.spawn(
+        SpawnRun(cli="claude", cwd=tmp_path, web_runtime=WEB_RUNTIME_EMBEDDED)
+    )
 
 
 def test_package_root_seams_do_not_import_api() -> None:
@@ -287,7 +294,7 @@ async def test_post_prepare_spawn_failure_closes_lease(tmp_path: Path) -> None:
     )
 
     with pytest.raises(RunManagerError, match="pty spawn failed"):
-        await manager.spawn(SpawnRun(cli="claude", cwd=tmp_path))
+        await manager.spawn(SpawnRun(cli="claude", cwd=tmp_path, web_runtime=WEB_RUNTIME_EMBEDDED))
 
     assert prepared.leases[0].close_count == 1
 
@@ -297,8 +304,22 @@ async def test_idempotency_key_returns_existing_run_without_reprepare(tmp_path: 
     prepared = PreparedRunHarness(tmp_path)
     manager = make_manager(tmp_path, pty, prepared)
 
-    first = await manager.spawn(SpawnRun(cli="claude", cwd=tmp_path, idempotency_key="retry-1"))
-    second = await manager.spawn(SpawnRun(cli="claude", cwd=tmp_path, idempotency_key="retry-1"))
+    first = await manager.spawn(
+        SpawnRun(
+            cli="claude",
+            cwd=tmp_path,
+            web_runtime=WEB_RUNTIME_EMBEDDED,
+            idempotency_key="retry-1",
+        )
+    )
+    second = await manager.spawn(
+        SpawnRun(
+            cli="claude",
+            cwd=tmp_path,
+            web_runtime=WEB_RUNTIME_EMBEDDED,
+            idempotency_key="retry-1",
+        )
+    )
 
     assert second is first
     assert len(prepared.requests) == 1
@@ -310,8 +331,22 @@ async def test_different_idempotency_keys_spawn_distinct_runs(tmp_path: Path) ->
     prepared = PreparedRunHarness(tmp_path)
     manager = make_manager(tmp_path, pty, prepared)
 
-    first = await manager.spawn(SpawnRun(cli="claude", cwd=tmp_path, idempotency_key="fork-a"))
-    second = await manager.spawn(SpawnRun(cli="claude", cwd=tmp_path, idempotency_key="fork-b"))
+    first = await manager.spawn(
+        SpawnRun(
+            cli="claude",
+            cwd=tmp_path,
+            web_runtime=WEB_RUNTIME_EMBEDDED,
+            idempotency_key="fork-a",
+        )
+    )
+    second = await manager.spawn(
+        SpawnRun(
+            cli="claude",
+            cwd=tmp_path,
+            web_runtime=WEB_RUNTIME_EMBEDDED,
+            idempotency_key="fork-b",
+        )
+    )
 
     assert second is not first
     assert len(prepared.requests) == 2
@@ -328,7 +363,14 @@ async def test_spawn_passes_runtime_template_to_captured_request(tmp_path: Path)
         provenance={"registry_source": "agent-runtimes"},
     )
 
-    await manager.spawn(SpawnRun(cli="codex", cwd=tmp_path, runtime_template=runtime_template))
+    await manager.spawn(
+        SpawnRun(
+            cli="codex",
+            cwd=tmp_path,
+            web_runtime=WEB_RUNTIME_EMBEDDED,
+            runtime_template=runtime_template,
+        )
+    )
 
     assert len(prepared.requests) == 1
     assert prepared.requests[0].runtime_template is runtime_template
@@ -342,7 +384,9 @@ async def test_close_during_in_flight_spawn_rolls_back_prepared_run(
     prepared = BlockingPreparedRunHarness(tmp_path)
     manager = make_manager(tmp_path, pty, prepared)
 
-    spawn_task = asyncio.create_task(manager.spawn(SpawnRun(cli="claude", cwd=tmp_path)))
+    spawn_task = asyncio.create_task(
+        manager.spawn(SpawnRun(cli="claude", cwd=tmp_path, web_runtime=WEB_RUNTIME_EMBEDDED))
+    )
     assert await asyncio.to_thread(prepared.entered.wait, 1.0)
 
     await manager.close()
@@ -603,7 +647,14 @@ async def test_disabled_osc_color_replies_stay_silent(
         attachment_queue_size=8,
     )
 
-    run = await manager.spawn(SpawnRun(cli="claude", cwd=tmp_path, osc_color_replies=False))
+    run = await manager.spawn(
+        SpawnRun(
+            cli="claude",
+            cwd=tmp_path,
+            web_runtime=WEB_RUNTIME_EMBEDDED,
+            osc_color_replies=False,
+        )
+    )
     pty.child_write(run.terminal, b"\x1b]11;?\x07")
     # Give the drain loop time to swallow the query, then prove no reply came.
     await wait_until(lambda: run.scrollback.total_bytes > 0)
