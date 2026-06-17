@@ -130,6 +130,39 @@ async def test_run_manager_fails_external_when_shared_proxy_unavailable(
     assert calls == []
 
 
+@pytest.mark.asyncio
+async def test_run_manager_never_falls_back_to_per_run_for_external_runs(
+    tmp_path: Path,
+) -> None:
+    calls: list[str] = []
+
+    def forbidden_prepare(
+        request: CapturedRunRequest,
+        **_: object,
+    ) -> tuple[CapturedRunSpawnSpec, FakeLease]:
+        calls.append(request.web_runtime)
+        raise AssertionError("per-run prepare should not be used for external runs")
+
+    manager = RunManager(
+        dependencies=_dependencies(),
+        prepare_run=forbidden_prepare,
+        shared_proxy_manager=None,
+    )
+
+    with pytest.raises(RunManagerError) as exc_info:
+        await manager._prepare_request(
+            manager._validate_spawn_request(
+                SpawnRun(cli="claude", cwd=tmp_path, web_runtime=WEB_RUNTIME_EXTERNAL)
+            )
+        )
+
+    assert exc_info.value.code == "proxy_start_timeout"
+    assert str(exc_info.value) == (
+        "shared proxy unavailable: shared proxy manager is not configured"
+    )
+    assert calls == []
+
+
 def _spawn_spec(tmp_path: Path, *, run_id: str) -> CapturedRunSpawnSpec:
     return CapturedRunSpawnSpec(
         run_id=run_id,

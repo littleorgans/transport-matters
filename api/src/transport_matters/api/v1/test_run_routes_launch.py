@@ -68,8 +68,22 @@ def test_websocket_binary_input_reaches_child(
 def test_post_launch_failure_returns_machine_error(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
+    async def raise_shared_prepare_error(
+        request: CapturedRunRequest,
+        *,
+        shared_proxy: object,
+        dependencies: CapturedRunDependencies,
+    ) -> tuple[CapturedRunSpawnSpec, CapturedRunLease]:
+        return _raise_prepare_error(request)
+
     manager = RunManager(
-        dependencies=_fake_dependencies(), prepare_run=cast("Any", _raise_prepare_error)
+        dependencies=_fake_dependencies(),
+        prepare_run=cast("Any", _raise_prepare_error),
+        shared_proxy_manager=cast("Any", object()),
+    )
+    monkeypatch.setattr(
+        "transport_matters.run_manager.prepare_shared_captured_run",
+        raise_shared_prepare_error,
     )
     monkeypatch.setattr(run_routes, "create_run_manager", lambda **_: manager)
     client = _client(monkeypatch, tmp_path)
@@ -104,14 +118,22 @@ def test_post_launch_typed_prepare_errors_return_machine_status(
     status_code: int,
     code: str,
 ) -> None:
-    def raise_prepare_error(
+    async def raise_prepare_error(
         _request: CapturedRunRequest,
-        **_kwargs: object,
+        *,
+        shared_proxy: object,
+        dependencies: CapturedRunDependencies,
     ) -> tuple[CapturedRunSpawnSpec, CapturedRunLease]:
         raise prepare_error
 
     manager = RunManager(
-        dependencies=_fake_dependencies(), prepare_run=cast("Any", raise_prepare_error)
+        dependencies=_fake_dependencies(),
+        prepare_run=cast("Any", raise_prepare_error),
+        shared_proxy_manager=cast("Any", object()),
+    )
+    monkeypatch.setattr(
+        "transport_matters.run_manager.prepare_shared_captured_run",
+        raise_prepare_error,
     )
     monkeypatch.setattr(run_routes, "create_run_manager", lambda **_: manager)
     client = _client(monkeypatch, tmp_path)
@@ -205,6 +227,14 @@ def install_real_pty_manager(
         )
         return spawn_spec, cast("CapturedRunLease", fake_lease)
 
+    async def fake_prepare_shared(
+        request: CapturedRunRequest,
+        *,
+        shared_proxy: object,
+        dependencies: CapturedRunDependencies,
+    ) -> tuple[CapturedRunSpawnSpec, CapturedRunLease]:
+        return fake_prepare(request)
+
     def tracking_spawn(
         *,
         argv: Sequence[str],
@@ -221,6 +251,11 @@ def install_real_pty_manager(
         dependencies=_fake_dependencies(),
         prepare_run=fake_prepare,
         spawn_pty=tracking_spawn,
+        shared_proxy_manager=cast("Any", object()),
+    )
+    monkeypatch.setattr(
+        "transport_matters.run_manager.prepare_shared_captured_run",
+        fake_prepare_shared,
     )
     monkeypatch.setattr(run_routes, "create_run_manager", lambda **_: manager)
     return manager, fake_lease

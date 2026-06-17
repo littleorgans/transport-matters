@@ -431,26 +431,28 @@ class RunManager:
         captured_request = self._captured_request(validated)
         if captured_request.web_runtime == WEB_RUNTIME_EXTERNAL:
             if self._shared_proxy_manager is None:
-                if self._shared_proxy_unavailable_reason is not None:
-                    raise RunManagerError(
-                        "proxy_start_timeout",
-                        f"shared proxy unavailable: {self._shared_proxy_unavailable_reason}",
-                    )
-            else:
-                try:
-                    return await prepare_shared_captured_run(
-                        captured_request,
-                        shared_proxy=self._shared_proxy_manager,
-                        dependencies=self._dependencies,
-                    )
-                except CapturedRunBindConflict as exc:
-                    raise RunManagerError("bind_conflict", str(exc)) from exc
-                except CapturedRunProxyStartTimeout as exc:
-                    raise RunManagerError("proxy_start_timeout", str(exc)) from exc
-                except RunManagerError:
-                    raise
-                except Exception as exc:
-                    raise RunManagerError("launch_failed", str(exc)) from exc
+                reason = (
+                    self._shared_proxy_unavailable_reason
+                    or "shared proxy manager is not configured"
+                )
+                raise RunManagerError(
+                    "proxy_start_timeout",
+                    f"shared proxy unavailable: {reason}",
+                )
+            try:
+                return await prepare_shared_captured_run(
+                    captured_request,
+                    shared_proxy=self._shared_proxy_manager,
+                    dependencies=self._dependencies,
+                )
+            except CapturedRunBindConflict as exc:
+                raise RunManagerError("bind_conflict", str(exc)) from exc
+            except CapturedRunProxyStartTimeout as exc:
+                raise RunManagerError("proxy_start_timeout", str(exc)) from exc
+            except RunManagerError:
+                raise
+            except Exception as exc:
+                raise RunManagerError("launch_failed", str(exc)) from exc
         try:
             return await asyncio.to_thread(
                 self._prepare_run,
