@@ -42,9 +42,8 @@ transport-matters codex
 # Proxy + Codex in a specific working directory
 transport-matters codex --work-dir ~/my-project
 
-# Interactive agent plus Electron canvas viewer
+# Electron canvas with local backend
 transport-matters desktop --work-dir ~/my-project
-transport-matters desktop --agent codex --work-dir ~/my-project
 
 # Proxy only, bring your own client
 transport-matters claude --no-claude
@@ -62,14 +61,14 @@ transport-matters codex --no-codex
 
 For Codex, Transport Matters validates any user supplied CA bundle path or else snapshots the active Python trust roots, appends `~/.mitmproxy/mitmproxy-ca-cert.pem`, and passes that merged bundle only to the managed Codex process. Commands started inside Codex use their normal trust chain and are not routed through the Transport Matters proxy, including direct shell commands. No system keychain changes are required.
 
-`transport-matters desktop` keeps the selected agent interactive in your terminal and opens the Electron canvas as a detached viewer pointed at the same backend. It defaults to Claude; use `--agent codex` for Codex.
+`transport-matters desktop` starts the local backend and opens the Electron canvas. Start Claude or Codex from captured panes inside the desktop UI.
 
-On launch, Transport Matters prints:
+Standalone `claude` and `codex` launch print:
 - the proxy URL
 - the web UI URL
 - the resolved workspace CWD
 
-Use those exact printed endpoints. Default ports are kernel allocated free ports unless you pass `--proxy-port` or `--web-port`.
+Use those exact printed endpoints. Default ports are kernel allocated free ports unless you pass `--proxy-port` or `--web-port` to the standalone command. Desktop opens the canvas directly and accepts `--web-port` for the local backend.
 
 ## Pass-through arguments
 
@@ -236,13 +235,12 @@ Primary commands:
 - `transport-matters list`
 - `transport-matters version`
 
-Useful flags:
+Useful standalone and backend flags:
 - `--proxy-port`
 - `--web-port`
 - `--storage-dir`
 - `--print-command`
 - `--debug`
-- `--agent` on `desktop`
 - `--no-claude` on `claude`
 - `--no-codex` on `codex`
 

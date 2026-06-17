@@ -57,7 +57,6 @@ from .instances import list_instances as list_instances_impl
 from .launch_options import (
     CLAUDE_UPSTREAM_DEFAULT,
     AgentHomeDirOption,
-    AgentOption,
     ClaudeBinOption,
     ClaudeUpstreamOption,
     CodexBinOption,
@@ -68,7 +67,6 @@ from .launch_options import (
     NoSystemPromptOption,
     PrintCommandOption,
     ProxyPortOption,
-    RouteOption,
     StorageDirOption,
     WebPortOption,
     WorkDirOption,
@@ -345,40 +343,18 @@ def codex(
     name="desktop",
     cls=PlainCommand,
     no_args_is_help=False,
-    context_settings={
-        "help_option_names": ["-h", "--help"],
-        "allow_extra_args": True,
-        "ignore_unknown_options": True,
-    },
+    context_settings={"help_option_names": ["-h", "--help"]},
 )
 def desktop(
-    ctx: typer.Context,
-    agent: AgentOption = "claude",
-    route: RouteOption = "canvas",
     work_dir: WorkDirOption = None,
-    proxy_port: ProxyPortOption = None,
     web_port: WebPortOption = None,
     storage_dir: StorageDirOption = None,
-    home_dir: AgentHomeDirOption = None,
-    debug: DebugOption = False,
-    print_command: PrintCommandOption = False,
-    upstream: ClaudeUpstreamOption = CLAUDE_UPSTREAM_DEFAULT,
-    claude_bin: ClaudeBinOption = None,
-    no_claude: NoClaudeOption = False,
-    no_system_prompt: NoSystemPromptOption = False,
-    codex_bin: CodexBinOption = None,
-    no_codex: NoCodexOption = False,
-    force_http_fallback: ForceHttpFallbackOption = False,
 ) -> None:
     """Start the canvas desktop viewer and backend server."""
     run_desktop_launch(
-        route=route,
         work_dir=work_dir,
-        proxy_port=proxy_port,
         web_port=web_port,
         storage_dir=storage_dir,
-        debug=debug,
-        print_command=print_command,
         allocate_port_pair_func=allocate_port_pair,
     )
 

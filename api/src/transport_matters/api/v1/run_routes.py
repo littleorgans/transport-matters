@@ -351,7 +351,7 @@ def _spawn_request(
         cwd=_request_cwd(body.cwd, settings),
         cols=terminal.cols,
         rows=terminal.rows,
-        passthrough=settings.default_client_passthrough,
+        passthrough=(),
         home_dir=settings.agent_home_dir,
         debug=settings.debug,
         osc_color_replies=body.osc_color_replies,

@@ -10,11 +10,10 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 from threading import Thread
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, Literal
 from urllib.parse import urlencode
 
 import typer
-from click.core import ParameterSource
 
 from transport_matters import env_keys
 from transport_matters.storage_roots import default_storage_root
@@ -26,7 +25,7 @@ from .net import LOOPBACK_HOST, loopback_http_url, wait_for_port_ready
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
 
-    from .launch_options import AgentName, RouteName
+RouteName = Literal["canvas", "canvas-lab"]
 
 DESKTOP_APP_BIN_ENV = env_keys.DESKTOP_APP_BIN
 DESKTOP_APP_DIR_ENV = env_keys.DESKTOP_APP_DIR
@@ -48,18 +47,6 @@ _DESKTOP_BACKEND_STALE_ENV_KEYS = (
     env_keys.RESUME_CONTEXT,
     env_keys.RUN_ID,
 )
-
-_CLAUDE_ONLY_OPTIONS = frozenset({"upstream", "claude_bin", "no_claude", "no_system_prompt"})
-_CODEX_ONLY_OPTIONS = frozenset({"codex_bin", "no_codex", "force_http_fallback"})
-_OPTION_LABELS = {
-    "upstream": "--upstream",
-    "claude_bin": "--claude-bin",
-    "no_claude": "--no-claude",
-    "no_system_prompt": "--no-system-prompt",
-    "codex_bin": "--codex-bin",
-    "no_codex": "--no-codex",
-    "force_http_fallback": "--force-http-fallback",
-}
 
 
 @dataclass(frozen=True)
@@ -426,40 +413,12 @@ def resolve_electron_launch(
     return ElectronLaunch(argv=(str(electron_bin), str(app_dir)), cwd=app_dir)
 
 
-def _normalize_agent(agent: AgentName) -> AgentName:
-    normalized = agent.lower()
-    if normalized not in {"claude", "codex"}:
-        msg = f"unsupported desktop agent: {agent}"
-        raise typer.BadParameter(msg)
-    return cast("AgentName", normalized)
-
-
 def _normalize_route(route: str) -> str:
     normalized = route.lower()
     if normalized not in {"canvas", "canvas-lab"}:
         msg = f"unsupported desktop route: {route}"
         raise typer.BadParameter(msg)
     return normalized
-
-
-def _reject_irrelevant_options(ctx: typer.Context, agent: AgentName) -> None:
-    rejected = _CODEX_ONLY_OPTIONS if agent == "claude" else _CLAUDE_ONLY_OPTIONS
-    supplied = [_OPTION_LABELS[name] for name in sorted(rejected) if _option_supplied(ctx, name)]
-    if not supplied:
-        return
-    valid_agent = "codex" if agent == "claude" else "claude"
-    option_list = ", ".join(supplied)
-    typer.secho(
-        f"error: {option_list} only valid with --agent {valid_agent}.",
-        fg=typer.colors.RED,
-        err=True,
-    )
-    raise typer.Exit(2)
-
-
-def _option_supplied(ctx: typer.Context, name: str) -> bool:
-    source = ctx.get_parameter_source(name)
-    return source == ParameterSource.COMMANDLINE
 
 
 def _resolve_or_exit(resolve_electron_launch: Callable[[], ElectronLaunch]) -> ElectronLaunch:

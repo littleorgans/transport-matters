@@ -3,7 +3,7 @@
 # ruff: noqa: UP040
 
 from pathlib import Path
-from typing import Annotated, Literal, TypeAlias
+from typing import Annotated, TypeAlias
 
 import typer
 
@@ -11,26 +11,7 @@ from transport_matters import captured_run, env_keys
 
 from .net import validate_port_option
 
-AgentName: TypeAlias = Literal["claude", "codex"]
-RouteName: TypeAlias = Literal["canvas", "canvas-lab"]
 CLAUDE_UPSTREAM_DEFAULT = captured_run.CLAUDE_UPSTREAM_DEFAULT
-
-AgentOption: TypeAlias = Annotated[
-    AgentName,
-    typer.Option(
-        "--agent",
-        help="Agent to launch in the desktop canvas.",
-        case_sensitive=False,
-    ),
-]
-RouteOption: TypeAlias = Annotated[
-    RouteName,
-    typer.Option(
-        "--route",
-        help="Canvas surface to open: 'canvas' (default) or 'canvas-lab'.",
-        case_sensitive=False,
-    ),
-]
 WorkDirOption: TypeAlias = Annotated[
     Path | None,
     typer.Option(
