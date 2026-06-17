@@ -3,12 +3,9 @@ import { writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  SUPPORTED_BACKEND_CLIENTS,
-  isBackendClient,
   launchBackendProcess,
   stopBackendProcess,
   watchBackendExitBeforeReady,
-  type BackendClient,
   type BackendLaunchOptions,
   type LaunchedBackendProcess,
 } from "./backendProcess.js";
@@ -95,7 +92,6 @@ export function resolveBackendStartupOptions(
   cwd = process.cwd(),
 ): BackendStartupOptions {
   return {
-    client: resolveBackendClient(env[ENV.DESKTOP_CLIENT]),
     env: { ...env },
     proxyPort: resolvePort(env[ENV.PROXY_PORT], DEFAULT_PROXY_PORT),
     webPort: resolvePort(env[ENV.WEB_PORT], DEFAULT_WEB_PORT),
@@ -127,7 +123,6 @@ export async function startBackendAndCreateWindow(
   const waitForHealth = dependencies.waitForHealth ?? waitForLaunchedBackend;
   const createWindow = dependencies.createWindow ?? createMainWindow;
   const backendLaunchOptions: BackendLaunchOptions = {
-    client: options.client,
     proxyPort: options.proxyPort,
     webPort: options.webPort,
     workspaceDir: options.workspaceDir,
@@ -355,18 +350,6 @@ export function registerDesktopLifecycleFromEnv(
 }
 
 registerDesktopLifecycleFromEnv();
-
-function resolveBackendClient(value: string | undefined): BackendClient {
-  if (value === undefined) {
-    return "claude";
-  }
-  if (isBackendClient(value)) {
-    return value;
-  }
-  throw new Error(
-    `Unsupported Transport Matters desktop client: ${value}. Supported clients: ${SUPPORTED_BACKEND_CLIENTS.join(", ")}`,
-  );
-}
 
 function resolvePort(value: string | undefined, fallback: number): number {
   if (value === undefined) {

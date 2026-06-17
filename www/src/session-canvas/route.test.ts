@@ -18,6 +18,12 @@ describe("session canvas route", () => {
       cli: null,
       runId: null,
     });
+    expect(parseCanvasLaunchContext("?owner=local&workspace_hash=hash-1")).toEqual({
+      owner: "local",
+      workspaceHash: "hash-1",
+      cli: null,
+      runId: null,
+    });
   });
 
   it("detects the stress route flag", () => {

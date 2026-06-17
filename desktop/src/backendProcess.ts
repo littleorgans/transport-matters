@@ -3,15 +3,9 @@ import type { SpawnOptions } from "node:child_process";
 import type { EventEmitter } from "node:events";
 import { ENV } from "./env.js";
 
-export const SUPPORTED_BACKEND_CLIENTS = ["claude", "codex"] as const;
-export type BackendClient = (typeof SUPPORTED_BACKEND_CLIENTS)[number];
-
-export function isBackendClient(value: string): value is BackendClient {
-  return SUPPORTED_BACKEND_CLIENTS.some((client) => client === value);
-}
+export const DESKTOP_BACKEND_COMMAND = "_desktop-backend";
 
 export interface BackendLaunchOptions {
-  client: BackendClient;
   env?: NodeJS.ProcessEnv;
   proxyPort: number;
   webPort: number;
@@ -71,7 +65,7 @@ export function buildBackendLaunch(
 
   return {
     args: [
-      options.client,
+      DESKTOP_BACKEND_COMMAND,
       "--work-dir",
       options.workspaceDir,
       "--web-port",
@@ -83,6 +77,7 @@ export function buildBackendLaunch(
     cwd: options.workspaceDir,
     env: {
       ...options.env,
+      [ENV.CWD]: options.workspaceDir,
       [ENV.PROXY_PORT]: proxyPort,
       [ENV.WEB_PORT]: webPort,
     },

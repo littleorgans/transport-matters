@@ -28,12 +28,12 @@ import shutil
 import sysconfig
 from importlib.resources import files
 from pathlib import Path  # noqa: TC003
-from typing import TYPE_CHECKING, Annotated, TypedDict
+from typing import TYPE_CHECKING, Annotated
 
 import typer
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterable
+    from collections.abc import Iterable
     from importlib.resources.abc import Traversable
 
     from transport_matters.captured_run import CapturedRunDependencies
@@ -49,7 +49,7 @@ from transport_matters.workspace import run_root, workspace_id, workspace_root
 from .banner import print_banner, print_client_banner
 from .codex_cmd import run_codex
 from .db_cmd import db_app
-from .desktop_cmd import prepare_desktop_launch
+from .desktop_cmd import DESKTOP_BACKEND_COMMAND, run_desktop_backend_server, run_desktop_launch
 from .diagnose import run_doctor
 from .help import PlainCommand, PlainGroup
 from .identity import CLI_COMMAND
@@ -80,24 +80,6 @@ from .prompt import inject_system_prompt, user_supplied_system_prompt
 from .runner import BindFailure, run_children, run_client_with_retry
 from .start_cmd import run_start
 from .trust import resolve_codex_ca_certificate
-
-
-class _SharedDesktopLaunchKwargs(TypedDict):
-    directory: Path | None
-    proxy_port: int | None
-    web_port: int | None
-    storage_dir: Path | None
-    home_dir: Path | None
-    debug: bool
-    print_command: bool
-    require_addon: Callable[[], Traversable]
-    resolve_mitmdump: Callable[[], str | None]
-    which: Callable[..., str | None]
-    port_in_use: Callable[[int], bool]
-    allocate_port_pair: Callable[[], tuple[int, int]]
-    run_client_with_retry: Callable[..., None]
-    default_client_passthrough: tuple[str, ...]
-
 
 __all__ = [
     "SIGNAL_EXIT",
@@ -388,59 +370,40 @@ def desktop(
     no_codex: NoCodexOption = False,
     force_http_fallback: ForceHttpFallbackOption = False,
 ) -> None:
-    """Start the canvas desktop viewer alongside an interactive agent."""
-    passthrough = _split_passthrough(ctx)
-    plan = prepare_desktop_launch(
-        ctx=ctx,
-        agent=agent,
+    """Start the canvas desktop viewer and backend server."""
+    run_desktop_launch(
         route=route,
-        base_run_client_with_retry=run_client_with_retry,
-        launch_viewer=not print_command,
+        work_dir=work_dir,
+        proxy_port=proxy_port,
+        web_port=web_port,
+        storage_dir=storage_dir,
+        debug=debug,
+        print_command=print_command,
+        allocate_port_pair_func=allocate_port_pair,
     )
-    resolved_home_dir = _resolve_home_dir_option(
-        home_dir,
-        create=not print_command,
-    )
-    dependencies = _claude_run_dependencies()
-    shared_launch_kwargs: _SharedDesktopLaunchKwargs = {
-        "directory": work_dir,
-        "proxy_port": proxy_port,
-        "web_port": web_port,
-        "storage_dir": storage_dir,
-        "home_dir": resolved_home_dir,
-        "debug": debug,
-        "print_command": print_command,
-        "require_addon": dependencies.require_addon,
-        "resolve_mitmdump": dependencies.resolve_mitmdump,
-        "which": dependencies.which,
-        "port_in_use": dependencies.port_in_use,
-        "allocate_port_pair": dependencies.allocate_port_pair,
-        "run_client_with_retry": plan.run_client_with_retry,
-        "default_client_passthrough": tuple(passthrough),
-    }
-    if plan.agent == "claude":
-        run_start(
-            **shared_launch_kwargs,
-            claude_passthrough=passthrough,
-            upstream=upstream,
-            claude_bin=claude_bin,
-            no_claude=no_claude,
-            no_system_prompt=no_system_prompt,
-            inject_system_prompt=dependencies.inject_system_prompt,
-            user_supplied_system_prompt=dependencies.user_supplied_system_prompt,
-            print_banner=print_banner,
-        )
-        return
 
-    run_codex(
-        **shared_launch_kwargs,
-        codex_passthrough=passthrough,
-        codex_bin=codex_bin,
-        no_codex=no_codex,
-        force_http_fallback=force_http_fallback,
-        require_force_http_fallback_addon=_require_force_http_fallback_addon,
-        resolve_codex_ca_certificate=resolve_codex_ca_certificate,
-        print_client_banner=print_client_banner,
+
+@main.command(
+    name=DESKTOP_BACKEND_COMMAND,
+    cls=PlainCommand,
+    hidden=True,
+    context_settings={"help_option_names": ["-h", "--help"]},
+)
+def desktop_backend(
+    work_dir: WorkDirOption = None,
+    proxy_port: ProxyPortOption = None,
+    web_port: WebPortOption = None,
+    storage_dir: StorageDirOption = None,
+    debug: DebugOption = False,
+) -> None:
+    """Run the internal desktop backend server."""
+    run_desktop_backend_server(
+        work_dir=work_dir,
+        proxy_port=proxy_port,
+        web_port=web_port,
+        storage_dir=storage_dir,
+        debug=debug,
+        allocate_port_pair_func=allocate_port_pair,
     )
 
 

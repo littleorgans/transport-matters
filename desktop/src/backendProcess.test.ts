@@ -21,11 +21,11 @@ class FakeChildProcess extends EventEmitter implements BackendChildProcess {
 }
 
 describe("backend process launch", () => {
-  it("builds a claude CLI launch with pinned ports and environment", () => {
+  it("builds the internal desktop backend launch with pinned ports and environment", () => {
     const launch = buildBackendLaunch({
-      client: "claude",
       env: {
         PATH: "/bin",
+        TRANSPORT_MATTERS_CWD: "/old/workspace",
         TRANSPORT_MATTERS_PROXY_PORT: "old-proxy",
         TRANSPORT_MATTERS_WEB_PORT: "old-web",
       },
@@ -36,7 +36,7 @@ describe("backend process launch", () => {
 
     expect(launch).toEqual({
       args: [
-        "claude",
+        "_desktop-backend",
         "--work-dir",
         "/tmp/workspace",
         "--web-port",
@@ -48,15 +48,15 @@ describe("backend process launch", () => {
       cwd: "/tmp/workspace",
       env: {
         PATH: "/bin",
+        TRANSPORT_MATTERS_CWD: "/tmp/workspace",
         TRANSPORT_MATTERS_PROXY_PORT: "9900",
         TRANSPORT_MATTERS_WEB_PORT: "9901",
       },
     });
   });
 
-  it("builds a codex CLI launch with the same pinned port contract", () => {
+  it("does not build provider CLI launches", () => {
     const launch = buildBackendLaunch({
-      client: "codex",
       env: {},
       proxyPort: 9902,
       webPort: 9903,
@@ -64,7 +64,7 @@ describe("backend process launch", () => {
     });
 
     expect(launch.args).toEqual([
-      "codex",
+      "_desktop-backend",
       "--work-dir",
       "/tmp/workspace",
       "--web-port",
@@ -73,9 +73,12 @@ describe("backend process launch", () => {
       "9902",
     ]);
     expect(launch.env).toEqual({
+      TRANSPORT_MATTERS_CWD: "/tmp/workspace",
       TRANSPORT_MATTERS_PROXY_PORT: "9902",
       TRANSPORT_MATTERS_WEB_PORT: "9903",
     });
+    expect(launch.args).not.toContain("claude");
+    expect(launch.args).not.toContain("codex");
   });
 
   it("spawns and terminates the backend child process", () => {
@@ -84,7 +87,6 @@ describe("backend process launch", () => {
 
     const backend = launchBackendProcess(
       {
-        client: "claude",
         env: {},
         proxyPort: 9900,
         webPort: 9901,
@@ -96,7 +98,7 @@ describe("backend process launch", () => {
     expect(spawnBackend).toHaveBeenCalledWith(
       "transport-matters",
       [
-        "claude",
+        "_desktop-backend",
         "--work-dir",
         "/tmp/workspace",
         "--web-port",
@@ -107,6 +109,7 @@ describe("backend process launch", () => {
       {
         cwd: "/tmp/workspace",
         env: {
+          TRANSPORT_MATTERS_CWD: "/tmp/workspace",
           TRANSPORT_MATTERS_PROXY_PORT: "9900",
           TRANSPORT_MATTERS_WEB_PORT: "9901",
         },

@@ -134,7 +134,6 @@ describe("desktop main process", () => {
 
     await startBackendAndCreateWindow(
       {
-        client: "codex",
         preloadPath: "/tmp/transport-matters/preload.cjs",
         proxyPort: 9900,
         webPort: 9901,
@@ -149,7 +148,6 @@ describe("desktop main process", () => {
 
     expect(events).toEqual(["launch", "health", "window"]);
     expect(launchBackend).toHaveBeenCalledWith({
-      client: "codex",
       proxyPort: 9900,
       webPort: 9901,
       workspaceDir: "/tmp/workspace",
@@ -190,7 +188,6 @@ describe("desktop main process", () => {
     });
 
     expect(launchBackend).toHaveBeenCalledWith({
-      client: "claude",
       env: {
         CLAUDE_CONFIG_DIR: "/tmp/claude",
         PATH: "/usr/local/bin:/usr/bin",
@@ -204,23 +201,20 @@ describe("desktop main process", () => {
     });
   });
 
-  it("accepts only supported desktop backend clients from the environment", async () => {
+  it("ignores desktop client selection for backend startup", async () => {
     const { resolveBackendStartupOptions } = await import("./main.js");
 
     expect(
       resolveBackendStartupOptions(
-        { TRANSPORT_MATTERS_DESKTOP_CLIENT: "codex" },
-        "/tmp/workspace",
-      ).client,
-    ).toBe("codex");
-    expect(() =>
-      resolveBackendStartupOptions(
         { TRANSPORT_MATTERS_DESKTOP_CLIENT: "gemini" },
         "/tmp/workspace",
       ),
-    ).toThrow(
-      "Unsupported Transport Matters desktop client: gemini. Supported clients: claude, codex",
-    );
+    ).toEqual({
+      env: { TRANSPORT_MATTERS_DESKTOP_CLIENT: "gemini" },
+      proxyPort: 8787,
+      webPort: 8788,
+      workspaceDir: "/tmp/workspace",
+    });
   });
 
   it("shows a clear startup error when backend readiness fails", async () => {
@@ -239,7 +233,6 @@ describe("desktop main process", () => {
     await expect(
       startBackendAndCreateWindow(
         {
-          client: "claude",
           proxyPort: 9900,
           webPort: 9901,
           workspaceDir: "/tmp/workspace",
