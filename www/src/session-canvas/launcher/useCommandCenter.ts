@@ -1,6 +1,14 @@
-import { type KeyboardEvent, useCallback, useEffect, useRef, useState } from "react";
+import { type KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CanvasGestureModifier } from "../../keybindings/gestureModifier";
-import type { LauncherCommand, LauncherScope, RowAction } from "./commandModel";
+import {
+  type CommandRow,
+  interactionFor,
+  type LauncherCommand,
+  type LauncherEffect,
+  type LauncherScope,
+  type Lifecycle,
+  type RowAction,
+} from "./commandModel";
 import { useLauncherHotkeys } from "./useLauncherHotkeys";
 import { useLauncherRows } from "./useLauncherRows";
 import { useRuntimeTemplates } from "./useRuntimeTemplates";
@@ -12,6 +20,77 @@ export interface UseCommandCenterArgs {
   themeName: string;
   /** Current persisted canvas gesture modifier, shown in Settings. */
   canvasGestureModifier: CanvasGestureModifier;
+}
+
+function assertNever(value: never): never {
+  throw new Error(`Unhandled launcher lifecycle: ${String(value)}`);
+}
+
+interface LauncherActionInterpreterArgs {
+  onCommand: (command: LauncherCommand) => void;
+  retry: () => void;
+  close: () => void;
+  setScope: (scope: LauncherScope) => void;
+  setQuery: (query: string) => void;
+}
+
+function useLauncherActionInterpreter({
+  onCommand,
+  retry,
+  close,
+  setScope,
+  setQuery,
+}: LauncherActionInterpreterArgs) {
+  const effectSink = useMemo<Record<LauncherEffect, () => void>>(
+    () => ({ "retry-agents": retry }),
+    [retry],
+  );
+
+  const fire = useCallback(
+    (action: RowAction) => {
+      switch (action.kind) {
+        case "command":
+          onCommand(action.command);
+          return;
+        case "effect":
+          effectSink[action.effect]();
+          return;
+        case "enter":
+          return;
+      }
+    },
+    [onCommand, effectSink],
+  );
+
+  return useCallback(
+    (row: CommandRow, lifecycle: Lifecycle) => {
+      const action = row.action;
+      if (!action) return;
+      switch (lifecycle) {
+        case "descend":
+          if (action.kind === "enter") {
+            setScope(action.scope);
+            setQuery("");
+          }
+          return;
+        case "run-close":
+          fire(action);
+          close();
+          return;
+        case "run-stay":
+          fire(action);
+          return;
+        case "commit-close":
+          close();
+          return;
+        case "none":
+          return;
+        default:
+          assertNever(lifecycle);
+      }
+    },
+    [close, fire, setQuery, setScope],
+  );
 }
 
 /**
@@ -83,29 +162,20 @@ export function useCommandCenter({
   const { collection, grouped, rowByValue, highlighted, setHighlighted, fleetStatus } =
     useLauncherRows({ scope, query, templates, status, themeName, canvasGestureModifier });
 
-  const runAction = useCallback(
-    (action: RowAction) => {
-      if (action.kind === "enter") {
-        setScope(action.scope);
-        setQuery("");
-        return;
-      }
-      if (action.command.kind === "retry-agents") {
-        retry();
-        return;
-      }
-      onCommand(action.command);
-      close();
-    },
-    [onCommand, retry, close],
-  );
+  const applyGesture = useLauncherActionInterpreter({
+    onCommand,
+    retry,
+    close,
+    setScope,
+    setQuery,
+  });
 
   const selectValue = useCallback(
     (value: string | undefined) => {
       const row = value ? rowByValue.get(value) : undefined;
-      if (row?.action) runAction(row.action);
+      if (row?.action) applyGesture(row, interactionFor(row.action).enter);
     },
-    [rowByValue, runAction],
+    [rowByValue, applyGesture],
   );
 
   // Own Escape so it ALWAYS closes the whole palette, from any state (listbox
@@ -132,9 +202,12 @@ export function useCommandCenter({
       const caret = event.currentTarget.selectionStart ?? 0;
       if (event.key === "ArrowRight" && caret >= query.length) {
         const row = highlighted ? rowByValue.get(highlighted) : undefined;
-        if (row?.action?.kind === "enter") {
-          event.preventDefault();
-          runAction(row.action);
+        if (row?.action) {
+          const lifecycle = interactionFor(row.action).advance;
+          if (lifecycle !== "none") {
+            event.preventDefault();
+            applyGesture(row, lifecycle);
+          }
         }
         return;
       }
@@ -145,7 +218,7 @@ export function useCommandCenter({
         setScope("root");
       }
     },
-    [query.length, highlighted, rowByValue, runAction, scope],
+    [query.length, highlighted, rowByValue, applyGesture, scope],
   );
 
   return {
