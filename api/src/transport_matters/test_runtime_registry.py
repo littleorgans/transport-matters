@@ -244,6 +244,41 @@ def test_list_runtime_templates_walks_nested_templates(tmp_path: Path) -> None:
     assert [template.name for template in listed] == ["team/codex"]
 
 
+def test_list_runtime_templates_skips_degenerate_root_entry(tmp_path: Path) -> None:
+    registry_root = tmp_path / ".agent-runtimes" / "runtimes"
+    registry_root.mkdir(parents=True)
+    (registry_root / "runtime.toml").write_text("[runtime]\n", encoding="utf-8")
+    _write_capabilities(
+        registry_root,
+        """
+        {
+          "schema_version": 2,
+          "vendors": ["anthropic"],
+          "required_capabilities": [],
+          "recommended_model": null,
+          "generated_from": "degenerate"
+        }
+        """,
+    )
+    valid_template = _template_dir(tmp_path, "valid")
+    _write_capabilities(
+        valid_template,
+        """
+        {
+          "schema_version": 2,
+          "vendors": ["openai"],
+          "required_capabilities": [],
+          "recommended_model": null,
+          "generated_from": "digest"
+        }
+        """,
+    )
+
+    listed = list_runtime_templates(env={"HOME": str(tmp_path)})
+
+    assert [template.name for template in listed] == ["valid"]
+
+
 def test_list_runtime_templates_missing_roots_return_empty(tmp_path: Path) -> None:
     assert list_runtime_templates(env={"HOME": str(tmp_path)}) == ()
 

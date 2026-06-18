@@ -30,7 +30,8 @@ HARNESS_VENDOR_COMPATIBILITY: MappingProxyType[
         "claude": ("anthropic",),
         "codex": ("openai",),
         "opencode": ("anthropic", "openai"),
-        # TODO(stuart): confirm pi vendor set.
+        # claude/codex are live; opencode/pi parse forward-compatible artifacts.
+        # pi vendors remain provisional.
         "pi": ("anthropic", "openai"),
     }
 )

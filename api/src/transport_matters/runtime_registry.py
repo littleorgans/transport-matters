@@ -151,7 +151,10 @@ def _list_runtime_templates_in_root(
         resolved_template_home = template_home.resolve(strict=False)
         if not resolved_template_home.is_relative_to(resolved_root):
             continue
-        name = _validated_template_name(template_home.relative_to(root.path).as_posix())
+        try:
+            name = _validated_template_name(template_home.relative_to(root.path).as_posix())
+        except ValueError:
+            continue
         capabilities = read_runtime_template_capabilities(template_home)
         listings.append(
             RuntimeTemplateListing(

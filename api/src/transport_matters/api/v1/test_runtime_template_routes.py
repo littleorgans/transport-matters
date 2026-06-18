@@ -77,3 +77,56 @@ async def test_runtime_templates_endpoint_missing_roots_returns_empty(
 
     assert response.status_code == 200
     assert response.json() == {"items": []}
+
+
+async def test_runtime_templates_endpoint_skips_degenerate_root_entry(
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    home = tmp_path / "home"
+    registry_root = home / ".agent-runtimes" / "runtimes"
+    registry_root.mkdir(parents=True)
+    (registry_root / "runtime.toml").write_text("[runtime]\n", encoding="utf-8")
+    (registry_root / "capabilities.json").write_text(
+        """
+        {
+          "schema_version": 2,
+          "vendors": ["anthropic"],
+          "required_capabilities": [],
+          "recommended_model": null,
+          "generated_from": "degenerate"
+        }
+        """,
+        encoding="utf-8",
+    )
+    template = registry_root / "research"
+    template.mkdir()
+    (template / "runtime.toml").write_text("[runtime]\n", encoding="utf-8")
+    (template / "capabilities.json").write_text(
+        """
+        {
+          "schema_version": 2,
+          "vendors": ["openai"],
+          "required_capabilities": [],
+          "recommended_model": null,
+          "generated_from": "digest"
+        }
+        """,
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("HOME", str(home))
+
+    response = await client.get("/v1/runtime-templates")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "items": [
+            {
+                "name": "research",
+                "vendors": ["openai"],
+                "required_capabilities": [],
+                "recommended_model": None,
+            }
+        ]
+    }
