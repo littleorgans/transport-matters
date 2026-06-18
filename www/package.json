@@ -41,6 +41,7 @@
     "framer-motion": "^12.40.0",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
+    "tinykeys": "^4.0.0",
     "zustand": "^5.0.12"
   },
   "devDependencies": {

@@ -7,6 +7,7 @@ import {
   useState,
 } from "react";
 import type { PaneId } from "../../engine";
+import { useDockKeybindings } from "../../keybindings/engine";
 import { truncateMiddle } from "../../lib/formatting";
 import { clearActiveDockDrag, PANE_REF_MIME, setActiveDockDrag } from "../dnd/dockDragSource";
 import { clearDropTarget } from "../dnd/dropTargetStore";
@@ -32,21 +33,19 @@ export interface PaneDockProps {
 export function PaneDock({ docked, onRestore, onClose }: PaneDockProps) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
+  const closeDock = useCallback(() => setOpen(false), []);
+  useDockKeybindings({ close: closeDock, isOpen: () => open });
 
-  // Dismiss the menu on outside click or Escape so it never lingers over the canvas.
+  // Dismiss the menu on outside click so it never lingers over the canvas.
+  // Escape is registered with the desktop keybinding engine.
   useEffect(() => {
     if (!open) return;
     const onPointerDown = (event: PointerEvent) => {
       if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
     };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(false);
-    };
     window.addEventListener("pointerdown", onPointerDown);
-    window.addEventListener("keydown", onKeyDown);
     return () => {
       window.removeEventListener("pointerdown", onPointerDown);
-      window.removeEventListener("keydown", onKeyDown);
     };
   }, [open]);
 

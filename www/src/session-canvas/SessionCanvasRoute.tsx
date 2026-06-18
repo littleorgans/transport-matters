@@ -1,4 +1,5 @@
 import { useEffect, useMemo } from "react";
+import { KeybindingEngineProvider } from "../keybindings/engine";
 import { CanvasSurface } from "./components/CanvasSurface";
 import { useLaunchSession } from "./hooks/useLaunchSession";
 import { useCanvasStore } from "./model/canvasStore";
@@ -30,10 +31,12 @@ export function SessionCanvasRoute() {
   if (stress) return <SessionCanvasStressRoute />;
 
   return (
-    <CanvasSurface
-      launch={launch}
-      launchSessionId={resolved?.sessionId ?? null}
-      launchStatus={launchStatus}
-    />
+    <KeybindingEngineProvider>
+      <CanvasSurface
+        launch={launch}
+        launchSessionId={resolved?.sessionId ?? null}
+        launchStatus={launchStatus}
+      />
+    </KeybindingEngineProvider>
   );
 }
