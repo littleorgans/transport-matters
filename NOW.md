@@ -2,6 +2,17 @@
 
 What we are working on next. This doc grounds focus. When scope drifts, this is the anchor.
 
+## ★ North Star — read first; every architectural and design decision goes through this lens
+
+The human operates agents by **voice → a director agent** that holds full context of every
+workspace/canvas/pane and **launches, manages, and prompts** agents via **MCP or CLI**. The
+discipline this imposes: **API-first, the UI is one client of two.** The director and the
+human ⌘K palette are twin clients of one control plane (verbs: **observe / launch / manage /
+prompt**); anything the UI can do, the director must do programmatically. No UI-only logic.
+
+Full vision + the decision lens: `~/.mdx/projects/transport-matters-north-star.md`. Apply it
+to everything below.
+
 ## Ephemeral `.agent-runtimes` homes — Slices 1-4 merged (backend complete through the registry seam); the desktop template-picker UI is the remaining piece (feeds track #2)
 
 Launch Claude/Codex from a **pristine `.agent-runtimes/<name>` template** into a TM-owned **per-run ephemeral home**: template never mutated, auth injected from native `~/.claude`/`~/.codex`, durable history in Postgres (home is disposable). Spec (dual-clean): `~/.mdx/projects/agent-runtimes-ephemeral-home-spec.md`.
@@ -34,19 +45,20 @@ First-run welcome flow in the desktop.
 - Returning user: diff the current first frame against the cached baseline. If it moved, "system prompts updated by provider", route to edit overlays to reconcile.
 - `--yolo`: auto-capture the first frame, skip the guided walk.
 
-## 2. Desktop cleanup — run-ahead ✓ MERGED (#140 + #141, pending owner live-smoke); UI parked
+## 2. Desktop cleanup — run-ahead ✓ DONE (#140 + #141, owner-roadtested ✓); UI now the focus
 
 Make the desktop opinionated. tm owns the launch config; it is not a flag passthrough. Specs: `~/.mdx/projects/transport-matters-desktop-cleanup/` (`spec-backend.md`, `spec-frontend.md`).
 
 **Run-ahead ✓ merged** — Slice A (#140 `3c4148b`) + Slice B (#141 `4c8feec`), both MoE dual-clean:
 - Desktop no longer spawns Claude/Codex in the terminal. Electron owns the backend child via a new server seam (`run_desktop_backend_server`/`serve_desktop_backend` → `create_app`, with `preflight_session_store_or_exit` retained so a misconfigured DB hard-blocks rather than 503s); `transport-matters desktop` is a thin opener; the captured pane path (`prepare_captured_run` → `RunManager` → PTY → xterm) is the only desktop launch.
 - Removed the `desktop` passthrough + provider-flag surface: `desktop` now rejects `--agent`/provider flags/`-- args`; the dead validator cluster + `AgentName` import deleted; `_spawn_request` no longer sources `default_client_passthrough` (field/env/param kept for standalone + shared proxy). Standalone `transport-matters claude`/`codex` untouched.
-- **Pending owner live-smoke** (the required launch-wiring gate): clean-shell `tm desktop` → no agent attached to the terminal → spawn Claude + Codex panes → `--agent` rejected → standalone `tm claude -- …` passthrough still works.
+- **Owner live-smoke ✓** (2026-06-18, the launch-wiring gate): clean-shell `tm desktop` → no agent attached to the terminal → Claude + Codex panes spawn through the captured pane path → `--agent`/provider flags rejected → standalone `tm claude -- …` passthrough still works. Run-ahead is real.
 
-**Parked — focused UI effort after run-ahead** (informed by `~/.mdx/projects/tm-ui-component-strategy.md`: adopt Ark UI headless + vanilla CSS, `session-canvas` only):
-- The "nasty" canvas command bar → a beautifully designed **CMD+K palette** (Ark `combobox`/`listbox`, the strategy doc's migration step 2).
-- The **template-picker** lands inside that palette, sending `runtimeTemplate` on `CreateRunRequest` (Slice 4 already shipped the field; absent → NATIVE).
-- The `GET /v1/runtime-templates` list endpoint builds **with** its consumer (no premature endpoint). `spec-frontend.md` feeds this effort.
+**UI effort — design LOCKED (2026-06-18), ready to spec into slices.** Framed by the ★ North Star: the ⌘K palette is **client #1 of the control plane's Launch verb**. Full UI/UX design: `~/.mdx/projects/transport-matters-launcher-ui-spec.md`. Headless layer: Ark UI per `~/.mdx/projects/tm-ui-component-strategy.md`.
+- **⌘K command center, scoped by domain** (Agents/Workdir/Canvas/Settings/Sessions); **⌘A** jumps straight to Agents. Zero-chrome canvas. Grammar: ↵ enter/spawn · → configure · ⌫/← back · Esc close. Each domain = a face of the control plane (Agents=Launch, Canvas=Manage/Observe, Settings=manage-agents, Sessions=Observe).
+- **Agents scope = the launcher**: agent-first, recommendation-default. Pick an agent → ↵ spawns its recommended target; → expands harness/vendor/model/effort overrides (the eval path). Native always present + spawnable (loading/empty/error all degrade to Native-only).
+- **Data deps:** reads `recommended_model.default`/`by_vendor` from `capabilities.json` **v2** (harness/vendor split — schema-2 + fleet regen shipped by agent-runtimes 2026-06-18, uncommitted; topic `tm-launcher-proposal`). TM read-side + the `cli`→`harness` rename are in flight (rename delegated to an orchestrator, blocks the read-side). `GET /v1/runtime-templates` builds with its consumer; `CreateRunRequest` extends with harness/vendor/model/effort (absent → NATIVE).
+- **Build order:** RouteSwitcher→Ark `Menu` pilot → Agents scope (⌘A + launcher, the load-bearing slice) → root command-center shell → Canvas/Settings/Workdir/Sessions. (Supersedes the old `spec-frontend.md` template-picker scope, now subsumed.)
 
 ## 3. Session transcripts (read surface)
 
