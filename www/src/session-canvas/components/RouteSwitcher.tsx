@@ -43,7 +43,8 @@ export function RouteSwitcher({ routes = CANVAS_ROUTES }: RouteSwitcherProps) {
 
 // Full-load navigation to the target pathname, PRESERVING the current query string so returning to
 // /canvas keeps its workspace_hash / harness / run_id launch context (www has no client router).
-function navigateToRoute(path: string): void {
+// Exported so the ⌘K command center's Canvas-domain "Go to Lab" entry reuses the one nav path.
+export function navigateToRoute(path: string): void {
   if (typeof window === "undefined") return;
   if (window.location.pathname === path) return;
   window.location.assign(`${path}${window.location.search}`);

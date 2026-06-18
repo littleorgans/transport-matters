@@ -3,6 +3,7 @@ import {
   createApiTransport,
   createCapturedRun,
   fetchMeta,
+  fetchRuntimeTemplates,
   fetchTurnContent,
   listRuns,
   resetApiTransport,
@@ -148,10 +149,55 @@ describe("createCapturedRun", () => {
     });
   });
 
+  it("threads a runtime template into the POST body (recommended-target launch)", async () => {
+    const fetchMock = stubFetch({ run: { runId: "run-tpl" } }, 201);
+
+    await expect(createCapturedRun("claude", undefined, true, "research")).resolves.toBe("run-tpl");
+
+    expect(fetchMock).toHaveBeenCalledWith("/v1/runs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        harness: "claude",
+        oscColorReplies: true,
+        runtimeTemplate: "research",
+      }),
+    });
+  });
+
   it("throws on a non-OK spawn response", async () => {
     stubFetch({ detail: { code: "unsupported_harness", message: "no" } }, 400);
 
     await expect(createCapturedRun("claude")).rejects.toThrow("Failed to spawn captured run: 400");
+  });
+});
+
+describe("fetchRuntimeTemplates", () => {
+  afterEach(() => {
+    resetApiTransport();
+    vi.unstubAllGlobals();
+  });
+
+  it("returns the items from GET /v1/runtime-templates", async () => {
+    const items = [
+      {
+        name: "research",
+        vendors: ["anthropic"],
+        required_capabilities: [],
+        recommended_model: null,
+      },
+    ];
+    const fetchMock = stubFetch({ items });
+
+    await expect(fetchRuntimeTemplates()).resolves.toEqual(items);
+
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("/v1/runtime-templates");
+  });
+
+  it("throws on a non-OK response so the launcher can degrade to Native-only", async () => {
+    stubFetch({}, 500);
+
+    await expect(fetchRuntimeTemplates()).rejects.toThrow("Failed to load runtime templates: 500");
   });
 });
 

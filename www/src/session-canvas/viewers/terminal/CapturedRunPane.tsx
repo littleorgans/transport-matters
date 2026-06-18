@@ -14,6 +14,8 @@ export interface CapturedRunPaneProps {
   provider: HarnessName;
   /** Absolute working directory; omitted lets the backend resolve its workspace. */
   cwd?: string;
+  /** Named runtime template to launch under; absent → NATIVE launch. Spawn-time only. */
+  runtimeTemplate?: string;
 }
 
 /**
@@ -28,7 +30,12 @@ export interface CapturedRunPaneProps {
  * captured identity is the window title); a spawn failure or an inbound run.error
  * frame surfaces as an alert banner.
  */
-export function CapturedRunPane({ runKey, provider, cwd }: CapturedRunPaneProps): ReactElement {
+export function CapturedRunPane({
+  runKey,
+  provider,
+  cwd,
+  runtimeTemplate,
+}: CapturedRunPaneProps): ReactElement {
   const ensureRun = useCapturedRunStore((state) => state.ensureRun);
   const persistedRunId = useCapturedRunStore((state) => state.runs[runKey]?.runId);
   const oscColorReplies = useCapturedRunStore((state) => state.oscColorReplies);
@@ -39,7 +46,7 @@ export function CapturedRunPane({ runKey, provider, cwd }: CapturedRunPaneProps)
 
   useEffect(() => {
     let cancelled = false;
-    ensureRun(runKey, provider, cwd, oscColorReplies).then(
+    ensureRun(runKey, provider, cwd, oscColorReplies, runtimeTemplate).then(
       (id) => {
         if (!cancelled) setRunId(id);
       },
@@ -50,7 +57,7 @@ export function CapturedRunPane({ runKey, provider, cwd }: CapturedRunPaneProps)
     return () => {
       cancelled = true;
     };
-  }, [ensureRun, runKey, provider, cwd, oscColorReplies]);
+  }, [ensureRun, runKey, provider, cwd, oscColorReplies, runtimeTemplate]);
 
   if (spawnError !== null) {
     return (

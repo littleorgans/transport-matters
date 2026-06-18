@@ -28,13 +28,18 @@ export function titleForSession(session: SpawnSessionDescriptor): string {
   return `${session.harness} session ${session.sessionId.slice(0, 8)}`;
 }
 
-export function createCapturedRunRef(provider: HarnessName, label?: string): CapturedRunRef {
+export function createCapturedRunRef(
+  provider: HarnessName,
+  label?: string,
+  runtimeTemplate?: string,
+): CapturedRunRef {
   return {
     kind: "captured-run",
     owner: "local",
     provider,
     runKey: createCapturedRunKey(provider),
     ...(label === undefined ? {} : { label }),
+    ...(runtimeTemplate === undefined ? {} : { runtimeTemplate }),
   };
 }
 

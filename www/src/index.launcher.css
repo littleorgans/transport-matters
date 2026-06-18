@@ -1,0 +1,71 @@
+/* ============================================================================
+ * Launcher tokens — the ⌘K command center ("Raycast Minimal")
+ *
+ * STAGE-ONLY upstream contract: this whole `:root` block is portable. It lifts
+ * verbatim into little-background-lab `src/styles.css` with no theme.ts wiring,
+ * so every token here is STATIC (not a themeable axis). Stuart ports it upstream
+ * himself — do not bus-notify LBL, do not open an LBL PR from this slice.
+ *
+ * Reuse-first: geometry/scrims/accents that the canvas token system already
+ * owns are referenced via var() at the use site (see launcher/launcher.css),
+ * never re-declared. Only launcher-specific values live here. Alpha composites
+ * ship as an `--X-rgb` channel triple beside the resolved `--X`.
+ * ========================================================================== */
+
+:root {
+  /* --- Scrim: dims the live canvas behind the palette ---------------------- */
+  --launcher-scrim-rgb: 4 4 4; /* sits over --color-well #040404 */
+  --launcher-scrim: rgb(var(--launcher-scrim-rgb) / 0.58);
+
+  /* --- Panel surface (reuses canvas charcoal layers via var) --------------- */
+  --launcher-panel-bg: var(--color-surface); /* #0e0e0e */
+  --launcher-panel-edge: var(--color-edge-strong); /* #2d2d2d */
+  --launcher-divider: var(--color-edge-subtle); /* #171717 */
+  --launcher-shadow-rgb: 0 0 0;
+  --launcher-panel-shadow:
+    0 0 0 1px rgb(var(--launcher-shadow-rgb) / 0.4),
+    0 28px 80px -16px rgb(var(--launcher-shadow-rgb) / 0.6),
+    0 8px 26px -14px rgb(var(--launcher-shadow-rgb) / 0.55);
+
+  /* --- Geometry ------------------------------------------------------------ */
+  --launcher-width: 560px;
+  --launcher-top-offset: 13vh;
+  --launcher-pad: 6px; /* list inner padding */
+  --launcher-max-list: 52vh;
+  --launcher-input-height: 52px;
+  --launcher-row-height: 40px;
+  --launcher-row-pad-x: 14px;
+  --launcher-row-pad-y: 8px;
+  --launcher-row-gap: 12px;
+  --launcher-icon-size: 22px;
+  --launcher-rail-width: 2px;
+  --launcher-footer-height: 36px;
+
+  /* --- Typography (mono everywhere, inherits --font-mono) ------------------ */
+  --launcher-fs-input: 13.5px;
+  --launcher-fs-title: 13px;
+  --launcher-fs-subtitle: 11.5px;
+  --launcher-fs-label: 10px;
+  --launcher-fs-hint: 10.5px;
+  --launcher-label-tracking: 0.14em;
+
+  /* --- Row states ---------------------------------------------------------- */
+  /* Highlighted-row wash is a faint warm tint of the live accent (#e8e4dc). */
+  --launcher-row-wash: rgb(var(--accent-rgb) / 0.06);
+  /* Fallback rail colour when a row is not agent-coloured. */
+  --launcher-rail-default: var(--color-accent);
+
+  /* --- Keyboard-hint chips + footer ---------------------------------------- */
+  --launcher-kbd-bg-rgb: 255 255 255;
+  --launcher-kbd-bg: rgb(var(--launcher-kbd-bg-rgb) / 0.03);
+  --launcher-kbd-edge: var(--color-edge);
+  --launcher-footer-bg-rgb: 0 0 0;
+  --launcher-footer-bg: rgb(var(--launcher-footer-bg-rgb) / 0.18);
+
+  /* --- Status accents (reuse canvas hues) ---------------------------------- */
+  --launcher-live: var(--color-sage); /* online / native-live */
+  --launcher-warn: var(--color-amber); /* retry / degraded fetch */
+
+  /* --- First-run hint ------------------------------------------------------ */
+  --launcher-hint-fade: 6s; /* total life of the fading ⌘K discoverability hint */
+}

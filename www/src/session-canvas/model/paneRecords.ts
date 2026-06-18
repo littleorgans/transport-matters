@@ -5,6 +5,13 @@ import type { CanvasLaunchContext } from "../route";
 /** Display label for a managed harness / captured-run provider (window title, banners). */
 const HARNESS_LABELS: Record<HarnessName, string> = { claude: "Claude", codex: "Codex" };
 
+/**
+ * The managed harnesses spawnable as a captured run (the "Native" agents). The
+ * backend validates the same allowlist (api: _CAPTURED_RUN_HARNESS_ALLOWLIST),
+ * so a runtime template recommending any other harness is not spawnable here.
+ */
+export const CAPTURED_RUN_PROVIDERS = ["claude", "codex"] as const satisfies readonly HarnessName[];
+
 export function harnessLabel(provider: HarnessName): string {
   return HARNESS_LABELS[provider];
 }
@@ -83,7 +90,16 @@ export type PaneContentRef =
       initialView?: string;
     }
   | { kind: "terminal"; owner: "local"; label?: string }
-  | { kind: "captured-run"; owner: "local"; provider: HarnessName; runKey: string; label?: string };
+  | {
+      kind: "captured-run";
+      owner: "local";
+      provider: HarnessName;
+      runKey: string;
+      label?: string;
+      // Named runtime template this run launched under. Absent → NATIVE launch.
+      // Persisted on the ref so a detach/restore re-attaches under the same template.
+      runtimeTemplate?: string;
+    };
 
 /**
  * A pane removed from the canvas but retained locally so the dock can restore it (Option A: local
@@ -140,7 +156,8 @@ export function isPaneContentRef(value: unknown): value is PaneContentRef {
       return (
         isHarnessName(value.provider) &&
         typeof value.runKey === "string" &&
-        isOptionalString(value.label)
+        isOptionalString(value.label) &&
+        isOptionalString(value.runtimeTemplate)
       );
     default:
       return false;

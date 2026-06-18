@@ -93,7 +93,7 @@ describe("CapturedRunPane", () => {
     render(<CapturedRunPane runKey="claude:k1" provider="claude" />);
 
     await waitFor(() => expect(sockets).toHaveLength(1));
-    expect(createCapturedRunMock).toHaveBeenCalledWith("claude", undefined, true);
+    expect(createCapturedRunMock).toHaveBeenCalledWith("claude", undefined, true, undefined);
     expect(only(sockets).url).toMatch(/\/v1\/runs\/run-abc123\/terminal\?cols=80&rows=24$/);
   });
 
@@ -115,7 +115,7 @@ describe("CapturedRunPane", () => {
     render(<CapturedRunPane runKey="claude:k1" provider="claude" />);
 
     await waitFor(() => expect(sockets).toHaveLength(1));
-    expect(createCapturedRunMock).toHaveBeenCalledWith("claude", undefined, false);
+    expect(createCapturedRunMock).toHaveBeenCalledWith("claude", undefined, false, undefined);
   });
 
   it("re-attaches a persisted run id without spawning a new run", async () => {

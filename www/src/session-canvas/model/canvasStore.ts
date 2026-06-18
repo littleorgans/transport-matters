@@ -61,7 +61,7 @@ interface CanvasStoreModel extends CanvasModel {
 }
 
 interface CanvasStoreState extends CanvasStoreModel {
-  addCapturedRun(provider: HarnessName): PaneId;
+  addCapturedRun(provider: HarnessName, runtimeTemplate?: string): PaneId;
   closePane(paneId: PaneId): void;
   closeDockedPane(paneId: PaneId): void;
   expandPane(paneId: PaneId): void;
@@ -104,8 +104,8 @@ export const useCanvasStore = create<CanvasStoreState>()(
     (set, get) => ({
       ...createInitialCanvasModel(INITIAL_LAUNCH_CONTEXT),
 
-      addCapturedRun(provider) {
-        const ref = createCapturedRunRef(provider, harnessLabel(provider));
+      addCapturedRun(provider, runtimeTemplate) {
+        const ref = createCapturedRunRef(provider, harnessLabel(provider), runtimeTemplate);
         return get().spawnPane(ref, { focus: true });
       },
 

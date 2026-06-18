@@ -10,6 +10,8 @@ import type {
   OverrideAudit,
   OverrideScope,
   PausedFlow,
+  RuntimeTemplateSummary,
+  RuntimeTemplatesResponse,
   TurnContent,
 } from "./types";
 
@@ -390,8 +392,17 @@ export async function createCapturedRun(
   // When false the bridge stays silent on the harness OSC color queries
   // (api: osc_color_responder); true is the terminal-faithful default.
   oscColorReplies = true,
+  // Named runtime template to launch the harness under. Omitted → byte-for-byte
+  // NATIVE launch (today's behaviour). Present → backend resolves the template
+  // for this harness (api: CreateRunRequest.runtimeTemplate).
+  runtimeTemplate?: string,
 ): Promise<string> {
-  const body = { harness, ...(cwd === undefined ? {} : { cwd }), oscColorReplies };
+  const body = {
+    harness,
+    ...(cwd === undefined ? {} : { cwd }),
+    oscColorReplies,
+    ...(runtimeTemplate === undefined ? {} : { runtimeTemplate }),
+  };
   const response = await requestJson<{ run: { runId: string } }>(
     "/v1/runs",
     {
@@ -403,6 +414,19 @@ export async function createCapturedRun(
     true,
   );
   return response.run.runId;
+}
+
+/**
+ * List the runtime templates (specialist agents) installable on disk via
+ * `GET /v1/runtime-templates`. The Agents launcher enumerates these as rows;
+ * a failed fetch degrades to Native-only and never blocks a spawn.
+ */
+export async function fetchRuntimeTemplates(): Promise<RuntimeTemplateSummary[]> {
+  const response = await requestApiJson<RuntimeTemplatesResponse>(
+    "/v1/runtime-templates",
+    "Failed to load runtime templates",
+  );
+  return response.items;
 }
 
 /** Explicitly terminate a managed run via `POST /v1/runs/{runId}/terminate`. */
