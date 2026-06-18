@@ -105,41 +105,43 @@
   z-index: 3001;
 }
 
-.launcher__content {
-  z-index: 3001;
+/* Panel frame: holds the scrolling list + a fixed footer. The frame does not
+   scroll (the list does), so the footer stays pinned below and rows never bleed
+   under it. Animation/transform-origin live here, not on the floating-ui-driven
+   positioner, so they don't fight its positioning transform. */
+.launcher__panel {
   display: flex;
   flex-direction: column;
   width: var(--reference-width);
   max-height: min(var(--launcher-max-list), var(--available-height, 60vh));
-  /* The panel itself does not scroll; the inner list does, so the footer stays
-     pinned below the list and rows never bleed under it. */
   overflow: hidden;
   background: var(--launcher-panel-bg);
   border: 1px solid var(--launcher-panel-edge);
   border-top: 0;
   box-shadow: var(--launcher-panel-shadow);
-  outline: none;
+  transform-origin: top center;
   animation: launcher-panel-in var(--transition) ease-out;
 }
 
-.launcher__content:focus-visible {
-  box-shadow: var(--launcher-panel-shadow), var(--canvas-focus-ring);
-}
-
-.launcher__content[data-state="open"] {
-  transform-origin: top center;
-}
-
-/* Bounded scroll area between the search bar and the fixed footer. Tight top
-   gap to the first heading; the bottom pad keeps the last row off the footer. */
-.launcher__list {
+/* Combobox.Content is the scroll container Ark drives for active-option
+   scrolling. Bounded between the search bar and the fixed footer; the tight top
+   pad sets the gap to the first heading, the bottom pad keeps the last row off
+   the footer, and scroll-padding keeps an arrowed row off the scroll edges. */
+.launcher__content {
+  z-index: 3001;
   flex: 1 1 auto;
   min-height: 0;
   padding: 2px 0 var(--launcher-pad);
   overflow-y: auto;
+  outline: none;
   overscroll-behavior: contain;
+  scroll-padding-block: 2px var(--launcher-pad);
   scrollbar-width: thin;
   scrollbar-color: var(--color-edge-strong) transparent;
+}
+
+.launcher__content:focus-visible {
+  box-shadow: var(--canvas-focus-ring);
 }
 
 .launcher__group {

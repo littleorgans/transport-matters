@@ -1,5 +1,6 @@
 import { Combobox } from "@ark-ui/react/combobox";
 import { Portal } from "@ark-ui/react/portal";
+import { useEffect, useRef } from "react";
 import { agentRailStyle } from "../../lib/agentPalette";
 import type { CommandRow, LauncherCommand } from "./commandModel";
 import { FirstRunHint } from "./FirstRunHint";
@@ -23,6 +24,18 @@ const FOOTER_HINTS = "↵ run · → enter · ⌫ back · esc close";
  */
 export function CommandCenter({ onCommand, themeName }: CommandCenterProps) {
   const center = useCommandCenter({ onCommand, themeName });
+  const panelRef = useRef<HTMLDivElement>(null);
+  // Keep the highlighted row scrolled into the bounded results list as the arrow
+  // keys move it (and on auto-highlight). The combobox controls highlight, so we
+  // nudge the active option into its scroll container ourselves; block:"nearest"
+  // is idempotent, so it never fights Ark's own scrolling.
+  useEffect(() => {
+    if (!center.highlighted) return;
+    panelRef.current
+      ?.querySelector<HTMLElement>("[data-part='item'][data-highlighted]")
+      ?.scrollIntoView({ block: "nearest" });
+  }, [center.highlighted]);
+
   if (!center.open) return <FirstRunHint />;
 
   const { scope } = center;
@@ -71,10 +84,11 @@ export function CommandCenter({ onCommand, themeName }: CommandCenterProps) {
         </Combobox.Control>
         <Portal>
           <Combobox.Positioner className="launcher__positioner">
-            <Combobox.Content className="launcher__content">
-              {/* Bounded scroll area: the list scrolls here so rows never bleed
-                  under the fixed footer below. */}
-              <div className="launcher__list" role="presentation">
+            {/* Frame wraps the scrolling list + a fixed footer. Combobox.Content
+                stays the scroll container so Ark scrolls the active option into
+                view; the footer is a sibling OUTSIDE it (no bleed-under). */}
+            <div className="launcher__panel" ref={panelRef}>
+              <Combobox.Content className="launcher__content">
                 {center.grouped.length === 0 ? (
                   <p aria-live="polite" className="launcher__empty" role="status">
                     No matches
@@ -91,12 +105,12 @@ export function CommandCenter({ onCommand, themeName }: CommandCenterProps) {
                     </Combobox.ItemGroup>
                   ))
                 )}
-              </div>
+              </Combobox.Content>
               {/* Hints duplicate live key behaviour; hide from the options tree. */}
               <footer aria-hidden="true" className="launcher__footer">
                 <span>{FOOTER_HINTS}</span>
               </footer>
-            </Combobox.Content>
+            </div>
           </Combobox.Positioner>
         </Portal>
       </Combobox.Root>
