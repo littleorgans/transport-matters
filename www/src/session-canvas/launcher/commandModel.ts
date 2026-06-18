@@ -2,6 +2,10 @@
 // React, no stores — every builder is a deterministic function of its inputs so
 // the row grammar and the four Agents states are unit-testable in isolation.
 
+import {
+  CANVAS_GESTURE_MODIFIERS,
+  type CanvasGestureModifier,
+} from "../../keybindings/gestureModifier";
 import type {
   HarnessName,
   RuntimeTemplateHarness,
@@ -30,6 +34,7 @@ export type LauncherCommand =
   | { kind: "focus-picker" }
   | { kind: "goto"; path: string }
   | { kind: "cycle-theme" }
+  | { kind: "set-canvas-gesture-modifier"; modifier: CanvasGestureModifier }
   | { kind: "retry-agents" };
 
 /** What a row does on `↵`: enter a sub-scope, or fire a leaf command. */
@@ -204,8 +209,11 @@ export function buildCanvasRows(): CommandRow[] {
   ];
 }
 
-/** Settings-domain entries. Theme is the one re-homed command this slice. */
-export function buildSettingsRows(themeName: string): CommandRow[] {
+/** Settings-domain entries. Theme plus the single configurable canvas gesture. */
+export function buildSettingsRows(
+  themeName: string,
+  canvasGestureModifier: CanvasGestureModifier,
+): CommandRow[] {
   return [
     {
       value: "cmd:cycle-theme",
@@ -214,6 +222,22 @@ export function buildSettingsRows(themeName: string): CommandRow[] {
       group: GROUP_SETTINGS,
       action: { kind: "command", command: { kind: "cycle-theme" } },
     },
+    ...CANVAS_GESTURE_MODIFIERS.map((modifier): CommandRow => {
+      const selected = modifier === canvasGestureModifier;
+      return {
+        value: `settings:canvas-gesture-modifier:${modifier}`,
+        title: `Canvas gesture modifier: ${modifier}`,
+        subtitle: selected
+          ? "Current modifier for drag pan and wheel zoom"
+          : `Use ${modifier} for canvas drag pan and wheel zoom`,
+        group: GROUP_SETTINGS,
+        trailing: selected ? "Current" : undefined,
+        action: {
+          kind: "command",
+          command: { kind: "set-canvas-gesture-modifier", modifier },
+        },
+      };
+    }),
   ];
 }
 
@@ -255,7 +279,7 @@ function buildFlatSearchRows(inputs: ScopeRowInputs): CommandRow[] {
   return [
     ...agentSpawnRows(inputs.templates),
     ...buildCanvasRows(),
-    ...buildSettingsRows(inputs.themeName),
+    ...buildSettingsRows(inputs.themeName, inputs.canvasGestureModifier),
   ];
 }
 
@@ -276,6 +300,7 @@ export interface ScopeRowInputs {
   templates: RuntimeTemplateSummary[];
   agentsStatus: AgentsStatus;
   themeName: string;
+  canvasGestureModifier: CanvasGestureModifier;
 }
 
 /**
@@ -288,7 +313,7 @@ export function buildScopeRows(
   inputs: ScopeRowInputs,
   query: string,
 ): CommandRow[] {
-  const { templates, agentsStatus, themeName } = inputs;
+  const { templates, agentsStatus, themeName, canvasGestureModifier } = inputs;
   switch (scope) {
     case "root":
       return query.trim().length === 0 ? buildDomainRows() : buildFlatSearchRows(inputs);
@@ -297,7 +322,7 @@ export function buildScopeRows(
     case "canvas":
       return buildCanvasRows();
     case "settings":
-      return buildSettingsRows(themeName);
+      return buildSettingsRows(themeName, canvasGestureModifier);
     case "workdir":
       return buildDeferredRows("Workdir");
     case "sessions":

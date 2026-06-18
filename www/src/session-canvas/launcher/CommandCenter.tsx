@@ -1,6 +1,7 @@
 import { Combobox } from "@ark-ui/react/combobox";
 import { Portal } from "@ark-ui/react/portal";
 import { useEffect, useRef } from "react";
+import type { CanvasGestureModifier } from "../../keybindings/gestureModifier";
 import { agentRailStyle } from "../../lib/agentPalette";
 import { type CommandRow, LAUNCHER_DOMAIN_COUNT, type LauncherCommand } from "./commandModel";
 import { FirstRunHint } from "./FirstRunHint";
@@ -12,6 +13,8 @@ export interface CommandCenterProps {
   onCommand: (command: LauncherCommand) => void;
   /** Current theme name, shown on the Cycle-theme entry's subtitle. */
   themeName: string;
+  /** Current persisted canvas gesture modifier, shown in Settings. */
+  canvasGestureModifier: CanvasGestureModifier;
 }
 
 const FOOTER_HINTS = "↵ run · → enter · ⌫ back · esc close";
@@ -22,8 +25,8 @@ const FOOTER_HINTS = "↵ run · → enter · ⌫ back · esc close";
  * (this file owns its vanilla CSS); all state, hotkeys, the lazy specialist
  * fetch, and the keyboard grammar live in {@link useCommandCenter}.
  */
-export function CommandCenter({ onCommand, themeName }: CommandCenterProps) {
-  const center = useCommandCenter({ onCommand, themeName });
+export function CommandCenter({ onCommand, themeName, canvasGestureModifier }: CommandCenterProps) {
+  const center = useCommandCenter({ onCommand, themeName, canvasGestureModifier });
   const panelRef = useRef<HTMLDivElement>(null);
   // Keep the highlighted row scrolled into the bounded results list as the arrow
   // keys move it (and on auto-highlight). The combobox controls highlight, so we

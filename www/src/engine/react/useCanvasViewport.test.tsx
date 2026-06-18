@@ -2,6 +2,7 @@ import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  CANVAS_GESTURE_SURFACE_ATTRIBUTE,
   resetCanvasGestureStoreForTests,
   setCanvasGestureModifier,
 } from "../../keybindings/gestures";
@@ -22,6 +23,7 @@ function ViewportProbe({ onSetViewport }: { onSetViewport: (viewport: CanvasView
   return (
     <section
       {...controls.bindViewport()}
+      {...{ [CANVAS_GESTURE_SURFACE_ATTRIBUTE]: "true" }}
       data-pan-ready={controls.panReady ? "true" : "false"}
       aria-label="Viewport probe"
       data-testid="viewport"
@@ -36,6 +38,7 @@ describe("useCanvasViewport", () => {
   afterEach(() => {
     cleanup();
     resetCanvasGestureStoreForTests();
+    localStorage.clear();
     vi.restoreAllMocks();
   });
 
@@ -55,7 +58,7 @@ describe("useCanvasViewport", () => {
     fireEvent.wheel(viewport, { clientX: 80, clientY: 60, deltaY: 10, shiftKey: true });
     expect(onSetViewport).not.toHaveBeenCalled();
 
-    fireEvent.keyDown(document, { code: "Space", key: " " });
+    fireEvent.keyDown(viewport, { code: "Space", key: " " });
     expect(viewport).toHaveAttribute("data-pan-ready", "true");
 
     fireEvent.wheel(viewport, { clientX: 80, clientY: 60, deltaY: 10 });

@@ -1,6 +1,8 @@
-import { isEditableTarget } from "../lib/domFocus";
+import { isEditableTarget, isInteractiveTarget } from "../lib/domFocus";
+import { useKeymapStore } from "../stores/keymapStore";
+import { type CanvasGestureModifier, DEFAULT_CANVAS_GESTURE_MODIFIER } from "./gestureModifier";
 
-export type CanvasGestureModifier = "Shift" | "Space";
+export { type CanvasGestureModifier, DEFAULT_CANVAS_GESTURE_MODIFIER } from "./gestureModifier";
 
 export interface CanvasGestureSnapshot {
   modifier: CanvasGestureModifier;
@@ -12,13 +14,14 @@ type CanvasGestureEvent = {
   shiftKey?: boolean;
 };
 
-export const DEFAULT_CANVAS_GESTURE_MODIFIER: CanvasGestureModifier = "Shift";
+export const CANVAS_GESTURE_SURFACE_ATTRIBUTE = "data-canvas-gesture-surface";
 
-let snapshot: CanvasGestureSnapshot = {
-  modifier: DEFAULT_CANVAS_GESTURE_MODIFIER,
-  modifierHeld: false,
-};
+const CANVAS_GESTURE_SURFACE_SELECTOR = `[${CANVAS_GESTURE_SURFACE_ATTRIBUTE}='true']`;
+
+let modifierHeld = false;
+let snapshot = createSnapshot();
 let listenersInstalled = false;
+let keymapUnsubscribe: (() => void) | null = null;
 
 const listeners = new Set<CanvasGestureListener>();
 
@@ -35,24 +38,29 @@ export function subscribeCanvasGestureStore(listener: CanvasGestureListener): ()
 
 export function setCanvasGestureModifier(modifier: CanvasGestureModifier): void {
   ensureCanvasGestureListeners();
-  updateSnapshot({ modifier, modifierHeld: false });
+  useKeymapStore.getState().setCanvasGestureModifier(modifier);
 }
 
 export function shouldPanNotDrag(event?: CanvasGestureEvent | null): boolean {
   ensureCanvasGestureListeners();
-  if (snapshot.modifier === "Shift") return Boolean(event?.shiftKey) || snapshot.modifierHeld;
-  return snapshot.modifierHeld;
+  if (getCanvasGestureModifier() === "Shift") return Boolean(event?.shiftKey) || modifierHeld;
+  return modifierHeld;
 }
 
 export function resetCanvasGestureStoreForTests(): void {
   ensureCanvasGestureListeners();
-  updateSnapshot({
-    modifier: DEFAULT_CANVAS_GESTURE_MODIFIER,
-    modifierHeld: false,
-  });
+  useKeymapStore.getState().setCanvasGestureModifier(DEFAULT_CANVAS_GESTURE_MODIFIER);
+  setModifierHeld(false);
 }
 
 function ensureCanvasGestureListeners(): void {
+  if (!keymapUnsubscribe) {
+    keymapUnsubscribe = useKeymapStore.subscribe(() => {
+      modifierHeld = false;
+      updateSnapshot();
+    });
+    updateSnapshot();
+  }
   if (listenersInstalled || typeof document === "undefined" || typeof window === "undefined") {
     return;
   }
@@ -63,16 +71,17 @@ function ensureCanvasGestureListeners(): void {
 }
 
 function handleKeyDown(event: KeyboardEvent): void {
-  if (snapshot.modifier === "Shift") {
+  if (getCanvasGestureModifier() === "Shift") {
     if (event.key === "Shift" || event.shiftKey) setModifierHeld(true);
     return;
   }
-  if (isEditableTarget(event.target)) return;
-  if (isSpaceKeyEvent(event)) setModifierHeld(true);
+  if (!isSpaceKeyEvent(event) || !isCanvasSpaceGestureTarget(event.target)) return;
+  event.preventDefault();
+  setModifierHeld(true);
 }
 
 function handleKeyUp(event: KeyboardEvent): void {
-  if (snapshot.modifier === "Shift") {
+  if (getCanvasGestureModifier() === "Shift") {
     if (event.key === "Shift" || !event.shiftKey) setModifierHeld(false);
     return;
   }
@@ -83,15 +92,37 @@ function handleBlur(): void {
   setModifierHeld(false);
 }
 
+function getCanvasGestureModifier(): CanvasGestureModifier {
+  return useKeymapStore.getState().canvasGestureModifier;
+}
+
+function createSnapshot(): CanvasGestureSnapshot {
+  return {
+    modifier: getCanvasGestureModifier(),
+    modifierHeld,
+  };
+}
+
 function isSpaceKeyEvent(event: KeyboardEvent): boolean {
   return event.key === " " || event.key === "Spacebar" || event.code === "Space";
 }
 
-function setModifierHeld(modifierHeld: boolean): void {
-  updateSnapshot({ ...snapshot, modifierHeld });
+function isCanvasSpaceGestureTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof Element)) return false;
+  if (isEditableTarget(target) || isInteractiveTarget(target)) return false;
+  // Space is a canvas gesture only when focus is on the LayoutCanvas surface.
+  // That keeps native Space activation for buttons and ARIA controls.
+  return target.matches(CANVAS_GESTURE_SURFACE_SELECTOR);
 }
 
-function updateSnapshot(next: CanvasGestureSnapshot): void {
+function setModifierHeld(nextModifierHeld: boolean): void {
+  if (modifierHeld === nextModifierHeld) return;
+  modifierHeld = nextModifierHeld;
+  updateSnapshot();
+}
+
+function updateSnapshot(): void {
+  const next = createSnapshot();
   if (snapshot.modifier === next.modifier && snapshot.modifierHeld === next.modifierHeld) return;
   snapshot = next;
   for (const listener of listeners) listener();

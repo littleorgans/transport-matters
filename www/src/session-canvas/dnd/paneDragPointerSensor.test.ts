@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  CANVAS_GESTURE_SURFACE_ATTRIBUTE,
   resetCanvasGestureStoreForTests,
   setCanvasGestureModifier,
 } from "../../keybindings/gestures";
@@ -44,6 +45,8 @@ function pointerDown(target: Element, init: Partial<PointerEventInit> = {}) {
 describe("shouldStartPaneDrag", () => {
   afterEach(() => {
     resetCanvasGestureStoreForTests();
+    localStorage.clear();
+    document.body.replaceChildren();
   });
 
   it("starts from the drag handle", () => {
@@ -58,11 +61,12 @@ describe("shouldStartPaneDrag", () => {
 
   it("declines configured Space+drag: the canvas pan owns it", () => {
     const { header } = paneFixture();
+    const surface = document.createElement("section");
+    surface.setAttribute(CANVAS_GESTURE_SURFACE_ATTRIBUTE, "true");
+    document.body.appendChild(surface);
     setCanvasGestureModifier("Space");
 
-    document.dispatchEvent(
-      new KeyboardEvent("keydown", { bubbles: true, code: "Space", key: " " }),
-    );
+    surface.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, code: "Space", key: " " }));
 
     expect(shouldStartPaneDrag(pointerDown(header))).toBe(false);
   });

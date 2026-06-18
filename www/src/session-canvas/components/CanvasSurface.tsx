@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { LayoutCanvas, type PaneId } from "../../engine";
 import { shouldPanNotDrag } from "../../keybindings/gestures";
+import { useKeymapStore } from "../../stores/keymapStore";
 import { useThemeStore } from "../../stores/themeStore";
 import type { LaunchResolutionStatus } from "../api/launchResolution";
 import { CanvasPaneDnd } from "../dnd/CanvasPaneDnd";
@@ -32,6 +33,7 @@ const paneBodyDrag = (paneId: PaneId): boolean => {
 };
 
 type CanvasStoreSnapshot = ReturnType<typeof useCanvasStore.getState>;
+type KeymapStoreSnapshot = ReturnType<typeof useKeymapStore.getState>;
 type ThemeStoreSnapshot = ReturnType<typeof useThemeStore.getState>;
 
 interface CanvasCommandHandlerOptions {
@@ -39,6 +41,7 @@ interface CanvasCommandHandlerOptions {
   cycleTheme: ThemeStoreSnapshot["cycleTheme"];
   focusPane: CanvasStoreSnapshot["focusPane"];
   resetViewport: CanvasStoreSnapshot["resetViewport"];
+  setCanvasGestureModifier: KeymapStoreSnapshot["setCanvasGestureModifier"];
 }
 
 interface CanvasPaneRendererOptions {
@@ -73,6 +76,7 @@ function useCanvasCommandHandler({
   cycleTheme,
   focusPane,
   resetViewport,
+  setCanvasGestureModifier,
 }: CanvasCommandHandlerOptions): (command: LauncherCommand) => void {
   return useCallback(
     (command: LauncherCommand) => {
@@ -92,12 +96,15 @@ function useCanvasCommandHandler({
         case "cycle-theme":
           cycleTheme();
           return;
+        case "set-canvas-gesture-modifier":
+          setCanvasGestureModifier(command.modifier);
+          return;
         case "retry-agents":
           // Owned inside the command center (re-fetches the fleet); never dispatched out.
           return;
       }
     },
-    [addCapturedRun, resetViewport, focusPane, cycleTheme],
+    [addCapturedRun, resetViewport, focusPane, cycleTheme, setCanvasGestureModifier],
   );
 }
 
@@ -209,6 +216,8 @@ export function CanvasSurface({ launch, launchStatus, launchSessionId }: CanvasS
   const addCapturedRun = useCanvasStore((state) => state.addCapturedRun);
   const themeName = useThemeStore((state) => state.theme?.name ?? "none");
   const cycleTheme = useThemeStore((state) => state.cycleTheme);
+  const canvasGestureModifier = useKeymapStore((state) => state.canvasGestureModifier);
+  const setCanvasGestureModifier = useKeymapStore((state) => state.setCanvasGestureModifier);
   const surfaceRef = useRef<HTMLElement>(null);
   const focusedPaneId = layout.focusedPaneId;
   const { reorderActive, markReorderActive, finishReorder } = useReorderSettle();
@@ -220,6 +229,7 @@ export function CanvasSurface({ launch, launchStatus, launchSessionId }: CanvasS
     cycleTheme,
     focusPane,
     resetViewport,
+    setCanvasGestureModifier,
   });
   const dndDeps = useMemo(
     () => ({
@@ -289,7 +299,11 @@ export function CanvasSurface({ launch, launchStatus, launchSessionId }: CanvasS
   return (
     <main className="canvas-route-shell" ref={surfaceRef}>
       <AmbientBackdrop />
-      <CommandCenter onCommand={handleCommand} themeName={themeName} />
+      <CommandCenter
+        canvasGestureModifier={canvasGestureModifier}
+        onCommand={handleCommand}
+        themeName={themeName}
+      />
       {dropHint === null ? null : <CanvasDropHint message={dropHint} onDismiss={dismissDropHint} />}
       <CanvasPaneDnd
         deps={dndDeps}
