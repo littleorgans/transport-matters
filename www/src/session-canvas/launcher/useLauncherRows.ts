@@ -19,7 +19,6 @@ export interface LauncherRowsArgs {
   status: AgentsStatus;
   themeName: string;
   canvasGestureModifier: CanvasGestureModifier;
-  highlighted: string | undefined;
   setHighlighted: Dispatch<SetStateAction<string | undefined>>;
 }
 

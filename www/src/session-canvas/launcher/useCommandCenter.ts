@@ -252,7 +252,6 @@ export function useCommandCenter({
     status,
     themeName,
     canvasGestureModifier,
-    highlighted,
     setHighlighted,
   });
 
