@@ -1,4 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
+import {
+  resetCanvasGestureStoreForTests,
+  setCanvasGestureModifier,
+} from "../../keybindings/gestures";
 import { shouldStartPaneDrag } from "./paneDragPointerSensor";
 
 interface FrameOptions {
@@ -38,6 +42,10 @@ function pointerDown(target: Element, init: Partial<PointerEventInit> = {}) {
 }
 
 describe("shouldStartPaneDrag", () => {
+  afterEach(() => {
+    resetCanvasGestureStoreForTests();
+  });
+
   it("starts from the drag handle", () => {
     const { header } = paneFixture();
     expect(shouldStartPaneDrag(pointerDown(header))).toBe(true);
@@ -46,6 +54,17 @@ describe("shouldStartPaneDrag", () => {
   it("declines Shift+drag: the canvas pan owns it", () => {
     const { header } = paneFixture();
     expect(shouldStartPaneDrag(pointerDown(header, { shiftKey: true }))).toBe(false);
+  });
+
+  it("declines configured Space+drag: the canvas pan owns it", () => {
+    const { header } = paneFixture();
+    setCanvasGestureModifier("Space");
+
+    document.dispatchEvent(
+      new KeyboardEvent("keydown", { bubbles: true, code: "Space", key: " " }),
+    );
+
+    expect(shouldStartPaneDrag(pointerDown(header))).toBe(false);
   });
 
   it("declines secondary buttons and non-primary pointers", () => {
