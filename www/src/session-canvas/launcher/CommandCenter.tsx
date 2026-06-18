@@ -1,7 +1,8 @@
 import { Combobox } from "@ark-ui/react/combobox";
 import { Portal } from "@ark-ui/react/portal";
+import { useEffect, useRef } from "react";
 import { agentRailStyle } from "../../lib/agentPalette";
-import type { CommandRow, LauncherCommand } from "./commandModel";
+import { type CommandRow, LAUNCHER_DOMAIN_COUNT, type LauncherCommand } from "./commandModel";
 import { FirstRunHint } from "./FirstRunHint";
 import { useCommandCenter } from "./useCommandCenter";
 import "./launcher.css";
@@ -23,9 +24,26 @@ const FOOTER_HINTS = "↵ run · → enter · ⌫ back · esc close";
  */
 export function CommandCenter({ onCommand, themeName }: CommandCenterProps) {
   const center = useCommandCenter({ onCommand, themeName });
+  const panelRef = useRef<HTMLDivElement>(null);
+  // Keep the highlighted row scrolled into the bounded results list as the arrow
+  // keys move it (and on auto-highlight). The combobox controls highlight, so we
+  // nudge the active option into its scroll container ourselves; block:"nearest"
+  // is idempotent, so it never fights Ark's own scrolling.
+  useEffect(() => {
+    if (!center.highlighted) return;
+    panelRef.current
+      ?.querySelector<HTMLElement>("[data-part='item'][data-highlighted]")
+      ?.scrollIntoView({ block: "nearest" });
+  }, [center.highlighted]);
+
   if (!center.open) return <FirstRunHint />;
 
   const { scope } = center;
+  // Root with an empty query is the domains list; typing flat-searches all
+  // domains. The top-right tag and footer hints reflect that mode.
+  const showDomains = scope === "root" && center.query.trim().length === 0;
+  const scopeTag = showDomains ? `${LAUNCHER_DOMAIN_COUNT} domains` : scope === "root" ? "" : scope;
+  const footerHint = showDomains ? "↵ enter scope · esc close" : FOOTER_HINTS;
   return (
     <div className="launcher" role="presentation">
       {/* Scrim: clicking the dimmed canvas dismisses, like Esc. */}
@@ -67,33 +85,40 @@ export function CommandCenter({ onCommand, themeName }: CommandCenterProps) {
             onKeyDown={center.onInputKeyDown}
             placeholder={scope === "root" ? "Search agents and commands…" : `Search ${scope}…`}
           />
-          <span className="launcher__scope-tag">{scope === "root" ? "" : scope}</span>
+          <span className="launcher__scope-tag">{scopeTag}</span>
         </Combobox.Control>
         <Portal>
           <Combobox.Positioner className="launcher__positioner">
-            <Combobox.Content className="launcher__content">
-              {center.grouped.length === 0 ? (
-                <p aria-live="polite" className="launcher__empty" role="status">
-                  No matches
-                </p>
-              ) : (
-                center.grouped.map(([group, rows]) => (
-                  <Combobox.ItemGroup className="launcher__group" key={group}>
-                    <Combobox.ItemGroupLabel className="launcher__group-label">
-                      {group}
-                    </Combobox.ItemGroupLabel>
-                    {rows.map((row) => (
-                      <LauncherRow key={row.value} row={row} />
-                    ))}
-                  </Combobox.ItemGroup>
-                ))
-              )}
+            {/* Frame wraps the scrolling list + a fixed footer. Combobox.Content
+                stays the scroll container so Ark scrolls the active option into
+                view; the footer is a sibling OUTSIDE it (no bleed-under). */}
+            <div className="launcher__panel" ref={panelRef}>
+              <Combobox.Content className="launcher__content">
+                {center.grouped.length === 0 ? (
+                  <p aria-live="polite" className="launcher__empty" role="status">
+                    No matches
+                  </p>
+                ) : (
+                  center.grouped.map(([group, rows]) => (
+                    <Combobox.ItemGroup className="launcher__group" key={group}>
+                      <Combobox.ItemGroupLabel className="launcher__group-label">
+                        {group}
+                      </Combobox.ItemGroupLabel>
+                      {rows.map((row) => (
+                        <LauncherRow key={row.value} row={row} />
+                      ))}
+                    </Combobox.ItemGroup>
+                  ))
+                )}
+              </Combobox.Content>
               {/* Hints duplicate live key behaviour; hide from the options tree. */}
               <footer aria-hidden="true" className="launcher__footer">
-                <span>{FOOTER_HINTS}</span>
-                <span className="launcher__brand">TRANSPORT MATTERS</span>
+                <span>{footerHint}</span>
+                {showDomains ? (
+                  <span className="launcher__footer-search">TYPE TO SEARCH ALL</span>
+                ) : null}
               </footer>
-            </Combobox.Content>
+            </div>
           </Combobox.Positioner>
         </Portal>
       </Combobox.Root>

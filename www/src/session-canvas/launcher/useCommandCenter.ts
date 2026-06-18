@@ -58,17 +58,20 @@ export function useCommandCenter({ onCommand, themeName }: UseCommandCenterArgs)
     setQuery("");
   }, [rememberFocus]);
 
-  const openAgents = useCallback(() => {
-    rememberFocus();
-    setHasOpened(true);
-    setScope("agents");
-    setQuery("");
-    setOpen(true);
-  }, [rememberFocus]);
+  const openScope = useCallback(
+    (target: LauncherScope) => {
+      rememberFocus();
+      setHasOpened(true);
+      setScope(target);
+      setQuery("");
+      setOpen(true);
+    },
+    [rememberFocus],
+  );
 
   const isOpenRef = useRef(open);
   isOpenRef.current = open;
-  useLauncherHotkeys({ toggleRoot, openAgents, isOpen: () => isOpenRef.current });
+  useLauncherHotkeys({ toggleRoot, openScope, isOpen: () => isOpenRef.current });
 
   const { collection, grouped, rowByValue, highlighted, setHighlighted, fleetStatus } =
     useLauncherRows({ scope, query, templates, status, themeName });
