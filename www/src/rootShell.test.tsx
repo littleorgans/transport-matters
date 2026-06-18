@@ -1,4 +1,4 @@
-import { fireEvent, screen } from "@testing-library/react";
+import { act, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { clearThemeTokens } from "./hooks/useThemeTokens";
 import { RootShell } from "./rootShell";
@@ -12,10 +12,13 @@ import { useThemeStore } from "./stores/themeStore";
 
 vi.mock("./ambient/createAmbientBackground");
 
-// The canvas route loads through React.lazy; under full-suite load the chunk
-// can outlive findByRole's 1s default, so wait generously for the first paint.
-const findThemeButton = () =>
-  screen.findByRole("button", { name: "Theme: none" }, { timeout: 10_000 });
+// The canvas route loads through React.lazy; under full-suite load the chunk can
+// outlive findBy's 1s default, so wait generously for the canvas shell to paint.
+const findCanvasShell = () => screen.findByRole("main", {}, { timeout: 10_000 });
+
+// Theme cycling is now a ⌘K command-center entry (the always-visible bar is
+// gone), which calls the store's cycleTheme — drive that directly.
+const cycleTheme = () => act(() => useThemeStore.getState().cycleTheme());
 
 describe("RootShell", () => {
   beforeEach(() => {
@@ -36,9 +39,9 @@ describe("RootShell", () => {
     installMockTransport(() => jsonResponse([]));
 
     renderWithQuery(<RootShell />);
+    await findCanvasShell();
 
-    const button = await findThemeButton();
-    fireEvent.click(button);
+    cycleTheme();
 
     expect(useThemeStore.getState().theme?.id).toBe("littleorgans");
     expect(document.documentElement.style.getPropertyValue("--color-accent")).not.toBe("");
@@ -50,15 +53,15 @@ describe("RootShell", () => {
     installMockTransport(() => jsonResponse([]));
 
     renderWithQuery(<RootShell />);
+    await findCanvasShell();
 
-    const button = await findThemeButton();
-    fireEvent.click(button); // littleorgans
-    fireEvent.click(button); // open-water
+    cycleTheme(); // littleorgans
+    cycleTheme(); // open-water
     expect(document.documentElement.style.getPropertyValue("--pane-blur")).toBe(
       "blur(18px) saturate(120%)",
     );
 
-    fireEvent.click(button); // back to unthemed
+    cycleTheme(); // back to unthemed
     expect(useThemeStore.getState().theme).toBeNull();
     expect(document.documentElement.style.getPropertyValue("--pane-blur")).toBe("");
   });

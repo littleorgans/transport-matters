@@ -1,20 +1,23 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { LayoutCanvas, type PaneId } from "../../engine";
+import { useThemeStore } from "../../stores/themeStore";
 import type { LaunchResolutionStatus } from "../api/launchResolution";
 import { CanvasPaneDnd } from "../dnd/CanvasPaneDnd";
 import { createSortablePaneAdapter } from "../dnd/SortablePane";
 import { useCanvasDropTargets } from "../dnd/useCanvasDropTargets";
 import { useReorderSettle } from "../dnd/useReorderSettle";
+import { CommandCenter } from "../launcher/CommandCenter";
+import type { LauncherCommand } from "../launcher/commandModel";
 import { useCanvasStore } from "../model/canvasStore";
 import { openPaneIds } from "../model/layoutPlanning";
 import type { CanvasLaunchContext } from "../route";
 import { bodyDragForRef, PICKER_PANE_ID, renderPaneContent } from "../viewers/registry";
 import { AmbientBackdrop } from "./AmbientBackdrop";
-import { CanvasCommandBar } from "./CanvasCommandBar";
 import { CanvasDropHint } from "./CanvasDropHint";
 import { CanvasDropTargetOverlay } from "./CanvasDropTargetOverlay";
 import { PaneDock } from "./PaneDock";
 import { PaneWindow } from "./PaneWindow";
+import { navigateToRoute } from "./RouteSwitcher";
 
 export interface CanvasSurfaceProps {
   launch: CanvasLaunchContext;
@@ -61,10 +64,39 @@ export function CanvasSurface({ launch, launchStatus, launchSessionId }: CanvasS
   const resetViewport = useCanvasStore((state) => state.resetViewport);
   const spawnOrFocusTranscript = useCanvasStore((state) => state.spawnOrFocusTranscript);
   const addCapturedRun = useCanvasStore((state) => state.addCapturedRun);
+  const themeName = useThemeStore((state) => state.theme?.name ?? "none");
+  const cycleTheme = useThemeStore((state) => state.cycleTheme);
   const surfaceRef = useRef<HTMLElement>(null);
   const focusedPaneId = layout.focusedPaneId;
-  const focusedTitle = focusedPaneId ? (panes[focusedPaneId]?.title ?? null) : null;
   const { reorderActive, markReorderActive, finishReorder } = useReorderSettle();
+
+  // The command center re-homes the deleted command bar's functions: every leaf
+  // entry routes to the SAME existing handler, so zero-chrome regresses nothing.
+  const handleCommand = useCallback(
+    (command: LauncherCommand) => {
+      switch (command.kind) {
+        case "spawn":
+          addCapturedRun(command.harness, command.runtimeTemplate);
+          return;
+        case "reset-view":
+          resetViewport();
+          return;
+        case "focus-picker":
+          focusPane(PICKER_PANE_ID);
+          return;
+        case "goto":
+          navigateToRoute(command.path);
+          return;
+        case "cycle-theme":
+          cycleTheme();
+          return;
+        case "retry-agents":
+          // Owned inside the command center (re-fetches the fleet); never dispatched out.
+          return;
+      }
+    },
+    [addCapturedRun, resetViewport, focusPane, cycleTheme],
+  );
   const dndDeps = useMemo(
     () => ({
       getLayout: () => useCanvasStore.getState().layout,
@@ -169,13 +201,7 @@ export function CanvasSurface({ launch, launchStatus, launchSessionId }: CanvasS
   return (
     <main className="canvas-route-shell" ref={surfaceRef}>
       <AmbientBackdrop />
-      <CanvasCommandBar
-        focusedTitle={focusedTitle}
-        launch={launch}
-        onFocusPicker={() => focusPane(PICKER_PANE_ID)}
-        onResetViewport={resetViewport}
-        onSpawnCapturedRun={addCapturedRun}
-      />
+      <CommandCenter onCommand={handleCommand} themeName={themeName} />
       {dropHint === null ? null : <CanvasDropHint message={dropHint} onDismiss={dismissDropHint} />}
       <CanvasPaneDnd
         deps={dndDeps}

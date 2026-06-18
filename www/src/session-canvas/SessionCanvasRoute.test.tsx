@@ -36,7 +36,8 @@ describe("SessionCanvasRoute", () => {
 
     renderWithQuery(<SessionCanvasRoute />);
 
-    expect(screen.getByRole("toolbar", { name: "Canvas commands" })).toBeInTheDocument();
+    // Zero-chrome: the always-visible command bar is gone (replaced by ⌘K).
+    expect(screen.queryByRole("toolbar", { name: "Canvas commands" })).not.toBeInTheDocument();
     await waitFor(() =>
       expect(screen.getByText("No sessions found for this canvas.")).toBeInTheDocument(),
     );

@@ -83,18 +83,13 @@
 .canvas-command-bar :is(button, a, select, input, label) {
   pointer-events: auto;
 }
-.canvas-command-bar__identity,
-.canvas-command-bar__status {
+.canvas-command-bar__identity {
   display: flex;
   gap: var(--canvas-command-gap);
   color: var(--color-txt-2);
   font-size: 0.75rem;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-}
-.canvas-command-bar__buttons {
-  display: flex;
-  gap: var(--canvas-gap);
 }
 
 /* Primary/secondary command sections (CommandBarSections): one bar, two faces,

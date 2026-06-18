@@ -3,6 +3,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { fetchMeta } from "./api";
 import "./index.css";
+import "./index.launcher.css";
 import "./session-canvas/canvas.css";
 import "./session-canvas/viewers/placeholder/placeholder-pane.css";
 import { WindowDragRegion } from "./components/WindowDragRegion";

@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { normalizeLegacyTheme } from "../theme/migrate";
-import { presetTheme } from "../theme/presets";
+import { presetTheme, presetThemes } from "../theme/presets";
 import { isRecord, type ThemeDefinition } from "../theme/types";
 import { createFrontendPersistStorage, FRONTEND_STORAGE_KEYS } from "./persistence";
 
@@ -14,6 +14,12 @@ interface ThemeState {
   theme: ThemeDefinition | null;
   setTheme: (theme: ThemeDefinition) => void;
   clearTheme: () => void;
+  /**
+   * Advances to the next bundled preset, wrapping past the last preset back to
+   * unthemed. The single source of truth for "cycle the look" — shared by the
+   * Lab command bar's ThemeCycleButton and the ⌘K command center's Theme entry.
+   */
+  cycleTheme: () => void;
   /**
    * Tunes one scene param (e.g. dayProgress) on the active theme. The value
    * lives in settings.sceneParams, so it persists and round-trips through the
@@ -77,6 +83,11 @@ export const useThemeStore = create<ThemeState>()(
       theme: defaultPersistedSlice().theme,
       setTheme: (theme) => set({ theme }),
       clearTheme: () => set({ theme: null }),
+      cycleTheme: () =>
+        set((state) => {
+          const next = presetThemes[presetThemes.findIndex((p) => p.id === state.theme?.id) + 1];
+          return { theme: next ?? null };
+        }),
       setSceneParam: (paramId, value) =>
         set((state) => {
           if (!state.theme) return state;

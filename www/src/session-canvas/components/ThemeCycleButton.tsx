@@ -1,27 +1,17 @@
 import { useThemeStore } from "../../stores/themeStore";
-import { presetThemes } from "../../theme/presets";
 
 /**
  * Cycles the active theme: unthemed, then each bundled preset in order, then
- * back to unthemed. The minimal v1 affordance until a real picker ships;
- * reads and writes the theme store directly so the command bar stays dumb.
+ * back to unthemed. The minimal v1 affordance until a real picker ships; the
+ * cycle transition lives in the theme store (shared with the ⌘K command
+ * center's Theme entry) so the command bar stays dumb.
  */
 export function ThemeCycleButton() {
   const theme = useThemeStore((state) => state.theme);
-  const setTheme = useThemeStore((state) => state.setTheme);
-  const clearTheme = useThemeStore((state) => state.clearTheme);
-
-  const cycle = () => {
-    const next = presetThemes[presetThemes.findIndex((preset) => preset.id === theme?.id) + 1];
-    if (next) {
-      setTheme(next);
-    } else {
-      clearTheme();
-    }
-  };
+  const cycleTheme = useThemeStore((state) => state.cycleTheme);
 
   return (
-    <button className="canvas-button" onClick={cycle} type="button">
+    <button className="canvas-button" onClick={cycleTheme} type="button">
       Theme: {theme?.name ?? "none"}
     </button>
   );

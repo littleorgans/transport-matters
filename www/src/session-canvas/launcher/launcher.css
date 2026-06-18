@@ -1,0 +1,329 @@
+/* ⌘K command center — Raycast Minimal on the live canvas token system.
+ * Square (radius 0) and fully mono because it inherits index.css; tokens come
+ * from index.launcher.css (--launcher-*) and the canvas system via var(). */
+
+.launcher {
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  font-family: var(--font-mono);
+}
+
+/* Scrim: a focusable button so a click OR keyboard activation dismisses. */
+.launcher__scrim {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  margin: 0;
+  padding: 0;
+  cursor: default;
+  background: var(--launcher-scrim);
+  animation: launcher-scrim-in var(--transition) ease-out;
+}
+
+.launcher__scrim:focus-visible {
+  outline: none;
+  box-shadow: inset var(--canvas-focus-ring);
+}
+
+/* Visually-hidden polite live region (announces async fleet-fetch state). */
+.launcher__sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.launcher__root {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: min(var(--launcher-width), calc(100vw - 32px));
+  margin-top: var(--launcher-top-offset);
+}
+
+/* --- Search bar (top of the panel) -------------------------------------- */
+.launcher__control {
+  position: relative;
+  z-index: 3001;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: var(--launcher-input-height);
+  padding: 0 var(--launcher-row-pad-x);
+  background: var(--launcher-panel-bg);
+  border: 1px solid var(--launcher-panel-edge);
+  border-bottom: 1px solid var(--launcher-divider);
+  box-shadow: var(--launcher-panel-shadow);
+  animation: launcher-panel-in var(--transition) ease-out;
+}
+
+.launcher__prompt {
+  color: var(--color-accent);
+  font-size: var(--launcher-fs-input);
+  opacity: 0.85;
+}
+
+.launcher__input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--color-txt);
+  font-family: var(--font-mono);
+  font-size: var(--launcher-fs-input);
+  /* No focus ring: the input is implicitly focused in this modal palette
+     (Raycast-minimal). Keyboard position is carried by the active-row highlight;
+     the input keeps its aria-label for assistive tech. */
+  outline: none;
+}
+
+.launcher__input::placeholder {
+  color: var(--color-txt-2);
+}
+
+.launcher__scope-tag {
+  color: var(--color-txt-3);
+  font-size: var(--launcher-fs-label);
+  letter-spacing: var(--launcher-label-tracking);
+  text-transform: uppercase;
+}
+
+/* --- Results card (floats flush under the search bar) -------------------- */
+.launcher__positioner {
+  z-index: 3001;
+}
+
+.launcher__content {
+  z-index: 3001;
+  display: flex;
+  flex-direction: column;
+  width: var(--reference-width);
+  max-height: min(var(--launcher-max-list), var(--available-height, 60vh));
+  padding: var(--launcher-pad) 0 0;
+  overflow-y: auto;
+  background: var(--launcher-panel-bg);
+  border: 1px solid var(--launcher-panel-edge);
+  border-top: 0;
+  box-shadow: var(--launcher-panel-shadow);
+  outline: none;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-edge-strong) transparent;
+  animation: launcher-panel-in var(--transition) ease-out;
+}
+
+.launcher__content:focus-visible {
+  box-shadow: var(--launcher-panel-shadow), var(--canvas-focus-ring);
+}
+
+.launcher__content[data-state="open"] {
+  transform-origin: top center;
+}
+
+.launcher__group {
+  display: flex;
+  flex-direction: column;
+}
+
+.launcher__group-label {
+  padding: 9px var(--launcher-row-pad-x) 5px;
+  color: var(--color-label);
+  font-size: var(--launcher-fs-label);
+  font-weight: 600;
+  letter-spacing: var(--launcher-label-tracking);
+  text-transform: uppercase;
+}
+
+/* --- Rows --------------------------------------------------------------- */
+.launcher__row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--launcher-row-gap);
+  min-height: var(--launcher-row-height);
+  padding: var(--launcher-row-pad-y) var(--launcher-row-pad-x);
+  color: var(--color-txt-2);
+  cursor: default;
+  user-select: none;
+  outline: none;
+}
+
+/* Left accent rail + warm wash on the highlighted row. Agent rows seed the
+ * colour from agentPalette (--agent-rail / --agent-rail-rgb); others fall back
+ * to the neutral accent. */
+.launcher__row::before {
+  content: "";
+  position: absolute;
+  inset-block: 6px;
+  left: 0;
+  width: var(--launcher-rail-width);
+  background: var(--agent-rail, var(--launcher-rail-default));
+  transform: scaleY(0);
+  transform-origin: center;
+  transition: transform var(--transition) ease-out;
+}
+
+.launcher__row[data-highlighted] {
+  color: var(--color-txt);
+  background: linear-gradient(
+    90deg,
+    rgb(var(--agent-rail-rgb, var(--accent-rgb)) / 0.08),
+    transparent 72%
+  );
+}
+
+.launcher__row[data-highlighted]::before {
+  transform: scaleY(1);
+}
+
+.launcher__row[data-disabled] {
+  color: var(--color-txt-3);
+  opacity: 0.7;
+}
+
+.launcher__row-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.launcher__row-title {
+  font-size: var(--launcher-fs-title);
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.launcher__row-subtitle {
+  color: var(--color-txt-2);
+  font-size: var(--launcher-fs-subtitle);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.launcher__row-kbd {
+  flex-shrink: 0;
+  padding: 2px 7px;
+  color: var(--color-txt-2);
+  font-family: var(--font-mono);
+  font-size: var(--launcher-fs-hint);
+  background: var(--launcher-kbd-bg);
+  border: 1px solid var(--launcher-kbd-edge);
+}
+
+.launcher__empty {
+  padding: 14px var(--launcher-row-pad-x);
+  margin: 0;
+  color: var(--color-txt-2);
+  font-size: var(--launcher-fs-subtitle);
+}
+
+/* --- Footer hint bar ---------------------------------------------------- */
+.launcher__footer {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: var(--launcher-pad);
+  padding: 0 var(--launcher-row-pad-x);
+  height: var(--launcher-footer-height);
+  color: var(--color-txt-3);
+  font-size: var(--launcher-fs-hint);
+  background: var(--launcher-footer-bg);
+  border-top: 1px solid var(--launcher-divider);
+}
+
+.launcher__brand {
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-txt-3);
+  opacity: 0.7;
+}
+
+/* --- First-run discoverability hint (resting canvas chrome) -------------- */
+.launcher-hint {
+  position: fixed;
+  right: 18px;
+  bottom: 16px;
+  z-index: 2500;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 6px 12px;
+  color: var(--color-txt-3);
+  font-family: var(--font-mono);
+  font-size: var(--launcher-fs-hint);
+  pointer-events: none;
+  animation: launcher-hint-fade var(--launcher-hint-fade) ease-out forwards;
+}
+
+.launcher-hint__kbd {
+  padding: 2px 7px;
+  color: var(--color-txt-2);
+  font-family: var(--font-mono);
+  background: var(--launcher-kbd-bg);
+  border: 1px solid var(--launcher-kbd-edge);
+}
+
+@keyframes launcher-scrim-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes launcher-panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes launcher-hint-fade {
+  0% {
+    opacity: 0;
+  }
+  18% {
+    opacity: 0.85;
+  }
+  78% {
+    opacity: 0.85;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .launcher__scrim,
+  .launcher__control,
+  .launcher__content,
+  .launcher__row::before,
+  .launcher-hint {
+    animation: none;
+    transition: none;
+  }
+}

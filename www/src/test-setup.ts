@@ -1,6 +1,30 @@
 import "@testing-library/jest-dom/vitest";
 
 /**
+ * Headless UI libraries (Ark UI / zag, used by the ⌘K command center) probe
+ * `matchMedia` and call `scrollIntoView` on keyboard highlight. JSDOM ships
+ * neither, so stub them with inert no-ops to keep portal/combobox renders from
+ * throwing in tests.
+ */
+if (typeof window !== "undefined") {
+  if (typeof window.matchMedia !== "function") {
+    window.matchMedia = ((query: string) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+      dispatchEvent: () => false,
+    })) as unknown as typeof window.matchMedia;
+  }
+  if (typeof Element.prototype.scrollIntoView !== "function") {
+    Element.prototype.scrollIntoView = () => {};
+  }
+}
+
+/**
  * JSDOM ships neither ResizeObserver nor layout. @tanstack/react-virtual
  * observes the scroll element via ResizeObserver and only renders items
  * once it gets a non-zero rect; without a shim virtualized lists render

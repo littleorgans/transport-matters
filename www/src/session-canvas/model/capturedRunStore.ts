@@ -96,6 +96,8 @@ export interface CapturedRunState {
     cwd?: string,
     /** Bridge answers the harness OSC color queries (default true; spawn-time only). */
     oscColorReplies?: boolean,
+    /** Named runtime template to launch under (spawn-time only; absent → NATIVE). */
+    runtimeTemplate?: string,
   ): Promise<string>;
   /**
    * Stop this pane's run on an explicit KILL ([X] close): forget the mapping AND POST /terminate the
@@ -130,7 +132,7 @@ export const useCapturedRunStore = create<CapturedRunState>()(
       runs: {},
       oscColorReplies: true,
 
-      ensureRun(runKey, provider, cwd, oscColorReplies = get().oscColorReplies) {
+      ensureRun(runKey, provider, cwd, oscColorReplies = get().oscColorReplies, runtimeTemplate) {
         const existing = get().runs[runKey]?.runId;
         if (existing !== undefined) return Promise.resolve(existing);
         const inFlight = pendingSpawns.get(runKey);
@@ -140,7 +142,7 @@ export const useCapturedRunStore = create<CapturedRunState>()(
         cancelledKeys.delete(runKey);
         minimizedPendingKeys.delete(runKey);
         const spawn = withCapturedRunSpawnSlot(() =>
-          createCapturedRun(provider, cwd, oscColorReplies),
+          createCapturedRun(provider, cwd, oscColorReplies, runtimeTemplate),
         )
           .then((runId) => {
             pendingSpawns.delete(runKey);

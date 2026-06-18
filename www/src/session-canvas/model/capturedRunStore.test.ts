@@ -44,7 +44,7 @@ describe("capturedRunStore", () => {
 
     await expect(store().ensureRun("claude:k1", "claude")).resolves.toBe("run-1");
 
-    expect(createCapturedRunMock).toHaveBeenCalledWith("claude", undefined, true);
+    expect(createCapturedRunMock).toHaveBeenCalledWith("claude", undefined, true, undefined);
     expect(store().runs["claude:k1"]).toEqual({ provider: "claude", runId: "run-1" });
   });
 
@@ -65,7 +65,15 @@ describe("capturedRunStore", () => {
 
     await store().ensureRun("claude:k1", "claude", undefined, false);
 
-    expect(createCapturedRunMock).toHaveBeenCalledWith("claude", undefined, false);
+    expect(createCapturedRunMock).toHaveBeenCalledWith("claude", undefined, false, undefined);
+  });
+
+  it("threads a runtime template through to the spawn", async () => {
+    createCapturedRunMock.mockResolvedValue("run-1");
+
+    await store().ensureRun("claude:k1", "claude", undefined, true, "research");
+
+    expect(createCapturedRunMock).toHaveBeenCalledWith("claude", undefined, true, "research");
   });
 
   it("keeps two same-provider panes on independent runs (no shared PTY)", async () => {
