@@ -1,16 +1,7 @@
-import { createListCollection } from "@ark-ui/react/combobox";
-import { type KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  buildScopeRows,
-  filterRows,
-  firstSelectableValue,
-  groupRows,
-  type LauncherCommand,
-  type LauncherScope,
-  type RowAction,
-  type ScopeRowInputs,
-} from "./commandModel";
+import { type KeyboardEvent, useCallback, useRef, useState } from "react";
+import type { LauncherCommand, LauncherScope, RowAction } from "./commandModel";
 import { useLauncherHotkeys } from "./useLauncherHotkeys";
+import { useLauncherRows } from "./useLauncherRows";
 import { useRuntimeTemplates } from "./useRuntimeTemplates";
 
 export interface UseCommandCenterArgs {
@@ -21,18 +12,17 @@ export interface UseCommandCenterArgs {
 }
 
 /**
- * All non-render concerns of the ⌘K command center: open/scope/query/highlight
+ * Palette state + grammar half of the ⌘K command center: open/scope/query
  * state, focus save-restore, the renderer-level hotkeys, the lazy specialist
- * fetch, the derived row collection, and the keyboard grammar. Mirrors the
- * useRuntimeTemplates/useLauncherHotkeys split so {@link CommandCenter} stays a
- * thin Ark composition. Everything here is behaviour the component used to own
- * inline; it is lifted verbatim, not changed.
+ * fetch, and the keyboard grammar. Row derivation lives in {@link useLauncherRows}.
+ * Mirrors the useRuntimeTemplates/useLauncherHotkeys split so {@link CommandCenter}
+ * stays a thin Ark composition. Behaviour is the component's former inline logic,
+ * lifted verbatim.
  */
 export function useCommandCenter({ onCommand, themeName }: UseCommandCenterArgs) {
   const [open, setOpen] = useState(false);
   const [scope, setScope] = useState<LauncherScope>("root");
   const [query, setQuery] = useState("");
-  const [highlighted, setHighlighted] = useState<string | undefined>(undefined);
   // Sticky: the specialist fleet fetches on the FIRST open and stays cached, so
   // a never-opened palette never hits the endpoint (and never blocks a spawn).
   const [hasOpened, setHasOpened] = useState(false);
@@ -80,39 +70,8 @@ export function useCommandCenter({ onCommand, themeName }: UseCommandCenterArgs)
   isOpenRef.current = open;
   useLauncherHotkeys({ toggleRoot, openAgents, isOpen: () => isOpenRef.current });
 
-  const inputs = useMemo<ScopeRowInputs>(
-    () => ({ templates, agentsStatus: status, themeName }),
-    [templates, status, themeName],
-  );
-  const visibleRows = useMemo(
-    () => filterRows(buildScopeRows(scope, inputs), query),
-    [scope, inputs, query],
-  );
-  const rowByValue = useMemo(
-    () => new Map(visibleRows.map((row) => [row.value, row])),
-    [visibleRows],
-  );
-  const grouped = useMemo(() => groupRows(visibleRows), [visibleRows]);
-  const collection = useMemo(
-    () =>
-      createListCollection({
-        items: visibleRows,
-        itemToValue: (row) => row.value,
-        itemToString: (row) => row.title,
-        isItemDisabled: (row) => Boolean(row.disabled),
-      }),
-    [visibleRows],
-  );
-
-  // Keep a valid, selectable row highlighted as the scope/query narrows so ↵ and
-  // → always act on something sensible.
-  useEffect(() => {
-    setHighlighted((current) =>
-      current && visibleRows.some((row) => row.value === current && !row.disabled)
-        ? current
-        : firstSelectableValue(visibleRows),
-    );
-  }, [visibleRows]);
+  const { collection, grouped, rowByValue, highlighted, setHighlighted, fleetStatus } =
+    useLauncherRows({ scope, query, templates, status, themeName });
 
   const runAction = useCallback(
     (action: RowAction) => {
@@ -165,17 +124,6 @@ export function useCommandCenter({ onCommand, themeName }: UseCommandCenterArgs)
     },
     [close, query.length, highlighted, rowByValue, runAction, scope],
   );
-
-  // Visually-hidden polite announcement for the async specialist fetch, so the
-  // loading → error transition is discoverable without arrowing into a disabled
-  // option. Only meaningful where agent rows render (root/agents).
-  const showsAgents = scope === "root" || scope === "agents";
-  const fleetStatus =
-    showsAgents && status === "loading"
-      ? "Loading specialist agents"
-      : showsAgents && status === "error"
-        ? "Could not load specialist agents. Native agents are still available."
-        : "";
 
   return {
     open,
