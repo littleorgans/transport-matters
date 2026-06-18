@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { LayoutCanvas, type PaneId } from "../../engine";
+import { shouldPanNotDrag } from "../../keybindings/gestures";
 import { useThemeStore } from "../../stores/themeStore";
 import type { LaunchResolutionStatus } from "../api/launchResolution";
 import { CanvasPaneDnd } from "../dnd/CanvasPaneDnd";
@@ -30,6 +31,34 @@ const paneBodyDrag = (paneId: PaneId): boolean => {
   return ref ? bodyDragForRef(ref) : false;
 };
 
+type CanvasStoreSnapshot = ReturnType<typeof useCanvasStore.getState>;
+type ThemeStoreSnapshot = ReturnType<typeof useThemeStore.getState>;
+
+interface CanvasCommandHandlerOptions {
+  addCapturedRun: CanvasStoreSnapshot["addCapturedRun"];
+  cycleTheme: ThemeStoreSnapshot["cycleTheme"];
+  focusPane: CanvasStoreSnapshot["focusPane"];
+  resetViewport: CanvasStoreSnapshot["resetViewport"];
+}
+
+interface CanvasPaneRendererOptions {
+  canvasId: CanvasStoreSnapshot["id"];
+  closePane: CanvasStoreSnapshot["closePane"];
+  expandedPaneId: CanvasStoreSnapshot["expandedPaneId"];
+  expandPane: CanvasStoreSnapshot["expandPane"];
+  focusPane: CanvasStoreSnapshot["focusPane"];
+  focusedPaneId: CanvasStoreSnapshot["layout"]["focusedPaneId"];
+  framedPaneId: CanvasStoreSnapshot["framing"]["paneId"];
+  framePane: CanvasStoreSnapshot["framePane"];
+  launch: CanvasLaunchContext;
+  launchSessionId: string | null;
+  launchStatus: LaunchResolutionStatus;
+  minimizePane: CanvasStoreSnapshot["minimizePane"];
+  panes: CanvasStoreSnapshot["panes"];
+  spawnOrFocusTranscript: CanvasStoreSnapshot["spawnOrFocusTranscript"];
+  workspaceHash: CanvasStoreSnapshot["workspaceHash"];
+}
+
 // Module-stable adapter so the memoized PaneLayer keeps bailing on viewport
 // renders. Scale reads non-reactively (consumed only mid-drag, zoom locked);
 // the expanded hero stops lifting through a narrow reactive selector while
@@ -38,6 +67,120 @@ const SortablePane = createSortablePaneAdapter({
   readWorldScale: () => useCanvasStore.getState().layout.viewport.scale,
   useLiftDisabled: (paneId) => useCanvasStore((state) => state.expandedPaneId === paneId),
 });
+
+function useCanvasCommandHandler({
+  addCapturedRun,
+  cycleTheme,
+  focusPane,
+  resetViewport,
+}: CanvasCommandHandlerOptions): (command: LauncherCommand) => void {
+  return useCallback(
+    (command: LauncherCommand) => {
+      switch (command.kind) {
+        case "spawn":
+          addCapturedRun(command.harness, command.runtimeTemplate);
+          return;
+        case "reset-view":
+          resetViewport();
+          return;
+        case "focus-picker":
+          focusPane(PICKER_PANE_ID);
+          return;
+        case "goto":
+          navigateToRoute(command.path);
+          return;
+        case "cycle-theme":
+          cycleTheme();
+          return;
+        case "retry-agents":
+          // Owned inside the command center (re-fetches the fleet); never dispatched out.
+          return;
+      }
+    },
+    [addCapturedRun, resetViewport, focusPane, cycleTheme],
+  );
+}
+
+function useCanvasPaneRenderer({
+  canvasId,
+  closePane,
+  expandedPaneId,
+  expandPane,
+  focusPane,
+  focusedPaneId,
+  framedPaneId,
+  framePane,
+  launch,
+  launchSessionId,
+  launchStatus,
+  minimizePane,
+  panes,
+  spawnOrFocusTranscript,
+  workspaceHash,
+}: CanvasPaneRendererOptions): (paneId: string) => React.ReactNode {
+  const onHeaderActivate = useCallback(
+    (paneId: PaneId, modifierEngaged: boolean) => {
+      if (modifierEngaged) expandPane(paneId);
+      else framePane(paneId);
+    },
+    [expandPane, framePane],
+  );
+
+  return useCallback(
+    (paneId: string) => {
+      const pane = panes[paneId];
+      if (!pane) return null;
+      const titleId = titleIdForPane(paneId);
+      const content = renderPaneContent({
+        pane,
+        actions: { closePane, focusPane, spawnOrFocusTranscript },
+        canvas: {
+          id: canvasId,
+          owner: "local",
+          workspaceHash,
+          focusedPaneId,
+          launch,
+          launchStatus,
+          launchSessionId,
+        },
+      });
+      return (
+        <PaneWindow
+          expanded={expandedPaneId === paneId}
+          framed={framedPaneId === paneId}
+          focused={focusedPaneId === paneId}
+          onClose={() => closePane(paneId)}
+          onExpand={() => expandPane(paneId)}
+          onFrame={() => framePane(paneId)}
+          onHeaderDoubleClick={(event) => onHeaderActivate(paneId, shouldPanNotDrag(event))}
+          onMinimize={() => minimizePane(paneId)}
+          pane={pane}
+          titleId={titleId}
+        >
+          {content}
+        </PaneWindow>
+      );
+    },
+    [
+      panes,
+      closePane,
+      expandPane,
+      expandedPaneId,
+      framePane,
+      framedPaneId,
+      focusPane,
+      minimizePane,
+      onHeaderActivate,
+      spawnOrFocusTranscript,
+      canvasId,
+      workspaceHash,
+      focusedPaneId,
+      launch,
+      launchStatus,
+      launchSessionId,
+    ],
+  );
+}
 
 export function CanvasSurface({ launch, launchStatus, launchSessionId }: CanvasSurfaceProps) {
   const layout = useCanvasStore((state) => state.layout);
@@ -72,31 +215,12 @@ export function CanvasSurface({ launch, launchStatus, launchSessionId }: CanvasS
 
   // The command center re-homes the deleted command bar's functions: every leaf
   // entry routes to the SAME existing handler, so zero-chrome regresses nothing.
-  const handleCommand = useCallback(
-    (command: LauncherCommand) => {
-      switch (command.kind) {
-        case "spawn":
-          addCapturedRun(command.harness, command.runtimeTemplate);
-          return;
-        case "reset-view":
-          resetViewport();
-          return;
-        case "focus-picker":
-          focusPane(PICKER_PANE_ID);
-          return;
-        case "goto":
-          navigateToRoute(command.path);
-          return;
-        case "cycle-theme":
-          cycleTheme();
-          return;
-        case "retry-agents":
-          // Owned inside the command center (re-fetches the fleet); never dispatched out.
-          return;
-      }
-    },
-    [addCapturedRun, resetViewport, focusPane, cycleTheme],
-  );
+  const handleCommand = useCanvasCommandHandler({
+    addCapturedRun,
+    cycleTheme,
+    focusPane,
+    resetViewport,
+  });
   const dndDeps = useMemo(
     () => ({
       getLayout: () => useCanvasStore.getState().layout,
@@ -144,59 +268,23 @@ export function CanvasSurface({ launch, launchStatus, launchSessionId }: CanvasS
 
   // Stable across viewport-only renders so the memoized PaneLayer skips the pane subtree on pan/zoom.
   // Re-created only when the data it reads changes (panes, focus, actions, launch context).
-  const renderPane = useCallback(
-    (paneId: string) => {
-      const pane = panes[paneId];
-      if (!pane) return null;
-      const titleId = titleIdForPane(paneId);
-      const content = renderPaneContent({
-        pane,
-        actions: { closePane, focusPane, spawnOrFocusTranscript },
-        canvas: {
-          id: canvasId,
-          owner: "local",
-          workspaceHash,
-          focusedPaneId,
-          launch,
-          launchStatus,
-          launchSessionId,
-        },
-      });
-      return (
-        <PaneWindow
-          expanded={expandedPaneId === paneId}
-          framed={framedPaneId === paneId}
-          focused={focusedPaneId === paneId}
-          onClose={() => closePane(paneId)}
-          onExpand={() => expandPane(paneId)}
-          onFrame={() => framePane(paneId)}
-          onHeaderDoubleClick={(event) => (event.shiftKey ? expandPane(paneId) : framePane(paneId))}
-          onMinimize={() => minimizePane(paneId)}
-          pane={pane}
-          titleId={titleId}
-        >
-          {content}
-        </PaneWindow>
-      );
-    },
-    [
-      panes,
-      closePane,
-      expandPane,
-      expandedPaneId,
-      framePane,
-      framedPaneId,
-      focusPane,
-      minimizePane,
-      spawnOrFocusTranscript,
-      canvasId,
-      workspaceHash,
-      focusedPaneId,
-      launch,
-      launchStatus,
-      launchSessionId,
-    ],
-  );
+  const renderPane = useCanvasPaneRenderer({
+    canvasId,
+    closePane,
+    expandedPaneId,
+    expandPane,
+    focusPane,
+    focusedPaneId,
+    framedPaneId,
+    framePane,
+    launch,
+    launchSessionId,
+    launchStatus,
+    minimizePane,
+    panes,
+    spawnOrFocusTranscript,
+    workspaceHash,
+  });
 
   return (
     <main className="canvas-route-shell" ref={surfaceRef}>

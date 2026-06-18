@@ -1,5 +1,10 @@
 import { useDrag } from "@use-gesture/react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import {
+  getCanvasGestureSnapshot,
+  shouldPanNotDrag,
+  subscribeCanvasGestureStore,
+} from "../../keybindings/gestures";
 import { panViewport, zoomViewportAt } from "../reducers/layoutState";
 import type { CanvasViewport } from "../types";
 
@@ -19,9 +24,9 @@ export interface CanvasViewportControls {
   bindViewport: ReturnType<typeof useDrag>;
   handleWheel(event: React.WheelEvent<HTMLElement>): void;
   handleKeyDown(event: React.KeyboardEvent<HTMLElement>): void;
-  // Shift held: the canvas can show the pan affordance (grab cursor) before the drag begins.
+  // Gesture modifier held: the canvas can show the pan affordance before the drag begins.
   panReady: boolean;
-  // A shift-drag is currently panning the canvas (grabbing cursor).
+  // A modifier-drag is currently panning the canvas.
   panning: boolean;
   // A wheel zoom is in flight: pane transitions should go instant so the size FLIP does not
   // rubber-band against the per-tick scale change.
@@ -41,24 +46,14 @@ export function useCanvasViewport(
 ): CanvasViewportControls {
   const setViewport = actions.setViewport;
   const zoomLocked = options.zoomLocked ?? false;
-  const [panReady, setPanReady] = useState(false);
+  const gesture = useSyncExternalStore(
+    subscribeCanvasGestureStore,
+    getCanvasGestureSnapshot,
+    getCanvasGestureSnapshot,
+  );
   const [panning, setPanning] = useState(false);
   const [zooming, setZooming] = useState(false);
   const zoomTimer = useRef<number | null>(null);
-
-  // Track Shift globally so the grab cursor appears the moment the key is down, not only mid-drag.
-  useEffect(() => {
-    const sync = (event: KeyboardEvent) => setPanReady(event.shiftKey);
-    const clear = () => setPanReady(false);
-    window.addEventListener("keydown", sync);
-    window.addEventListener("keyup", sync);
-    window.addEventListener("blur", clear);
-    return () => {
-      window.removeEventListener("keydown", sync);
-      window.removeEventListener("keyup", sync);
-      window.removeEventListener("blur", clear);
-    };
-  }, []);
 
   useEffect(
     () => () => {
@@ -67,15 +62,14 @@ export function useCanvasViewport(
     [],
   );
 
-  // Pan is shift-gated: a plain drag belongs to a pane (move/resize); Shift+drag pans the canvas from
-  // anywhere, including over a pane.
+  // Pan is modifier-gated: a plain drag belongs to a pane, modifier+drag pans the canvas.
   const bindViewport = useDrag(
-    ({ shiftKey, first, last, delta: [deltaX, deltaY] }) => {
+    ({ event, first, last, delta: [deltaX, deltaY] }) => {
       if (last) {
         setPanning(false);
         return;
       }
-      if (!shiftKey) return;
+      if (!shouldPanNotDrag(event)) return;
       if (first) setPanning(true);
       setViewport(panViewport(viewport, deltaX, deltaY));
     },
@@ -84,10 +78,10 @@ export function useCanvasViewport(
 
   const handleWheel = useCallback(
     (event: React.WheelEvent<HTMLElement>) => {
-      if (!event.shiftKey) return;
+      if (!shouldPanNotDrag(event)) return;
       event.preventDefault();
       if (zoomLocked) return;
-      // Shift+wheel: browsers often report the scroll on deltaX (horizontal) rather than deltaY.
+      // Modifier+wheel: browsers often report horizontal scroll on deltaX rather than deltaY.
       const scroll = event.deltaY !== 0 ? event.deltaY : event.deltaX;
       const factor = scroll > 0 ? WHEEL_ZOOM_FACTOR : 1 / WHEEL_ZOOM_FACTOR;
       setViewport(zoomViewportAt(viewport, factor, event.clientX, event.clientY));
@@ -139,5 +133,12 @@ export function useCanvasViewport(
     [setViewport, viewport, zoomLocked],
   );
 
-  return { bindViewport, handleWheel, handleKeyDown, panReady, panning, zooming };
+  return {
+    bindViewport,
+    handleWheel,
+    handleKeyDown,
+    panReady: gesture.modifierHeld,
+    panning,
+    zooming,
+  };
 }

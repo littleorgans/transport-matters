@@ -1,6 +1,7 @@
 import { useDrag } from "@use-gesture/react";
 import { motion, type Transition, useReducedMotion } from "framer-motion";
 import { useRef, useState } from "react";
+import { shouldPanNotDrag } from "../../keybindings/gestures";
 import { roundWorldPoint } from "../layout/geometry";
 import { CLOSE_DELAY_MS } from "../reducers/layoutState";
 import { moveRect, resizeRect } from "../reducers/paneLifecycle";
@@ -102,9 +103,9 @@ export function PaneFrame({
   const dndPosition = dndPanePosition(renderRect, dnd?.transform ?? null);
 
   const bindDrag = useDrag(
-    ({ movement: [moveX, moveY], event, first, last, shiftKey }) => {
-      // Shift+drag belongs to the canvas (pan), not the pane: leave the pane where it is.
-      if (shiftKey) return;
+    ({ movement: [moveX, moveY], event, first, last }) => {
+      // Modifier+drag belongs to the canvas (pan), not the pane: leave the pane where it is.
+      if (shouldPanNotDrag(event)) return;
       const target = event.target;
       if (first) {
         const mode = dragModeForTarget(target, bodyDrag);
