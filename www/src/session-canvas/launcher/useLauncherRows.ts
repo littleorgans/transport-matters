@@ -1,5 +1,5 @@
 import { createListCollection } from "@ark-ui/react/combobox";
-import { useEffect, useMemo, useState } from "react";
+import { type Dispatch, type SetStateAction, useEffect, useMemo } from "react";
 import type { CanvasGestureModifier } from "../../keybindings/gestureModifier";
 import type { RuntimeTemplateSummary } from "../../types";
 import {
@@ -19,6 +19,8 @@ export interface LauncherRowsArgs {
   status: AgentsStatus;
   themeName: string;
   canvasGestureModifier: CanvasGestureModifier;
+  highlighted: string | undefined;
+  setHighlighted: Dispatch<SetStateAction<string | undefined>>;
 }
 
 /**
@@ -35,9 +37,8 @@ export function useLauncherRows({
   status,
   themeName,
   canvasGestureModifier,
+  setHighlighted,
 }: LauncherRowsArgs) {
-  const [highlighted, setHighlighted] = useState<string | undefined>(undefined);
-
   const inputs = useMemo<ScopeRowInputs>(
     () => ({ templates, agentsStatus: status, themeName, canvasGestureModifier }),
     [templates, status, themeName, canvasGestureModifier],
@@ -70,7 +71,7 @@ export function useLauncherRows({
         ? current
         : firstSelectableValue(visibleRows),
     );
-  }, [visibleRows]);
+  }, [visibleRows, setHighlighted]);
 
   // Visually-hidden polite announcement for the async specialist fetch, so the
   // loading → error transition is discoverable without arrowing into a disabled
@@ -83,5 +84,5 @@ export function useLauncherRows({
         ? "Could not load specialist agents. Native agents are still available."
         : "";
 
-  return { collection, grouped, rowByValue, highlighted, setHighlighted, fleetStatus };
+  return { collection, grouped, rowByValue, fleetStatus };
 }

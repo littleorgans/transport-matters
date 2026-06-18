@@ -3,16 +3,22 @@ import type { RuntimeTemplateSummary } from "../../types";
 import {
   buildAgentRows,
   buildScopeRows,
+  createRootNavFrame,
+  domainRowValue,
   filterRows,
   firstSelectableValue,
   groupRows,
   type Interaction,
   interactionFor,
   type LauncherCommand,
+  popFrame,
+  pushFrame,
   type RowAction,
   recommendedSubtitle,
   type ScopeRowInputs,
   templateSpawnHarness,
+  topFrame,
+  updateTopFrame,
 } from "./commandModel";
 
 const research: RuntimeTemplateSummary = {
@@ -192,6 +198,58 @@ describe("interactionFor", () => {
       expect(interactionFor(action)).toEqual(expected);
     });
   }
+});
+
+describe("NavFrame stack", () => {
+  it("pushFrame stamps the parent origin and creates a clean child frame", () => {
+    const stack = updateTopFrame([createRootNavFrame()], {
+      query: "set",
+      highlightedValue: domainRowValue("settings"),
+    });
+
+    const next = pushFrame(stack, "settings", domainRowValue("settings"));
+
+    expect(next).toEqual([
+      { scope: "root", query: "set", highlightedValue: "domain:settings" },
+      { scope: "settings", query: "", highlightedValue: undefined },
+    ]);
+  });
+
+  it("popFrame preserves the revealed frame state and stops at the base frame", () => {
+    const root = updateTopFrame([createRootNavFrame()], {
+      query: "can",
+      highlightedValue: domainRowValue("canvas"),
+    });
+    const child = updateTopFrame(pushFrame(root, "canvas", domainRowValue("canvas")), {
+      query: "reset",
+      highlightedValue: "cmd:reset-view",
+    });
+
+    expect(popFrame(child)).toEqual(root);
+    expect(popFrame(root)).toBe(root);
+  });
+
+  it("updateTopFrame only patches the live frame", () => {
+    const stack = pushFrame([createRootNavFrame()], "settings", domainRowValue("settings"));
+
+    expect(updateTopFrame(stack, { query: "theme" })).toEqual([
+      { scope: "root", query: "", highlightedValue: "domain:settings" },
+      { scope: "settings", query: "theme", highlightedValue: undefined },
+    ]);
+  });
+
+  it("supports future deeper navigation by popping one frame at a time", () => {
+    const first = pushFrame([createRootNavFrame()], "settings", domainRowValue("settings"));
+    const second = pushFrame(first, "canvas", "cmd:future-enter-canvas");
+
+    expect(topFrame(second).scope).toBe("canvas");
+    const backToSettings = popFrame(second);
+    expect(topFrame(backToSettings).scope).toBe("settings");
+    expect(topFrame(backToSettings).highlightedValue).toBe("cmd:future-enter-canvas");
+    expect(popFrame(backToSettings)).toEqual([
+      { scope: "root", query: "", highlightedValue: "domain:settings" },
+    ]);
+  });
 });
 
 describe("buildScopeRows — domains-first root", () => {
