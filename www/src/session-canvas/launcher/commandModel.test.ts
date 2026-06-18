@@ -204,6 +204,9 @@ describe("buildScopeRows — domains-first root", () => {
       "settings:canvas-gesture-modifier:Shift",
       "settings:canvas-gesture-modifier:Space",
     ]);
+    expect(rows.find((row) => row.value === "cmd:cycle-theme")?.subtitle).toBe(
+      "Current: none · → cycle theme",
+    );
     expect(rows.find((row) => row.value.endsWith(":Shift"))?.trailing).toBe("Current");
     expect(rows.find((row) => row.value.endsWith(":Space"))?.action).toEqual({
       kind: "command",

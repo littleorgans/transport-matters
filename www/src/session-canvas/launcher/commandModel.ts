@@ -218,7 +218,7 @@ export function buildSettingsRows(
     {
       value: "cmd:cycle-theme",
       title: "Cycle theme",
-      subtitle: `Current: ${themeName}`,
+      subtitle: `Current: ${themeName} · → cycle theme`,
       group: GROUP_SETTINGS,
       action: { kind: "command", command: { kind: "cycle-theme" } },
     },

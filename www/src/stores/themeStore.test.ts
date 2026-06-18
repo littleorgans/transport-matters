@@ -31,6 +31,24 @@ describe("themeStore", () => {
     expect(useThemeStore.getState().theme).toBeNull();
   });
 
+  it("cycleTheme walks every bundled preset and wraps without returning to unthemed", () => {
+    const first = presetThemes[0];
+    const last = presetThemes.at(-1);
+    if (!first || !last) throw new Error("expected bundled presets");
+
+    for (const preset of presetThemes) {
+      useThemeStore.getState().cycleTheme();
+      expect(useThemeStore.getState().theme?.id).toBe(preset.id);
+    }
+
+    useThemeStore.getState().cycleTheme();
+    expect(useThemeStore.getState().theme?.id).toBe(first.id);
+
+    useThemeStore.getState().setTheme(last);
+    useThemeStore.getState().cycleTheme();
+    expect(useThemeStore.getState().theme?.id).toBe(first.id);
+  });
+
   it("setSceneParam writes through to the persisted theme settings", () => {
     useThemeStore.getState().setTheme(littleorgans);
     useThemeStore.getState().setSceneParam("dayProgress", 0.8);

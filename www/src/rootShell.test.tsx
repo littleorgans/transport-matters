@@ -48,7 +48,7 @@ describe("RootShell", () => {
     expect(document.documentElement.style.getPropertyValue("--pane-surface-alpha")).toBe("0.74");
   });
 
-  it("clears the tokens again when the cycle returns to unthemed", async () => {
+  it("clears the tokens again when the theme is cleared", async () => {
     window.history.pushState({}, "", "/canvas");
     installMockTransport(() => jsonResponse([]));
 
@@ -61,7 +61,7 @@ describe("RootShell", () => {
       "blur(18px) saturate(120%)",
     );
 
-    cycleTheme(); // back to unthemed
+    act(() => useThemeStore.getState().clearTheme());
     expect(useThemeStore.getState().theme).toBeNull();
     expect(document.documentElement.style.getPropertyValue("--pane-blur")).toBe("");
   });

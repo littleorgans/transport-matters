@@ -1,6 +1,6 @@
 import { type KeyboardEvent, useCallback, useEffect, useRef, useState } from "react";
 import type { CanvasGestureModifier } from "../../keybindings/gestureModifier";
-import type { LauncherCommand, LauncherScope, RowAction } from "./commandModel";
+import type { CommandRow, LauncherCommand, LauncherScope, RowAction } from "./commandModel";
 import { useLauncherHotkeys } from "./useLauncherHotkeys";
 import { useLauncherRows } from "./useLauncherRows";
 import { useRuntimeTemplates } from "./useRuntimeTemplates";
@@ -12,6 +12,23 @@ export interface UseCommandCenterArgs {
   themeName: string;
   /** Current persisted canvas gesture modifier, shown in Settings. */
   canvasGestureModifier: CanvasGestureModifier;
+}
+
+function isCycleThemeAction(action: RowAction | undefined): action is RowAction {
+  return action?.kind === "command" && action.command.kind === "cycle-theme";
+}
+
+function advancesWithArrowRight(action: RowAction | undefined): action is RowAction {
+  return action?.kind === "enter" || isCycleThemeAction(action);
+}
+
+function activeInputRow(
+  rowByValue: Map<string, CommandRow>,
+  highlighted: string | undefined,
+): CommandRow | undefined {
+  const row = highlighted ? rowByValue.get(highlighted) : undefined;
+  if (row && !row.disabled) return row;
+  return Array.from(rowByValue.values()).find((candidate) => !candidate.disabled);
 }
 
 /**
@@ -95,6 +112,7 @@ export function useCommandCenter({
         return;
       }
       onCommand(action.command);
+      if (action.command.kind === "cycle-theme") return;
       close();
     },
     [onCommand, retry, close],
@@ -131,8 +149,8 @@ export function useCommandCenter({
     (event: KeyboardEvent<HTMLInputElement>) => {
       const caret = event.currentTarget.selectionStart ?? 0;
       if (event.key === "ArrowRight" && caret >= query.length) {
-        const row = highlighted ? rowByValue.get(highlighted) : undefined;
-        if (row?.action?.kind === "enter") {
+        const row = activeInputRow(rowByValue, highlighted);
+        if (advancesWithArrowRight(row?.action)) {
           event.preventDefault();
           runAction(row.action);
         }

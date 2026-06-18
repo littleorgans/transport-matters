@@ -16,7 +16,7 @@ interface ThemeState {
   clearTheme: () => void;
   /**
    * Advances to the next bundled preset, wrapping past the last preset back to
-   * unthemed. The single source of truth for "cycle the look" — shared by the
+   * the first preset. The single source of truth for "cycle the look", shared by the
    * Lab command bar's ThemeCycleButton and the ⌘K command center's Theme entry.
    */
   cycleTheme: () => void;
@@ -43,6 +43,13 @@ const defaultPersistedSlice = (): PersistedThemeSlice => ({
   theme: presetTheme("open-water") ?? null,
   liveDayCycle: true,
 });
+
+const nextPresetTheme = (theme: ThemeDefinition | null): ThemeDefinition | null => {
+  if (presetThemes.length === 0) return null;
+  const currentIndex = presetThemes.findIndex((preset) => preset.id === theme?.id);
+  const nextIndex = (currentIndex + 1) % presetThemes.length;
+  return presetThemes[nextIndex] ?? null;
+};
 
 /**
  * Resolves the persisted `theme` field. `null` is a real choice (explicit
@@ -84,10 +91,9 @@ export const useThemeStore = create<ThemeState>()(
       setTheme: (theme) => set({ theme }),
       clearTheme: () => set({ theme: null }),
       cycleTheme: () =>
-        set((state) => {
-          const next = presetThemes[presetThemes.findIndex((p) => p.id === state.theme?.id) + 1];
-          return { theme: next ?? null };
-        }),
+        set((state) => ({
+          theme: nextPresetTheme(state.theme),
+        })),
       setSceneParam: (paramId, value) =>
         set((state) => {
           if (!state.theme) return state;

@@ -35,6 +35,9 @@ test:
     cd "{{www_dir}}" && just test
     cd "{{api_dir}}" && just test
 
+test-e2e:
+    cd "{{www_dir}}" && just test-e2e
+
 check:
     cd "{{desktop_dir}}" && just check
     cd "{{www_dir}}" && just check

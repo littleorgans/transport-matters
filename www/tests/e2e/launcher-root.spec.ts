@@ -25,6 +25,15 @@ async function openCanvas(page: Page) {
   await expect(page.locator(".canvas-route-shell")).toBeVisible();
 }
 
+async function activeThemeId(page: Page): Promise<string | null> {
+  return page.evaluate(() => {
+    const raw = window.localStorage.getItem("transport-matters-theme");
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { state?: { theme?: { id?: string } | null } };
+    return parsed.state?.theme?.id ?? null;
+  });
+}
+
 test("$mod+K root lists the five domains with agents collapsed; ↵ enters Agents", async ({
   page,
 }) => {
@@ -68,4 +77,36 @@ test("typing at root flat-searches across domains and surfaces agents", async ({
   const titles = page.locator(".launcher__row-title");
   await expect(titles.filter({ hasText: /^research$/ })).toBeVisible();
   await expect(titles.filter({ hasText: "Workdir" })).toHaveCount(0);
+});
+
+test("$mod+K Settings cycles theme with ArrowRight and keeps launcher open", async ({ page }) => {
+  await openCanvas(page);
+  await pressMod(page, "k");
+  const input = page.getByRole("combobox");
+  await expect(input).toBeVisible();
+
+  await input.press("ArrowDown");
+  await input.press("ArrowDown");
+  await input.press("ArrowDown");
+  await input.press("Enter");
+  await expect(
+    page.locator(".launcher__row-title").filter({ hasText: /^Cycle theme$/ }),
+  ).toBeVisible();
+  await expect(
+    page.locator(".launcher__row-subtitle").filter({ hasText: "Current: Open water" }),
+  ).toBeVisible();
+
+  await input.press("ArrowRight");
+  await expect(input).toBeVisible();
+  await expect(
+    page.locator(".launcher__row-subtitle").filter({ hasText: "Current: Littleorgans" }),
+  ).toBeVisible();
+  expect(await activeThemeId(page)).toBe("littleorgans");
+
+  await input.press("ArrowRight");
+  await expect(input).toBeVisible();
+  await expect(
+    page.locator(".launcher__row-subtitle").filter({ hasText: "Current: Open water" }),
+  ).toBeVisible();
+  expect(await activeThemeId(page)).toBe("open-water");
 });

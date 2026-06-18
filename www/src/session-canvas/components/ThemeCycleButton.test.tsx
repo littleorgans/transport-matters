@@ -9,7 +9,7 @@ beforeEach(() => {
 });
 
 describe("ThemeCycleButton", () => {
-  it("cycles unthemed through every preset and back to unthemed", () => {
+  it("cycles unthemed through every preset and wraps to the first preset", () => {
     render(<ThemeCycleButton />);
     const button = screen.getByRole("button", { name: "Theme: none" });
 
@@ -20,8 +20,8 @@ describe("ThemeCycleButton", () => {
     }
 
     fireEvent.click(button);
-    expect(useThemeStore.getState().theme).toBeNull();
-    expect(button).toHaveTextContent("Theme: none");
+    expect(useThemeStore.getState().theme?.id).toBe(presetThemes[0]?.id);
+    expect(button).toHaveTextContent(`Theme: ${presetThemes[0]?.name}`);
   });
 
   it("restarts the cycle from the first preset for an unknown active theme", () => {
