@@ -72,26 +72,29 @@ export function CommandCenter({ onCommand, themeName }: CommandCenterProps) {
         <Portal>
           <Combobox.Positioner className="launcher__positioner">
             <Combobox.Content className="launcher__content">
-              {center.grouped.length === 0 ? (
-                <p aria-live="polite" className="launcher__empty" role="status">
-                  No matches
-                </p>
-              ) : (
-                center.grouped.map(([group, rows]) => (
-                  <Combobox.ItemGroup className="launcher__group" key={group}>
-                    <Combobox.ItemGroupLabel className="launcher__group-label">
-                      {group}
-                    </Combobox.ItemGroupLabel>
-                    {rows.map((row) => (
-                      <LauncherRow key={row.value} row={row} />
-                    ))}
-                  </Combobox.ItemGroup>
-                ))
-              )}
+              {/* Bounded scroll area: the list scrolls here so rows never bleed
+                  under the fixed footer below. */}
+              <div className="launcher__list" role="presentation">
+                {center.grouped.length === 0 ? (
+                  <p aria-live="polite" className="launcher__empty" role="status">
+                    No matches
+                  </p>
+                ) : (
+                  center.grouped.map(([group, rows]) => (
+                    <Combobox.ItemGroup className="launcher__group" key={group}>
+                      <Combobox.ItemGroupLabel className="launcher__group-label">
+                        {group}
+                      </Combobox.ItemGroupLabel>
+                      {rows.map((row) => (
+                        <LauncherRow key={row.value} row={row} />
+                      ))}
+                    </Combobox.ItemGroup>
+                  ))
+                )}
+              </div>
               {/* Hints duplicate live key behaviour; hide from the options tree. */}
               <footer aria-hidden="true" className="launcher__footer">
                 <span>{FOOTER_HINTS}</span>
-                <span className="launcher__brand">TRANSPORT MATTERS</span>
               </footer>
             </Combobox.Content>
           </Combobox.Positioner>

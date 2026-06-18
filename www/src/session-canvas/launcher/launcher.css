@@ -62,7 +62,8 @@
   padding: 0 var(--launcher-row-pad-x);
   background: var(--launcher-panel-bg);
   border: 1px solid var(--launcher-panel-edge);
-  border-bottom: 1px solid var(--launcher-divider);
+  /* Divider matches the panel border so the seam reads as one frame. */
+  border-bottom: 1px solid var(--launcher-panel-edge);
   box-shadow: var(--launcher-panel-shadow);
   animation: launcher-panel-in var(--transition) ease-out;
 }
@@ -110,16 +111,14 @@
   flex-direction: column;
   width: var(--reference-width);
   max-height: min(var(--launcher-max-list), var(--available-height, 60vh));
-  padding: var(--launcher-pad) 0 0;
-  overflow-y: auto;
+  /* The panel itself does not scroll; the inner list does, so the footer stays
+     pinned below the list and rows never bleed under it. */
+  overflow: hidden;
   background: var(--launcher-panel-bg);
   border: 1px solid var(--launcher-panel-edge);
   border-top: 0;
   box-shadow: var(--launcher-panel-shadow);
   outline: none;
-  overscroll-behavior: contain;
-  scrollbar-width: thin;
-  scrollbar-color: var(--color-edge-strong) transparent;
   animation: launcher-panel-in var(--transition) ease-out;
 }
 
@@ -131,13 +130,25 @@
   transform-origin: top center;
 }
 
+/* Bounded scroll area between the search bar and the fixed footer. Tight top
+   gap to the first heading; the bottom pad keeps the last row off the footer. */
+.launcher__list {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 2px 0 var(--launcher-pad);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-edge-strong) transparent;
+}
+
 .launcher__group {
   display: flex;
   flex-direction: column;
 }
 
 .launcher__group-label {
-  padding: 9px var(--launcher-row-pad-x) 5px;
+  padding: 5px var(--launcher-row-pad-x) 5px;
   color: var(--color-label);
   font-size: var(--launcher-fs-label);
   font-weight: 600;
@@ -234,26 +245,18 @@
 }
 
 /* --- Footer hint bar ---------------------------------------------------- */
+/* A fixed flex child below the bounded list (not sticky-in-scroll), so it spans
+   the full panel inner width and the list never scrolls beneath it. */
 .launcher__footer {
-  position: sticky;
-  bottom: 0;
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  margin-top: var(--launcher-pad);
-  padding: 0 var(--launcher-row-pad-x);
-  height: var(--launcher-footer-height);
+  min-height: var(--launcher-footer-height);
+  padding: 7px var(--launcher-row-pad-x);
   color: var(--color-txt-3);
   font-size: var(--launcher-fs-hint);
   background: var(--launcher-footer-bg);
   border-top: 1px solid var(--launcher-divider);
-}
-
-.launcher__brand {
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--color-txt-3);
-  opacity: 0.7;
 }
 
 /* --- First-run discoverability hint (resting canvas chrome) -------------- */
