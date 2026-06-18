@@ -11,3 +11,27 @@ export function isEditableTarget(target: EventTarget | null): boolean {
   if (target.isContentEditable) return true;
   return target.getAttribute("role") === "textbox";
 }
+
+const INTERACTIVE_TARGET_SELECTOR = [
+  "a[href]",
+  "button",
+  "input",
+  "select",
+  "textarea",
+  "[role='button']",
+  "[role='checkbox']",
+  "[role='combobox']",
+  "[role='link']",
+  "[role='menuitem']",
+  "[role='option']",
+  "[role='radio']",
+  "[role='slider']",
+  "[role='spinbutton']",
+  "[role='switch']",
+  "[role='tab']",
+].join(", ");
+
+export function isInteractiveTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof Element)) return false;
+  return Boolean(target.closest(INTERACTIVE_TARGET_SELECTOR));
+}

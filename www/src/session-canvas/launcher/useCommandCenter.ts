@@ -1,4 +1,5 @@
 import { type KeyboardEvent, useCallback, useEffect, useRef, useState } from "react";
+import type { CanvasGestureModifier } from "../../keybindings/gestureModifier";
 import type { LauncherCommand, LauncherScope, RowAction } from "./commandModel";
 import { useLauncherHotkeys } from "./useLauncherHotkeys";
 import { useLauncherRows } from "./useLauncherRows";
@@ -9,6 +10,8 @@ export interface UseCommandCenterArgs {
   onCommand: (command: LauncherCommand) => void;
   /** Current theme name, shown on the Cycle-theme entry's subtitle. */
   themeName: string;
+  /** Current persisted canvas gesture modifier, shown in Settings. */
+  canvasGestureModifier: CanvasGestureModifier;
 }
 
 /**
@@ -19,7 +22,11 @@ export interface UseCommandCenterArgs {
  * stays a thin Ark composition. Behaviour is the component's former inline logic,
  * lifted verbatim.
  */
-export function useCommandCenter({ onCommand, themeName }: UseCommandCenterArgs) {
+export function useCommandCenter({
+  onCommand,
+  themeName,
+  canvasGestureModifier,
+}: UseCommandCenterArgs) {
   const [open, setOpen] = useState(false);
   const [scope, setScope] = useState<LauncherScope>("root");
   const [query, setQuery] = useState("");
@@ -74,7 +81,7 @@ export function useCommandCenter({ onCommand, themeName }: UseCommandCenterArgs)
   useLauncherHotkeys({ toggleRoot, openScope, isOpen: () => isOpenRef.current });
 
   const { collection, grouped, rowByValue, highlighted, setHighlighted, fleetStatus } =
-    useLauncherRows({ scope, query, templates, status, themeName });
+    useLauncherRows({ scope, query, templates, status, themeName, canvasGestureModifier });
 
   const runAction = useCallback(
     (action: RowAction) => {

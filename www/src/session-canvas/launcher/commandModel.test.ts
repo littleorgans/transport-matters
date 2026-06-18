@@ -56,6 +56,7 @@ const baseInputs = (overrides: Partial<ScopeRowInputs> = {}): ScopeRowInputs => 
   templates: [],
   agentsStatus: "populated",
   themeName: "none",
+  canvasGestureModifier: "Shift",
   ...overrides,
 });
 
@@ -196,9 +197,24 @@ describe("buildScopeRows — domains-first root", () => {
     ).toContain("agent:native:claude");
   });
 
-  it("Settings scope carries the re-homed Theme command", () => {
+  it("Settings scope carries Theme and the current canvas gesture modifier", () => {
     const rows = buildScopeRows("settings", baseInputs(), "");
-    expect(rows.map((row) => row.value)).toEqual(["cmd:cycle-theme"]);
+    expect(rows.map((row) => row.value)).toEqual([
+      "cmd:cycle-theme",
+      "settings:canvas-gesture-modifier:Shift",
+      "settings:canvas-gesture-modifier:Space",
+    ]);
+    expect(rows.find((row) => row.value.endsWith(":Shift"))?.trailing).toBe("Current");
+    expect(rows.find((row) => row.value.endsWith(":Space"))?.action).toEqual({
+      kind: "command",
+      command: { kind: "set-canvas-gesture-modifier", modifier: "Space" },
+    });
+  });
+
+  it("Settings scope reflects Space as the current canvas gesture modifier", () => {
+    const rows = buildScopeRows("settings", baseInputs({ canvasGestureModifier: "Space" }), "");
+    expect(rows.find((row) => row.value.endsWith(":Shift"))?.trailing).toBeUndefined();
+    expect(rows.find((row) => row.value.endsWith(":Space"))?.trailing).toBe("Current");
   });
 
   it("Canvas scope drops Theme (moved to Settings)", () => {

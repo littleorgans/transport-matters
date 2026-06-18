@@ -1,4 +1,5 @@
 import { memo, useMemo } from "react";
+import { CANVAS_GESTURE_SURFACE_ATTRIBUTE } from "../../keybindings/gestures";
 import type { EngineLayoutState, PaneId, PaneNode, WorldRect } from "../types";
 import { type PaneDndHandle, PaneFrame } from "./PaneFrame";
 import { type CanvasViewportActions, useCanvasViewport } from "./useCanvasViewport";
@@ -152,6 +153,7 @@ export function LayoutCanvas({
   return (
     <section
       {...bindViewport()}
+      {...{ [CANVAS_GESTURE_SURFACE_ATTRIBUTE]: "true" }}
       aria-label={label}
       className={viewportClassName}
       onKeyDown={handleKeyDown}

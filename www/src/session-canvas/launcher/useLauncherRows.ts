@@ -1,5 +1,6 @@
 import { createListCollection } from "@ark-ui/react/combobox";
 import { useEffect, useMemo, useState } from "react";
+import type { CanvasGestureModifier } from "../../keybindings/gestureModifier";
 import type { RuntimeTemplateSummary } from "../../types";
 import {
   type AgentsStatus,
@@ -17,6 +18,7 @@ export interface LauncherRowsArgs {
   templates: RuntimeTemplateSummary[];
   status: AgentsStatus;
   themeName: string;
+  canvasGestureModifier: CanvasGestureModifier;
 }
 
 /**
@@ -26,12 +28,19 @@ export interface LauncherRowsArgs {
  * maps the async fleet status into a polite announcement. Split out of
  * {@link useCommandCenter} so the main hook owns only palette state + grammar.
  */
-export function useLauncherRows({ scope, query, templates, status, themeName }: LauncherRowsArgs) {
+export function useLauncherRows({
+  scope,
+  query,
+  templates,
+  status,
+  themeName,
+  canvasGestureModifier,
+}: LauncherRowsArgs) {
   const [highlighted, setHighlighted] = useState<string | undefined>(undefined);
 
   const inputs = useMemo<ScopeRowInputs>(
-    () => ({ templates, agentsStatus: status, themeName }),
-    [templates, status, themeName],
+    () => ({ templates, agentsStatus: status, themeName, canvasGestureModifier }),
+    [templates, status, themeName, canvasGestureModifier],
   );
   const visibleRows = useMemo(
     () => filterRows(buildScopeRows(scope, inputs, query), query),

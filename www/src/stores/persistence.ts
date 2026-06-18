@@ -7,6 +7,7 @@ export const FRONTEND_STORAGE_KEYS = {
   capturedRunStore: "transport-matters-captured-run",
   canvasStore: "transport-matters-canvas",
   canvasLabStore: "transport-matters-canvas-lab",
+  keymapStore: "transport-matters-keymap",
   dismissedPanelPrefix: "transport-matters.panel.dismissed.",
 } as const;
 

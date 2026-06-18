@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { useKeymapStore } from "../stores/keymapStore";
+import { FRONTEND_STORAGE_KEYS } from "../stores/persistence";
 import {
+  CANVAS_GESTURE_SURFACE_ATTRIBUTE,
   getCanvasGestureSnapshot,
   resetCanvasGestureStoreForTests,
   setCanvasGestureModifier,
@@ -7,8 +10,13 @@ import {
   subscribeCanvasGestureStore,
 } from "./gestures";
 
-function modifierKeyDown(key: "Shift" | "Space", target: Document | Element = document): void {
-  target.dispatchEvent(keyboardEvent("keydown", key));
+function modifierKeyDown(
+  key: "Shift" | "Space",
+  target: Document | Element = document,
+): KeyboardEvent {
+  const event = keyboardEvent("keydown", key);
+  target.dispatchEvent(event);
+  return event;
 }
 
 function modifierKeyUp(key: "Shift" | "Space", target: Document | Element = document): void {
@@ -18,14 +26,23 @@ function modifierKeyUp(key: "Shift" | "Space", target: Document | Element = docu
 function keyboardEvent(type: "keydown" | "keyup", key: "Shift" | "Space"): KeyboardEvent {
   return new KeyboardEvent(type, {
     bubbles: true,
+    cancelable: true,
     code: key === "Space" ? "Space" : "ShiftLeft",
     key: key === "Space" ? " " : "Shift",
   });
 }
 
+function canvasGestureSurface(): HTMLElement {
+  const surface = document.createElement("section");
+  surface.setAttribute(CANVAS_GESTURE_SURFACE_ATTRIBUTE, "true");
+  document.body.appendChild(surface);
+  return surface;
+}
+
 describe("canvas gesture store", () => {
   afterEach(() => {
     resetCanvasGestureStoreForTests();
+    localStorage.clear();
     document.body.replaceChildren();
     vi.restoreAllMocks();
   });
@@ -71,18 +88,41 @@ describe("canvas gesture store", () => {
   });
 
   it("uses Space when configured and ignores Shift", () => {
+    const surface = canvasGestureSurface();
     setCanvasGestureModifier("Space");
 
     modifierKeyDown("Shift");
     expect(getCanvasGestureSnapshot().modifierHeld).toBe(false);
     expect(shouldPanNotDrag({ shiftKey: true })).toBe(false);
 
-    modifierKeyDown("Space");
+    modifierKeyDown("Space", surface);
     expect(getCanvasGestureSnapshot().modifierHeld).toBe(true);
     expect(shouldPanNotDrag({ shiftKey: false })).toBe(true);
 
     modifierKeyUp("Space");
     expect(shouldPanNotDrag({ shiftKey: false })).toBe(false);
+  });
+
+  it("uses rehydrated Space and no longer pans with Shift", async () => {
+    const surface = canvasGestureSurface();
+    useKeymapStore.setState({ canvasGestureModifier: "Shift" });
+    localStorage.setItem(
+      FRONTEND_STORAGE_KEYS.keymapStore,
+      JSON.stringify({ state: { canvasGestureModifier: "Space" }, version: 1 }),
+    );
+
+    await useKeymapStore.persist.rehydrate();
+
+    modifierKeyDown("Shift");
+    expect(getCanvasGestureSnapshot().modifierHeld).toBe(false);
+    expect(shouldPanNotDrag({ shiftKey: true })).toBe(false);
+
+    modifierKeyDown("Space", surface);
+    expect(getCanvasGestureSnapshot()).toMatchObject({
+      modifier: "Space",
+      modifierHeld: true,
+    });
+    expect(shouldPanNotDrag({ shiftKey: false })).toBe(true);
   });
 
   it("keeps editable Space typing from activating canvas gestures", () => {
@@ -92,6 +132,33 @@ describe("canvas gesture store", () => {
 
     modifierKeyDown("Space", input);
 
+    expect(getCanvasGestureSnapshot().modifierHeld).toBe(false);
+  });
+
+  it("prevents Space default only on the canvas gesture surface", () => {
+    const surface = canvasGestureSurface();
+    setCanvasGestureModifier("Space");
+
+    const event = modifierKeyDown("Space", surface);
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(getCanvasGestureSnapshot().modifierHeld).toBe(true);
+  });
+
+  it("does not prevent Space or arm gestures on buttons or ARIA controls", () => {
+    const button = document.createElement("button");
+    button.type = "button";
+    const ariaButton = document.createElement("div");
+    ariaButton.setAttribute("role", "button");
+    document.body.append(button, ariaButton);
+    setCanvasGestureModifier("Space");
+
+    const nativeEvent = modifierKeyDown("Space", button);
+    expect(nativeEvent.defaultPrevented).toBe(false);
+    expect(getCanvasGestureSnapshot().modifierHeld).toBe(false);
+
+    const ariaEvent = modifierKeyDown("Space", ariaButton);
+    expect(ariaEvent.defaultPrevented).toBe(false);
     expect(getCanvasGestureSnapshot().modifierHeld).toBe(false);
   });
 
