@@ -11,12 +11,13 @@ describe("preload bridge", () => {
     exposeInMainWorld.mockClear();
   });
 
-  it("exposes appName and getPathForFile on transportMattersDesktop", async () => {
+  it("exposes appName, platform, and getPathForFile on transportMattersDesktop", async () => {
     executePreload();
     expect(exposeInMainWorld).toHaveBeenCalledTimes(1);
     const [key, api] = exposeInMainWorld.mock.calls[0] as [string, Record<string, unknown>];
     expect(key).toBe("transportMattersDesktop");
     expect(api.appName).toBe("Transport Matters");
+    expect(api.platform).toBe("darwin");
     const file = {} as File;
     expect((api.getPathForFile as (f: File) => string)(file)).toBe("/tmp/shot.png");
     expect(getPathForFile).toHaveBeenCalledWith(file);
@@ -42,6 +43,11 @@ function executePreload(): void {
       webUtils: { getPathForFile },
     };
   };
-  const context = createContext({ module, exports: module.exports, require });
+  const context = createContext({
+    module,
+    exports: module.exports,
+    process: { platform: "darwin" },
+    require,
+  });
   new Script(outputText, { filename: "preload.cjs" }).runInContext(context);
 }

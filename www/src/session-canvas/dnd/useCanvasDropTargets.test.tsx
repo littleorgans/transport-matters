@@ -56,6 +56,7 @@ function Harness({
   if (bridge) {
     window.transportMattersDesktop = {
       appName: "Transport Matters",
+      platform: "darwin",
       getPathForFile: () => "/tmp/shot.png",
     };
   }
