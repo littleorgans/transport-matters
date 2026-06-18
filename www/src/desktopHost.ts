@@ -4,15 +4,32 @@
 // which is meaningless and would swallow clicks in a browser. Keep the bridge key in
 // sync with DESKTOP_PRELOAD_BRIDGE_KEY (desktop/src/main.ts) and the preload
 // (desktop/src/preload.cts).
-const DESKTOP_BRIDGE_KEY = "transportMattersDesktop";
+export const DESKTOP_BRIDGE_KEY = "transportMattersDesktop";
+
+export type DesktopBridgePlatform =
+  | "aix"
+  | "android"
+  | "darwin"
+  | "freebsd"
+  | "haiku"
+  | "linux"
+  | "openbsd"
+  | "sunos"
+  | "win32"
+  | "cygwin"
+  | "netbsd"
+  | (string & {});
+
+export interface TransportMattersDesktopBridge {
+  appName: string;
+  platform: DesktopBridgePlatform;
+  /** Resolves a dropped File to its OS path; the browser build has no bridge. */
+  getPathForFile?: (file: File) => string;
+}
 
 declare global {
   interface Window {
-    [DESKTOP_BRIDGE_KEY]?: {
-      appName: string;
-      /** Resolves a dropped File to its OS path; the browser build has no bridge. */
-      getPathForFile?: (file: File) => string;
-    };
+    [DESKTOP_BRIDGE_KEY]?: TransportMattersDesktopBridge;
   }
 }
 

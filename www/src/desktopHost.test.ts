@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import { isDesktopHost } from "./desktopHost";
 
 function fakeWindow(bridge: boolean): Window {
-  return (bridge ? { transportMattersDesktop: { appName: "Transport Matters" } } : {}) as Window;
+  return (
+    bridge ? { transportMattersDesktop: { appName: "Transport Matters", platform: "darwin" } } : {}
+  ) as Window;
 }
 
 describe("desktop host detection", () => {

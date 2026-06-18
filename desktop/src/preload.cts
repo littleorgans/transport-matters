@@ -14,6 +14,7 @@ import electron = require("electron");
 // (reference semantics for canvas file drops; the browser build has no bridge).
 const desktopApi = Object.freeze({
   appName: "Transport Matters",
+  platform: process.platform,
   getPathForFile: (file: File): string => electron.webUtils.getPathForFile(file),
 });
 
