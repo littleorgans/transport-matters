@@ -1,4 +1,4 @@
-import { type KeyboardEvent, useCallback, useRef, useState } from "react";
+import { type KeyboardEvent, useCallback, useEffect, useRef, useState } from "react";
 import type { LauncherCommand, LauncherScope, RowAction } from "./commandModel";
 import { useLauncherHotkeys } from "./useLauncherHotkeys";
 import { useLauncherRows } from "./useLauncherRows";
@@ -98,14 +98,27 @@ export function useCommandCenter({ onCommand, themeName }: UseCommandCenterArgs)
     [rowByValue, runAction],
   );
 
+  // Own Escape so it ALWAYS closes the whole palette, from any state (listbox
+  // open, a scope entered, query empty or not); ←/⌫ remain the scope-pop grammar.
+  // Ark's combobox dismisses Escape via a DOCUMENT-level capture listener that
+  // only closes its own listbox / clears the input. A WINDOW capture listener
+  // runs earlier in the capture path (window precedes document), so we close the
+  // palette and stopPropagation before Ark can consume the key. Active only while
+  // open.
+  useEffect(() => {
+    if (!open) return;
+    const onEscapeCapture = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      event.stopPropagation();
+      close();
+    };
+    window.addEventListener("keydown", onEscapeCapture, true);
+    return () => window.removeEventListener("keydown", onEscapeCapture, true);
+  }, [open, close]);
+
   const onInputKeyDown = useCallback(
     (event: KeyboardEvent<HTMLInputElement>) => {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        event.stopPropagation();
-        close();
-        return;
-      }
       const caret = event.currentTarget.selectionStart ?? 0;
       if (event.key === "ArrowRight" && caret >= query.length) {
         const row = highlighted ? rowByValue.get(highlighted) : undefined;
@@ -122,7 +135,7 @@ export function useCommandCenter({ onCommand, themeName }: UseCommandCenterArgs)
         setScope("root");
       }
     },
-    [close, query.length, highlighted, rowByValue, runAction, scope],
+    [query.length, highlighted, rowByValue, runAction, scope],
   );
 
   return {

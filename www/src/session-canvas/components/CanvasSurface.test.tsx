@@ -53,4 +53,22 @@ describe("CanvasSurface", () => {
 
     await waitFor(() => expect(addCapturedRun).toHaveBeenCalledWith("claude", undefined));
   });
+
+  it("closes the command center on Escape from a sub-scope", async () => {
+    resetCanvasStoreForTests(launch);
+    installMockTransport(() => jsonResponse({ items: [] }));
+
+    renderWithQuery(
+      <CanvasSurface launch={launch} launchSessionId={null} launchStatus="resolved" />,
+    );
+
+    // Open into the Agents scope, then Escape must close the WHOLE palette — the
+    // root capture handler beats Ark, which would otherwise only close its listbox.
+    fireEvent.keyDown(window, { key: "a", metaKey: true });
+    const input = await screen.findByRole("combobox");
+
+    fireEvent.keyDown(input, { key: "Escape" });
+
+    await waitFor(() => expect(screen.queryByRole("combobox")).not.toBeInTheDocument());
+  });
 });

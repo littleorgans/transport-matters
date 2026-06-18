@@ -82,11 +82,10 @@
   color: var(--color-txt);
   font-family: var(--font-mono);
   font-size: var(--launcher-fs-input);
+  /* No focus ring: the input is implicitly focused in this modal palette
+     (Raycast-minimal). Keyboard position is carried by the active-row highlight;
+     the input keeps its aria-label for assistive tech. */
   outline: none;
-}
-
-.launcher__input:focus-visible {
-  box-shadow: var(--canvas-focus-ring);
 }
 
 .launcher__input::placeholder {
