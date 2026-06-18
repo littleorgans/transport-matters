@@ -24,6 +24,25 @@
   animation: launcher-scrim-in var(--transition) ease-out;
 }
 
+.launcher__scrim:focus-visible {
+  outline: none;
+  box-shadow: inset var(--canvas-focus-ring);
+}
+
+/* Visually-hidden polite live region (announces async fleet-fetch state). */
+.launcher__sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 .launcher__root {
   position: relative;
   display: flex;
@@ -66,8 +85,12 @@
   outline: none;
 }
 
+.launcher__input:focus-visible {
+  box-shadow: var(--canvas-focus-ring);
+}
+
 .launcher__input::placeholder {
-  color: var(--color-txt-3);
+  color: var(--color-txt-2);
 }
 
 .launcher__scope-tag {
@@ -99,6 +122,10 @@
   scrollbar-width: thin;
   scrollbar-color: var(--color-edge-strong) transparent;
   animation: launcher-panel-in var(--transition) ease-out;
+}
+
+.launcher__content:focus-visible {
+  box-shadow: var(--launcher-panel-shadow), var(--canvas-focus-ring);
 }
 
 .launcher__content[data-state="open"] {
@@ -183,7 +210,7 @@
 }
 
 .launcher__row-subtitle {
-  color: var(--color-txt-3);
+  color: var(--color-txt-2);
   font-size: var(--launcher-fs-subtitle);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -203,7 +230,7 @@
 .launcher__empty {
   padding: 14px var(--launcher-row-pad-x);
   margin: 0;
-  color: var(--color-txt-3);
+  color: var(--color-txt-2);
   font-size: var(--launcher-fs-subtitle);
 }
 

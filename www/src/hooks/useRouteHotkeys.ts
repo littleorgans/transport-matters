@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { isEditableTarget } from "../lib/domFocus";
 import type { Route } from "../stores/uiStore";
 import { useUIStore } from "../stores/uiStore";
 
@@ -28,14 +29,8 @@ export function useRouteHotkeys() {
       }
     };
 
-    const isTypingTarget = (el: EventTarget | null) => {
-      if (!(el instanceof HTMLElement)) return false;
-      const tag = el.tagName;
-      return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || el.isContentEditable;
-    };
-
     const handler = (e: KeyboardEvent) => {
-      if (isTypingTarget(e.target)) return;
+      if (isEditableTarget(e.target)) return;
       if (e.metaKey || e.ctrlKey || e.altKey) return;
 
       // Digit shortcuts

@@ -39,6 +39,19 @@ const unsupported: RuntimeTemplateSummary = {
   recommended_model: { default: { harness: "pi", vendor: null } },
 };
 
+// default.harness is absent but default.vendor (openai) names a captured-run
+// vendor; vendors[0] is a DIFFERENT vendor (anthropic). The spawn must follow
+// the recommended vendor, not vendors[0].
+const vendorMismatch: RuntimeTemplateSummary = {
+  name: "vendor-mismatch",
+  vendors: ["anthropic", "openai"],
+  required_capabilities: [],
+  recommended_model: {
+    default: { vendor: "openai" },
+    by_vendor: { openai: { model: "GPT-5", effort: "high" } },
+  },
+};
+
 const baseInputs = (overrides: Partial<ScopeRowInputs> = {}): ScopeRowInputs => ({
   templates: [],
   agentsStatus: "populated",
@@ -60,6 +73,12 @@ describe("templateSpawnHarness", () => {
 
   it("returns null when nothing spawnable can be derived", () => {
     expect(templateSpawnHarness(unsupported)).toBeNull();
+  });
+
+  it("prefers the recommended vendor's native harness over vendors[0]", () => {
+    // default.vendor=openai with no default.harness must spawn codex, even though
+    // vendors[0] is anthropic. Regression guard against vendors[0] winning.
+    expect(templateSpawnHarness(vendorMismatch)).toBe("codex");
   });
 });
 
@@ -95,6 +114,16 @@ describe("buildAgentRows — Native is always present and first", () => {
     expect(row?.action).toEqual({
       kind: "command",
       command: { kind: "spawn", harness: "claude", runtimeTemplate: "research" },
+    });
+  });
+
+  it("spawns a specialist under its recommended vendor's harness, not vendors[0]", () => {
+    const rows = buildAgentRows([vendorMismatch], "populated");
+    const row = rows.find((candidate) => candidate.value === "agent:template:vendor-mismatch");
+    expect(row?.disabled).toBeFalsy();
+    expect(row?.action).toEqual({
+      kind: "command",
+      command: { kind: "spawn", harness: "codex", runtimeTemplate: "vendor-mismatch" },
     });
   });
 

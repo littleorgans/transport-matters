@@ -66,9 +66,14 @@ const VENDOR_LABELS: Record<RuntimeTemplateVendor, string> = {
 export function templateSpawnHarness(template: RuntimeTemplateSummary): HarnessName | null {
   const recommended = template.recommended_model?.default?.harness ?? null;
   if (isCapturedRunHarness(recommended)) return recommended;
-  // No spawnable recommendation: fall back to the first compatible vendor's
-  // native harness (anthropic → claude, openai → codex) so the row stays usable.
-  for (const vendor of template.vendors ?? []) {
+  // No spawnable harness recommendation: derive the native harness from the
+  // recommended VENDOR first (anthropic → claude, openai → codex), then any
+  // compatible vendor. Consulting default.vendor before vendors[] keeps the
+  // spawn target consistent with the subtitle (see recommendedSubtitle) instead
+  // of silently launching vendors[0].
+  const recommendedVendor = template.recommended_model?.default?.vendor ?? null;
+  for (const vendor of [recommendedVendor, ...(template.vendors ?? [])]) {
+    if (!vendor) continue;
     const harness = vendorNativeHarness(vendor);
     if (harness) return harness;
   }
@@ -140,7 +145,7 @@ function agentsStatusRows(status: AgentsStatus): CommandRow[] {
       return [
         {
           value: "status:error",
-          title: "Couldn't load specialists",
+          title: "Couldn’t load specialists",
           subtitle: "Native agents are still available",
           group: GROUP_AGENTS,
           disabled: true,

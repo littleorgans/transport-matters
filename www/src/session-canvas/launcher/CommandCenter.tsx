@@ -1,21 +1,9 @@
-import { Combobox, createListCollection } from "@ark-ui/react/combobox";
+import { Combobox } from "@ark-ui/react/combobox";
 import { Portal } from "@ark-ui/react/portal";
-import { type KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { agentRailStyle } from "../../lib/agentPalette";
-import {
-  buildScopeRows,
-  type CommandRow,
-  filterRows,
-  firstSelectableValue,
-  groupRows,
-  type LauncherCommand,
-  type LauncherScope,
-  type RowAction,
-  type ScopeRowInputs,
-} from "./commandModel";
+import type { CommandRow, LauncherCommand } from "./commandModel";
 import { FirstRunHint } from "./FirstRunHint";
-import { useLauncherHotkeys } from "./useLauncherHotkeys";
-import { useRuntimeTemplates } from "./useRuntimeTemplates";
+import { useCommandCenter } from "./useCommandCenter";
 import "./launcher.css";
 
 export interface CommandCenterProps {
@@ -29,165 +17,41 @@ const FOOTER_HINTS = "↵ run · → enter · ⌫ back · esc close";
 
 /**
  * The ⌘K command center. Renders zero chrome when closed (only a fading
- * first-run hint); ⌘K/⌘A open it. Built on a single Ark Combobox (this file is
- * the one wrapper that owns its vanilla CSS), with scope state and the row
- * grammar layered on top. Agents fetch lazily and never block a spawn.
+ * first-run hint); ⌘K/⌘A open it. A thin wrapper over a single Ark Combobox
+ * (this file owns its vanilla CSS); all state, hotkeys, the lazy specialist
+ * fetch, and the keyboard grammar live in {@link useCommandCenter}.
  */
 export function CommandCenter({ onCommand, themeName }: CommandCenterProps) {
-  const [open, setOpen] = useState(false);
-  const [scope, setScope] = useState<LauncherScope>("root");
-  const [query, setQuery] = useState("");
-  const [highlighted, setHighlighted] = useState<string | undefined>(undefined);
-  // Sticky: the specialist fleet fetches on the FIRST open and stays cached, so
-  // a never-opened palette never hits the endpoint (and never blocks a spawn).
-  const [hasOpened, setHasOpened] = useState(false);
-  const restoreFocusRef = useRef<HTMLElement | null>(null);
+  const center = useCommandCenter({ onCommand, themeName });
+  if (!center.open) return <FirstRunHint />;
 
-  const { templates, status, retry } = useRuntimeTemplates(hasOpened);
-
-  const close = useCallback(() => {
-    setOpen(false);
-    setScope("root");
-    setQuery("");
-    restoreFocusRef.current?.focus?.();
-    restoreFocusRef.current = null;
-  }, []);
-
-  const rememberFocus = useCallback(() => {
-    const active = document.activeElement;
-    restoreFocusRef.current = active instanceof HTMLElement ? active : null;
-  }, []);
-
-  const toggleRoot = useCallback(() => {
-    setOpen((wasOpen) => {
-      if (wasOpen) {
-        restoreFocusRef.current?.focus?.();
-        restoreFocusRef.current = null;
-        return false;
-      }
-      rememberFocus();
-      return true;
-    });
-    setHasOpened(true);
-    setScope("root");
-    setQuery("");
-  }, [rememberFocus]);
-
-  const openAgents = useCallback(() => {
-    rememberFocus();
-    setHasOpened(true);
-    setScope("agents");
-    setQuery("");
-    setOpen(true);
-  }, [rememberFocus]);
-
-  const isOpenRef = useRef(open);
-  isOpenRef.current = open;
-  useLauncherHotkeys({ toggleRoot, openAgents, isOpen: () => isOpenRef.current });
-
-  const inputs = useMemo<ScopeRowInputs>(
-    () => ({ templates, agentsStatus: status, themeName }),
-    [templates, status, themeName],
-  );
-  const visibleRows = useMemo(
-    () => filterRows(buildScopeRows(scope, inputs), query),
-    [scope, inputs, query],
-  );
-  const rowByValue = useMemo(
-    () => new Map(visibleRows.map((row) => [row.value, row])),
-    [visibleRows],
-  );
-  const grouped = useMemo(() => groupRows(visibleRows), [visibleRows]);
-  const collection = useMemo(
-    () =>
-      createListCollection({
-        items: visibleRows,
-        itemToValue: (row) => row.value,
-        itemToString: (row) => row.title,
-        isItemDisabled: (row) => Boolean(row.disabled),
-      }),
-    [visibleRows],
-  );
-
-  // Keep a valid, selectable row highlighted as the scope/query narrows so ↵ and
-  // → always act on something sensible.
-  useEffect(() => {
-    setHighlighted((current) =>
-      current && visibleRows.some((row) => row.value === current && !row.disabled)
-        ? current
-        : firstSelectableValue(visibleRows),
-    );
-  }, [visibleRows]);
-
-  const runAction = useCallback(
-    (action: RowAction) => {
-      if (action.kind === "enter") {
-        setScope(action.scope);
-        setQuery("");
-        return;
-      }
-      if (action.command.kind === "retry-agents") {
-        retry();
-        return;
-      }
-      onCommand(action.command);
-      close();
-    },
-    [onCommand, retry, close],
-  );
-
-  const onInputKeyDown = useCallback(
-    (event: KeyboardEvent<HTMLInputElement>) => {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        event.stopPropagation();
-        close();
-        return;
-      }
-      const caret = event.currentTarget.selectionStart ?? 0;
-      if (event.key === "ArrowRight" && caret >= query.length) {
-        const row = highlighted ? rowByValue.get(highlighted) : undefined;
-        if (row?.action?.kind === "enter") {
-          event.preventDefault();
-          runAction(row.action);
-        }
-        return;
-      }
-      const popsToRoot =
-        event.key === "ArrowLeft" ? caret === 0 : event.key === "Backspace" && query.length === 0;
-      if (popsToRoot && scope !== "root") {
-        event.preventDefault();
-        setScope("root");
-      }
-    },
-    [close, query.length, highlighted, rowByValue, runAction, scope],
-  );
-
-  if (!open) return <FirstRunHint />;
-
+  const { scope } = center;
   return (
     <div className="launcher" role="presentation">
       {/* Scrim: clicking the dimmed canvas dismisses, like Esc. */}
       <button
         aria-label="Close command center"
         className="launcher__scrim"
-        onClick={close}
+        onClick={center.close}
         type="button"
       />
+      {/* Polite live region for the async specialist fetch (outside the listbox). */}
+      <p aria-live="polite" className="launcher__sr-only" role="status">
+        {center.fleetStatus}
+      </p>
       <Combobox.Root
         autoFocus
         className="launcher__root"
         closeOnSelect={false}
-        collection={collection}
-        highlightedValue={highlighted ?? null}
-        inputValue={query}
-        onHighlightChange={(details) => setHighlighted(details.highlightedValue ?? undefined)}
-        onInputValueChange={(details) => setQuery(details.inputValue)}
-        onInteractOutside={close}
-        onValueChange={(details) => {
-          const row = rowByValue.get(details.value[0] ?? "");
-          if (row?.action) runAction(row.action);
-        }}
+        collection={center.collection}
+        highlightedValue={center.highlighted ?? null}
+        inputValue={center.query}
+        onHighlightChange={(details) =>
+          center.setHighlighted(details.highlightedValue ?? undefined)
+        }
+        onInputValueChange={(details) => center.setQuery(details.inputValue)}
+        onInteractOutside={center.close}
+        onValueChange={(details) => center.selectValue(details.value[0])}
         open
         positioning={{ sameWidth: true, gutter: 0, placement: "bottom-start" }}
         selectionBehavior="clear"
@@ -198,8 +62,9 @@ export function CommandCenter({ onCommand, themeName }: CommandCenterProps) {
             ⌘
           </span>
           <Combobox.Input
+            aria-label="Search agents and commands"
             className="launcher__input"
-            onKeyDown={onInputKeyDown}
+            onKeyDown={center.onInputKeyDown}
             placeholder={scope === "root" ? "Search agents and commands…" : `Search ${scope}…`}
           />
           <span className="launcher__scope-tag">{scope === "root" ? "" : scope}</span>
@@ -207,10 +72,12 @@ export function CommandCenter({ onCommand, themeName }: CommandCenterProps) {
         <Portal>
           <Combobox.Positioner className="launcher__positioner">
             <Combobox.Content className="launcher__content">
-              {grouped.length === 0 ? (
-                <p className="launcher__empty">No matches</p>
+              {center.grouped.length === 0 ? (
+                <p aria-live="polite" className="launcher__empty" role="status">
+                  No matches
+                </p>
               ) : (
-                grouped.map(([group, rows]) => (
+                center.grouped.map(([group, rows]) => (
                   <Combobox.ItemGroup className="launcher__group" key={group}>
                     <Combobox.ItemGroupLabel className="launcher__group-label">
                       {group}
@@ -221,7 +88,8 @@ export function CommandCenter({ onCommand, themeName }: CommandCenterProps) {
                   </Combobox.ItemGroup>
                 ))
               )}
-              <footer className="launcher__footer">
+              {/* Hints duplicate live key behaviour; hide from the options tree. */}
+              <footer aria-hidden="true" className="launcher__footer">
                 <span>{FOOTER_HINTS}</span>
                 <span className="launcher__brand">TRANSPORT MATTERS</span>
               </footer>
