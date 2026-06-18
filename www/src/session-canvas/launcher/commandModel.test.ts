@@ -158,31 +158,78 @@ describe("buildAgentRows — Native is always present and first", () => {
   });
 });
 
-describe("buildScopeRows", () => {
-  it("root surfaces the Agents, Canvas, and Go-to groups", () => {
-    const rows = buildScopeRows("root", baseInputs({ templates: [research] }));
-    expect(new Set(rows.map((row) => row.group))).toEqual(new Set(["Agents", "Canvas", "Go to"]));
-    expect(rows.some((row) => row.value === "cmd:cycle-theme")).toBe(true);
+describe("buildScopeRows — domains-first root", () => {
+  it("an empty query lists the five enterable domains (agents collapsed)", () => {
+    const rows = buildScopeRows("root", baseInputs({ templates: [research] }), "");
+    expect(rows.map((row) => row.value)).toEqual([
+      "domain:agents",
+      "domain:canvas",
+      "domain:workdir",
+      "domain:settings",
+      "domain:sessions",
+    ]);
+    expect(new Set(rows.map((row) => row.group))).toEqual(new Set(["Domains"]));
+    // Every domain enters its scope; no agent rows spill at root.
+    expect(rows.every((row) => row.action?.kind === "enter")).toBe(true);
+    expect(rows.some((row) => row.value.startsWith("agent:"))).toBe(false);
   });
 
-  it("deferred scopes wire in as a single quiet placeholder", () => {
-    const rows = buildScopeRows("workdir", baseInputs());
-    expect(rows).toHaveLength(1);
-    expect(rows[0]?.disabled).toBe(true);
-    expect(rows[0]?.action).toBeUndefined();
+  it("Agents and Settings domains carry their accelerators", () => {
+    const rows = buildScopeRows("root", baseInputs(), "");
+    expect(rows.find((row) => row.value === "domain:agents")?.trailing).toBe("⌘A");
+    expect(rows.find((row) => row.value === "domain:settings")?.trailing).toBe("⌘,");
+    expect(rows.find((row) => row.value === "domain:canvas")?.trailing).toBeUndefined();
+  });
+
+  it("a non-empty query flat-searches agents AND commands across domains", () => {
+    const inputs = baseInputs({ templates: [research] });
+    const rows = buildScopeRows("root", inputs, "research");
+    // The whole flat set is returned (filtering happens downstream); it carries
+    // both agent rows and re-homed commands, and no domain entries.
+    expect(rows.some((row) => row.value === "agent:template:research")).toBe(true);
+    expect(rows.some((row) => row.value === "cmd:reset-view")).toBe(true);
+    expect(rows.some((row) => row.value === "cmd:cycle-theme")).toBe(true);
+    expect(rows.some((row) => row.value.startsWith("domain:"))).toBe(false);
+    // Filtering the flat set from cold still finds the native agents.
+    expect(
+      filterRows(buildScopeRows("root", baseInputs(), "claude"), "claude").map((r) => r.value),
+    ).toContain("agent:native:claude");
+  });
+
+  it("Settings scope carries the re-homed Theme command", () => {
+    const rows = buildScopeRows("settings", baseInputs(), "");
+    expect(rows.map((row) => row.value)).toEqual(["cmd:cycle-theme"]);
+  });
+
+  it("Canvas scope drops Theme (moved to Settings)", () => {
+    const rows = buildScopeRows("canvas", baseInputs(), "");
+    expect(rows.map((row) => row.value)).toEqual([
+      "cmd:reset-view",
+      "cmd:focus-picker",
+      "cmd:goto-lab",
+    ]);
+  });
+
+  it("Workdir/Sessions wire in as a single quiet placeholder", () => {
+    for (const scope of ["workdir", "sessions"] as const) {
+      const rows = buildScopeRows(scope, baseInputs(), "");
+      expect(rows).toHaveLength(1);
+      expect(rows[0]?.disabled).toBe(true);
+      expect(rows[0]?.action).toBeUndefined();
+    }
   });
 });
 
 describe("row helpers", () => {
   it("filters across title and subtitle, case-insensitively", () => {
-    const rows = buildScopeRows("agents", baseInputs({ templates: [codexSpec] }));
+    const rows = buildScopeRows("agents", baseInputs({ templates: [codexSpec] }), "");
     const filtered = filterRows(rows, "gpt-5");
     expect(filtered.map((row) => row.value)).toEqual(["agent:template:codex-spec"]);
   });
 
-  it("groups rows preserving first-seen order", () => {
-    const groups = groupRows(buildScopeRows("root", baseInputs()));
-    expect(groups.map(([label]) => label)).toEqual(["Agents", "Canvas", "Go to"]);
+  it("groups the domains root under a single Domains heading", () => {
+    const groups = groupRows(buildScopeRows("root", baseInputs(), ""));
+    expect(groups.map(([label]) => label)).toEqual(["Domains"]);
   });
 
   it("firstSelectableValue skips disabled rows", () => {

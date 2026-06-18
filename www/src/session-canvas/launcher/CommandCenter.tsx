@@ -2,7 +2,7 @@ import { Combobox } from "@ark-ui/react/combobox";
 import { Portal } from "@ark-ui/react/portal";
 import { useEffect, useRef } from "react";
 import { agentRailStyle } from "../../lib/agentPalette";
-import type { CommandRow, LauncherCommand } from "./commandModel";
+import { type CommandRow, LAUNCHER_DOMAIN_COUNT, type LauncherCommand } from "./commandModel";
 import { FirstRunHint } from "./FirstRunHint";
 import { useCommandCenter } from "./useCommandCenter";
 import "./launcher.css";
@@ -39,6 +39,11 @@ export function CommandCenter({ onCommand, themeName }: CommandCenterProps) {
   if (!center.open) return <FirstRunHint />;
 
   const { scope } = center;
+  // Root with an empty query is the domains list; typing flat-searches all
+  // domains. The top-right tag and footer hints reflect that mode.
+  const showDomains = scope === "root" && center.query.trim().length === 0;
+  const scopeTag = showDomains ? `${LAUNCHER_DOMAIN_COUNT} domains` : scope === "root" ? "" : scope;
+  const footerHint = showDomains ? "↵ enter scope · esc close" : FOOTER_HINTS;
   return (
     <div className="launcher" role="presentation">
       {/* Scrim: clicking the dimmed canvas dismisses, like Esc. */}
@@ -80,7 +85,7 @@ export function CommandCenter({ onCommand, themeName }: CommandCenterProps) {
             onKeyDown={center.onInputKeyDown}
             placeholder={scope === "root" ? "Search agents and commands…" : `Search ${scope}…`}
           />
-          <span className="launcher__scope-tag">{scope === "root" ? "" : scope}</span>
+          <span className="launcher__scope-tag">{scopeTag}</span>
         </Combobox.Control>
         <Portal>
           <Combobox.Positioner className="launcher__positioner">
@@ -108,7 +113,10 @@ export function CommandCenter({ onCommand, themeName }: CommandCenterProps) {
               </Combobox.Content>
               {/* Hints duplicate live key behaviour; hide from the options tree. */}
               <footer aria-hidden="true" className="launcher__footer">
-                <span>{FOOTER_HINTS}</span>
+                <span>{footerHint}</span>
+                {showDomains ? (
+                  <span className="launcher__footer-search">TYPE TO SEARCH ALL</span>
+                ) : null}
               </footer>
             </div>
           </Combobox.Positioner>

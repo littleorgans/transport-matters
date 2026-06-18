@@ -53,9 +53,10 @@ export interface CommandRow {
   action?: RowAction;
 }
 
+const GROUP_DOMAINS = "Domains";
 const GROUP_AGENTS = "Agents";
 const GROUP_CANVAS = "Canvas";
-const GROUP_BROWSE = "Go to";
+const GROUP_SETTINGS = "Settings";
 
 const VENDOR_LABELS: Record<RuntimeTemplateVendor, string> = {
   anthropic: "Anthropic",
@@ -93,11 +94,8 @@ export function recommendedSubtitle(template: RuntimeTemplateSummary): string | 
   return parts.length > 0 ? parts.join(" · ") : undefined;
 }
 
-/** Native rows (always present, always first) followed by specialist templates. */
-export function buildAgentRows(
-  templates: RuntimeTemplateSummary[],
-  status: AgentsStatus,
-): CommandRow[] {
+/** The spawnable agent rows: native (always present, always first) then specialists. */
+function agentSpawnRows(templates: RuntimeTemplateSummary[]): CommandRow[] {
   const rows: CommandRow[] = CAPTURED_RUN_PROVIDERS.map((harness) => ({
     value: `agent:native:${harness}`,
     title: harnessLabel(harness),
@@ -126,9 +124,15 @@ export function buildAgentRows(
             },
     });
   }
-
-  rows.push(...agentsStatusRows(status));
   return rows;
+}
+
+/** Agents-scope rows: the spawnable rows plus the quiet four-state status rows. */
+export function buildAgentRows(
+  templates: RuntimeTemplateSummary[],
+  status: AgentsStatus,
+): CommandRow[] {
+  return [...agentSpawnRows(templates), ...agentsStatusRows(status)];
 }
 
 /** The quiet status/skeleton/retry rows that make the four states legible. */
@@ -173,8 +177,8 @@ function agentsStatusRows(status: AgentsStatus): CommandRow[] {
   }
 }
 
-/** The re-homed canvas command-bar functions, now Canvas-domain entries. */
-export function buildCanvasRows(themeName: string): CommandRow[] {
+/** The re-homed canvas command-bar functions, now the Canvas-domain entries. */
+export function buildCanvasRows(): CommandRow[] {
   return [
     {
       value: "cmd:reset-view",
@@ -197,32 +201,75 @@ export function buildCanvasRows(themeName: string): CommandRow[] {
       group: GROUP_CANVAS,
       action: { kind: "command", command: { kind: "goto", path: "/canvas-lab" } },
     },
+  ];
+}
+
+/** Settings-domain entries. Theme is the one re-homed command this slice. */
+export function buildSettingsRows(themeName: string): CommandRow[] {
+  return [
     {
       value: "cmd:cycle-theme",
       title: "Cycle theme",
       subtitle: `Current: ${themeName}`,
-      group: GROUP_CANVAS,
+      group: GROUP_SETTINGS,
       action: { kind: "command", command: { kind: "cycle-theme" } },
     },
   ];
 }
 
-/** Deferred scopes are wired in (enterable) but carry no internals this slice. */
-const BROWSE_SCOPES: { scope: LauncherScope; title: string; subtitle: string }[] = [
-  { scope: "workdir", title: "Workdir", subtitle: "Set where agents run" },
-  { scope: "settings", title: "Settings", subtitle: "Homes, skills, defaults" },
-  { scope: "sessions", title: "Sessions", subtitle: "Browse transcript history" },
+/** The five root domains. Each ↵ ENTERS its scope; accelerators jump from anywhere. */
+const DOMAINS: {
+  scope: LauncherScope;
+  title: string;
+  subtitle: string;
+  accelerator?: string;
+}[] = [
+  { scope: "agents", title: "Agents", subtitle: "spawn & configure runs", accelerator: "⌘A" },
+  { scope: "canvas", title: "Canvas", subtitle: "panes · layout · navigation" },
+  { scope: "workdir", title: "Workdir", subtitle: "set where agents run" },
+  {
+    scope: "settings",
+    title: "Settings",
+    subtitle: "homes · skills · defaults",
+    accelerator: "⌘,",
+  },
+  { scope: "sessions", title: "Sessions", subtitle: "browse transcript history" },
 ];
 
-function buildBrowseRows(): CommandRow[] {
-  return BROWSE_SCOPES.map(({ scope, title, subtitle }) => ({
-    value: `scope:${scope}`,
+/** Number of root domains, shown as the "{n} domains" count. */
+export const LAUNCHER_DOMAIN_COUNT = DOMAINS.length;
+
+function buildDomainRows(): CommandRow[] {
+  return DOMAINS.map(({ scope, title, subtitle, accelerator }) => ({
+    value: `domain:${scope}`,
     title,
     subtitle,
-    group: GROUP_BROWSE,
-    trailing: "→",
+    group: GROUP_DOMAINS,
+    trailing: accelerator,
     action: { kind: "enter", scope },
   }));
+}
+
+/** Flat search set: every spawnable agent and re-homed command, grouped by domain. */
+function buildFlatSearchRows(inputs: ScopeRowInputs): CommandRow[] {
+  return [
+    ...agentSpawnRows(inputs.templates),
+    ...buildCanvasRows(),
+    ...buildSettingsRows(inputs.themeName),
+  ];
+}
+
+/** A single quiet placeholder for a domain whose internals are not wired yet. */
+function buildDeferredRows(label: string): CommandRow[] {
+  return [
+    {
+      value: `status:${label.toLowerCase()}-deferred`,
+      title: `${label} lands next`,
+      subtitle: "Wired into the command center; internals to come",
+      group: label,
+      disabled: true,
+    },
+  ];
 }
 
 export interface ScopeRowInputs {
@@ -231,32 +278,30 @@ export interface ScopeRowInputs {
   themeName: string;
 }
 
-/** The full row set for a scope, in display order (grouped downstream). */
-export function buildScopeRows(scope: LauncherScope, inputs: ScopeRowInputs): CommandRow[] {
+/**
+ * The full row set for a scope, in display order (grouped downstream). Root is
+ * domains-first: an empty query lists the five enterable domains; any query
+ * flat-searches every agent and command across domains (the Raycast model).
+ */
+export function buildScopeRows(
+  scope: LauncherScope,
+  inputs: ScopeRowInputs,
+  query: string,
+): CommandRow[] {
   const { templates, agentsStatus, themeName } = inputs;
   switch (scope) {
     case "root":
-      return [
-        ...buildAgentRows(templates, agentsStatus),
-        ...buildCanvasRows(themeName),
-        ...buildBrowseRows(),
-      ];
+      return query.trim().length === 0 ? buildDomainRows() : buildFlatSearchRows(inputs);
     case "agents":
       return buildAgentRows(templates, agentsStatus);
     case "canvas":
-      return buildCanvasRows(themeName);
-    case "workdir":
+      return buildCanvasRows();
     case "settings":
+      return buildSettingsRows(themeName);
+    case "workdir":
+      return buildDeferredRows("Workdir");
     case "sessions":
-      return [
-        {
-          value: `status:${scope}-deferred`,
-          title: `${titleCase(scope)} is not in this slice yet`,
-          subtitle: "Wired into the command center; internals land next",
-          group: titleCase(scope),
-          disabled: true,
-        },
-      ];
+      return buildDeferredRows("Sessions");
   }
 }
 
@@ -299,8 +344,4 @@ function vendorNativeHarness(vendor: RuntimeTemplateVendor): HarnessName | null 
   if (vendor === "anthropic") return "claude";
   if (vendor === "openai") return "codex";
   return null;
-}
-
-function titleCase(scope: LauncherScope): string {
-  return scope.charAt(0).toUpperCase() + scope.slice(1);
 }

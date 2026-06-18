@@ -34,7 +34,7 @@ export function useLauncherRows({ scope, query, templates, status, themeName }: 
     [templates, status, themeName],
   );
   const visibleRows = useMemo(
-    () => filterRows(buildScopeRows(scope, inputs), query),
+    () => filterRows(buildScopeRows(scope, inputs, query), query),
     [scope, inputs, query],
   );
   const rowByValue = useMemo(
