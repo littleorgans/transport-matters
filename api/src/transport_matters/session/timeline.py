@@ -244,7 +244,7 @@ def _append_child_subagents(
             parent_session_id=subagent_ref.parent_session_id,
             parent_seq=subagent_ref.parent_seq,
             provider=child.provider,
-            cli=child.cli or "",
+            harness=child.harness or "",
             title=subagent_ref.title,
             status=_status(str(child.status)),
             first_seq=child.first_seq,

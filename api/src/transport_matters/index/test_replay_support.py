@@ -89,7 +89,7 @@ def _seed_codex_run(workspaces_root: Path, run_id: str, native: str) -> str:
         root,
         OwnedSessionFacts(
             run_id=run_id,
-            cli="codex",
+            harness="codex",
             native_session_id=native,
             minted=False,
             source_descriptor=descriptor,
@@ -116,7 +116,7 @@ def _seed_claude_run(
         root,
         OwnedSessionFacts(
             run_id=run_id,
-            cli="claude",
+            harness="claude",
             native_session_id=sid,
             minted=True,
             source_descriptor=_claude_descriptor(cli_path),

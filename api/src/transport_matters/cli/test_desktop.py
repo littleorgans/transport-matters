@@ -205,7 +205,7 @@ def test_desktop_backend_env_has_no_initial_run_fields(tmp_path: Path) -> None:
         launch_viewer=False,
         env={
             env_keys.AGENT_HOME_DIR: "/tmp/agent-home",
-            env_keys.CLI: "claude",
+            env_keys.HARNESS: "claude",
             env_keys.DEFAULT_CLIENT_PASSTHROUGH: '["--model","sonnet"]',
             env_keys.RUN_ID: "run-old",
         },
@@ -216,7 +216,7 @@ def test_desktop_backend_env_has_no_initial_run_fields(tmp_path: Path) -> None:
     assert plan.env[env_keys.WEB_PORT] == "9901"
     assert plan.env[env_keys.STORAGE_DIR] == str(tmp_path / "storage")
     assert env_keys.AGENT_HOME_DIR not in plan.env
-    assert env_keys.CLI not in plan.env
+    assert env_keys.HARNESS not in plan.env
     assert env_keys.DEFAULT_CLIENT_PASSTHROUGH not in plan.env
     assert env_keys.RUN_ID not in plan.env
 

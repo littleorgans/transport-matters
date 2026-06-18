@@ -33,7 +33,7 @@ def install_parent_cbreak(fd: int) -> list[Any]:
     Python 3.12.2+ changed ``tty.setcbreak()`` to preserve ``ICRNL``.
     That matches ``stty cbreak``, but it also means the parent's line
     discipline rewrites the Return key from ``\r`` to ``\n`` before the
-    PTY shuttle forwards it into the child. Full-screen CLIs like Claude
+    PTY shuttle forwards it into the child. Full-screen harnesses like Claude
     distinguish those bytes, so install cbreak manually and clear
     ``ICRNL`` while still leaving ``ISIG`` enabled.
     """

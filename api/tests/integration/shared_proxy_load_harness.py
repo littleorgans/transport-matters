@@ -62,7 +62,7 @@ _HARNESS_CAVEAT = (
 @dataclass(frozen=True)
 class LoadRun:
     run_id: str
-    cli: str
+    harness: str
     listen_port: int
     storage_root: Path
 
@@ -208,7 +208,7 @@ async def _register_runs(
     runs = [
         LoadRun(
             run_id=f"load-run-{index:03d}",
-            cli="claude" if index % 2 == 0 else "codex",
+            harness="claude" if index % 2 == 0 else "codex",
             listen_port=free_port(),
             storage_root=storage_root / f"load-run-{index:03d}",
         )
@@ -222,9 +222,9 @@ async def _register_runs(
             make_binding(
                 storage_root,
                 run_id=run.run_id,
-                cli=run.cli,
+                harness=run.harness,
                 port=run.listen_port,
-                upstream=origin if run.cli == "claude" else None,
+                upstream=origin if run.harness == "claude" else None,
             )
         )
         latencies.append((time.perf_counter() - started) * 1000)
@@ -234,10 +234,10 @@ async def _register_runs(
 
 
 async def _drive_one_request(origin: str, run: LoadRun, seq: int) -> tuple[float, bool, bool]:
-    proxy = f"http://127.0.0.1:{run.listen_port}" if run.cli == "codex" else None
+    proxy = f"http://127.0.0.1:{run.listen_port}" if run.harness == "codex" else None
     url = (
         f"https://127.0.0.1:{run.listen_port}/v1/messages"
-        if run.cli == "claude"
+        if run.harness == "claude"
         else f"{origin}/v1/messages"
     )
     started = time.perf_counter()
@@ -266,9 +266,9 @@ async def _drive_one_request(origin: str, run: LoadRun, seq: int) -> tuple[float
     except Exception:
         elapsed_ms = (time.perf_counter() - started) * 1000
         logger.warning(
-            "load request failed for run_id=%s cli=%s seq=%s",
+            "load request failed for run_id=%s harness=%s seq=%s",
             run.run_id,
-            run.cli,
+            run.harness,
             seq,
             exc_info=True,
         )
@@ -343,7 +343,7 @@ def _session_row(session_id: str, run_id: str) -> SessionRow:
     return SessionRow(
         session_id=session_id,
         provider="claude",
-        cli="claude",
+        harness="claude",
         run_id=run_id,
         workspace_slug="load",
         workspace_hash="load",

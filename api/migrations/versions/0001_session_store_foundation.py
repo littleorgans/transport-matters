@@ -21,7 +21,7 @@ def upgrade() -> None:
         CREATE TABLE "session" (
             session_id text PRIMARY KEY,
             provider text NOT NULL,
-            cli text,
+            harness text,
             run_id text NOT NULL,
             cwd text NOT NULL DEFAULT '',
             workspace_slug text NOT NULL,
@@ -64,7 +64,7 @@ def upgrade() -> None:
             parent_seq integer,
             run_id text NOT NULL,
             provider text NOT NULL,
-            cli text NOT NULL,
+            harness text NOT NULL,
             role text,
             is_sidechain boolean NOT NULL DEFAULT false,
             ts timestamptz,

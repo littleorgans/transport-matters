@@ -132,7 +132,7 @@ describe("createCapturedRun", () => {
     expect(fetchMock).toHaveBeenCalledWith("/v1/runs", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ cli: "claude", oscColorReplies: true }),
+      body: JSON.stringify({ harness: "claude", oscColorReplies: true }),
     });
   });
 
@@ -144,12 +144,12 @@ describe("createCapturedRun", () => {
     expect(fetchMock).toHaveBeenCalledWith("/v1/runs", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ cli: "codex", cwd: "/work/proj", oscColorReplies: true }),
+      body: JSON.stringify({ harness: "codex", cwd: "/work/proj", oscColorReplies: true }),
     });
   });
 
   it("throws on a non-OK spawn response", async () => {
-    stubFetch({ detail: { code: "unsupported_cli", message: "no" } }, 400);
+    stubFetch({ detail: { code: "unsupported_harness", message: "no" } }, 400);
 
     await expect(createCapturedRun("claude")).rejects.toThrow("Failed to spawn captured run: 400");
   });
@@ -183,7 +183,7 @@ describe("listRuns", () => {
       runId: "run-1",
       workspaceId: "workspace/hash",
       sessionId: "session-1",
-      cli: "claude",
+      harness: "claude",
       state: "RUNNING",
       createdAt: "2026-06-09T00:00:00+00:00",
     };

@@ -62,7 +62,7 @@ async def test_binding_routes_http_capture_without_global_identity(
     binding = build_proxy_run_binding(
         Settings(
             run_id="run-binding",
-            cli="claude",
+            harness="claude",
             cwd=tmp_path / "workspace",
             proxy_port=9191,
             storage_dir=tmp_path / "binding",

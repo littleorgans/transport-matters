@@ -23,8 +23,8 @@ from transport_matters.api.v1.run_continuation import (
     build_continuation_launch_fields,
 )
 from transport_matters.api.v1.session_store import optional_session_pool
-from transport_matters.captured_run import CLAUDE_CLIENT_NAME, CODEX_CLIENT_NAME
-from transport_matters.captured_run_models import CapturedRunCli
+from transport_matters.captured_run import CLAUDE_HARNESS_NAME, CODEX_HARNESS_NAME
+from transport_matters.captured_run_models import CapturedRunHarness
 from transport_matters.config import Settings, get_settings
 from transport_matters.index.sessions import synth_session_id
 from transport_matters.run_manager import (
@@ -56,7 +56,7 @@ RUNS_ROUTE_PREFIX = "/runs"
 DEFAULT_RUNS_LIMIT = 50
 MAX_RUNS_LIMIT = 100
 DEFAULT_OWNER = "local"
-_CAPTURED_RUN_CLI_ALLOWLIST = frozenset({CLAUDE_CLIENT_NAME, CODEX_CLIENT_NAME})
+_CAPTURED_RUN_HARNESS_ALLOWLIST = frozenset({CLAUDE_HARNESS_NAME, CODEX_HARNESS_NAME})
 _RUN_MANAGER_HTTP_STATUS: dict[RunManagerErrorCode, int] = {
     "bind_conflict": http_status.HTTP_409_CONFLICT,
     "invalid_cwd": http_status.HTTP_400_BAD_REQUEST,
@@ -67,7 +67,7 @@ _RUN_MANAGER_HTTP_STATUS: dict[RunManagerErrorCode, int] = {
     "run_stale": http_status.HTTP_409_CONFLICT,
     "run_terminated": http_status.HTTP_409_CONFLICT,
     "session_store_unavailable": http_status.HTTP_503_SERVICE_UNAVAILABLE,
-    "unsupported_cli": http_status.HTTP_400_BAD_REQUEST,
+    "unsupported_harness": http_status.HTTP_400_BAD_REQUEST,
 }
 _CURATED_STATES = frozenset(
     {RunState.RUNNING, RunState.TERMINATING, RunState.TERMINATED, RunState.EXITED, RunState.FAILED}
@@ -92,10 +92,10 @@ class TerminalSizeModel(BaseModel):
 class CreateRunRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
-    cli: str
+    harness: str
     cwd: str | None = None
     terminal: TerminalSizeModel | None = None
-    # Bridge answers the CLI's OSC 10/11 color queries (see osc_color_responder).
+    # Bridge answers the harness OSC 10/11 color queries (see osc_color_responder).
     osc_color_replies: bool = Field(default=True, alias="oscColorReplies")
     continue_from_session_id: str | None = Field(default=None, alias="continueFromSessionId")
     idempotency_key: str | None = Field(default=None, alias="idempotencyKey")
@@ -108,7 +108,7 @@ class RunViewModel(BaseModel):
     run_id: str = Field(serialization_alias="runId")
     workspace_id: str = Field(serialization_alias="workspaceId")
     session_id: str = Field(serialization_alias="sessionId")
-    cli: CapturedRunCli
+    harness: CapturedRunHarness
     state: PublicRunState
     end_reason: Literal["explicit", "idle-timeout", "shutdown", "deploy-restart"] | None = Field(
         default=None, serialization_alias="endReason"
@@ -204,14 +204,14 @@ async def require_http_origin(request: Request) -> None:
     _raise_api_error(http_status.HTTP_403_FORBIDDEN, "origin_not_allowed", "origin not allowed")
 
 
-def _validated_cli(cli: str) -> CapturedRunCli:
-    if cli not in _CAPTURED_RUN_CLI_ALLOWLIST:
+def _validated_harness(harness: str) -> CapturedRunHarness:
+    if harness not in _CAPTURED_RUN_HARNESS_ALLOWLIST:
         _raise_api_error(
             http_status.HTTP_400_BAD_REQUEST,
-            "unsupported_cli",
-            f"unsupported captured run cli: {cli}",
+            "unsupported_harness",
+            f"unsupported captured run harness: {harness}",
         )
-    return cast("CapturedRunCli", cli)
+    return cast("CapturedRunHarness", harness)
 
 
 def _validated_state(state: str) -> RunState:
@@ -324,12 +324,14 @@ async def _launch_fields(
     return continuation.fields
 
 
-def _runtime_template_ref(body: CreateRunRequest, cli: CapturedRunCli) -> RuntimeTemplateRef | None:
+def _runtime_template_ref(
+    body: CreateRunRequest, harness: CapturedRunHarness
+) -> RuntimeTemplateRef | None:
     name = body.runtime_template
     if name is None or name.strip() == "":
         return None
     try:
-        return resolve_runtime_template(name, cli, env=os.environ)
+        return resolve_runtime_template(name, harness, env=os.environ)
     except ValueError as exc:
         _raise_api_error(
             http_status.HTTP_400_BAD_REQUEST,
@@ -347,7 +349,7 @@ def _spawn_request(
 ) -> SpawnRun:
     terminal = body.terminal or TerminalSizeModel()
     return SpawnRun(
-        cli=_validated_cli(body.cli),
+        harness=_validated_harness(body.harness),
         cwd=_request_cwd(body.cwd, settings),
         cols=terminal.cols,
         rows=terminal.rows,
@@ -369,7 +371,7 @@ def _workspace_id_for_view(view: ManagedRunView) -> str:
 def _session_id_for_view(view: ManagedRunView) -> str:
     if view.native_session_id is None:
         return view.run_id
-    if view.cli == CODEX_CLIENT_NAME:
+    if view.harness == CODEX_HARNESS_NAME:
         return synth_session_id(view.run_id, "codex", view.native_session_id)
     return view.native_session_id
 
@@ -386,7 +388,7 @@ def run_view_model(view: ManagedRunView) -> RunViewModel:
         run_id=view.run_id,
         workspace_id=_workspace_id_for_view(view),
         session_id=_session_id_for_view(view),
-        cli=view.cli,
+        harness=view.harness,
         state=_curated_state(view.state),
         end_reason=cast(
             'Literal["explicit", "idle-timeout", "shutdown", "deploy-restart"] | None',
@@ -420,8 +422,8 @@ async def create_run(
 ) -> dict[str, object]:
     manager = _run_manager(request)
     try:
-        cli = _validated_cli(body.cli)
-        runtime_template = _runtime_template_ref(body, cli)
+        harness = _validated_harness(body.harness)
+        runtime_template = _runtime_template_ref(body, harness)
         spawn_request = _spawn_request(
             body,
             get_settings(),

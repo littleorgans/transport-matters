@@ -29,7 +29,7 @@ import {
   runSpawnPaneFlow,
   stripPaneFlyIntent,
 } from "../model/paneAffordances";
-import { type CanvasPaneRef, cliLabel, type PaneContentRef } from "../model/paneRecords";
+import { type CanvasPaneRef, harnessLabel, type PaneContentRef } from "../model/paneRecords";
 import { createCapturedRunRef } from "../model/spawn";
 import { paneIdForRef } from "../viewers/registry";
 import {
@@ -150,7 +150,7 @@ export const useCanvasLabStore = create<CanvasLabState>()(
       },
 
       addCapturedRun(provider) {
-        const { label, counters } = labelFor(get().paneCounters, cliLabel(provider));
+        const { label, counters } = labelFor(get().paneCounters, harnessLabel(provider));
         set({ paneCounters: counters });
         get().spawnPane(createCapturedRunRef(provider, label), { focus: true });
       },

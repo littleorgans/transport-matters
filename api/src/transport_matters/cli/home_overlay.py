@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from transport_matters.launch_environment import CLIENT_NAME_CLAUDE, CLIENT_NAME_CODEX
+from transport_matters.launch_environment import HARNESS_NAME_CLAUDE, HARNESS_NAME_CODEX
 
 from . import home_constants, home_io
 
@@ -139,7 +139,7 @@ _CODEX_CONFIG_KEY_DELIMITER_PATTERN = re.compile(r"[_\-.]+")
 
 
 def materialize_runtime_home_overlay(
-    client_name: str,
+    harness: str,
     *,
     source_home_dir: Path,
     runtime_home_dir: Path,
@@ -154,20 +154,20 @@ def materialize_runtime_home_overlay(
         auth_source_home_dir=auth_source_home_dir,
     )
 
-    local_names = _overlay_local_names(client_name) | frozenset(extra_local_names)
+    local_names = _overlay_local_names(harness) | frozenset(extra_local_names)
     _symlink_source_home_entries(
         source_home_dir=source_home_dir,
         runtime_home_dir=runtime_home_dir,
         local_names=local_names,
     )
     _copy_overlay_local_files(
-        client_name,
+        harness,
         source_home_dir=source_home_dir,
         runtime_home_dir=runtime_home_dir,
         env=env,
     )
     _link_overlay_credential_files(
-        client_name,
+        harness,
         auth_source_home_dir=auth_source_home_dir,
         runtime_home_dir=runtime_home_dir,
     )
@@ -181,7 +181,7 @@ def materialize_runtime_home_overlay(
 
 
 def materialize_runtime_home_template_overlay(
-    client_name: str,
+    harness: str,
     *,
     source_home_dir: Path,
     runtime_home_dir: Path,
@@ -190,14 +190,14 @@ def materialize_runtime_home_template_overlay(
 ) -> OverlayMaterialization:
     """Build a template overlay with safe local state and symlinked content."""
     source_home_dir = source_home_dir.expanduser()
-    validate_runtime_home_template(client_name, source_home_dir)
+    validate_runtime_home_template(harness, source_home_dir)
     source_home_dir, auth_source_home_dir, explicit_auth_source = _prepare_materialization_dirs(
         source_home_dir=source_home_dir,
         runtime_home_dir=runtime_home_dir,
         auth_source_home_dir=auth_source_home_dir,
     )
 
-    policy = _template_materialization_policy(client_name)
+    policy = _template_materialization_policy(harness)
     _symlink_template_content_entries(
         source_home_dir=source_home_dir,
         runtime_home_dir=runtime_home_dir,
@@ -209,14 +209,14 @@ def materialize_runtime_home_template_overlay(
         local_writable_names=policy.local_writable_names,
     )
     _copy_overlay_local_files(
-        client_name,
+        harness,
         source_home_dir=source_home_dir,
         runtime_home_dir=runtime_home_dir,
         env=env,
         pin_claude_config_to_source=True,
     )
     _link_overlay_credential_files(
-        client_name,
+        harness,
         auth_source_home_dir=auth_source_home_dir,
         runtime_home_dir=runtime_home_dir,
     )
@@ -229,10 +229,10 @@ def materialize_runtime_home_template_overlay(
     )
 
 
-def validate_runtime_home_template(client_name: str, template_home: Path) -> None:
+def validate_runtime_home_template(harness: str, template_home: Path) -> None:
     """Reject templates that contain secrets."""
     template_home = template_home.expanduser()
-    policy = _template_materialization_policy(client_name)
+    policy = _template_materialization_policy(harness)
     if not template_home.exists():
         raise ValueError(f"runtime template {template_home} does not exist")
     if not template_home.is_dir():
@@ -244,7 +244,7 @@ def validate_runtime_home_template(client_name: str, template_home: Path) -> Non
             raise ValueError(
                 f"runtime template {template_home} contains credential file {entry.name!r}"
             )
-    _validate_template_secret_free(client_name, template_home)
+    _validate_template_secret_free(harness, template_home)
 
 
 def _prepare_materialization_dirs(
@@ -296,12 +296,12 @@ def assert_overlay_daemon_is_local(
             )
 
 
-def _overlay_local_names(client_name: str) -> frozenset[str]:
-    if client_name == CLIENT_NAME_CLAUDE:
+def _overlay_local_names(harness: str) -> frozenset[str]:
+    if harness == HARNESS_NAME_CLAUDE:
         return home_constants._CLAUDE_OVERLAY_LOCAL_NAMES
-    if client_name == CLIENT_NAME_CODEX:
+    if harness == HARNESS_NAME_CODEX:
         return home_constants._CODEX_OVERLAY_LOCAL_NAMES
-    raise ValueError(f"unmapped managed client home seeder: {client_name!r}")
+    raise ValueError(f"unmapped managed harness home seeder: {harness!r}")
 
 
 def _symlink_source_home_entries(
@@ -365,14 +365,14 @@ def _materialize_local_writable_entries(
 
 
 def _copy_overlay_local_files(
-    client_name: str,
+    harness: str,
     *,
     source_home_dir: Path,
     runtime_home_dir: Path,
     env: Mapping[str, str] | None,
     pin_claude_config_to_source: bool = False,
 ) -> None:
-    if client_name == CLIENT_NAME_CLAUDE:
+    if harness == HARNESS_NAME_CLAUDE:
         claude_config_source = (
             source_home_dir / home_constants._CLAUDE_CONFIG_FILENAME
             if pin_claude_config_to_source
@@ -387,30 +387,30 @@ def _copy_overlay_local_files(
             runtime_home_dir / home_constants._CLAUDE_CONFIG_FILENAME,
         )
         return
-    if client_name == CLIENT_NAME_CODEX:
+    if harness == HARNESS_NAME_CODEX:
         home_io._copy_secret_file_if_missing(
             source_home_dir / home_constants._CODEX_CONFIG_FILENAME,
             runtime_home_dir / home_constants._CODEX_CONFIG_FILENAME,
         )
         return
-    raise ValueError(f"unmapped managed client home seeder: {client_name!r}")
+    raise ValueError(f"unmapped managed harness home seeder: {harness!r}")
 
 
 def _link_overlay_credential_files(
-    client_name: str,
+    harness: str,
     *,
     auth_source_home_dir: Path,
     runtime_home_dir: Path,
 ) -> None:
-    for name in _overlay_credential_names(client_name):
+    for name in _overlay_credential_names(harness):
         _symlink_file_if_exists(auth_source_home_dir / name, runtime_home_dir / name)
 
 
-def _overlay_credential_names(client_name: str) -> frozenset[str]:
+def _overlay_credential_names(harness: str) -> frozenset[str]:
     try:
-        return home_constants._OVERLAY_CREDENTIAL_NAMES_BY_CLIENT[client_name]
+        return home_constants._OVERLAY_CREDENTIAL_NAMES_BY_HARNESS[harness]
     except KeyError as exc:
-        raise ValueError(f"unmapped managed client home seeder: {client_name!r}") from exc
+        raise ValueError(f"unmapped managed harness home seeder: {harness!r}") from exc
 
 
 def _symlink_file_if_exists(source: Path, target: Path) -> None:
@@ -422,8 +422,8 @@ def _symlink_file_if_exists(source: Path, target: Path) -> None:
     target.symlink_to(source.resolve())
 
 
-def _template_materialization_policy(client_name: str) -> _TemplateMaterializationPolicy:
-    if client_name == CLIENT_NAME_CLAUDE:
+def _template_materialization_policy(harness: str) -> _TemplateMaterializationPolicy:
+    if harness == HARNESS_NAME_CLAUDE:
         return _TemplateMaterializationPolicy(
             content_names=_CLAUDE_TEMPLATE_CONTENT_NAMES,
             copy_names=home_constants._CLAUDE_OVERLAY_COPIED_NAMES,
@@ -431,7 +431,7 @@ def _template_materialization_policy(client_name: str) -> _TemplateMaterializati
             credential_names=home_constants._CLAUDE_OVERLAY_CREDENTIAL_NAMES,
             reject_names=home_constants._OVERLAY_NEVER_SYMLINK_NAMES,
         )
-    if client_name == CLIENT_NAME_CODEX:
+    if harness == HARNESS_NAME_CODEX:
         return _TemplateMaterializationPolicy(
             content_names=_CODEX_TEMPLATE_CONTENT_NAMES,
             copy_names=home_constants._CODEX_OVERLAY_COPIED_NAMES,
@@ -439,11 +439,11 @@ def _template_materialization_policy(client_name: str) -> _TemplateMaterializati
             credential_names=home_constants._CODEX_OVERLAY_CREDENTIAL_NAMES,
             reject_names=home_constants._OVERLAY_NEVER_SYMLINK_NAMES,
         )
-    raise ValueError(f"unmapped managed client home seeder: {client_name!r}")
+    raise ValueError(f"unmapped managed harness home seeder: {harness!r}")
 
 
-def _validate_template_secret_free(client_name: str, template_home: Path) -> None:
-    if client_name == CLIENT_NAME_CLAUDE:
+def _validate_template_secret_free(harness: str, template_home: Path) -> None:
+    if harness == HARNESS_NAME_CLAUDE:
         config = home_io._read_json_object_if_exists(
             template_home / home_constants._CLAUDE_CONFIG_FILENAME
         )
@@ -453,7 +453,7 @@ def _validate_template_secret_free(client_name: str, template_home: Path) -> Non
                     f"runtime template {template_home} contains Claude account field {field_name!r}"
                 )
         return
-    if client_name == CLIENT_NAME_CODEX:
+    if harness == HARNESS_NAME_CODEX:
         config_path = template_home / home_constants._CODEX_CONFIG_FILENAME
         try:
             config = tomllib.loads(config_path.read_text(encoding="utf-8"))
@@ -467,7 +467,7 @@ def _validate_template_secret_free(client_name: str, template_home: Path) -> Non
                 f"runtime template {template_home} contains Codex auth material at {secret_path}"
             )
         return
-    raise ValueError(f"unmapped managed client home seeder: {client_name!r}")
+    raise ValueError(f"unmapped managed harness home seeder: {harness!r}")
 
 
 def _codex_config_secret_path(value: Any, *, prefix: str = "") -> str | None:

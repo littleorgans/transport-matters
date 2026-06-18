@@ -42,7 +42,7 @@ export function resourceContentKey(args: {
 export interface SessionsKeyArgs {
   owner: string;
   workspaceHash?: string | null;
-  cli?: string | null;
+  harness?: string | null;
   purpose?: string | null;
   visibility?: string | null;
   includeInternal?: boolean | null;
@@ -58,7 +58,7 @@ export function sessionsKey(args: SessionsKeyArgs) {
 export function launchSessionKey(args: {
   owner: string;
   workspaceHash: string | null;
-  cli: string | null;
+  harness: string | null;
   runId: string | null;
 }) {
   return ["session-launch", normalizeSessionArgs(args)] as const;
@@ -87,7 +87,7 @@ function normalizeSessionArgs(args: SessionsKeyArgs) {
   return {
     owner: args.owner,
     workspaceHash: args.workspaceHash ?? null,
-    cli: args.cli ?? null,
+    harness: args.harness ?? null,
     purpose: args.purpose ?? null,
     visibility: args.visibility ?? null,
     includeInternal: args.includeInternal ?? null,

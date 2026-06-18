@@ -31,7 +31,7 @@ class ProxyRunBinding:
     """Run-scoped proxy identity for addon capture and persistence."""
 
     run_id: str | None
-    cli: str | None
+    harness: str | None
     working_dir: Path | None
     storage: StorageBackend
     listen_port: int | None

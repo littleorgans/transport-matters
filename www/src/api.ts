@@ -1,9 +1,9 @@
 import type {
   BreakpointStatusDetail,
   CapabilitiesResponse,
-  CliName,
   ExchangeDetail,
   HarnessDescriptor,
+  HarnessName,
   IndexEntry,
   InternalRequest,
   Override,
@@ -363,8 +363,8 @@ export async function fetchMeta(runId?: string): Promise<Meta> {
 }
 
 /**
- * Local install state for each managed CLI (`claude`, `codex`). The desktop's
- * lab gates its "Spawn" buttons on this so it never offers to launch a CLI that
+ * Local install state for each managed harness (`claude`, `codex`). The desktop's
+ * lab gates its "Spawn" buttons on this so it never offers to launch a harness that
  * is not on PATH. Cheap and stable for a process lifetime, so callers cache it.
  */
 export async function fetchCapabilities(): Promise<CapabilitiesResponse> {
@@ -378,20 +378,20 @@ export async function fetchCapabilities(): Promise<CapabilitiesResponse> {
 // ── Managed captured run endpoints ────────────────────────────────
 
 /**
- * Spawn a captured managed-CLI run (real CLI in a PTY, traffic through the TM
+ * Spawn a captured managed harness run (real harness executable in a PTY, traffic through the TM
  * reverse proxy) via `POST /v1/runs` and return its `runId`. Create is separate
  * from attach: the pane attaches to the returned run over a WebSocket, so the run
  * survives a detach. `cwd` is an absolute workspace dir; omitting it lets the
  * backend resolve its launch workspace.
  */
 export async function createCapturedRun(
-  cli: CliName,
+  harness: HarnessName,
   cwd?: string,
-  // When false the bridge stays silent on the CLI's OSC color queries
+  // When false the bridge stays silent on the harness OSC color queries
   // (api: osc_color_responder); true is the terminal-faithful default.
   oscColorReplies = true,
 ): Promise<string> {
-  const body = { cli, ...(cwd === undefined ? {} : { cwd }), oscColorReplies };
+  const body = { harness, ...(cwd === undefined ? {} : { cwd }), oscColorReplies };
   const response = await requestJson<{ run: { runId: string } }>(
     "/v1/runs",
     {
@@ -427,7 +427,7 @@ export interface RunView {
   runId: string;
   workspaceId: string;
   sessionId: string;
-  cli: CliName;
+  harness: HarnessName;
   state: RunState;
   endReason?: RunEndReason;
   error?: string;

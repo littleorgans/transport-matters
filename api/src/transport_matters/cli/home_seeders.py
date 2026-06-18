@@ -6,9 +6,9 @@ import os
 from typing import TYPE_CHECKING, Protocol
 
 from transport_matters.launch_environment import (
-    CLIENT_NAME_CLAUDE,
-    CLIENT_NAME_CODEX,
-    HOME_DIR_ENV_BY_CLIENT,
+    HARNESS_NAME_CLAUDE,
+    HARNESS_NAME_CODEX,
+    HOME_DIR_ENV_BY_HARNESS,
 )
 
 from . import claude_home, codex_home, home_constants, home_overlay
@@ -25,7 +25,7 @@ if TYPE_CHECKING:
 class HarnessSeeder(Protocol):
     """Seed one managed client home."""
 
-    client_name: str
+    harness: str
 
     def seed(
         self,
@@ -38,21 +38,21 @@ class HarnessSeeder(Protocol):
 
 
 _SEEDERS: tuple[HarnessSeeder, ...] = (ClaudeSeeder(), CodexSeeder())
-_SEEDERS_BY_CLIENT: dict[str, HarnessSeeder] = {seeder.client_name: seeder for seeder in _SEEDERS}
+_SEEDERS_BY_HARNESS: dict[str, HarnessSeeder] = {seeder.harness: seeder for seeder in _SEEDERS}
 
 
 def seed_home_dir(
-    client_name: str,
+    harness: str,
     *,
     home_dir: Path,
     working_dir: Path,
     env: Mapping[str, str] | None = None,
 ) -> None:
-    """Seed *home_dir* for *client_name* with auth and cwd trust."""
+    """Seed *home_dir* for *harness* with auth and cwd trust."""
     try:
-        seeder = _SEEDERS_BY_CLIENT[client_name]
+        seeder = _SEEDERS_BY_HARNESS[harness]
     except KeyError as exc:
-        raise ValueError(f"unmapped managed client home seeder: {client_name!r}") from exc
+        raise ValueError(f"unmapped managed harness home seeder: {harness!r}") from exc
     seeder.seed(
         home_dir=home_dir,
         working_dir=working_dir,
@@ -61,24 +61,24 @@ def seed_home_dir(
 
 
 def resolve_source_home_dir(
-    client_name: str,
+    harness: str,
     *,
     home_dir: Path | None,
     env: Mapping[str, str] | None = None,
 ) -> Path:
-    """Resolve the operator supplied or native source home for a captured client."""
+    """Resolve the operator supplied or native source home for a captured harness."""
     if home_dir is not None:
         return home_dir.expanduser()
     source_env = os.environ if env is None else env
-    if client_name == CLIENT_NAME_CLAUDE:
+    if harness == HARNESS_NAME_CLAUDE:
         return claude_home.default_claude_home(source_env)
-    if client_name == CLIENT_NAME_CODEX:
+    if harness == HARNESS_NAME_CODEX:
         return codex_home.default_codex_home(source_env)
-    raise ValueError(f"unmapped managed client home seeder: {client_name!r}")
+    raise ValueError(f"unmapped managed harness home seeder: {harness!r}")
 
 
 def prepare_runtime_home_overlay(
-    client_name: str,
+    harness: str,
     *,
     source_home_dir: Path,
     runtime_home_dir: Path,
@@ -89,20 +89,18 @@ def prepare_runtime_home_overlay(
 ) -> RuntimeHomeOverlay:
     """Build a per-run home overlay and seed auth plus cwd trust into it."""
     materialization = home_overlay.materialize_runtime_home_overlay(
-        client_name,
+        harness,
         source_home_dir=source_home_dir,
         runtime_home_dir=runtime_home_dir,
         env=env,
         auth_source_home_dir=auth_source_home_dir,
         extra_local_names=extra_local_names,
     )
-    return _seed_runtime_home_overlay(
-        client_name, materialization, working_dir=working_dir, env=env
-    )
+    return _seed_runtime_home_overlay(harness, materialization, working_dir=working_dir, env=env)
 
 
 def prepare_runtime_home_template_overlay(
-    client_name: str,
+    harness: str,
     *,
     source_home_dir: Path,
     runtime_home_dir: Path,
@@ -112,23 +110,21 @@ def prepare_runtime_home_template_overlay(
 ) -> RuntimeHomeOverlay:
     """Build a template mode overlay from explicit materialization policy."""
     materialization = home_overlay.materialize_runtime_home_template_overlay(
-        client_name,
+        harness,
         source_home_dir=source_home_dir,
         runtime_home_dir=runtime_home_dir,
         env=env,
         auth_source_home_dir=auth_source_home_dir,
     )
-    return _seed_runtime_home_overlay(
-        client_name, materialization, working_dir=working_dir, env=env
-    )
+    return _seed_runtime_home_overlay(harness, materialization, working_dir=working_dir, env=env)
 
 
-def validate_runtime_home_template(client_name: str, template_home: Path) -> None:
-    home_overlay.validate_runtime_home_template(client_name, template_home)
+def validate_runtime_home_template(harness: str, template_home: Path) -> None:
+    home_overlay.validate_runtime_home_template(harness, template_home)
 
 
 def _seed_runtime_home_overlay(
-    client_name: str,
+    harness: str,
     materialization: home_overlay.OverlayMaterialization,
     *,
     working_dir: Path,
@@ -136,15 +132,15 @@ def _seed_runtime_home_overlay(
 ) -> RuntimeHomeOverlay:
     seed_env = dict(os.environ if env is None else env)
     if materialization.explicit_auth_source:
-        seed_env[HOME_DIR_ENV_BY_CLIENT[client_name]] = str(materialization.auth_source_home_dir)
-        if client_name == CLIENT_NAME_CODEX:
+        seed_env[HOME_DIR_ENV_BY_HARNESS[harness]] = str(materialization.auth_source_home_dir)
+        if harness == HARNESS_NAME_CODEX:
             seed_env[home_constants._CODEX_HOOK_TRUST_SOURCE_ENV] = str(
                 materialization.overlay.source_home_dir
             )
     else:
-        seed_env[HOME_DIR_ENV_BY_CLIENT[client_name]] = str(materialization.overlay.source_home_dir)
+        seed_env[HOME_DIR_ENV_BY_HARNESS[harness]] = str(materialization.overlay.source_home_dir)
     seed_home_dir(
-        client_name,
+        harness,
         home_dir=materialization.overlay.runtime_home_dir,
         working_dir=working_dir,
         env=seed_env,

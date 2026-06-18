@@ -75,7 +75,7 @@ def claude_transcript_source(
 
 class ClaudeAdapter(TranscriptAdapter):
     provider = "anthropic"
-    cli = "claude"
+    harness = "claude"
 
     async def bind(self, run: RunContext) -> SessionBinding:
         if run.native_session_id is None:
@@ -85,7 +85,7 @@ class ClaudeAdapter(TranscriptAdapter):
         return SessionBinding(
             session_id=run.native_session_id,  # native id used DIRECTLY (== wire metadata.session_id)
             provider=self.provider,
-            cli=self.cli,
+            harness=self.harness,
             run_id=run.run_id,
             cwd=run.cwd,
             workspace_slug=run.workspace_slug,
@@ -121,7 +121,7 @@ class ClaudeAdapter(TranscriptAdapter):
             session_id=binding.session_id,
             run_id=binding.run_id,
             provider=binding.provider,
-            cli=binding.cli or self.cli,
+            harness=binding.harness or self.harness,
             role=message.get("role", record["type"]),
             seq=ctx.seq,
             is_sidechain=False

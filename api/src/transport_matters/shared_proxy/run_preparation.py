@@ -138,7 +138,7 @@ async def _finish_shared_preparation(
             client=client,
             launch_env=launch_env,
             managed_session=ctx.managed_session,
-            client_name=ctx.request.client_name,
+            harness=ctx.request.harness,
         )
         return spawn_spec, SharedCapturedRunLease(
             spawn_spec=spawn_spec,
@@ -161,7 +161,7 @@ async def _finish_shared_preparation(
 def _binding_from_context(ctx: CapturedRunContext, *, proxy_port: int) -> ProxyRunBinding:
     return ProxyRunBinding(
         run_id=ctx.prepared.run_id,
-        cli=ctx.request.client_name,
+        harness=ctx.request.harness,
         working_dir=ctx.prepared.working_dir,
         storage=DiskStorageBackend(ctx.prepared.resolved_storage),
         listen_port=proxy_port,

@@ -62,7 +62,7 @@ async def test_register_binding_maps_transcript_snapshot_and_unregisters_cursor(
     )
     binding = ProxyRunBinding(
         run_id="run-1",
-        cli="claude",
+        harness="claude",
         working_dir=tmp_path,
         storage=DiskStorageBackend(tmp_path / "run-1"),
         listen_port=19001,
@@ -91,7 +91,7 @@ async def test_register_binding_maps_transcript_snapshot_and_unregisters_cursor(
                 workspace_slug="workspace",
                 workspace_hash="hash",
                 started_at=started_at,
-                cli="claude",
+                harness="claude",
                 native_session_id="native-1",
             )
         )
@@ -196,7 +196,7 @@ def _child_cursor(
             workspace_slug="workspace",
             workspace_hash="hash",
             started_at="2026-06-17T00:00:00+00:00",
-            cli="claude",
+            harness="claude",
             native_session_id=f"{session_id}-native",
             parent_session_id="session-1",
         ),

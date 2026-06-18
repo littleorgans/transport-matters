@@ -10,7 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 from transport_matters.overrides import Override
 from transport_matters.shared_proxy.binding import ProxyRunBinding, require_run_id
 
-# Any: launch fields are persisted dynamic CLI metadata with provider-specific keys.
+# Any: launch fields are persisted dynamic harness metadata with provider-specific keys.
 type LaunchFields = dict[str, Any]
 
 ProxyModeKind = Literal["reverse", "regular"]
@@ -22,7 +22,7 @@ class SharedProxyBindingPayload(BaseModel):
     model_config = ConfigDict(frozen=True, populate_by_name=True)
 
     run_id: str = Field(alias="runId")
-    cli: str | None = None
+    harness: str | None = None
     working_dir: str | None = Field(default=None, alias="workingDir")
     storage_root: str | None = Field(default=None, alias="storageRoot")
     listen_port: int = Field(alias="listenPort", ge=1, le=65535)
@@ -151,7 +151,7 @@ def binding_payload_from_binding(binding: ProxyRunBinding) -> SharedProxyBinding
         raise ValueError(msg)
     return SharedProxyBindingPayload(
         run_id=run_id,
-        cli=binding.cli,
+        harness=binding.harness,
         working_dir=_string_path(binding.working_dir),
         storage_root=_storage_root(binding.storage),
         listen_port=binding.listen_port,
@@ -181,11 +181,11 @@ def response_to_json_bytes(
 
 
 def _infer_mode_kind(binding: ProxyRunBinding) -> ProxyModeKind:
-    if binding.cli == "codex":
+    if binding.harness == "codex":
         return "regular"
     if binding.upstream:
         return "reverse"
-    msg = "shared proxy binding needs cli='codex' or an upstream URL"
+    msg = "shared proxy binding needs harness='codex' or an upstream URL"
     raise ValueError(msg)
 
 

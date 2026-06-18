@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 @dataclass(frozen=True, slots=True)
 class RuntimeTemplateRef:
     template_id: str
-    client_name: str
+    harness: str
     template_home: Path
     provenance: Mapping[str, str] = MappingProxyType({})
 

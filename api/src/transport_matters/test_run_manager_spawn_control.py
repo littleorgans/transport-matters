@@ -10,15 +10,15 @@ import pytest
 
 from transport_matters.captured_run import (
     WEB_RUNTIME_EMBEDDED,
-    CapturedRunCli,
     CapturedRunDependencies,
+    CapturedRunHarness,
     CapturedRunLease,
     CapturedRunRequest,
     CapturedRunSpawnSpec,
 )
 from transport_matters.run_manager import RunManager, RunManagerError, SpawnRun
 
-CLAUDE_CLI: CapturedRunCli = "claude"
+CLAUDE_HARNESS: CapturedRunHarness = "claude"
 
 
 @dataclass
@@ -56,7 +56,7 @@ def _prepared_without_client(
             client=None,
             launch_env={},
             managed_session=None,
-            client_name=request.client_name,
+            harness=request.harness,
         ),
         cast("CapturedRunLease", FakeLease()),
     )
@@ -93,7 +93,9 @@ async def test_spawn_admission_control_bounds_keyless_prepare_work(tmp_path: Pat
     )
     tasks = [
         asyncio.create_task(
-            manager.spawn(SpawnRun(cli=CLAUDE_CLI, cwd=tmp_path, web_runtime=WEB_RUNTIME_EMBEDDED))
+            manager.spawn(
+                SpawnRun(harness=CLAUDE_HARNESS, cwd=tmp_path, web_runtime=WEB_RUNTIME_EMBEDDED)
+            )
         )
         for _ in range(8)
     ]
@@ -129,7 +131,9 @@ async def test_session_store_preflight_runs_off_loop_and_caches_success(
     )
     results = await asyncio.gather(
         *[
-            manager.spawn(SpawnRun(cli=CLAUDE_CLI, cwd=tmp_path, web_runtime=WEB_RUNTIME_EMBEDDED))
+            manager.spawn(
+                SpawnRun(harness=CLAUDE_HARNESS, cwd=tmp_path, web_runtime=WEB_RUNTIME_EMBEDDED)
+            )
             for _ in range(6)
         ],
         return_exceptions=True,
@@ -160,11 +164,11 @@ async def test_session_store_preflight_does_not_cache_failures(tmp_path: Path) -
 
     with pytest.raises(RunManagerError) as first:
         await manager.spawn(
-            SpawnRun(cli=CLAUDE_CLI, cwd=tmp_path, web_runtime=WEB_RUNTIME_EMBEDDED)
+            SpawnRun(harness=CLAUDE_HARNESS, cwd=tmp_path, web_runtime=WEB_RUNTIME_EMBEDDED)
         )
     with pytest.raises(RunManagerError) as second:
         await manager.spawn(
-            SpawnRun(cli=CLAUDE_CLI, cwd=tmp_path, web_runtime=WEB_RUNTIME_EMBEDDED)
+            SpawnRun(harness=CLAUDE_HARNESS, cwd=tmp_path, web_runtime=WEB_RUNTIME_EMBEDDED)
         )
 
     assert first.value.code == "session_store_unavailable"
@@ -172,7 +176,7 @@ async def test_session_store_preflight_does_not_cache_failures(tmp_path: Path) -
     assert calls == 2
 
 
-async def test_unsupported_cli_rejects_before_preflight_and_admission(tmp_path: Path) -> None:
+async def test_unsupported_harness_rejects_before_preflight_and_admission(tmp_path: Path) -> None:
     calls = 0
     invalid_phase = True
     release_preflight = threading.Event()
@@ -197,13 +201,15 @@ async def test_unsupported_cli_rejects_before_preflight_and_admission(tmp_path: 
         spawn_concurrency=1,
     )
     invalid_task = asyncio.create_task(
-        manager.spawn(SpawnRun(cli=cast("Any", "not-a-cli"), cwd=tmp_path))
+        manager.spawn(SpawnRun(harness=cast("Any", "not-a-harness"), cwd=tmp_path))
     )
     await asyncio.sleep(0.05)
     invalid_preflight_calls = calls
     invalid_phase = False
     valid_task = asyncio.create_task(
-        manager.spawn(SpawnRun(cli=CLAUDE_CLI, cwd=tmp_path, web_runtime=WEB_RUNTIME_EMBEDDED))
+        manager.spawn(
+            SpawnRun(harness=CLAUDE_HARNESS, cwd=tmp_path, web_runtime=WEB_RUNTIME_EMBEDDED)
+        )
     )
 
     try:
@@ -216,7 +222,7 @@ async def test_unsupported_cli_rejects_before_preflight_and_admission(tmp_path: 
 
     assert valid_reached_prepare
     assert isinstance(invalid_result, RunManagerError)
-    assert invalid_result.code == "unsupported_cli"
+    assert invalid_result.code == "unsupported_harness"
     assert isinstance(valid_result, RunManagerError)
     assert valid_result.code == "launch_failed"
     assert invalid_preflight_calls == 0
@@ -234,7 +240,7 @@ async def test_invalid_cwd_rejects_before_session_store_preflight(tmp_path: Path
     manager = RunManager(dependencies=_dependencies(check_session_store))
 
     with pytest.raises(RunManagerError) as exc:
-        await manager.spawn(SpawnRun(cli=CLAUDE_CLI, cwd=tmp_path / "missing"))
+        await manager.spawn(SpawnRun(harness=CLAUDE_HARNESS, cwd=tmp_path / "missing"))
 
     assert exc.value.code == "invalid_cwd"
     assert calls == 0

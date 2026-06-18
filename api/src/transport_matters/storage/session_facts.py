@@ -3,18 +3,18 @@
 Tier-1 must be a complete source of truth for the OWNED launch state, so a future §10.5 rebuild
 re-resolves transcript paths faithfully WITHOUT the live launch env. The transcript bytes are owned
 by the 8b-i snapshot; this module owns the launch FACTS a rebuild needs to bind them back: the
-native session id, the ``source_descriptor`` (which now carries the managed ``home_dir``), the cli,
+native session id, the ``source_descriptor`` (which now carries the managed ``home_dir``), the harness,
 ``minted``, ``home_dir``, and template provenance.
 
 The manifest carries ``home_dir`` too, but it is a liveness beacon unlinked on process exit
-(``cli/launch_runtime.py``), so it cannot be the durable home. ``index.jsonl`` is the durable run
+(``harness/launch_runtime.py``), so it cannot be the durable home. ``index.jsonl`` is the durable run
 marker (``session/backfill.py`` ``iter_run_dirs``); ``sessions.json`` sits beside it in the same run
 dir, so the same enumeration finds both.
 
 DAG: like the 8b-i transcript snapshot, the WRITE is a storage concern the ``index`` layer must not
 import. Here it is even simpler than 8b-i's injected callback: the owned facts are LAUNCH-authoritative
 (the launcher mints the id + descriptor + home_dir and KNOWS whether it minted — the launch profile),
-so the cli launcher (the composition root that already imports storage) writes them directly, once, at
+so the harness launcher (the composition root that already imports storage) writes them directly, once, at
 launch — before any wire frame and surviving process exit. ``minted`` is the launch-side twin of
 adapter binding and ``session.ingest.build_session`` (see ``LaunchProfile.mints_session_id``).
 
@@ -38,7 +38,7 @@ class OwnedSessionFacts(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     run_id: str
-    cli: str  # claude | codex | ...
+    harness: str  # claude | codex | ...
     native_session_id: str  # the id the launcher minted (claude --session-id / codex rollout uuid)
     minted: bool  # True = native id adopted as the session_id PK (claude); False = synth PK (codex)
     source_descriptor: str  # JSON ``TranscriptSource`` of the owned transcript, incl. ``home_dir``

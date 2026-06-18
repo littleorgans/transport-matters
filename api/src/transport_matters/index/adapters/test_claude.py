@@ -100,7 +100,7 @@ class TestBindLocate:
             cwd="/w",
             workspace_slug="s",
             workspace_hash="h",
-            cli="claude",
+            harness="claude",
             started_at="t",
             native_session_id=_SESSION,
         )
@@ -117,7 +117,7 @@ class TestBindLocate:
             cwd="/w",
             workspace_slug="s",
             workspace_hash="h",
-            cli="claude",
+            harness="claude",
             started_at="t",
         )
         with pytest.raises(ValueError, match="native_session_id"):
@@ -138,7 +138,7 @@ class TestBindLocate:
             cwd="/w",
             workspace_slug="s",
             workspace_hash="h",
-            cli="claude",
+            harness="claude",
             started_at="t",
             native_session_id=_SESSION,
             home_dir="/managed/.claude",

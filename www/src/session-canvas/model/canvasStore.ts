@@ -12,7 +12,7 @@ import {
   type WorldRect,
 } from "../../engine";
 import { type LayoutParams, seedParams } from "../../engine/layout";
-import type { CliName } from "../../types";
+import type { HarnessName } from "../../types";
 import type { CanvasLaunchContext } from "../route";
 import { PICKER_PANE_ID, paneIdForRef, titleForRef } from "../viewers/registry";
 import { createCanvasStorePersistOptions } from "./canvasStore.persistence";
@@ -41,8 +41,8 @@ import {
 import {
   type CanvasModel,
   type CanvasPaneRef,
-  cliLabel,
   type DockedPane,
+  harnessLabel,
   type PaneContentRef,
   type PaneRecord,
   type SpawnablePaneRef,
@@ -61,7 +61,7 @@ interface CanvasStoreModel extends CanvasModel {
 }
 
 interface CanvasStoreState extends CanvasStoreModel {
-  addCapturedRun(provider: CliName): PaneId;
+  addCapturedRun(provider: HarnessName): PaneId;
   closePane(paneId: PaneId): void;
   closeDockedPane(paneId: PaneId): void;
   expandPane(paneId: PaneId): void;
@@ -95,7 +95,7 @@ interface SpawnPaneOptions {
 const INITIAL_LAUNCH_CONTEXT: CanvasLaunchContext = Object.freeze({
   owner: "local",
   workspaceHash: null,
-  cli: null,
+  harness: null,
   runId: null,
 });
 
@@ -105,7 +105,7 @@ export const useCanvasStore = create<CanvasStoreState>()(
       ...createInitialCanvasModel(INITIAL_LAUNCH_CONTEXT),
 
       addCapturedRun(provider) {
-        const ref = createCapturedRunRef(provider, cliLabel(provider));
+        const ref = createCapturedRunRef(provider, harnessLabel(provider));
         return get().spawnPane(ref, { focus: true });
       },
 

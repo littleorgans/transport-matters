@@ -3,7 +3,7 @@ from __future__ import annotations
 SESSION_COLUMN_NAMES = (
     "session_id",
     "provider",
-    "cli",
+    "harness",
     "run_id",
     "cwd",
     "workspace_slug",
@@ -36,7 +36,7 @@ EVENT_COLUMN_NAMES = (
     "parent_seq",
     "run_id",
     "provider",
-    "cli",
+    "harness",
     "role",
     "is_sidechain",
     "ts",
@@ -55,11 +55,11 @@ ARTIFACT_COLUMNS = "hash, media_type, size_bytes, bytes, created_at"
 
 UPSERT_SESSION_SQL = f"""
 INSERT INTO "session" (
-    session_id, provider, cli, run_id, cwd, workspace_slug, workspace_hash,
+    session_id, provider, harness, run_id, cwd, workspace_slug, workspace_hash,
     native_session_id, minted, source_descriptor, home_dir, template_provenance, owner, session_purpose,
     session_visibility, status, title, parent_session_id, forked_at_seq, started_at
 ) VALUES (
-    %(session_id)s, %(provider)s, %(cli)s, %(run_id)s, %(cwd)s, %(workspace_slug)s,
+    %(session_id)s, %(provider)s, %(harness)s, %(run_id)s, %(cwd)s, %(workspace_slug)s,
     %(workspace_hash)s, %(native_session_id)s, %(minted)s, %(source_descriptor)s,
     %(home_dir)s, %(template_provenance)s, %(owner)s, %(session_purpose)s,
     %(session_visibility)s, %(status)s, %(title)s, %(parent_session_id)s,
@@ -67,7 +67,7 @@ INSERT INTO "session" (
 )
 ON CONFLICT (session_id) DO UPDATE SET
     provider = EXCLUDED.provider,
-    cli = COALESCE("session".cli, EXCLUDED.cli),
+    harness = COALESCE("session".harness, EXCLUDED.harness),
     run_id = EXCLUDED.run_id,
     cwd = COALESCE(NULLIF("session".cwd, ''), EXCLUDED.cwd),
     workspace_slug = EXCLUDED.workspace_slug,
@@ -149,7 +149,7 @@ FROM "session"
 WHERE owner = %(owner)s
   AND (%(workspace_hash)s::text IS NULL OR workspace_hash = %(workspace_hash)s)
   AND (%(provider)s::text IS NULL OR provider = %(provider)s)
-  AND (%(cli)s::text IS NULL OR cli = %(cli)s)
+  AND (%(harness)s::text IS NULL OR harness = %(harness)s)
   AND (%(status)s::text IS NULL OR status = %(status)s)
 ORDER BY started_at DESC, session_id
 LIMIT %(limit)s
@@ -177,11 +177,11 @@ OFFSET %(offset)s
 INSERT_EVENT_SQL = f"""
 INSERT INTO "event" (
     session_id, seq, kind, native_turn_id, parent_native_id, parent_seq, run_id,
-    provider, cli, role, is_sidechain, ts, model, raw, ir, source_path,
+    provider, harness, role, is_sidechain, ts, model, raw, ir, source_path,
     source_line, search_text
 ) VALUES (
     %(session_id)s, %(seq)s, %(kind)s, %(native_turn_id)s, %(parent_native_id)s,
-    %(parent_seq)s, %(run_id)s, %(provider)s, %(cli)s, %(role)s, %(is_sidechain)s,
+    %(parent_seq)s, %(run_id)s, %(provider)s, %(harness)s, %(role)s, %(is_sidechain)s,
     %(ts)s, %(model)s, %(raw)s, %(ir)s, %(source_path)s, %(source_line)s,
     %(search_text)s
 )
@@ -192,7 +192,7 @@ ON CONFLICT (session_id, seq) DO UPDATE SET
     parent_seq = EXCLUDED.parent_seq,
     run_id = EXCLUDED.run_id,
     provider = EXCLUDED.provider,
-    cli = EXCLUDED.cli,
+    harness = EXCLUDED.harness,
     role = EXCLUDED.role,
     is_sidechain = EXCLUDED.is_sidechain,
     ts = EXCLUDED.ts,
@@ -207,12 +207,12 @@ RETURNING {EVENT_COLUMNS}
 
 INSERT_DEAD_LETTER_SQL = """
 INSERT INTO event_dead_letter (
-    session_id, seq, scope, run_id, native_session_id, provider, cli, source_path,
+    session_id, seq, scope, run_id, native_session_id, provider, harness, source_path,
     source_line, event_kind, byte_start, byte_end, error_sqlstate, error_class,
     error_message, raw_excerpt, raw_sha256, raw_byte_len, attempts
 ) VALUES (
     %(session_id)s, %(seq)s, %(scope)s, %(run_id)s, %(native_session_id)s, %(provider)s,
-    %(cli)s, %(source_path)s, %(source_line)s, %(event_kind)s, %(byte_start)s,
+    %(harness)s, %(source_path)s, %(source_line)s, %(event_kind)s, %(byte_start)s,
     %(byte_end)s, %(error_sqlstate)s, %(error_class)s, %(error_message)s,
     %(raw_excerpt)s, %(raw_sha256)s, %(raw_byte_len)s, %(attempts)s
 )

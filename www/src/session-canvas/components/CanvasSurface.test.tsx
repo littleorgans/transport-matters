@@ -1,7 +1,7 @@
 import { fireEvent, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PaneId } from "../../engine";
-import type { CliName } from "../../types";
+import type { HarnessName } from "../../types";
 import { resetCanvasStoreForTests, useCanvasStore } from "../model/canvasStore";
 import type { CanvasLaunchContext } from "../route";
 import {
@@ -17,7 +17,7 @@ vi.mock("../../ambient/createAmbientBackground");
 const launch = {
   owner: "local",
   workspaceHash: "hash-1",
-  cli: null,
+  harness: null,
   runId: null,
 } satisfies CanvasLaunchContext;
 
@@ -31,7 +31,7 @@ describe("CanvasSurface", () => {
   it("wires command bar captured run actions to addCapturedRun", () => {
     resetCanvasStoreForTests(launch);
     installMockTransport(() => jsonResponse({ items: [], nextCursor: null }));
-    const addCapturedRun = vi.fn((provider: CliName): PaneId => `captured:${provider}`);
+    const addCapturedRun = vi.fn((provider: HarnessName): PaneId => `captured:${provider}`);
     useCanvasStore.setState({ addCapturedRun });
 
     renderWithQuery(

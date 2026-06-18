@@ -21,7 +21,7 @@ def _facts(
 ) -> OwnedSessionFacts:
     return OwnedSessionFacts(
         run_id="run-1",
-        cli="claude",
+        harness="claude",
         native_session_id=native,
         minted=True,
         source_descriptor=_DESCRIPTOR,

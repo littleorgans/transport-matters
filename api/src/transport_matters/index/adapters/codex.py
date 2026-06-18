@@ -37,7 +37,7 @@ if TYPE_CHECKING:
 
 class CodexAdapter(TranscriptAdapter):
     provider = "codex"
-    cli = "codex"
+    harness = "codex"
 
     async def bind(self, run: RunContext) -> SessionBinding:
         if run.native_session_id is None:
@@ -49,7 +49,7 @@ class CodexAdapter(TranscriptAdapter):
             # NOT the native id directly as claude does. minted=False — the id is learned, not minted.
             session_id=synth_session_id(run.run_id, self.provider, run.native_session_id),
             provider=self.provider,
-            cli=self.cli,
+            harness=self.harness,
             run_id=run.run_id,
             cwd=run.cwd,
             workspace_slug=run.workspace_slug,
@@ -95,7 +95,7 @@ class CodexAdapter(TranscriptAdapter):
             session_id=binding.session_id,
             run_id=binding.run_id,
             provider=binding.provider,
-            cli=binding.cli or self.cli,
+            harness=binding.harness or self.harness,
             role=role,
             seq=ctx.seq,
             # codex subagents are separate forked threads → within a session this is always False

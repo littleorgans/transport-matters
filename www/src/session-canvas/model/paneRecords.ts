@@ -1,12 +1,12 @@
 import type { EngineLayoutState, PaneId } from "../../engine";
-import type { CliName } from "../../types";
+import type { HarnessName } from "../../types";
 import type { CanvasLaunchContext } from "../route";
 
-/** Display label for a managed CLI / captured-run provider (window title, banners). */
-const CLI_LABELS: Record<CliName, string> = { claude: "Claude", codex: "Codex" };
+/** Display label for a managed harness / captured-run provider (window title, banners). */
+const HARNESS_LABELS: Record<HarnessName, string> = { claude: "Claude", codex: "Codex" };
 
-export function cliLabel(provider: CliName): string {
-  return CLI_LABELS[provider];
+export function harnessLabel(provider: HarnessName): string {
+  return HARNESS_LABELS[provider];
 }
 
 export function locatorTail(locator: string): string {
@@ -25,7 +25,7 @@ function hasLocalOwner(ref: Record<string, unknown>): boolean {
   return ref.owner === "local";
 }
 
-function isCliName(value: unknown): value is CliName {
+function isHarnessName(value: unknown): value is HarnessName {
   return value === "claude" || value === "codex";
 }
 
@@ -83,7 +83,7 @@ export type PaneContentRef =
       initialView?: string;
     }
   | { kind: "terminal"; owner: "local"; label?: string }
-  | { kind: "captured-run"; owner: "local"; provider: CliName; runKey: string; label?: string };
+  | { kind: "captured-run"; owner: "local"; provider: HarnessName; runKey: string; label?: string };
 
 /**
  * A pane removed from the canvas but retained locally so the dock can restore it (Option A: local
@@ -138,7 +138,7 @@ export function isPaneContentRef(value: unknown): value is PaneContentRef {
       return isOptionalString(value.label);
     case "captured-run":
       return (
-        isCliName(value.provider) &&
+        isHarnessName(value.provider) &&
         typeof value.runKey === "string" &&
         isOptionalString(value.label)
       );
@@ -167,7 +167,7 @@ export interface SpawnSessionDescriptor {
   sessionId: string;
   title: string | null;
   provider: string;
-  cli: string;
+  harness: string;
   status: string;
   lastActivityAt: string;
 }

@@ -259,7 +259,7 @@ _STALE_RUN: dict[str, object] = {
     "runId": "run-orphan",
     "workspaceId": "workspace/hash",
     "sessionId": "session-orphan",
-    "cli": "claude",
+    "harness": "claude",
     "state": "RUNNING",
     "createdAt": "2026-06-14T11:50:00+00:00",
 }

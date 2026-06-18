@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FRONTEND_STORAGE_KEYS } from "../../stores/persistence";
-import type { CliCapability, CliName } from "../../types";
+import type { HarnessCapability, HarnessName } from "../../types";
 import { resetCapturedRunStoreForTests, useCapturedRunStore } from "../model/capturedRunStore";
 import { CanvasLabRoute } from "./CanvasLabRoute";
 import { resetCanvasLabStoreForTests, useCanvasLabStore } from "./canvasLabStore";
@@ -14,22 +14,22 @@ vi.mock("../../api", () => ({
 }));
 vi.mock("../../ambient/createAmbientBackground");
 
-// The lab gates its captured-run spawn buttons on managed-CLI availability. Seeding
+// The lab gates its captured-run spawn buttons on managed harness availability. Seeding
 // the capabilities store to "ready" makes CanvasLabRoute's mount-time probe a no-op,
 // so these tests drive button visibility directly off install state with no network.
 
-function capability(installed: boolean): CliCapability {
+function capability(installed: boolean): HarnessCapability {
   return {
     installed,
-    path: installed ? "/usr/local/bin/cli" : null,
+    path: installed ? "/usr/local/bin/harness" : null,
     version: installed ? "1.0.0" : null,
   };
 }
 
-function seedCapabilities(installed: Record<CliName, boolean>): void {
+function seedCapabilities(installed: Record<HarnessName, boolean>): void {
   useCapabilitiesStore.setState({
     status: "ready",
-    clis: { claude: capability(installed.claude), codex: capability(installed.codex) },
+    harnesses: { claude: capability(installed.claude), codex: capability(installed.codex) },
   });
 }
 
@@ -43,7 +43,7 @@ function capturedRef(runKey: string, label: string) {
 // bindings it composes with. beforeEach has already reset the in-memory stores; callers rehydrate after.
 function seedPersistedLab(
   labState: Record<string, unknown>,
-  runs: Record<string, { provider: CliName; runId: string; minimized?: boolean }>,
+  runs: Record<string, { provider: HarnessName; runId: string; minimized?: boolean }>,
 ): void {
   localStorage.setItem(
     FRONTEND_STORAGE_KEYS.canvasLabStore,
@@ -69,7 +69,7 @@ describe("CanvasLabRoute captured-run spawn buttons", () => {
 
   afterEach(resetLabStores);
 
-  it("shows both spawn buttons when both CLIs are installed", () => {
+  it("shows both spawn buttons when both harnesses are installed", () => {
     seedCapabilities({ claude: true, codex: true });
     render(<CanvasLabRoute />);
     expect(screen.getByRole("button", { name: "Spawn Claude" })).toBeInTheDocument();
@@ -90,7 +90,7 @@ describe("CanvasLabRoute captured-run spawn buttons", () => {
     expect(screen.getByRole("button", { name: "Spawn Codex" })).toBeInTheDocument();
   });
 
-  it("hides both spawn buttons when neither CLI is installed", () => {
+  it("hides both spawn buttons when neither harness is installed", () => {
     seedCapabilities({ claude: false, codex: false });
     render(<CanvasLabRoute />);
     expect(screen.queryByRole("button", { name: "Spawn Claude" })).not.toBeInTheDocument();
@@ -100,7 +100,7 @@ describe("CanvasLabRoute captured-run spawn buttons", () => {
   it("keeps both spawn buttons when the capability probe is unreachable (dev server, no backend)", () => {
     // Fail-open: a failed/unknown probe must not hide the controls. Seeding "error"
     // makes the mount-time probe a no-op, reproducing a dev server with no backend.
-    useCapabilitiesStore.setState({ status: "error", clis: null });
+    useCapabilitiesStore.setState({ status: "error", harnesses: null });
     render(<CanvasLabRoute />);
     expect(screen.getByRole("button", { name: "Spawn Claude" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Spawn Codex" })).toBeInTheDocument();
@@ -263,7 +263,7 @@ describe("CanvasLabRoute text shadow", () => {
   });
 });
 
-describe("CanvasLabRoute CLI color replies", () => {
+describe("CanvasLabRoute harness color replies", () => {
   beforeEach(() => {
     localStorage.clear();
     resetLabStores();
@@ -275,7 +275,7 @@ describe("CanvasLabRoute CLI color replies", () => {
     seedCapabilities({ claude: true, codex: true });
     render(<CanvasLabRoute />);
     fireEvent.click(screen.getByRole("button", { name: "Layout" }));
-    const checkbox = screen.getByRole("checkbox", { name: "CLI color replies" });
+    const checkbox = screen.getByRole("checkbox", { name: "Harness color replies" });
     expect(checkbox).toBeChecked();
 
     fireEvent.click(checkbox);
@@ -293,6 +293,6 @@ describe("CanvasLabRoute CLI color replies", () => {
     render(<CanvasLabRoute />);
     fireEvent.click(screen.getByRole("button", { name: "Layout" }));
 
-    expect(screen.getByRole("checkbox", { name: "CLI color replies" })).not.toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "Harness color replies" })).not.toBeChecked();
   });
 });

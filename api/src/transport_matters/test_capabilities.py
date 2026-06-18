@@ -11,10 +11,10 @@ if TYPE_CHECKING:
     import pytest
 
 from transport_matters.capabilities import (
-    detect_cli,
-    detect_clis,
+    detect_harness,
+    detect_harnesses,
     is_runnable_candidate,
-    resolve_cli_binary,
+    resolve_harness_binary,
 )
 
 
@@ -24,12 +24,12 @@ def _write_version_cli(path: Path, output: str) -> Path:
     return path
 
 
-def test_detect_clis_reports_present_versions(tmp_path: Path) -> None:
+def test_detect_harnesses_reports_present_versions(tmp_path: Path) -> None:
     claude = _write_version_cli(tmp_path / "claude", "claude 1.2.3")
     codex = _write_version_cli(tmp_path / "codex", "codex 4.5.6")
     paths = {"claude": str(claude), "codex": str(codex)}
 
-    result = detect_clis(which=paths.get)
+    result = detect_harnesses(which=paths.get)
 
     assert result["claude"].installed is True
     assert result["claude"].path == str(claude)
@@ -39,15 +39,15 @@ def test_detect_clis_reports_present_versions(tmp_path: Path) -> None:
     assert result["codex"].version == "codex 4.5.6"
 
 
-def test_detect_clis_reports_absent_without_version_probe(
+def test_detect_harnesses_reports_absent_without_version_probe(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     def fail_run(*_args: object, **_kwargs: object) -> subprocess.CompletedProcess[str]:
-        raise AssertionError("missing CLIs must not run version probes")
+        raise AssertionError("missing harnesses must not run version probes")
 
     monkeypatch.setattr(subprocess, "run", fail_run)
 
-    result = detect_clis(which=lambda _name: None)
+    result = detect_harnesses(which=lambda _name: None)
 
     assert result["claude"].installed is False
     assert result["claude"].path is None
@@ -57,7 +57,7 @@ def test_detect_clis_reports_absent_without_version_probe(
     assert result["codex"].version is None
 
 
-def test_detect_cli_timeout_keeps_installed_without_version(
+def test_detect_harness_timeout_keeps_installed_without_version(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -68,7 +68,7 @@ def test_detect_cli_timeout_keeps_installed_without_version(
 
     monkeypatch.setattr(subprocess, "run", timeout_run)
 
-    result = detect_cli("claude", which=lambda _name: str(claude))
+    result = detect_harness("claude", which=lambda _name: str(claude))
 
     assert result.installed is True
     assert result.path == str(claude)
@@ -79,10 +79,10 @@ def test_is_runnable_candidate_rejects_nonexistent_path(tmp_path: Path) -> None:
     assert is_runnable_candidate(str(tmp_path / "missing-cli")) is False
 
 
-def test_resolve_cli_binary_preserves_launch_override_behavior(tmp_path: Path) -> None:
+def test_resolve_harness_binary_preserves_launch_override_behavior(tmp_path: Path) -> None:
     override = tmp_path / "custom-claude"
 
-    result = resolve_cli_binary(
+    result = resolve_harness_binary(
         name="claude",
         bin_override=override,
         which=lambda _name: None,
@@ -91,8 +91,8 @@ def test_resolve_cli_binary_preserves_launch_override_behavior(tmp_path: Path) -
     assert result == str(override)
 
 
-def test_resolve_cli_binary_honors_disabled_flag(tmp_path: Path) -> None:
-    result = resolve_cli_binary(
+def test_resolve_harness_binary_honors_disabled_flag(tmp_path: Path) -> None:
+    result = resolve_harness_binary(
         name="codex",
         bin_override=tmp_path / "codex",
         disabled=True,

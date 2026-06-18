@@ -2,15 +2,15 @@
 
 Wires the REAL ``make_transcript_snapshot_writer`` into the REAL ``TranscriptTailer`` over real temp
 dirs shaped exactly like a live run: a workspace-scoped run dir (``workspaces/<slug>/<hash>/<run>/``)
-holding the durable ``index.jsonl`` marker, and CLI transcript files in a separate "CLI home" the
+holding the durable ``index.jsonl`` marker, and harness transcript files in a separate "harness home" the
 tailer byte-tails (the live read source is unchanged — we only TEE a copy).
 
-Proves the acceptance bullets short of launching a real CLI (that is Stuart's road-test):
+Proves the acceptance bullets short of launching a real harness (that is Stuart's road-test):
   * a poll writes BOTH session events AND the tier-1 snapshot,
-  * the snapshot is byte-faithful to the consumed CLI file, INCLUDING the non-conversational records
+  * the snapshot is byte-faithful to the consumed harness file, INCLUDING the non-conversational records
     (codex ``session_meta``) that ``normalize`` drops,
   * the snapshot lands under the run dir and ``iter_run_dirs`` finds that run dir,
-  * a re-tail (fresh process re-reading the CLI file from offset 0) does not duplicate the snapshot.
+  * a re-tail (fresh process re-reading the harness file from offset 0) does not duplicate the snapshot.
 """
 
 from __future__ import annotations
@@ -54,7 +54,7 @@ def _claude_binding() -> SessionBinding:
         workspace_slug="slug",
         workspace_hash="hash",
         started_at="t",
-        cli="claude",
+        harness="claude",
         native_session_id=_CLAUDE_SID,
         minted=True,
     )
@@ -69,7 +69,7 @@ def _codex_binding() -> SessionBinding:
         workspace_slug="slug",
         workspace_hash="hash",
         started_at="t",
-        cli="codex",
+        harness="codex",
         native_session_id=_CODEX_NATIVE,
     )
 
@@ -115,12 +115,12 @@ def test_claude_and_codex_poll_writes_tier1_snapshot_byte_faithfully(tmp_path: P
     run_dir = _run_dir(workspaces_root)
     layout = DiskStorageLayout(run_dir)
 
-    # CLI transcript files live OUTSIDE the run dir (the CLI's own home), byte-tailed live.
-    cli_home = tmp_path / "cli_home"
-    cli_home.mkdir()
-    claude_file = cli_home / "claude.jsonl"
+    # harness transcript files live OUTSIDE the run dir (the harness native home), byte-tailed live.
+    harness_home = tmp_path / "harness_home"
+    harness_home.mkdir()
+    claude_file = harness_home / "claude.jsonl"
     claude_file.write_text(_claude_user_line("hi") + "\n")
-    codex_file = cli_home / "rollout.jsonl"
+    codex_file = harness_home / "rollout.jsonl"
     codex_file.write_text(_codex_session_meta() + "\n" + _codex_response_item("hello") + "\n")
 
     submitted: list[EventWrite] = []
@@ -151,7 +151,7 @@ def test_claude_and_codex_poll_writes_tier1_snapshot_byte_faithfully(tmp_path: P
 
     claude_snap = layout.transcript_snapshot_path(_CLAUDE_SID)
     codex_snap = layout.transcript_snapshot_path(synth_session_id(_RUN, "codex", _CODEX_NATIVE))
-    # Byte-faithful to the consumed CLI file (both files end in \n → fully consumed).
+    # Byte-faithful to the consumed harness file (both files end in \n → fully consumed).
     assert claude_snap.read_bytes() == claude_file.read_bytes()
     assert codex_snap.read_bytes() == codex_file.read_bytes()
     # Includes the non-conversational record normalize drops (only ONE transcript turn from codex).
@@ -171,7 +171,7 @@ def test_retail_from_fresh_process_does_not_duplicate_snapshot(tmp_path: Path) -
     codex_file.write_text(_codex_session_meta() + "\n" + _codex_response_item("hello") + "\n")
 
     def _tail_once() -> None:
-        # A fresh process: new tailer + new cursor at byte_offset=0, re-reading the WHOLE CLI file,
+        # A fresh process: new tailer + new cursor at byte_offset=0, re-reading the WHOLE harness file,
         # but reusing the durable snapshot file (a new writer over the same run dir).
         tailer = TranscriptTailer(
             build_record=build_event,

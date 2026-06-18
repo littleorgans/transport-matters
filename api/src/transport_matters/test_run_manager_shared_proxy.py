@@ -38,7 +38,7 @@ async def test_run_manager_routes_external_runs_to_shared_preparation(
         shared_proxy: object,
         dependencies: CapturedRunDependencies,
     ) -> tuple[CapturedRunSpawnSpec, FakeLease]:
-        calls.append(f"{request.web_runtime}:{request.client_name}")
+        calls.append(f"{request.web_runtime}:{request.harness}")
         return _spawn_spec(tmp_path, run_id="shared-run"), shared_lease
 
     def forbidden_prepare(
@@ -59,7 +59,7 @@ async def test_run_manager_routes_external_runs_to_shared_preparation(
 
     spec, lease = await manager._prepare_request(
         manager._validate_spawn_request(
-            SpawnRun(cli="claude", cwd=tmp_path, web_runtime=WEB_RUNTIME_EXTERNAL)
+            SpawnRun(harness="claude", cwd=tmp_path, web_runtime=WEB_RUNTIME_EXTERNAL)
         )
     )
 
@@ -77,7 +77,7 @@ async def test_run_manager_keeps_embedded_runs_on_per_run_preparation(tmp_path: 
         request: CapturedRunRequest,
         **_: object,
     ) -> tuple[CapturedRunSpawnSpec, FakeLease]:
-        calls.append(f"{request.web_runtime}:{request.client_name}")
+        calls.append(f"{request.web_runtime}:{request.harness}")
         return _spawn_spec(tmp_path, run_id="embedded-run"), embedded_lease
 
     manager = RunManager(
@@ -89,7 +89,7 @@ async def test_run_manager_keeps_embedded_runs_on_per_run_preparation(tmp_path: 
 
     spec, lease = await manager._prepare_request(
         manager._validate_spawn_request(
-            SpawnRun(cli="claude", cwd=tmp_path, web_runtime=WEB_RUNTIME_EMBEDDED)
+            SpawnRun(harness="claude", cwd=tmp_path, web_runtime=WEB_RUNTIME_EMBEDDED)
         )
     )
 
@@ -121,7 +121,7 @@ async def test_run_manager_fails_external_when_shared_proxy_unavailable(
     with pytest.raises(RunManagerError) as exc_info:
         await manager._prepare_request(
             manager._validate_spawn_request(
-                SpawnRun(cli="claude", cwd=tmp_path, web_runtime=WEB_RUNTIME_EXTERNAL)
+                SpawnRun(harness="claude", cwd=tmp_path, web_runtime=WEB_RUNTIME_EXTERNAL)
             )
         )
 
@@ -152,7 +152,7 @@ async def test_run_manager_never_falls_back_to_per_run_for_external_runs(
     with pytest.raises(RunManagerError) as exc_info:
         await manager._prepare_request(
             manager._validate_spawn_request(
-                SpawnRun(cli="claude", cwd=tmp_path, web_runtime=WEB_RUNTIME_EXTERNAL)
+                SpawnRun(harness="claude", cwd=tmp_path, web_runtime=WEB_RUNTIME_EXTERNAL)
             )
         )
 
@@ -174,7 +174,7 @@ def _spawn_spec(tmp_path: Path, *, run_id: str) -> CapturedRunSpawnSpec:
         client=None,
         launch_env={},
         managed_session=None,
-        client_name="claude",
+        harness="claude",
     )
 
 

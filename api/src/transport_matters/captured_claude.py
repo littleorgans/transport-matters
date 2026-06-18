@@ -45,7 +45,7 @@ def build_claude_captured_invocation(
     from transport_matters.cli.net import loopback_http_url
     from transport_matters.cli.runner import ManagedClient
     from transport_matters.launch_environment import (
-        CLIENT_NAME_CLAUDE,
+        HARNESS_NAME_CLAUDE,
         build_launch_env,
         build_managed_child_env,
     )
@@ -80,7 +80,7 @@ def build_claude_captured_invocation(
             web_port=web_port,
             run_id=run_id,
             web_runtime=web_runtime,
-            cli=CLIENT_NAME_CLAUDE,
+            harness=HARNESS_NAME_CLAUDE,
             home_dir=home_dir,
             owned_native_session_id=native_session_id,
             owned_source_descriptor=(
@@ -109,12 +109,12 @@ def build_claude_captured_invocation(
                 )
             client_env = build_managed_child_env(
                 env,
-                client_name=CLIENT_NAME_CLAUDE,
+                harness=HARNESS_NAME_CLAUDE,
                 home_dir=child_home_dir,
                 extra_env={"ANTHROPIC_BASE_URL": proxy_url},
             )
             client = ManagedClient(
-                name=CLIENT_NAME_CLAUDE,
+                name=HARNESS_NAME_CLAUDE,
                 display_name="Claude",
                 argv=profile.client_argv(
                     client_path=claude_path,

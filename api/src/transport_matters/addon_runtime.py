@@ -49,8 +49,8 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Wire provider → harness cli, for read-back transcript cursor registration (§9.2).
-_PROVIDER_CLI = {"anthropic": "claude", "codex": "codex"}
+# Wire provider → harness, for read-back transcript cursor registration (§9.2).
+_PROVIDER_HARNESS = {"anthropic": "claude", "codex": "codex"}
 _DIRECT_MINT_PROVIDERS = frozenset({"anthropic"})
 _SESSION_POOL_AUX_CONNECTION_RESERVE = 1
 _DISABLE_TOKEN_COUNTER_ENV = "TRANSPORT_MATTERS_DISABLE_TOKEN_COUNTER"
@@ -75,11 +75,11 @@ def _make_cursor_registrar(
     """Build the on_binding callback: schedule a read-back transcript cursor for a wire binding."""
 
     def register(binding: SessionBinding) -> None:
-        cli = _PROVIDER_CLI.get(binding.provider)
-        if cli is None or loop is None:
+        harness = _PROVIDER_HARNESS.get(binding.provider)
+        if harness is None or loop is None:
             return
         asyncio.run_coroutine_threadsafe(
-            register_session_cursor(tailer, get_adapter(cli), binding), loop
+            register_session_cursor(tailer, get_adapter(harness), binding), loop
         )
 
     return register
@@ -97,7 +97,7 @@ def build_proxy_run_binding(settings: Settings, storage: StorageBackend) -> Prox
 
     return ProxyRunBinding(
         run_id=settings.run_id,
-        cli=settings.cli,
+        harness=settings.harness,
         working_dir=settings.cwd,
         storage=storage,
         listen_port=settings.proxy_port,
@@ -113,7 +113,7 @@ def build_proxy_run_binding(settings: Settings, storage: StorageBackend) -> Prox
 
 def _launch_run_context(binding: ProxyRunBinding, started_at: str) -> RunContext | None:
     """Build the owned transcript registration context from launch settings, if complete."""
-    if binding.run_id is None or binding.working_dir is None or binding.cli is None:
+    if binding.run_id is None or binding.working_dir is None or binding.harness is None:
         return None
     if binding.owned_native_session_id is None:
         return None
@@ -123,7 +123,7 @@ def _launch_run_context(binding: ProxyRunBinding, started_at: str) -> RunContext
         cwd=str(binding.working_dir),
         workspace_slug=workspace.slug,
         workspace_hash=workspace.hash,
-        cli=binding.cli,
+        harness=binding.harness,
         started_at=started_at,
         native_session_id=binding.owned_native_session_id,
         home_dir=str(binding.agent_home_dir) if binding.agent_home_dir is not None else None,
@@ -141,7 +141,7 @@ async def register_owned_cursor(
     run = _launch_run_context(binding, started_at)
     if run is None:
         return
-    adapter = get_adapter(run.cli)
+    adapter = get_adapter(run.harness)
     session_binding = await adapter.bind(run)
     session_binding = session_binding.model_copy(
         update={

@@ -119,7 +119,7 @@ def _insert_legacy_session(database_url: str) -> None:
         conn.execute(
             """
             INSERT INTO "session" (
-                session_id, provider, cli, run_id, cwd, workspace_slug, workspace_hash,
+                session_id, provider, harness, run_id, cwd, workspace_slug, workspace_hash,
                 native_session_id, minted, owner, status, started_at
             ) VALUES (
                 'legacy-session', 'anthropic', 'claude', 'run1', '/workspace',

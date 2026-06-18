@@ -30,7 +30,9 @@ describe("SessionPickerPane", () => {
     installMockTransport(() => jsonResponse({ items: [], nextCursor: null }));
 
     renderWithQuery(
-      <SessionPickerPane {...pickerProps({ launchStatus: "pending", launch: { cli: "codex" } })} />,
+      <SessionPickerPane
+        {...pickerProps({ launchStatus: "pending", launch: { harness: "codex" } })}
+      />,
     );
 
     await waitFor(() => {
@@ -55,7 +57,7 @@ describe("SessionPickerPane", () => {
 
 function pickerProps(
   patch: {
-    launch?: { cli?: string | null };
+    launch?: { harness?: string | null };
     launchStatus?: "pending" | "resolved" | "unavailable";
     spawnOrFocusTranscript?: ViewerProps["actions"]["spawnOrFocusTranscript"];
   } = {},
@@ -78,7 +80,7 @@ function pickerProps(
       launch: {
         owner: "local",
         workspaceHash: "hash-1",
-        cli: patch.launch?.cli ?? "claude",
+        harness: patch.launch?.harness ?? "claude",
         runId: null,
       },
       launchStatus: patch.launchStatus ?? "unavailable",

@@ -162,7 +162,7 @@ def test_codex_managed_mint_seeds_rollout_and_resumes(
     client = kwargs["client"]
 
     # the addon learns the owned codex identity through the env contract
-    assert env["TRANSPORT_MATTERS_CLI"] == "codex"
+    assert env["TRANSPORT_MATTERS_HARNESS"] == "codex"
     native = env["TRANSPORT_MATTERS_OWNED_NATIVE_SESSION_ID"]
     source = decode_source_descriptor(env["TRANSPORT_MATTERS_OWNED_SOURCE_DESCRIPTOR"])
     assert isinstance(source, FileTailSource)

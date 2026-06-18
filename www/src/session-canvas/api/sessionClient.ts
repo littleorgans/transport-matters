@@ -22,7 +22,7 @@ export interface SessionSummary {
   title: string | null;
   status: string;
   provider: string;
-  cli: string;
+  harness: string;
   createdAt: string;
   lastActivityAt: string;
   purpose: SessionPurpose;
@@ -44,7 +44,7 @@ export interface SessionListFilters {
   purpose?: SessionPurpose | null;
   visibility?: SessionVisibility | null;
   includeInternal?: boolean;
-  cli?: string | null;
+  harness?: string | null;
   limit?: number;
   cursor?: string | null;
 }
@@ -56,8 +56,8 @@ export async function listSessions(filters: SessionListFilters): Promise<Session
     sessionsPath(filters),
     "Failed to fetch sessions",
   );
-  const cli = filters.cli;
-  return cli ? response.items.filter((session) => session.cli === cli) : response.items;
+  const harness = filters.harness;
+  return harness ? response.items.filter((session) => session.harness === harness) : response.items;
 }
 
 export function sessionsPath(filters: SessionListFilters): string {

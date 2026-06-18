@@ -1,4 +1,4 @@
-"""Core capability detection for locally managed CLI clients."""
+"""Core capability detection for locally managed harnesses."""
 
 import os
 import shutil
@@ -10,11 +10,11 @@ from typing import TYPE_CHECKING, Literal, Protocol
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-type CliName = Literal["claude", "codex"]
+type HarnessName = Literal["claude", "codex"]
 
-CLI_NAME_CLAUDE: CliName = "claude"
-CLI_NAME_CODEX: CliName = "codex"
-SUPPORTED_CLI_NAMES: tuple[CliName, ...] = (CLI_NAME_CLAUDE, CLI_NAME_CODEX)
+HARNESS_NAME_CLAUDE: HarnessName = "claude"
+HARNESS_NAME_CODEX: HarnessName = "codex"
+SUPPORTED_HARNESS_NAMES: tuple[HarnessName, ...] = (HARNESS_NAME_CLAUDE, HARNESS_NAME_CODEX)
 DEFAULT_VERSION_TIMEOUT_S = 2.0
 
 
@@ -28,7 +28,7 @@ class WhichFunction(Protocol):
 
 
 @dataclass(frozen=True)
-class CliCapability:
+class HarnessCapability:
     installed: bool
     path: str | None
     version: str | None
@@ -93,14 +93,14 @@ def resolve_runnable_binary(
     return None
 
 
-def resolve_cli_binary(
+def resolve_harness_binary(
     *,
     name: str,
     bin_override: Path | None = None,
     disabled: bool = False,
     which: Callable[[str], str | None] = shutil.which,
 ) -> str | None:
-    """Resolve a managed CLI binary without CLI layer side effects."""
+    """Resolve a managed harness binary without command layer side effects."""
     if disabled:
         return None
     if bin_override is not None:
@@ -117,7 +117,7 @@ def _first_output_line(*values: str | None) -> str | None:
     return None
 
 
-def _probe_cli_version(path: str, *, timeout_s: float) -> str | None:
+def _probe_harness_version(path: str, *, timeout_s: float) -> str | None:
     try:
         completed = subprocess.run(
             [path, "--version"],
@@ -139,28 +139,28 @@ def _probe_cli_version(path: str, *, timeout_s: float) -> str | None:
     return _first_output_line(completed.stdout, completed.stderr)
 
 
-def detect_cli(
-    name: CliName,
+def detect_harness(
+    name: HarnessName,
     *,
     which: Callable[[str], str | None] = shutil.which,
     version_timeout_s: float = DEFAULT_VERSION_TIMEOUT_S,
-) -> CliCapability:
-    """Detect availability for one supported CLI."""
-    path = resolve_cli_binary(name=name, which=which)
+) -> HarnessCapability:
+    """Detect availability for one supported harness."""
+    path = resolve_harness_binary(name=name, which=which)
     if path is None or not is_runnable_candidate(path):
-        return CliCapability(installed=False, path=None, version=None)
+        return HarnessCapability(installed=False, path=None, version=None)
 
-    version = _probe_cli_version(path, timeout_s=version_timeout_s)
-    return CliCapability(installed=True, path=path, version=version)
+    version = _probe_harness_version(path, timeout_s=version_timeout_s)
+    return HarnessCapability(installed=True, path=path, version=version)
 
 
-def detect_clis(
+def detect_harnesses(
     *,
     which: Callable[[str], str | None] = shutil.which,
     version_timeout_s: float = DEFAULT_VERSION_TIMEOUT_S,
-) -> dict[CliName, CliCapability]:
-    """Detect local availability for every managed CLI."""
+) -> dict[HarnessName, HarnessCapability]:
+    """Detect local availability for every managed harness."""
     return {
-        name: detect_cli(name, which=which, version_timeout_s=version_timeout_s)
-        for name in SUPPORTED_CLI_NAMES
+        name: detect_harness(name, which=which, version_timeout_s=version_timeout_s)
+        for name in SUPPORTED_HARNESS_NAMES
     }

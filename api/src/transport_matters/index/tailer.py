@@ -362,7 +362,7 @@ class TranscriptTailer:
             return  # PullSource (opencode) polling is slice 7
         path = Path(source.path)
         # The cursor owns an exact source path. On managed launch the cursor can be registered before
-        # the CLI creates its file, so wait on that exact path without falling back to discovery.
+        # the harness creates its transcript file, so wait on that exact path without falling back to discovery.
         try:
             stat = path.stat()
         except FileNotFoundError:
@@ -633,7 +633,7 @@ async def register_session_cursor(
         cwd=binding.cwd,
         workspace_slug=binding.workspace_slug,
         workspace_hash=binding.workspace_hash,
-        cli=binding.cli or adapter.cli,
+        harness=binding.harness or adapter.harness,
         started_at=binding.started_at,
         native_session_id=binding.native_session_id,
         home_dir=binding.home_dir,  # carried like cwd so adapter.bind/locate resolves under managed home
@@ -642,7 +642,7 @@ async def register_session_cursor(
     if transcript_binding.session_id != binding.session_id:
         _log.warning(
             "read-back session_id divergence (%s): wire=%s transcript=%s; keeping the wire id",
-            adapter.cli,
+            adapter.harness,
             binding.session_id,
             transcript_binding.session_id,
         )

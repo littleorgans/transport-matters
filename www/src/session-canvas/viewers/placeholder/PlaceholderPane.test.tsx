@@ -21,7 +21,7 @@ function placeholderProps(ref: PlaceholderPaneRef, title: string): ViewerProps<P
       owner: "local",
       workspaceHash: "hash-1",
       focusedPaneId: null,
-      launch: { owner: "local", workspaceHash: "hash-1", cli: "claude", runId: null },
+      launch: { owner: "local", workspaceHash: "hash-1", harness: "claude", runId: null },
       launchStatus: "unavailable",
       launchSessionId: null,
     },

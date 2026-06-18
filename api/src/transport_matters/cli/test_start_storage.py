@@ -7,7 +7,7 @@ from typer.testing import CliRunner
 
 from transport_matters.cli import main, workspace_root
 from transport_matters.launch_environment import (
-    CLIENT_NAME_CLAUDE,
+    HARNESS_NAME_CLAUDE,
     build_managed_child_env,
 )
 
@@ -275,13 +275,13 @@ def test_managed_child_home_dir_preserves_unset_and_fails_unmapped() -> None:
     assert (
         build_managed_child_env(
             base,
-            client_name=CLIENT_NAME_CLAUDE,
+            harness=HARNESS_NAME_CLAUDE,
             home_dir=Path("/tmp/managed-claude"),
         )["CLAUDE_CONFIG_DIR"]
         == "/tmp/managed-claude"
     )
     with pytest.raises(ValueError, match="unmapped managed client home dir"):
-        build_managed_child_env(base, client_name="unknown", home_dir=Path("/tmp/x"))
+        build_managed_child_env(base, harness="unknown", home_dir=Path("/tmp/x"))
 
 
 def test_start_writes_run_root_storage_into_manifest(

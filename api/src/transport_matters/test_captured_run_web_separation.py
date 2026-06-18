@@ -8,9 +8,9 @@ from typing import Any
 
 from transport_matters import env_keys
 from transport_matters.captured_run import (
-    CLAUDE_CLIENT_NAME,
+    CLAUDE_HARNESS_NAME,
     CLAUDE_UPSTREAM_DEFAULT,
-    CODEX_CLIENT_NAME,
+    CODEX_HARNESS_NAME,
     WEB_RUNTIME_EXTERNAL,
     CapturedRunRequest,
     prepare_captured_run,
@@ -62,7 +62,7 @@ def test_prepare_captured_run_external_web_starts_capture_only_proxy(
 
     spawn_spec, lease = prepare_captured_run(
         CapturedRunRequest(
-            client_name=CLAUDE_CLIENT_NAME,
+            harness=CLAUDE_HARNESS_NAME,
             passthrough=("--dangerously-skip-permissions",),
             directory=workspace,
             proxy_port=None,
@@ -106,7 +106,7 @@ def test_prepare_captured_run_external_web_starts_capture_only_proxy(
         # An explicit --agent-home-dir is overlaid before launch. The addon
         # descriptor and child env must share the actual launched home.
         assert spawn_spec.launch_env[env_keys.AGENT_HOME_DIR] == str(
-            tmp_path / "storage" / "runtime-home" / CLAUDE_CLIENT_NAME
+            tmp_path / "storage" / "runtime-home" / CLAUDE_HARNESS_NAME
         )
         assert started and started[0]["proxy_port"] == spawn_spec.proxy_port
     finally:
@@ -142,7 +142,7 @@ def test_prepare_captured_run_native_home_does_not_publish_agent_home_dir(
 
     spawn_spec, lease = prepare_captured_run(
         CapturedRunRequest(
-            client_name=CLAUDE_CLIENT_NAME,
+            harness=CLAUDE_HARNESS_NAME,
             passthrough=("--dangerously-skip-permissions",),
             directory=workspace,
             proxy_port=None,
@@ -177,7 +177,7 @@ def test_prepare_captured_run_native_home_does_not_publish_agent_home_dir(
         # ...yet the overlay is still built: the child's CLAUDE_CONFIG_DIR is the per-run
         # runtime overlay, not the source home.
         assert spawn_spec.client.env["CLAUDE_CONFIG_DIR"] == str(
-            tmp_path / "storage" / "runtime-home" / CLAUDE_CLIENT_NAME
+            tmp_path / "storage" / "runtime-home" / CLAUDE_HARNESS_NAME
         )
     finally:
         lease.close()
@@ -203,7 +203,7 @@ def test_prepare_captured_run_claude_manual_home_descriptor_matches_launch_home(
 
     spawn_spec, lease = prepare_captured_run(
         CapturedRunRequest(
-            client_name=CLAUDE_CLIENT_NAME,
+            harness=CLAUDE_HARNESS_NAME,
             passthrough=("--dangerously-skip-permissions",),
             directory=workspace,
             proxy_port=None,
@@ -234,7 +234,7 @@ def test_prepare_captured_run_claude_manual_home_descriptor_matches_launch_home(
         assert spawn_spec.client is not None
         assert spawn_spec.managed_session is not None
         launch_home = Path(spawn_spec.client.env["CLAUDE_CONFIG_DIR"])
-        assert launch_home == storage / "runtime-home" / CLAUDE_CLIENT_NAME
+        assert launch_home == storage / "runtime-home" / CLAUDE_HARNESS_NAME
         assert launch_home != source_home
         assert spawn_spec.launch_env[env_keys.AGENT_HOME_DIR] == str(launch_home)
         assert (
@@ -272,7 +272,7 @@ def test_prepare_captured_run_codex_external_web_uses_explicit_proxy_env(
         assert "--mode" in kwargs["mitmdump_argv"]
         assert "regular" in kwargs["mitmdump_argv"]
         assert env_keys.WEB_PORT not in kwargs["mitmdump_env"]
-        assert kwargs["mitmdump_env"][env_keys.CLI] == CODEX_CLIENT_NAME
+        assert kwargs["mitmdump_env"][env_keys.HARNESS] == CODEX_HARNESS_NAME
         assert kwargs["mitmdump_env"][env_keys.WEB_RUNTIME] == WEB_RUNTIME_EXTERNAL
         return
 
@@ -281,7 +281,7 @@ def test_prepare_captured_run_codex_external_web_uses_explicit_proxy_env(
 
     spawn_spec, lease = prepare_captured_run(
         CapturedRunRequest(
-            client_name=CODEX_CLIENT_NAME,
+            harness=CODEX_HARNESS_NAME,
             passthrough=("--dangerously-skip-permissions",),
             directory=workspace,
             proxy_port=None,
@@ -309,7 +309,7 @@ def test_prepare_captured_run_codex_external_web_uses_explicit_proxy_env(
     )
 
     try:
-        assert spawn_spec.client_name == CODEX_CLIENT_NAME
+        assert spawn_spec.harness == CODEX_HARNESS_NAME
         assert spawn_spec.web_port is None
         assert spawn_spec.launch_env[env_keys.PROXY_PORT] == "39223"
         assert env_keys.WEB_PORT not in spawn_spec.launch_env
@@ -319,7 +319,7 @@ def test_prepare_captured_run_codex_external_web_uses_explicit_proxy_env(
             == '["--dangerously-skip-permissions"]'
         )
         assert spawn_spec.client is not None
-        assert spawn_spec.client.name == CODEX_CLIENT_NAME
+        assert spawn_spec.client.name == CODEX_HARNESS_NAME
         assert "--dangerously-skip-permissions" in spawn_spec.client.argv
         assert spawn_spec.client.env["HTTPS_PROXY"] == loopback_http_url(spawn_spec.proxy_port)
         assert spawn_spec.client.env["HTTP_PROXY"] == loopback_http_url(spawn_spec.proxy_port)
@@ -355,7 +355,7 @@ def test_prepare_captured_run_codex_manual_home_seeds_runtime_home(
 
     spawn_spec, lease = prepare_captured_run(
         CapturedRunRequest(
-            client_name=CODEX_CLIENT_NAME,
+            harness=CODEX_HARNESS_NAME,
             passthrough=(),
             directory=workspace,
             proxy_port=None,

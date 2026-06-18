@@ -10,7 +10,7 @@ from transport_matters import config, env_keys
 from transport_matters.api.v1 import run_routes, terminal_bridge
 from transport_matters.api.v1.test_terminal import _wait_until
 from transport_matters.captured_run import (
-    CLAUDE_CLIENT_NAME,
+    CLAUDE_HARNESS_NAME,
     CapturedRunLease,
     CapturedRunRequest,
     CapturedRunSpawnSpec,
@@ -70,12 +70,12 @@ def test_post_get_attach_detach_and_terminate(
     with client:
         create_response = client.post(
             "/v1/runs",
-            json={"cli": "claude", "cwd": str(tmp_path)},
+            json={"harness": "claude", "cwd": str(tmp_path)},
             headers=_http_headers(BACKEND_ORIGIN),
         )
         assert create_response.status_code == 201
         run = create_response.json()["run"]
-        assert set(run) == {"runId", "workspaceId", "sessionId", "cli", "state", "createdAt"}
+        assert set(run) == {"runId", "workspaceId", "sessionId", "harness", "state", "createdAt"}
         assert run["state"] == "RUNNING"
         run_id = run["runId"]
 
@@ -97,7 +97,7 @@ def test_post_get_attach_detach_and_terminate(
                 "runId",
                 "workspaceId",
                 "sessionId",
-                "cli",
+                "harness",
                 "state",
                 "createdAt",
             }
@@ -132,7 +132,7 @@ def test_run_views_hide_internal_fields(monkeypatch: pytest.MonkeyPatch, tmp_pat
     with client:
         create_response = client.post(
             "/v1/runs",
-            json={"cli": "claude", "cwd": str(tmp_path)},
+            json={"harness": "claude", "cwd": str(tmp_path)},
             headers=_http_headers(BACKEND_ORIGIN),
         )
         assert create_response.status_code == 201
@@ -147,7 +147,7 @@ def test_run_views_hide_internal_fields(monkeypatch: pytest.MonkeyPatch, tmp_pat
         single_run = single.json()["run"]
 
     assert listed_run == single_run
-    assert set(single_run) == {"runId", "workspaceId", "sessionId", "cli", "state", "createdAt"}
+    assert set(single_run) == {"runId", "workspaceId", "sessionId", "harness", "state", "createdAt"}
     assert "nativeSessionId" not in single_run
     assert "proxyPort" not in single_run
     assert "webPort" not in single_run
@@ -175,12 +175,12 @@ def test_list_runs_uses_items_envelope_and_cursor(
     with client:
         first_id = client.post(
             "/v1/runs",
-            json={"cli": "claude", "cwd": str(tmp_path)},
+            json={"harness": "claude", "cwd": str(tmp_path)},
             headers=_http_headers(BACKEND_ORIGIN),
         ).json()["run"]["runId"]
         second_id = client.post(
             "/v1/runs",
-            json={"cli": "claude", "cwd": str(tmp_path)},
+            json={"harness": "claude", "cwd": str(tmp_path)},
             headers=_http_headers(BACKEND_ORIGIN),
         ).json()["run"]["runId"]
 
@@ -211,7 +211,7 @@ def test_list_runs_rejects_cursor_for_different_filters(
         for _ in range(2):
             client.post(
                 "/v1/runs",
-                json={"cli": "claude", "cwd": str(tmp_path)},
+                json={"harness": "claude", "cwd": str(tmp_path)},
                 headers=_http_headers(BACKEND_ORIGIN),
             )
         first_page = client.get("/v1/runs?limit=1", headers=_http_headers(BACKEND_ORIGIN))
@@ -231,7 +231,7 @@ def test_terminate_run_is_idempotent(monkeypatch: pytest.MonkeyPatch, tmp_path: 
     with client:
         run_id = client.post(
             "/v1/runs",
-            json={"cli": "claude", "cwd": str(tmp_path)},
+            json={"harness": "claude", "cwd": str(tmp_path)},
             headers=_http_headers(BACKEND_ORIGIN),
         ).json()["run"]["runId"]
 
@@ -257,7 +257,7 @@ def test_post_rejects_origin_before_spawn(monkeypatch: pytest.MonkeyPatch, tmp_p
     with client:
         response = client.post(
             "/v1/runs",
-            json={"cli": "claude", "cwd": str(tmp_path)},
+            json={"harness": "claude", "cwd": str(tmp_path)},
             headers=_http_headers("http://evil.test"),
         )
 
@@ -275,7 +275,7 @@ def test_post_rejects_invalid_cwd_before_spawn(
     with client:
         response = client.post(
             "/v1/runs",
-            json={"cli": "claude", "cwd": "relative/path"},
+            json={"harness": "claude", "cwd": "relative/path"},
             headers=_http_headers(BACKEND_ORIGIN),
         )
 
@@ -284,7 +284,7 @@ def test_post_rejects_invalid_cwd_before_spawn(
     assert harness.manager.list() == []
 
 
-def test_post_rejects_unsupported_cli_before_spawn(
+def test_post_rejects_unsupported_harness_before_spawn(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     harness = ManagedRunHarness(tmp_path, monkeypatch)
@@ -293,12 +293,12 @@ def test_post_rejects_unsupported_cli_before_spawn(
     with client:
         response = client.post(
             "/v1/runs",
-            json={"cli": "unknown", "cwd": str(tmp_path)},
+            json={"harness": "unknown", "cwd": str(tmp_path)},
             headers=_http_headers(BACKEND_ORIGIN),
         )
 
     assert response.status_code == 400
-    assert response.json()["detail"]["code"] == "unsupported_cli"
+    assert response.json()["detail"]["code"] == "unsupported_harness"
     assert harness.manager.list() == []
 
 
@@ -310,7 +310,7 @@ def test_post_continuation_threads_lineage_context_and_idempotency(
     monkeypatch.setenv(env_keys.DATABASE_URL, test_db.database_url)
     client = _client(monkeypatch, tmp_path)
     body = {
-        "cli": "claude",
+        "harness": "claude",
         "cwd": str(tmp_path),
         "continueFromSessionId": "parent-session",
         "idempotencyKey": "resume-click-1",
@@ -350,7 +350,7 @@ def test_post_continuation_returns_not_found_for_foreign_parent(
         response = client.post(
             "/v1/runs",
             json={
-                "cli": "claude",
+                "harness": "claude",
                 "cwd": str(tmp_path),
                 "continueFromSessionId": "parent-session",
                 "idempotencyKey": "resume-click-1",
@@ -374,7 +374,7 @@ def test_post_continuation_requires_idempotency_key(
         response = client.post(
             "/v1/runs",
             json={
-                "cli": "claude",
+                "harness": "claude",
                 "cwd": str(tmp_path),
                 "continueFromSessionId": "parent-session",
             },
@@ -402,7 +402,7 @@ def test_post_runtime_template_resolves_and_sets_spawn_request(
         response = client.post(
             "/v1/runs",
             json={
-                "cli": "codex",
+                "harness": "codex",
                 "cwd": str(tmp_path),
                 "runtimeTemplate": "codex-base",
             },
@@ -414,7 +414,7 @@ def test_post_runtime_template_resolves_and_sets_spawn_request(
     captured = harness.prepared.requests[0]
     assert captured.runtime_template is not None
     assert captured.runtime_template.template_id == "codex-base"
-    assert captured.runtime_template.client_name == "codex"
+    assert captured.runtime_template.harness == "codex"
     assert captured.runtime_template.template_home == template.resolve()
     assert captured.runtime_template.provenance == {
         "registry_source": "agent-runtimes",
@@ -432,7 +432,7 @@ def test_post_empty_runtime_template_preserves_native_launch(
     with client:
         response = client.post(
             "/v1/runs",
-            json={"cli": "claude", "cwd": str(tmp_path), "runtimeTemplate": "  "},
+            json={"harness": "claude", "cwd": str(tmp_path), "runtimeTemplate": "  "},
             headers=_http_headers(BACKEND_ORIGIN),
         )
 
@@ -451,7 +451,7 @@ def test_post_missing_runtime_template_returns_machine_error(
     with client:
         response = client.post(
             "/v1/runs",
-            json={"cli": "codex", "cwd": str(tmp_path), "runtimeTemplate": "missing"},
+            json={"harness": "codex", "cwd": str(tmp_path), "runtimeTemplate": "missing"},
             headers=_http_headers(BACKEND_ORIGIN),
         )
 
@@ -506,7 +506,7 @@ def test_websocket_terminated_run_sends_typed_error(
     with client:
         run_id = client.post(
             "/v1/runs",
-            json={"cli": "claude", "cwd": str(tmp_path)},
+            json={"harness": "claude", "cwd": str(tmp_path)},
             headers=_http_headers(BACKEND_ORIGIN),
         ).json()["run"]["runId"]
         client.post(f"/v1/runs/{run_id}/terminate", headers=_http_headers(BACKEND_ORIGIN))
@@ -526,7 +526,7 @@ def test_websocket_stale_run_sends_typed_error(
     with client:
         run_id = client.post(
             "/v1/runs",
-            json={"cli": "claude", "cwd": str(tmp_path)},
+            json={"harness": "claude", "cwd": str(tmp_path)},
             headers=_http_headers(BACKEND_ORIGIN),
         ).json()["run"]["runId"]
         harness.pty.close_master(harness.manager.get(run_id).terminal)
@@ -552,7 +552,7 @@ def test_websocket_escape_interrupt_byte_reaches_child_without_terminating_run(
     with client:
         run_id = client.post(
             "/v1/runs",
-            json={"cli": "claude", "cwd": str(tmp_path)},
+            json={"harness": "claude", "cwd": str(tmp_path)},
             headers=_http_headers(BACKEND_ORIGIN),
         ).json()["run"]["runId"]
         with client.websocket_connect(
@@ -581,28 +581,30 @@ def _websocket_headers(origin: str, *, host: str = "localhost:8788") -> dict[str
     return {"origin": origin, "host": host}
 
 
-@pytest.mark.parametrize("cli_name", [CLAUDE_CLIENT_NAME, "codex"])
-def test_spawn_request_ignores_settings_default_passthrough(cli_name: str, tmp_path: Path) -> None:
+@pytest.mark.parametrize("harness_name", [CLAUDE_HARNESS_NAME, "codex"])
+def test_spawn_request_ignores_settings_default_passthrough(
+    harness_name: str, tmp_path: Path
+) -> None:
     settings = Settings(
         cwd=tmp_path,
         default_client_passthrough=("--dangerously-skip-permissions", "--model", "sonnet"),
     )
 
-    request = run_routes._spawn_request(run_routes.CreateRunRequest(cli=cli_name), settings)
+    request = run_routes._spawn_request(run_routes.CreateRunRequest(harness=harness_name), settings)
 
-    assert request.cli == cli_name
+    assert request.harness == harness_name
     assert request.passthrough == ()
     assert request.cwd == tmp_path
 
 
 def test_spawn_request_is_nested_capture_only(tmp_path: Path) -> None:
-    # A captured run never allocates a nested web port: it is capture-only, the CLI's
+    # A captured run never allocates a nested web port: it is capture-only, the harness
     # web co-process stays external. Pane launch passthrough stays explicit and empty,
     # so a managed run can never leak stale desktop passthrough or a bound web port.
     settings = Settings(cwd=tmp_path)
 
     request = run_routes._spawn_request(
-        run_routes.CreateRunRequest(cli=CLAUDE_CLIENT_NAME, cwd=str(tmp_path)), settings
+        run_routes.CreateRunRequest(harness=CLAUDE_HARNESS_NAME, cwd=str(tmp_path)), settings
     )
 
     assert request.web_port is None
@@ -619,7 +621,7 @@ def test_post_after_manager_close_returns_machine_error(
     with client:
         response = client.post(
             "/v1/runs",
-            json={"cli": "claude", "cwd": str(tmp_path)},
+            json={"harness": "claude", "cwd": str(tmp_path)},
             headers=_http_headers(BACKEND_ORIGIN),
         )
 
@@ -643,7 +645,7 @@ def test_post_proxy_unavailable_returns_machine_error(
     with client:
         response = client.post(
             "/v1/runs",
-            json={"cli": "claude", "cwd": str(tmp_path)},
+            json={"harness": "claude", "cwd": str(tmp_path)},
             headers=_http_headers(BACKEND_ORIGIN),
         )
 

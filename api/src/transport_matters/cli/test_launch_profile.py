@@ -1,5 +1,5 @@
 """The launch-side profile port (§5.2c): the single managed-launch entry point claude, codex, and
-any future mint-capable CLI share. Mirrors the read-side ``TranscriptAdapter`` (one subclass per CLI)."""
+any future mint-capable harness share. Mirrors the read-side ``TranscriptAdapter`` (one subclass per harness)."""
 
 from datetime import UTC, datetime
 from pathlib import Path
@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 from uuid import UUID
 
 from transport_matters.cli.launch_profile import (
-    PROFILES,
+    HARNESSES,
     ClaudeLaunchProfile,
     CodexLaunchProfile,
     LaunchProfile,
@@ -212,16 +212,16 @@ class TestPrepareManagedSession:
 
 
 def test_registry_maps_each_cli_to_its_profile() -> None:
-    assert isinstance(PROFILES["claude"], ClaudeLaunchProfile)
-    assert isinstance(PROFILES["codex"], CodexLaunchProfile)
-    # every registered profile is keyed by its own declared cli (no drift)
-    assert all(cli == profile.cli for cli, profile in PROFILES.items())
+    assert isinstance(HARNESSES["claude"], ClaudeLaunchProfile)
+    assert isinstance(HARNESSES["codex"], CodexLaunchProfile)
+    # every registered profile is keyed by its own declared harness (no drift)
+    assert all(harness == profile.harness for harness, profile in HARNESSES.items())
 
 
 class _FakeMintProfile(LaunchProfile):
-    """A hypothetical third mint-capable CLI — implemented as ONE small profile, nothing else."""
+    """A hypothetical third mint-capable harness — implemented as ONE small profile, nothing else."""
 
-    cli = "fakecli"
+    harness = "fakecli"
     mints_session_id = False
 
     def prepare(
@@ -250,7 +250,7 @@ class _FakeMintProfile(LaunchProfile):
 
 
 def test_dry_a_new_mint_capable_cli_plugs_into_the_shared_path(tmp_path: Path) -> None:
-    # Regression (e): adding a mint-capable CLI is "implement one profile". The SHARED
+    # Regression (e): adding a mint-capable harness is "implement one profile". The SHARED
     # prepare_managed_session mints + prepares it with ZERO edits to the launch flow.
     session = prepare_managed_session(
         _FakeMintProfile(),
@@ -281,7 +281,7 @@ class TestPersistOwnedSessionFacts:
         assert CodexLaunchProfile().mints_session_id is False
 
     def test_writes_durable_facts_from_profile_and_managed_session(self, tmp_path: Path) -> None:
-        # §11.1: the launcher persists the owned facts once, sourcing cli + minted from the profile and
+        # §11.1: the launcher persists the owned facts once, sourcing harness + minted from the profile and
         # native id + descriptor from the ManagedSession, under the run dir (== storage_root).
         descriptor = encode_source_descriptor(
             FileTailSource(path="/p", format="claude_jsonl", home_dir=str(tmp_path))
@@ -300,7 +300,7 @@ class TestPersistOwnedSessionFacts:
         assert facts is not None
         (owned,) = facts.sessions
         assert owned.run_id == "run-1"
-        assert owned.cli == "claude"
+        assert owned.harness == "claude"
         assert owned.native_session_id == "owned-uuid"
         assert owned.minted is True
         assert owned.source_descriptor == descriptor

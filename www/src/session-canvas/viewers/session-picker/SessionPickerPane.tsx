@@ -21,8 +21,8 @@ export function SessionPickerPane({ canvas, actions }: ViewerProps<PickerPaneRef
 
   const pendingLabel = useMemo(() => {
     if (!hasLaunchPending) return null;
-    return `Waiting for live ${canvas.launch.cli ?? "agent"} session`;
-  }, [canvas.launch.cli, hasLaunchPending]);
+    return `Waiting for live ${canvas.launch.harness ?? "agent"} session`;
+  }, [canvas.launch.harness, hasLaunchPending]);
 
   if (isLoading) return <SessionPickerSkeleton pendingLabel={pendingLabel} />;
   if (error) return <SessionPickerError error={error} onRetry={() => void refetch()} />;
@@ -65,7 +65,8 @@ export function SessionPickerPane({ canvas, actions }: ViewerProps<PickerPaneRef
       </div>
       {activeSession ? (
         <p className="canvas-picker__hint">
-          Press Enter to open {activeSession.title ?? activeSession.cli ?? activeSession.provider}.
+          Press Enter to open{" "}
+          {activeSession.title ?? activeSession.harness ?? activeSession.provider}.
         </p>
       ) : null}
     </fieldset>
@@ -73,7 +74,7 @@ export function SessionPickerPane({ canvas, actions }: ViewerProps<PickerPaneRef
 }
 
 function SessionRow({ session, live }: { session: SessionSummary; live: boolean }) {
-  const title = session.title ?? `${session.cli ?? session.provider} session`;
+  const title = session.title ?? `${session.harness ?? session.provider} session`;
   const started = formatRelativeAge(session.lastActivityAt);
   return (
     <span className="canvas-picker__row-inner">
@@ -83,7 +84,7 @@ function SessionRow({ session, live }: { session: SessionSummary; live: boolean 
       </span>
       <span className="canvas-picker__row-meta">
         <span>{session.provider}</span>
-        <span>{session.cli ?? "cli unknown"}</span>
+        <span>{session.harness ?? "harness unknown"}</span>
         <span>{session.status}</span>
         <span>{started}</span>
       </span>

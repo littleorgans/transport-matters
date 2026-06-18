@@ -6,7 +6,7 @@ import tomllib
 from pathlib import Path
 from typing import TYPE_CHECKING, Any  # Any: parsed TOML values are heterogeneous.
 
-from transport_matters.launch_environment import CLIENT_NAME_CODEX
+from transport_matters.launch_environment import HARNESS_NAME_CODEX
 
 from . import home_constants, home_io
 
@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 class CodexSeeder:
     """Seed Codex auth and cwd trust."""
 
-    client_name = CLIENT_NAME_CODEX
+    harness: str = HARNESS_NAME_CODEX
 
     def seed(
         self,

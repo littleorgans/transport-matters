@@ -7,7 +7,7 @@ def make_binding(
     session_id: str,
     *,
     provider: str = "anthropic",
-    cli: str | None = "claude",
+    harness: str | None = "claude",
     run_id: str = "run1",
     cwd: str = "/w",
     workspace_slug: str = "slug",
@@ -25,7 +25,7 @@ def make_binding(
         workspace_slug=workspace_slug,
         workspace_hash=workspace_hash,
         started_at=started_at,
-        cli=cli,
+        harness=harness,
         native_session_id=native_session_id if native_session_id is not None else session_id,
         minted=minted,
     )

@@ -14,7 +14,7 @@ export function SessionCanvasRoute() {
   const launchResolution = useLaunchSession(launch);
   const resolved =
     launchResolution.data?.status === "resolved" ? launchResolution.data.session : undefined;
-  const hasLaunchLookup = launch.workspaceHash !== null && launch.cli !== null;
+  const hasLaunchLookup = launch.workspaceHash !== null && launch.harness !== null;
   const launchStatus =
     launchResolution.data?.status ??
     (hasLaunchLookup && launchResolution.isPending ? "pending" : "unavailable");

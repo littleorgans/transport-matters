@@ -78,7 +78,7 @@ async def test_shared_proxy_subprocess_adds_removes_reverse_and_regular_modes(
                 make_binding(
                     short_runtime_dir,
                     run_id="run-reverse",
-                    cli="claude",
+                    harness="claude",
                     port=reverse_port,
                     upstream=origin,
                 )
@@ -90,7 +90,7 @@ async def test_shared_proxy_subprocess_adds_removes_reverse_and_regular_modes(
                 make_binding(
                     short_runtime_dir,
                     run_id="run-regular",
-                    cli="codex",
+                    harness="codex",
                     port=regular_port,
                     upstream=None,
                 )
@@ -115,7 +115,7 @@ async def test_shared_proxy_subprocess_adds_removes_reverse_and_regular_modes(
                 make_binding(
                     short_runtime_dir,
                     run_id="run-reverse-2",
-                    cli="claude",
+                    harness="claude",
                     port=reverse_port,
                     upstream=origin,
                 )
@@ -144,7 +144,7 @@ async def test_shared_proxy_manager_respawns_and_rehydrates_live_bindings(
                 make_binding(
                     short_runtime_dir,
                     run_id="run-reverse",
-                    cli="claude",
+                    harness="claude",
                     port=reverse_port,
                     upstream=origin,
                 )
@@ -153,7 +153,7 @@ async def test_shared_proxy_manager_respawns_and_rehydrates_live_bindings(
                 make_binding(
                     short_runtime_dir,
                     run_id="run-regular",
-                    cli="codex",
+                    harness="codex",
                     port=regular_port,
                     upstream=None,
                 )
@@ -214,13 +214,13 @@ def make_binding(
     runtime_dir: Path,
     *,
     run_id: str,
-    cli: str,
+    harness: str,
     port: int,
     upstream: str | None,
 ) -> ProxyRunBinding:
     return ProxyRunBinding(
         run_id=run_id,
-        cli=cli,
+        harness=harness,
         working_dir=runtime_dir,
         storage=DiskStorageBackend(runtime_dir / run_id),
         listen_port=port,

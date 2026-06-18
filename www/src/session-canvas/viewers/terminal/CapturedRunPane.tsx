@@ -1,7 +1,7 @@
 import { type ReactElement, useCallback, useEffect, useState } from "react";
-import type { CliName } from "../../../types";
+import type { HarnessName } from "../../../types";
 import { useCapturedRunStore } from "../../model/capturedRunStore";
-import { cliLabel } from "../../model/paneRecords";
+import { harnessLabel } from "../../model/paneRecords";
 import { parseRunErrorFrame, type RunErrorFrame } from "./runTerminalFrames";
 import { closedMessage, useTerminalSession } from "./terminalSession";
 import { runTerminalSocketUrl } from "./terminalSocket";
@@ -10,14 +10,14 @@ import "./terminal-pane.css";
 export interface CapturedRunPaneProps {
   /** Stable per-pane key (the lab pane id) that owns this run; the persistence key. */
   runKey: string;
-  /** Managed CLI to launch as a captured run; selects the terminal + CLI label. */
-  provider: CliName;
+  /** Managed harness to launch as a captured run; selects the terminal and harness label. */
+  provider: HarnessName;
   /** Absolute working directory; omitted lets the backend resolve its workspace. */
   cwd?: string;
 }
 
 /**
- * A captured managed-CLI session (Claude or Codex) in a canvas pane: the desktop
+ * A captured managed harness session (Claude or Codex) in a canvas pane: the desktop
  * equivalent of `transport-matters {provider}`, with the agent's traffic routed
  * through the TM reverse proxy. Each pane owns its OWN server-managed run, keyed by
  * `runKey` (the stable pane id): it spawns the run once via `POST /v1/runs`,
@@ -65,7 +65,7 @@ export function CapturedRunPane({ runKey, provider, cwd }: CapturedRunPaneProps)
     return (
       <div className="terminal-pane" aria-busy="true">
         <p className="terminal-pane__status terminal-pane__status--progress" role="status">
-          Starting {cliLabel(provider)}…
+          Starting {harnessLabel(provider)}…
         </p>
       </div>
     );
@@ -80,7 +80,7 @@ function AttachedRunTerminal({
   runId,
 }: {
   paneId: string;
-  provider: CliName;
+  provider: HarnessName;
   runId: string;
 }): ReactElement {
   const [errorFrame, setErrorFrame] = useState<RunErrorFrame | null>(null);
@@ -117,7 +117,7 @@ function AttachedRunTerminal({
       )}
       {status === null && !hasOutput ? (
         <p className="terminal-pane__status terminal-pane__status--progress" role="status">
-          Starting {cliLabel(provider)}…
+          Starting {harnessLabel(provider)}…
         </p>
       ) : null}
     </div>
@@ -126,16 +126,16 @@ function AttachedRunTerminal({
 
 /** A run.error frame wins over a plain socket close; both surface as a banner. */
 function runStatus(
-  provider: CliName,
+  provider: HarnessName,
   error: RunErrorFrame | null,
   closedCode: number | null,
 ): string | null {
   if (error) return `Captured run failed (${error.code}): ${error.message}`;
-  if (closedCode !== null) return closedMessage(closedCode, cliLabel(provider));
+  if (closedCode !== null) return closedMessage(closedCode, harnessLabel(provider));
   return null;
 }
 
-function spawnErrorMessage(provider: CliName, error: unknown): string {
+function spawnErrorMessage(provider: HarnessName, error: unknown): string {
   const detail = error instanceof Error ? error.message : String(error);
-  return `${cliLabel(provider)} captured run failed to start: ${detail}`;
+  return `${harnessLabel(provider)} captured run failed to start: ${detail}`;
 }

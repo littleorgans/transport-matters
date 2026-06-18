@@ -1,4 +1,4 @@
-"""The transcript adapter port (§4): the ABC + the frozen dataclasses every CLI maps onto.
+"""The transcript adapter port (§4): the ABC + the frozen dataclasses every harness maps onto.
 
 Adapters are the transcript-side anti-corruption layer. They import **only** ``ir`` (and stdlib)
 so a transcript ``text``/``tool_use``/``tool_result``/``thinking``/``image`` is the *same*
@@ -33,7 +33,9 @@ class SessionBinding(BaseModel):
     workspace_slug: str
     workspace_hash: str
     started_at: str  # ISO-8601
-    cli: str | None = None  # harness: claude | codex | ...; nullable until the launcher plumbs it
+    harness: str | None = (
+        None  # harness: claude | codex | ...; nullable until the launcher plumbs it
+    )
     native_session_id: str | None = None  # provider native id (for the §3.4 partial-unique guard)
     minted: bool = False  # True = we minted via --session-id (deferred); False = native / read-back
     source_descriptor: str | None = (
@@ -46,7 +48,7 @@ class SessionBinding(BaseModel):
     home_dir: str | None = (
         None  # managed --agent-home-dir for this run; threaded from RunFacts so ``locate`` resolves the
         # transcript root under the managed home (§5.2c external-adoption). Survives the re-bind via
-        # ``RunContext`` like ``cwd`` (set on the binding by ``bind``); ``None`` = the CLI native home.
+        # ``RunContext`` like ``cwd`` (set on the binding by ``bind``); ``None`` = the harness native home.
     )
 
 
@@ -60,7 +62,7 @@ class FileTailSource(BaseModel):
     format: str  # claude_jsonl | codex_rollout | gemini_session | gemini_checkpoint
     encoding: str = "utf-8"
     home_dir: str | None = (
-        None  # managed --agent-home-dir the path resolves under; None = the CLI's native home (§11.1).
+        None  # managed --agent-home-dir the path resolves under; None = the harness native home (§11.1).
         # Carried EXPLICITLY (not just baked into ``path``) so a §10.5 rebuild re-resolves the
         # transcript root without the live launch env. Optional + JSON-encoded → an old descriptor
         # without the field decodes to None (no ADAPTERS_VERSION bump; ``source_descriptor`` is TEXT).
@@ -107,12 +109,12 @@ class RunContext(BaseModel):
     cwd: str
     workspace_slug: str
     workspace_hash: str
-    cli: str
+    harness: str
     started_at: str
     native_session_id: str | None = None  # read-back input: native id learned from the wire / db
     home_dir: str | None = (
         None  # managed --agent-home-dir; ``bind`` carries it onto the binding (like ``cwd``) so ``locate``
-        # resolves the transcript root under the managed home. ``None`` = the CLI's native home.
+        # resolves the transcript root under the managed home. ``None`` = the harness native home.
     )
 
 
@@ -144,7 +146,7 @@ class NormalizedTurn(BaseModel):
     session_id: str  # NOT NULL (a turn only exists under a bound session)
     run_id: str
     provider: str
-    cli: str
+    harness: str
     role: str  # user | assistant | system | tool
     seq: int
     is_sidechain: bool
@@ -157,10 +159,10 @@ class NormalizedTurn(BaseModel):
 
 
 class TranscriptAdapter(ABC):
-    """Transcript-side anti-corruption layer. One concrete subclass per CLI (§5), registered by ``cli``."""
+    """Transcript-side anti-corruption layer. One concrete subclass per harness (§5), registered by ``harness``."""
 
     provider: ClassVar[str]
-    cli: ClassVar[str]
+    harness: ClassVar[str]
 
     @abstractmethod
     async def bind(self, run: RunContext) -> SessionBinding:

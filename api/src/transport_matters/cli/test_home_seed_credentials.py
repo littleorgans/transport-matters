@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 from transport_matters.cli.home_seed import prepare_runtime_home_overlay
-from transport_matters.launch_environment import CLIENT_NAME_CLAUDE, CLIENT_NAME_CODEX
+from transport_matters.launch_environment import HARNESS_NAME_CLAUDE, HARNESS_NAME_CODEX
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -27,7 +27,7 @@ def test_claude_runtime_overlay_links_credentials_from_auth_source(
     workdir.mkdir()
 
     prepare_runtime_home_overlay(
-        CLIENT_NAME_CLAUDE,
+        HARNESS_NAME_CLAUDE,
         source_home_dir=content,
         auth_source_home_dir=native,
         runtime_home_dir=runtime,
@@ -42,29 +42,29 @@ def test_claude_runtime_overlay_links_credentials_from_auth_source(
 
 
 @pytest.mark.parametrize(
-    ("client_name", "credential_name", "env_key"),
+    ("harness", "credential_name", "env_key"),
     [
-        (CLIENT_NAME_CODEX, "auth.json", "CODEX_HOME"),
-        (CLIENT_NAME_CLAUDE, ".credentials.json", "CLAUDE_CONFIG_DIR"),
+        (HARNESS_NAME_CODEX, "auth.json", "CODEX_HOME"),
+        (HARNESS_NAME_CLAUDE, ".credentials.json", "CLAUDE_CONFIG_DIR"),
     ],
 )
 def test_runtime_overlay_skips_missing_native_credentials_without_content_fallback(
     tmp_path: Path,
-    client_name: str,
+    harness: str,
     credential_name: str,
     env_key: str,
 ) -> None:
-    content = tmp_path / f"content-{client_name}"
+    content = tmp_path / f"content-{harness}"
     content.mkdir()
     (content / credential_name).write_text("template secret\n", encoding="utf-8")
-    auth_source = tmp_path / f"native-{client_name}"
+    auth_source = tmp_path / f"native-{harness}"
     auth_source.mkdir()
-    runtime = tmp_path / "runtime" / client_name
+    runtime = tmp_path / "runtime" / harness
     workdir = tmp_path / "project"
     workdir.mkdir()
 
     prepare_runtime_home_overlay(
-        client_name,
+        harness,
         source_home_dir=content,
         auth_source_home_dir=auth_source,
         runtime_home_dir=runtime,
@@ -77,31 +77,31 @@ def test_runtime_overlay_skips_missing_native_credentials_without_content_fallba
 
 
 @pytest.mark.parametrize(
-    ("client_name", "credential_name", "env_key"),
+    ("harness", "credential_name", "env_key"),
     [
-        (CLIENT_NAME_CODEX, "auth.json", "CODEX_HOME"),
-        (CLIENT_NAME_CLAUDE, ".credentials.json", "CLAUDE_CONFIG_DIR"),
+        (HARNESS_NAME_CODEX, "auth.json", "CODEX_HOME"),
+        (HARNESS_NAME_CLAUDE, ".credentials.json", "CLAUDE_CONFIG_DIR"),
     ],
 )
 def test_runtime_overlay_credential_teardown_leaves_native_file(
     tmp_path: Path,
-    client_name: str,
+    harness: str,
     credential_name: str,
     env_key: str,
 ) -> None:
-    content = tmp_path / f"content-{client_name}"
+    content = tmp_path / f"content-{harness}"
     content.mkdir()
-    auth_source = tmp_path / f"native-{client_name}"
+    auth_source = tmp_path / f"native-{harness}"
     auth_source.mkdir()
     native_credential = auth_source / credential_name
     native_credential.write_text("native sentinel\n", encoding="utf-8")
     runtime_root = tmp_path / "runtime"
-    runtime = runtime_root / client_name
+    runtime = runtime_root / harness
     workdir = tmp_path / "project"
     workdir.mkdir()
 
     prepare_runtime_home_overlay(
-        client_name,
+        harness,
         source_home_dir=content,
         auth_source_home_dir=auth_source,
         runtime_home_dir=runtime,

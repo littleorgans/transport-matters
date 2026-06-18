@@ -17,7 +17,7 @@ _REGISTRY_SOURCE = "agent-runtimes"
 
 def resolve_runtime_template(
     name: str,
-    client_name: str,
+    harness: str,
     *,
     env: Mapping[str, str],
 ) -> RuntimeTemplateRef:
@@ -36,7 +36,7 @@ def resolve_runtime_template(
         )
     return RuntimeTemplateRef(
         template_id=template_id,
-        client_name=client_name,
+        harness=harness,
         template_home=template_home,
         provenance={
             "registry_source": _REGISTRY_SOURCE,

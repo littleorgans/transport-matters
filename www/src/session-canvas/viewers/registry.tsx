@@ -2,7 +2,7 @@ import { lazy, type ReactNode, Suspense } from "react";
 import type { PaneId } from "../../engine";
 import {
   type CanvasPaneRef,
-  cliLabel,
+  harnessLabel,
   locatorTail,
   type PaneContentRef,
   type PaneRecord,
@@ -114,7 +114,7 @@ const registry: ViewerRegistration[] = [
     // (provider:uuid). Two same-provider captured runs carry distinct keys => distinct
     // pane ids; they never dedupe onto one shared terminal.
     paneId: (ref) => ref.runKey,
-    title: (ref) => ref.label ?? cliLabel(ref.provider),
+    title: (ref) => ref.label ?? harnessLabel(ref.provider),
     // Self-contained like the bare terminal (its own xterm + captured PTY socket). The pane id is
     // the per-pane run key, so each captured pane owns its own run. Lazy, so a Suspense boundary
     // covers the one-time shared-chunk fetch.

@@ -10,18 +10,18 @@ describe("session canvas route", () => {
 
   it("parses launch context from query params", () => {
     expect(
-      parseCanvasLaunchContext("?owner=local&workspace_hash=hash-1&cli=codex&run_id=run-1"),
-    ).toEqual({ owner: "local", workspaceHash: "hash-1", cli: "codex", runId: "run-1" });
+      parseCanvasLaunchContext("?owner=local&workspace_hash=hash-1&harness=codex&run_id=run-1"),
+    ).toEqual({ owner: "local", workspaceHash: "hash-1", harness: "codex", runId: "run-1" });
     expect(parseCanvasLaunchContext("")).toEqual({
       owner: "local",
       workspaceHash: null,
-      cli: null,
+      harness: null,
       runId: null,
     });
     expect(parseCanvasLaunchContext("?owner=local&workspace_hash=hash-1")).toEqual({
       owner: "local",
       workspaceHash: "hash-1",
-      cli: null,
+      harness: null,
       runId: null,
     });
   });

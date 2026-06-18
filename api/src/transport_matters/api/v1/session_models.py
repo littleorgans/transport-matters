@@ -59,7 +59,7 @@ class SessionView(PublicSessionModel):
     title: str | None
     status: str
     provider: str
-    cli: str
+    harness: str
     created_at: datetime
     last_activity_at: datetime
     purpose: SessionPurposeLiteral
@@ -160,7 +160,7 @@ def session_view_from_row(row: SessionListRow) -> SessionView:
         title=row.title,
         status=str(row.status),
         provider=row.provider,
-        cli=row.cli or "",
+        harness=row.harness or "",
         created_at=row.created_at or row.started_at,
         last_activity_at=row.last_activity_at,
         purpose=str(row.session_purpose),

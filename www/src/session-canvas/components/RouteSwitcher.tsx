@@ -42,7 +42,7 @@ export function RouteSwitcher({ routes = CANVAS_ROUTES }: RouteSwitcherProps) {
 }
 
 // Full-load navigation to the target pathname, PRESERVING the current query string so returning to
-// /canvas keeps its workspace_hash / cli / run_id launch context (www has no client router).
+// /canvas keeps its workspace_hash / harness / run_id launch context (www has no client router).
 function navigateToRoute(path: string): void {
   if (typeof window === "undefined") return;
   if (window.location.pathname === path) return;

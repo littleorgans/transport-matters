@@ -3,7 +3,7 @@ export type RootRoute = "canvas" | "canvas-lab" | "legacy";
 export interface CanvasLaunchContext {
   owner: "local";
   workspaceHash: string | null;
-  cli: string | null;
+  harness: string | null;
   runId: string | null;
 }
 
@@ -18,7 +18,7 @@ export function parseCanvasLaunchContext(search: string | URLSearchParams): Canv
   return {
     owner: "local",
     workspaceHash: valueOrNull(params.get("workspace_hash")),
-    cli: valueOrNull(params.get("cli")),
+    harness: valueOrNull(params.get("harness")),
     runId: valueOrNull(params.get("run_id")),
   };
 }

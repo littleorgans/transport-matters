@@ -59,7 +59,7 @@ def _binding() -> SessionBinding:
         workspace_slug="workspace",
         workspace_hash="hash1",
         started_at=datetime(2026, 6, 6, tzinfo=UTC).isoformat(),
-        cli="claude",
+        harness="claude",
         native_session_id=_SESSION,
         minted=True,
         source_descriptor=descriptor,
@@ -123,7 +123,7 @@ def _event_row(seq: int, raw: dict[str, Any]) -> EventWrite:
             native_turn_id=f"turn{seq}",
             run_id="run1",
             provider="anthropic",
-            cli="claude",
+            harness="claude",
             raw=raw,
             source_path="/tmp/transcript.jsonl",
             source_line=seq,
@@ -471,7 +471,7 @@ async def test_dead_letter_insert_is_idempotent_and_caps_excerpt(test_db: TestDb
         run_id="run1",
         native_session_id=_SESSION,
         provider="anthropic",
-        cli="claude",
+        harness="claude",
         byte_start=0,
         byte_end=10,
         error_class="UniqueViolation",
@@ -579,7 +579,7 @@ def test_replay_transcript_run_yields_snapshot_records_without_wire_index(tmp_pa
     binding, _record, _seq, source, provenance = rows[0]
     assert binding.session_id == session_id
     assert binding.provider == "codex"
-    assert binding.cli == "codex"
+    assert binding.harness == "codex"
     assert binding.cwd == "/w"
     assert source.path.endswith("rollout.jsonl")
     assert provenance is not None

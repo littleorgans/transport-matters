@@ -59,7 +59,7 @@ def _request(
 ) -> CapturedRunRequest:
     addon.write_text("# test addon\n", encoding="utf-8")
     return CapturedRunRequest(
-        client_name="claude",
+        harness="claude",
         passthrough=(),
         directory=workdir,
         proxy_port=proxy_port,

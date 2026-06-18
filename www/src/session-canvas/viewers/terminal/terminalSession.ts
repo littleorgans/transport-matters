@@ -22,7 +22,7 @@ export interface TerminalSessionOptions {
   /** Registers a drop-paste handle for this pane while mounted. */
   paneId?: string;
   /**
-   * Captured runs: the backend bridge answers the CLI's OSC 10/11 color
+   * Captured runs: the backend bridge answers the harness OSC 10/11 color
    * queries (api: osc_color_responder), so xterm must not answer too or a
    * focus-event requery lets the viewer shout over the bridge. Set-color
    * payloads still reach xterm; only the "?" queries are swallowed.

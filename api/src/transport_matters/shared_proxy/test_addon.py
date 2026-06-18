@@ -577,7 +577,7 @@ def _register_bindings(
             binding_payload_from_binding(
                 ProxyRunBinding(
                     run_id=run_id,
-                    cli="claude",
+                    harness="claude",
                     working_dir=tmp_path,
                     storage=storage,
                     listen_port=port,

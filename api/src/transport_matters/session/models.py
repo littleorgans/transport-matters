@@ -60,7 +60,7 @@ class SessionRow(BaseModel):
 
     session_id: str
     provider: str
-    cli: str | None = None
+    harness: str | None = None
     run_id: str
     cwd: str = ""
     workspace_slug: str
@@ -109,7 +109,7 @@ class EventRow(BaseModel):
     parent_seq: int | None = None
     run_id: str
     provider: str
-    cli: str
+    harness: str
     role: str | None = None
     is_sidechain: bool = False
     ts: datetime | None = None
@@ -134,7 +134,7 @@ class DeadLetterWrite(BaseModel):
     run_id: str
     native_session_id: str | None = None
     provider: str | None = None
-    cli: str | None = None
+    harness: str | None = None
     source_path: str | None = None
     source_line: int | None = None
     event_kind: str | None = None
@@ -158,7 +158,7 @@ class EventReadRow(BaseModel):
     parent_seq: int | None = None
     run_id: str
     provider: str
-    cli: str
+    harness: str
     role: str | None = None
     is_sidechain: bool = False
     ts: datetime | None = None

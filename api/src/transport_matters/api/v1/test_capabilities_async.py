@@ -5,7 +5,7 @@ from __future__ import annotations
 import threading
 from typing import TYPE_CHECKING
 
-from transport_matters.capabilities import CliCapability
+from transport_matters.capabilities import HarnessCapability
 
 if TYPE_CHECKING:
     import pytest
@@ -19,16 +19,16 @@ async def test_capabilities_endpoint_offloads_detection(
     loop_thread = threading.get_ident()
     detected_thread: dict[str, int] = {}
 
-    def fake_detect_clis() -> dict[str, CliCapability]:
+    def fake_detect_harnesses() -> dict[str, HarnessCapability]:
         detected_thread["id"] = threading.get_ident()
         return {
-            "claude": CliCapability(installed=True, path="/bin/claude", version=None),
-            "codex": CliCapability(installed=False, path=None, version=None),
+            "claude": HarnessCapability(installed=True, path="/bin/claude", version=None),
+            "codex": HarnessCapability(installed=False, path=None, version=None),
         }
 
     monkeypatch.setattr(
-        "transport_matters.api.v1.capabilities.detect_clis",
-        fake_detect_clis,
+        "transport_matters.api.v1.capabilities.detect_harnesses",
+        fake_detect_harnesses,
     )
 
     response = await client.get("/api/capabilities")

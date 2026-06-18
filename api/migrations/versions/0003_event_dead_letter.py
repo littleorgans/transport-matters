@@ -26,7 +26,7 @@ def upgrade() -> None:
             run_id text NOT NULL,
             native_session_id text,
             provider text,
-            cli text,
+            harness text,
             source_path text,
             source_line integer,
             event_kind text,

@@ -58,7 +58,7 @@ def _codex_response_item(text: str) -> str:
 
 
 def _codex_wire_binding(native: str, descriptor: str | None) -> SessionBinding:
-    """A codex wire binding as adapter binding resolves it: synth session_id, cli unset on the
+    """A codex wire binding as adapter binding resolves it: synth session_id, harness unset on the
     wire side, ``source_descriptor`` present only for the session the launcher owns (§5.2b)."""
     return SessionBinding(
         session_id=synth_session_id(_RUN, "codex", native),
@@ -68,7 +68,7 @@ def _codex_wire_binding(native: str, descriptor: str | None) -> SessionBinding:
         workspace_slug="s",
         workspace_hash="h",
         started_at="t",
-        cli=None,
+        harness=None,
         native_session_id=native,
         minted=False,
         source_descriptor=descriptor,
@@ -86,7 +86,7 @@ def _claude_wire_binding(session_id: str, descriptor: str | None) -> SessionBind
         workspace_slug="s",
         workspace_hash="h",
         started_at="t",
-        cli="claude",
+        harness="claude",
         native_session_id=session_id,
         minted=True,
         source_descriptor=descriptor,
@@ -297,7 +297,7 @@ class TestSnapshotTee:
     """Slice 8b-i: the tailer tees the consumed transcript bytes into the injected snapshot writer."""
 
     def test_poll_tees_consumed_bytes_at_cursor_offset(self, tmp_path: Path) -> None:
-        # The tee mirrors the CLI cursor: one call per poll with (session_id, start_offset, consumed
+        # The tee mirrors the harness cursor: one call per poll with (session_id, start_offset, consumed
         # bytes), the SAME bytes iter_complete_records consumed, the trailing partial excluded.
         path = tmp_path / "t.jsonl"
         first = _user_line("u1", "hi") + "\n"
@@ -352,7 +352,7 @@ class TestSnapshotTee:
 
     def test_snapshot_failure_does_not_advance_and_retries_next_poll(self, tmp_path: Path) -> None:
         # The tee is coupled to the cursor advance: a snapshot raise must NOT advance byte_offset AND
-        # must NOT set stat_signature, so the very next poll RETRIES even though the CLI file is
+        # must NOT set stat_signature, so the very next poll RETRIES even though the harness file is
         # unchanged (no waiting for the file to grow). Keeps tier-1 snapshot + events consistent.
         path = tmp_path / "t.jsonl"
         path.write_text(_user_line("u1", "hi") + "\n")
@@ -367,7 +367,7 @@ class TestSnapshotTee:
         tailer.register(_cursor(str(path)))
 
         tailer.poll()  # snapshot raises → poll() swallows + logs
-        tailer.poll()  # CLI file UNCHANGED → must retry, not skip at the stat guard
+        tailer.poll()  # harness file UNCHANGED → must retry, not skip at the stat guard
 
         assert len(calls) == 2  # retried on the unchanged file
         assert submitted == []  # ingest never ran because snapshot raised first
@@ -453,7 +453,7 @@ class TestRegisterCursor:
     async def test_codex_rebind_converges_and_uses_owned_descriptor(self, tmp_path: Path) -> None:
         # The transcript binding is RE-DERIVED through the adapter (bind() + RunContext go LIVE,
         # audit #2): for codex read-back the synth session_id must reproduce the wire side's (§7.2),
-        # and the cursor binds the codex adapter's cli. Managed-mint (§5.2b): the source is the OWNED
+        # and the cursor binds the codex adapter's harness. Managed-mint (§5.2b): the source is the OWNED
         # rollout from the wire binding's source_descriptor, NOT a ~/.codex glob (the glob is gone).
         native = "019e0000-0000-7000-8000-00000000c0de"
         rollout = tmp_path / f"rollout-2026-06-05T10-00-00-{native}.jsonl"
@@ -465,7 +465,7 @@ class TestRegisterCursor:
         await register_session_cursor(tailer, CodexAdapter(), wire_binding)
         (cursor,) = tailer._snapshot()
         assert cursor.binding.session_id == wire_binding.session_id  # convergence: same synth id
-        assert cursor.binding.cli == "codex"  # adapter-derived (was None on the wire binding)
+        assert cursor.binding.harness == "codex"  # adapter-derived (was None on the wire binding)
         assert isinstance(cursor.source, FileTailSource)
         assert cursor.source.format == "codex_rollout"
         assert cursor.source.path == str(rollout)  # the OWNED path, byte-for-byte (no glob)
@@ -568,7 +568,7 @@ class TestCodexModelThreading:
         binding = make_binding(
             synth_session_id("run1", "codex", native),
             provider="codex",
-            cli="codex",
+            harness="codex",
             native_session_id=native,
         )
         submitted: list[EventWrite] = []
