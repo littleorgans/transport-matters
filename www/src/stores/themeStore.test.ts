@@ -31,22 +31,21 @@ describe("themeStore", () => {
     expect(useThemeStore.getState().theme).toBeNull();
   });
 
-  it("cycleTheme walks every bundled preset and wraps without returning to unthemed", () => {
-    const first = presetThemes[0];
-    const last = presetThemes.at(-1);
-    if (!first || !last) throw new Error("expected bundled presets");
-
-    for (const preset of presetThemes) {
-      useThemeStore.getState().cycleTheme();
-      expect(useThemeStore.getState().theme?.id).toBe(preset.id);
-    }
+  it("cycleTheme walks presets plus none and wraps to open-water", () => {
+    useThemeStore.getState().setTheme(openWater);
 
     useThemeStore.getState().cycleTheme();
-    expect(useThemeStore.getState().theme?.id).toBe(first.id);
+    expect(useThemeStore.getState().theme?.id).toBe("littleorgans");
 
-    useThemeStore.getState().setTheme(last);
     useThemeStore.getState().cycleTheme();
-    expect(useThemeStore.getState().theme?.id).toBe(first.id);
+    expect(useThemeStore.getState().theme).toBeNull();
+
+    useThemeStore.getState().cycleTheme();
+    expect(useThemeStore.getState().theme?.id).toBe("open-water");
+
+    useThemeStore.getState().setTheme({ ...openWater, id: "custom", name: "Custom" });
+    useThemeStore.getState().cycleTheme();
+    expect(useThemeStore.getState().theme?.id).toBe("open-water");
   });
 
   it("setSceneParam writes through to the persisted theme settings", () => {

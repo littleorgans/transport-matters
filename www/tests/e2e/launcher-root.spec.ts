@@ -106,7 +106,18 @@ test("$mod+K Settings cycles theme with ArrowRight and keeps launcher open", asy
   await input.press("ArrowRight");
   await expect(input).toBeVisible();
   await expect(
+    page.locator(".launcher__row-subtitle").filter({ hasText: "Current: none" }),
+  ).toBeVisible();
+  expect(await activeThemeId(page)).toBeNull();
+
+  await input.press("ArrowRight");
+  await expect(input).toBeVisible();
+  await expect(
     page.locator(".launcher__row-subtitle").filter({ hasText: "Current: Open water" }),
   ).toBeVisible();
+  expect(await activeThemeId(page)).toBe("open-water");
+
+  await input.press("Enter");
+  await expect(input).toBeHidden();
   expect(await activeThemeId(page)).toBe("open-water");
 });

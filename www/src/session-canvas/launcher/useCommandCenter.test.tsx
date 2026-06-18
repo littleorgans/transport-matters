@@ -77,15 +77,15 @@ describe("useCommandCenter", () => {
     expect(result.current.scope).toBe("settings");
   });
 
-  it("selecting Cycle theme runs the command and leaves the launcher open", async () => {
+  it("selecting Cycle theme closes the launcher without running the command", async () => {
     const { result, onCommand } = mount();
     await openSettings(result);
 
     act(() => result.current.selectValue("cmd:cycle-theme"));
 
-    expect(onCommand).toHaveBeenCalledWith({ kind: "cycle-theme" });
-    expect(result.current.open).toBe(true);
-    expect(result.current.scope).toBe("settings");
+    expect(onCommand).not.toHaveBeenCalled();
+    expect(result.current.open).toBe(false);
+    expect(result.current.scope).toBe("root");
   });
 
   it("ArrowRight uses the first selectable row when Ark clears highlight", async () => {

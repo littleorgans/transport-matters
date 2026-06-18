@@ -14,12 +14,16 @@ export interface UseCommandCenterArgs {
   canvasGestureModifier: CanvasGestureModifier;
 }
 
-function isCycleThemeAction(action: RowAction | undefined): action is RowAction {
+function isCycleThemeAction(
+  action: RowAction | undefined,
+): action is Extract<RowAction, { kind: "command" }> {
   return action?.kind === "command" && action.command.kind === "cycle-theme";
 }
 
-function advancesWithArrowRight(action: RowAction | undefined): action is RowAction {
-  return action?.kind === "enter" || isCycleThemeAction(action);
+function isEnterAction(
+  action: RowAction | undefined,
+): action is Extract<RowAction, { kind: "enter" }> {
+  return action?.kind === "enter";
 }
 
 function activeInputRow(
@@ -111,8 +115,11 @@ export function useCommandCenter({
         retry();
         return;
       }
+      if (action.command.kind === "cycle-theme") {
+        close();
+        return;
+      }
       onCommand(action.command);
-      if (action.command.kind === "cycle-theme") return;
       close();
     },
     [onCommand, retry, close],
@@ -150,7 +157,12 @@ export function useCommandCenter({
       const caret = event.currentTarget.selectionStart ?? 0;
       if (event.key === "ArrowRight" && caret >= query.length) {
         const row = activeInputRow(rowByValue, highlighted);
-        if (advancesWithArrowRight(row?.action)) {
+        if (isCycleThemeAction(row?.action)) {
+          event.preventDefault();
+          onCommand(row.action.command);
+          return;
+        }
+        if (isEnterAction(row?.action)) {
           event.preventDefault();
           runAction(row.action);
         }
@@ -163,7 +175,7 @@ export function useCommandCenter({
         setScope("root");
       }
     },
-    [query.length, highlighted, rowByValue, runAction, scope],
+    [query.length, highlighted, rowByValue, onCommand, runAction, scope],
   );
 
   return {

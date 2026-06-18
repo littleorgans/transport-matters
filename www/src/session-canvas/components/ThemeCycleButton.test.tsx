@@ -4,33 +4,36 @@ import { useThemeStore } from "../../stores/themeStore";
 import { presetThemes } from "../../theme/presets";
 import { ThemeCycleButton } from "./ThemeCycleButton";
 
+const openWater = presetThemes.find((theme) => theme.id === "open-water");
+if (!openWater) throw new Error("expected open-water preset");
+
 beforeEach(() => {
   useThemeStore.setState({ theme: null });
 });
 
 describe("ThemeCycleButton", () => {
-  it("cycles unthemed through every preset and wraps to the first preset", () => {
+  it("cycles through every preset plus none and wraps to open-water", () => {
     render(<ThemeCycleButton />);
     const button = screen.getByRole("button", { name: "Theme: none" });
+    const expectedStops = [
+      openWater,
+      ...presetThemes.filter((theme) => theme.id !== openWater.id),
+      null,
+      openWater,
+    ];
 
-    for (const preset of presetThemes) {
+    for (const stop of expectedStops) {
       fireEvent.click(button);
-      expect(useThemeStore.getState().theme?.id).toBe(preset.id);
-      expect(button).toHaveTextContent(`Theme: ${preset.name}`);
+      expect(useThemeStore.getState().theme?.id ?? null).toBe(stop?.id ?? null);
+      expect(button).toHaveTextContent(`Theme: ${stop?.name ?? "none"}`);
     }
-
-    fireEvent.click(button);
-    expect(useThemeStore.getState().theme?.id).toBe(presetThemes[0]?.id);
-    expect(button).toHaveTextContent(`Theme: ${presetThemes[0]?.name}`);
   });
 
-  it("restarts the cycle from the first preset for an unknown active theme", () => {
-    const first = presetThemes[0];
-    if (!first) throw new Error("expected bundled presets");
-    useThemeStore.setState({ theme: { ...first, id: "custom", name: "Custom" } });
+  it("restarts the cycle from open-water for an unknown active theme", () => {
+    useThemeStore.setState({ theme: { ...openWater, id: "custom", name: "Custom" } });
     render(<ThemeCycleButton />);
 
     fireEvent.click(screen.getByRole("button", { name: "Theme: Custom" }));
-    expect(useThemeStore.getState().theme?.id).toBe(first.id);
+    expect(useThemeStore.getState().theme?.id).toBe(openWater.id);
   });
 });

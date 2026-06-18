@@ -1,10 +1,8 @@
 import { useThemeStore } from "../../stores/themeStore";
 
 /**
- * Cycles the active theme: unthemed, then each bundled preset in order, then
- * back to unthemed. The minimal v1 affordance until a real picker ships; the
- * cycle transition lives in the theme store (shared with the ⌘K command
- * center's Theme entry) so the command bar stays dumb.
+ * Cycles the active theme through the same stops as the ⌘K command center.
+ * The cycle transition lives in the theme store so the command bar stays dumb.
  */
 export function ThemeCycleButton() {
   const theme = useThemeStore((state) => state.theme);

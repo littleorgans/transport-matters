@@ -16,7 +16,7 @@ interface ThemeState {
   clearTheme: () => void;
   /**
    * Advances to the next bundled preset, wrapping past the last preset back to
-   * the first preset. The single source of truth for "cycle the look", shared by the
+   * the unthemed stop. The single source of truth for "cycle the look", shared by the
    * Lab command bar's ThemeCycleButton and the ⌘K command center's Theme entry.
    */
   cycleTheme: () => void;
@@ -44,11 +44,18 @@ const defaultPersistedSlice = (): PersistedThemeSlice => ({
   liveDayCycle: true,
 });
 
+const defaultCycleTheme = presetTheme("open-water");
+const cycleThemeStops: readonly (ThemeDefinition | null)[] = [
+  ...(defaultCycleTheme
+    ? [defaultCycleTheme, ...presetThemes.filter((theme) => theme.id !== defaultCycleTheme.id)]
+    : presetThemes),
+  null,
+];
+
 const nextPresetTheme = (theme: ThemeDefinition | null): ThemeDefinition | null => {
-  if (presetThemes.length === 0) return null;
-  const currentIndex = presetThemes.findIndex((preset) => preset.id === theme?.id);
-  const nextIndex = (currentIndex + 1) % presetThemes.length;
-  return presetThemes[nextIndex] ?? null;
+  const currentIndex = cycleThemeStops.findIndex((stop) => stop?.id === theme?.id);
+  const nextIndex = (currentIndex + 1) % cycleThemeStops.length;
+  return cycleThemeStops[nextIndex] ?? null;
 };
 
 /**
