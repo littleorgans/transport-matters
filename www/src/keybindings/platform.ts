@@ -1,4 +1,4 @@
-import { DESKTOP_BRIDGE_KEY, type DesktopBridgePlatform } from "../desktopHost";
+import { DESKTOP_BRIDGE_KEY, type DesktopBridgePlatform, globalWindow } from "../desktopHost";
 
 export type ConcreteModToken = "Meta" | "Control";
 export type PlatformSource = "desktop-bridge" | "navigator" | "unknown";
@@ -32,6 +32,7 @@ export function resetKeybindingPlatformCache(): void {
   cachedPlatform = null;
 }
 
+// Slice 2's registry engine imports this as the public concrete $mod accessor.
 export function resolveModToken(
   platform: KeybindingPlatform = getKeybindingPlatform(),
 ): ConcreteModToken {
@@ -87,7 +88,10 @@ function resolveRawPlatform(input: PlatformResolutionInput): {
 function platformFromNavigator(navigatorSource: Navigator | undefined): string | null {
   if (navigatorSource === undefined) return null;
   const withUserAgentData = navigatorSource as NavigatorWithUserAgentData;
-  return normalizePlatform(withUserAgentData.userAgentData?.platform ?? navigatorSource.userAgent);
+  return (
+    normalizePlatform(withUserAgentData.userAgentData?.platform) ||
+    normalizePlatform(navigatorSource.userAgent)
+  );
 }
 
 function platformLooksMac(rawPlatform: string): boolean {
@@ -102,10 +106,6 @@ function normalizePlatform(platform: DesktopBridgePlatform | string | undefined)
   if (platform === undefined) return null;
   const trimmed = platform.trim();
   return trimmed.length > 0 ? trimmed : null;
-}
-
-function globalWindow(): Window | undefined {
-  return typeof window === "undefined" ? undefined : window;
 }
 
 function globalNavigator(): Navigator | undefined {

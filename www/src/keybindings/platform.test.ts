@@ -16,9 +16,9 @@ function fakeWindow(platform: string): Window {
   } as Window;
 }
 
-function fakeNavigator(platform: string): Navigator {
+function fakeNavigator(platform: string, userAgent = "Mozilla/5.0"): Navigator {
   return {
-    userAgent: "Mozilla/5.0",
+    userAgent,
     userAgentData: { platform },
   } as unknown as Navigator;
 }
@@ -65,6 +65,34 @@ describe("keybinding platform", () => {
 
     expect(platform.modToken).toBe("Meta");
     expect(platform.source).toBe("navigator");
+  });
+
+  it("falls back to navigator userAgent when userAgentData platform is empty", () => {
+    const platform = resolveKeybindingPlatform({
+      navigator: fakeNavigator("", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)"),
+      window: {} as Window,
+    });
+
+    expect(platform).toEqual({
+      isMac: true,
+      modToken: "Meta",
+      rawPlatform: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)",
+      source: "navigator",
+    });
+  });
+
+  it("defaults to the unknown non-Mac platform when no source yields a platform", () => {
+    const platform = resolveKeybindingPlatform({
+      navigator: { userAgent: "" } as Navigator,
+      window: {} as Window,
+    });
+
+    expect(platform).toEqual({
+      isMac: false,
+      modToken: "Control",
+      rawPlatform: null,
+      source: "unknown",
+    });
   });
 
   it("precompiles $mod to Meta on macOS and Control elsewhere", () => {

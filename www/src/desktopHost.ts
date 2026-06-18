@@ -37,6 +37,6 @@ export function isDesktopHost(win: Window | undefined = globalWindow()): boolean
   return win !== undefined && DESKTOP_BRIDGE_KEY in win;
 }
 
-function globalWindow(): Window | undefined {
+export function globalWindow(): Window | undefined {
   return typeof window === "undefined" ? undefined : window;
 }

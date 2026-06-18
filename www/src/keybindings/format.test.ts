@@ -16,6 +16,10 @@ function bridge(platform: string): Window {
 }
 
 describe("formatBinding", () => {
+  it("formats an empty binding as an empty label", () => {
+    expect(formatBinding([], mac)).toBe("");
+  });
+
   it("formats macOS single modifier chords with Apple symbols", () => {
     expect(formatBinding(["$mod", "k"], mac)).toBe("⌘K");
   });
