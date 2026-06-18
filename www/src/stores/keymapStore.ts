@@ -5,6 +5,7 @@ import {
   DEFAULT_CANVAS_GESTURE_MODIFIER,
   isCanvasGestureModifier,
 } from "../keybindings/gestureModifier";
+import { isRecord } from "../theme/types";
 import { createFrontendPersistStorage, FRONTEND_STORAGE_KEYS } from "./persistence";
 
 export {
@@ -26,10 +27,6 @@ const KEYMAP_STORE_VERSION = 1;
 
 function defaultPersistedSlice(): PersistedKeymapSlice {
   return { canvasGestureModifier: DEFAULT_CANVAS_GESTURE_MODIFIER };
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 export const migrateKeymapState = (persisted: unknown): PersistedKeymapSlice => {
