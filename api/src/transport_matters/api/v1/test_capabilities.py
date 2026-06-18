@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from transport_matters.capabilities import CliCapability
+from transport_matters.capabilities import HarnessCapability
 
 if TYPE_CHECKING:
     import pytest
@@ -16,14 +16,14 @@ async def test_capabilities_endpoint_shape(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
-        "transport_matters.api.v1.capabilities.detect_clis",
+        "transport_matters.api.v1.capabilities.detect_harnesses",
         lambda: {
-            "claude": CliCapability(
+            "claude": HarnessCapability(
                 installed=True,
                 path="/bin/claude",
                 version="claude 1.2.3",
             ),
-            "codex": CliCapability(installed=False, path=None, version=None),
+            "codex": HarnessCapability(installed=False, path=None, version=None),
         },
     )
 
@@ -31,7 +31,7 @@ async def test_capabilities_endpoint_shape(
 
     assert response.status_code == 200
     assert response.json() == {
-        "clis": {
+        "harnesses": {
             "claude": {
                 "installed": True,
                 "path": "/bin/claude",

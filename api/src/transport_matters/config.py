@@ -86,10 +86,10 @@ class Settings(BaseSettings):
     # outside ``transport-matters claude`` (dev, tests); in that case the
     # endpoint falls back to :meth:`Path.cwd`.
     cwd: Path | None = None
-    # Harness cli (``claude`` | ``codex`` | ...) for this launch, set by the CLI alongside
-    # ``run_id``/``cwd``. Flowed so the wire binding (and thus the ``session`` row) carries the cli
+    # Harness (``claude`` | ``codex`` | ...) for this launch, set by the CLI alongside
+    # ``run_id``/``cwd``. Flowed so the wire binding (and thus the ``session`` row) carries the harness
     # before any transcript turn lands. ``None`` outside a managed launch (dev, tests).
-    cli: str | None = None
+    harness: str | None = None
     # Managed-mint (§5.2b/§5.2c): provider-neutral. The native id the launcher minted (== the
     # wire-observed session id) and the JSON ``source_descriptor`` for the transcript it owns. The
     # addon stamps the descriptor onto the session whose wire id matches ``owned_native_session_id``
@@ -97,7 +97,7 @@ class Settings(BaseSettings):
     owned_native_session_id: str | None = None
     owned_source_descriptor: str | None = None
     launch_fields: dict[str, Any] = Field(default_factory=dict)  # Any: JSON env carrier.
-    # Managed ``--agent-home-dir`` for this launch (§11.1), set by the CLI alongside ``cli``/``run_id``.
+    # Managed ``--agent-home-dir`` for this launch (§11.1), set by the CLI alongside ``harness``/``run_id``.
     # The addon threads it onto the binding so ``locate`` resolves the transcript root under the managed
     # home (external-adoption-under-managed-home) and the durable ``sessions.json`` records it. ``None``
     # outside a managed launch or when no ``--agent-home-dir`` was passed (the CLI's native home).

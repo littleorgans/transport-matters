@@ -21,7 +21,7 @@ from transport_matters.cli.home_seed import (
     prepare_runtime_home_overlay,
     seed_home_dir,
 )
-from transport_matters.launch_environment import CLIENT_NAME_CLAUDE, CLIENT_NAME_CODEX
+from transport_matters.launch_environment import HARNESS_NAME_CLAUDE, HARNESS_NAME_CODEX
 
 from ._helpers import _which_all, _which_by_name
 
@@ -102,7 +102,7 @@ def test_claude_seed_fresh_home_copies_metadata_and_trust(
     workdir.mkdir()
 
     seed_home_dir(
-        CLIENT_NAME_CLAUDE,
+        HARNESS_NAME_CLAUDE,
         home_dir=home,
         working_dir=workdir,
         env={"CLAUDE_CONFIG_DIR": str(source)},
@@ -143,7 +143,7 @@ def test_claude_seed_preserves_existing_account(tmp_path: Path) -> None:
     workdir.mkdir()
 
     seed_home_dir(
-        CLIENT_NAME_CLAUDE,
+        HARNESS_NAME_CLAUDE,
         home_dir=home,
         working_dir=workdir,
         env={"CLAUDE_CONFIG_DIR": str(source)},
@@ -166,7 +166,7 @@ def test_claude_seed_writes_skip_dangerous_mode_setting(tmp_path: Path) -> None:
     workdir.mkdir()
 
     seed_home_dir(
-        CLIENT_NAME_CLAUDE,
+        HARNESS_NAME_CLAUDE,
         home_dir=home,
         working_dir=workdir,
         env={"CLAUDE_CONFIG_DIR": str(source)},
@@ -187,7 +187,7 @@ def test_claude_seed_preserves_existing_settings(tmp_path: Path) -> None:
     workdir.mkdir()
 
     seed_home_dir(
-        CLIENT_NAME_CLAUDE,
+        HARNESS_NAME_CLAUDE,
         home_dir=home,
         working_dir=workdir,
         env={"CLAUDE_CONFIG_DIR": str(source)},
@@ -221,7 +221,7 @@ def test_claude_runtime_overlay_symlinks_state_and_keeps_control_files_local(
     workdir.mkdir()
 
     overlay = prepare_runtime_home_overlay(
-        CLIENT_NAME_CLAUDE,
+        HARNESS_NAME_CLAUDE,
         source_home_dir=source,
         runtime_home_dir=runtime,
         working_dir=workdir,
@@ -301,7 +301,7 @@ def test_claude_runtime_overlay_copies_native_default_account_metadata(
     workdir.mkdir()
 
     prepare_runtime_home_overlay(
-        CLIENT_NAME_CLAUDE,
+        HARNESS_NAME_CLAUDE,
         source_home_dir=source,
         runtime_home_dir=runtime,
         working_dir=workdir,
@@ -405,7 +405,7 @@ def test_codex_seed_fresh_home_copies_auth_0600_and_trust(
     workdir.mkdir()
 
     seed_home_dir(
-        CLIENT_NAME_CODEX,
+        HARNESS_NAME_CODEX,
         home_dir=home,
         working_dir=workdir,
         env={"CODEX_HOME": str(source)},
@@ -428,7 +428,7 @@ def test_codex_seed_same_cwd_twice_is_idempotent(tmp_path: Path) -> None:
 
     for _ in range(2):
         seed_home_dir(
-            CLIENT_NAME_CODEX,
+            HARNESS_NAME_CODEX,
             home_dir=home,
             working_dir=workdir,
             env={"CODEX_HOME": str(source)},
@@ -449,7 +449,7 @@ def test_codex_seed_merges_two_cwds(tmp_path: Path) -> None:
     for workdir in workdirs:
         workdir.mkdir()
         seed_home_dir(
-            CLIENT_NAME_CODEX,
+            HARNESS_NAME_CODEX,
             home_dir=home,
             working_dir=workdir,
             env={"CODEX_HOME": str(source)},
@@ -480,7 +480,7 @@ def test_codex_seed_preserves_existing_auth_and_project_sibling_keys(
 
     for _ in range(2):
         seed_home_dir(
-            CLIENT_NAME_CODEX,
+            HARNESS_NAME_CODEX,
             home_dir=home,
             working_dir=workdir,
             env={"CODEX_HOME": str(source)},
@@ -510,7 +510,7 @@ def test_codex_runtime_overlay_links_auth_copies_config_and_symlinks_state(
     workdir.mkdir()
 
     prepare_runtime_home_overlay(
-        CLIENT_NAME_CODEX,
+        HARNESS_NAME_CODEX,
         source_home_dir=source,
         runtime_home_dir=runtime,
         working_dir=workdir,
@@ -550,7 +550,7 @@ def test_codex_overlay_repoints_hook_trust_state_to_overlay_home(
     workdir.mkdir()
 
     prepare_runtime_home_overlay(
-        CLIENT_NAME_CODEX,
+        HARNESS_NAME_CODEX,
         source_home_dir=source,
         runtime_home_dir=runtime,
         working_dir=workdir,

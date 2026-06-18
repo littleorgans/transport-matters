@@ -283,7 +283,7 @@ def _runtime_binding_from_payload(payload: SharedProxyBindingPayload) -> ProxyRu
         raise ValueError(msg)
     return ProxyRunBinding(
         run_id=payload.run_id,
-        cli=payload.cli,
+        harness=payload.harness,
         working_dir=_optional_path(payload.working_dir),
         storage=DiskStorageBackend(payload.storage_root),
         listen_port=payload.listen_port,

@@ -1,4 +1,4 @@
-import type { CliName } from "../../types";
+import type { HarnessName } from "../../types";
 import { paneIdForRef, viewerIdForRef } from "../viewers/registry";
 import { createCapturedRunKey } from "./capturedRunStore";
 import type {
@@ -25,10 +25,10 @@ export function normalizeRef(ref: SpawnablePaneRef): CanvasPaneRef {
 
 export function titleForSession(session: SpawnSessionDescriptor): string {
   if (session.title && session.title.trim().length > 0) return session.title;
-  return `${session.cli} session ${session.sessionId.slice(0, 8)}`;
+  return `${session.harness} session ${session.sessionId.slice(0, 8)}`;
 }
 
-export function createCapturedRunRef(provider: CliName, label?: string): CapturedRunRef {
+export function createCapturedRunRef(provider: HarnessName, label?: string): CapturedRunRef {
   return {
     kind: "captured-run",
     owner: "local",

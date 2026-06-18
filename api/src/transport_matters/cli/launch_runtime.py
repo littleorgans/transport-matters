@@ -11,7 +11,7 @@ import typer
 
 from transport_matters.capabilities import (
     WhichFunction,
-    resolve_cli_binary,
+    resolve_harness_binary,
     resolve_runnable_binary,
 )
 from transport_matters.config import ensure_settings_scaffold, get_settings
@@ -55,7 +55,7 @@ def resolve_client_binary(
     if disabled:
         return None
 
-    client_path = resolve_cli_binary(
+    client_path = resolve_harness_binary(
         name=name,
         bin_override=bin_override,
         which=which,
@@ -259,7 +259,7 @@ def prepare_launch(
     proxy_port: int | None,
     web_port: int | None,
     storage_dir: Path | None,
-    client_name: str,
+    harness: str,
     bin_override: Path | None,
     client_disabled: bool,
     not_found_hint: str,
@@ -275,7 +275,7 @@ def prepare_launch(
     addon_traversable = require_addon()
     mitmdump = resolve_mitmdump_or_exit(resolve_mitmdump=resolve_mitmdump)
     client_path = resolve_client_binary(
-        name=client_name,
+        name=harness,
         bin_override=bin_override,
         disabled=client_disabled,
         which=which,

@@ -25,13 +25,13 @@ if TYPE_CHECKING:
     from transport_matters.runtime_templates import RuntimeTemplateRef
 
 __all__ = [
-    "CLAUDE_CLIENT_NAME",
+    "CLAUDE_HARNESS_NAME",
     "CLAUDE_UPSTREAM_DEFAULT",
-    "CODEX_CLIENT_NAME",
+    "CODEX_HARNESS_NAME",
     "WEB_RUNTIME_EMBEDDED",
     "WEB_RUNTIME_EXTERNAL",
     "CapturedRunBindConflict",
-    "CapturedRunCli",
+    "CapturedRunHarness",
     "CapturedRunLease",
     "CapturedRunProxyStartTimeout",
     "CapturedRunRequest",
@@ -39,10 +39,10 @@ __all__ = [
     "CapturedRunWebRuntime",
 ]
 
-CLAUDE_CLIENT_NAME = "claude"
-CODEX_CLIENT_NAME = "codex"
+CLAUDE_HARNESS_NAME = "claude"
+CODEX_HARNESS_NAME = "codex"
 CLAUDE_UPSTREAM_DEFAULT = "https://api.anthropic.com"
-CapturedRunCli = Literal["claude", "codex"]
+CapturedRunHarness = Literal["claude", "codex"]
 CapturedRunWebRuntime = Literal["embedded", "external"]
 WEB_RUNTIME_EMBEDDED: CapturedRunWebRuntime = "embedded"
 WEB_RUNTIME_EXTERNAL: CapturedRunWebRuntime = "external"
@@ -50,7 +50,7 @@ WEB_RUNTIME_EXTERNAL: CapturedRunWebRuntime = "external"
 
 @dataclass(frozen=True, slots=True)
 class CapturedRunRequest:
-    client_name: str
+    harness: str
     passthrough: tuple[str, ...]
     directory: Path | None
     proxy_port: int | None
@@ -79,7 +79,7 @@ class CapturedRunSpawnSpec:
     client: ManagedClient | None
     launch_env: dict[str, str]
     managed_session: ManagedSession | None
-    client_name: str = CLAUDE_CLIENT_NAME
+    harness: str = CLAUDE_HARNESS_NAME
 
 
 @dataclass(slots=True)

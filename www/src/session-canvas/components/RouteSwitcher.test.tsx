@@ -31,11 +31,11 @@ describe("RouteSwitcher", () => {
   });
 
   it("navigates to the target route, preserving the query string", () => {
-    const assign = stubLocation("/canvas", "?workspace_hash=abc&cli=claude");
+    const assign = stubLocation("/canvas", "?workspace_hash=abc&harness=claude");
     render(<RouteSwitcher />);
     fireEvent.click(screen.getByRole("button", { name: "Lab" }));
 
-    expect(assign).toHaveBeenCalledWith("/canvas-lab?workspace_hash=abc&cli=claude");
+    expect(assign).toHaveBeenCalledWith("/canvas-lab?workspace_hash=abc&harness=claude");
   });
 
   it("does not navigate when the already-active route is clicked", () => {

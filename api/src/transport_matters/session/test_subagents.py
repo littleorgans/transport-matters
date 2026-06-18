@@ -45,7 +45,7 @@ def _binding(
     session_id: str,
     native_session_id: str,
     provider: str,
-    cli: str,
+    harness: str,
     run_id: str,
     minted: bool = False,
 ) -> SessionBinding:
@@ -57,7 +57,7 @@ def _binding(
         workspace_slug="transport-matters",
         workspace_hash="hash1",
         started_at="2026-06-08T09:00:00Z",
-        cli=cli,
+        harness=harness,
         native_session_id=native_session_id,
         minted=minted,
     )
@@ -87,7 +87,7 @@ def test_tailer_materializes_claude_subagent_as_child_session() -> None:
         session_id=_PARENT_CLAUDE,
         native_session_id=_PARENT_CLAUDE,
         provider="anthropic",
-        cli="claude",
+        harness="claude",
         run_id="run-claude",
         minted=True,
     )
@@ -122,7 +122,7 @@ def test_tailer_materializes_codex_subagent_and_dedupes_fork_context_replay() ->
         session_id=parent_id,
         native_session_id=_PARENT_CODEX,
         provider="codex",
-        cli="codex",
+        harness="codex",
         run_id="run-codex",
     )
 
@@ -152,7 +152,7 @@ def test_tailer_materializes_codex_items_subagent_and_dedupes_replay() -> None:
         session_id=parent_id,
         native_session_id=_PARENT_CODEX_ITEMS,
         provider="codex",
-        cli="codex",
+        harness="codex",
         run_id="run-codex-items",
     )
 
@@ -194,7 +194,7 @@ def test_backfill_preserves_codex_items_subagent_source_lines(tmp_path: Path) ->
         root,
         OwnedSessionFacts(
             run_id=run_id,
-            cli="codex",
+            harness="codex",
             native_session_id=_PARENT_CODEX_ITEMS,
             minted=False,
             source_descriptor=encode_source_descriptor(

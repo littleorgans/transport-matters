@@ -7,7 +7,7 @@ import type { CanvasLaunchContext } from "../route";
 const LAUNCH_POLL_MS = 1_000;
 
 export function useLaunchSession(launch: CanvasLaunchContext) {
-  const enabled = launch.workspaceHash !== null && launch.cli !== null;
+  const enabled = launch.workspaceHash !== null && launch.harness !== null;
   return useQuery({
     enabled,
     queryKey: launchSessionKey(launch),
@@ -15,7 +15,7 @@ export function useLaunchSession(launch: CanvasLaunchContext) {
       const sessions = await listSessions({
         owner: "local",
         workspaceHash: launch.workspaceHash,
-        cli: launch.cli,
+        harness: launch.harness,
         limit: 50,
       });
       return resolveLaunchSession(sessions, launch);

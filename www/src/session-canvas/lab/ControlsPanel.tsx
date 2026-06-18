@@ -13,7 +13,7 @@ export function OscColorReplyToggle() {
         onChange={(event) => setOscColorReplies(event.target.checked)}
         type="checkbox"
       />
-      CLI color replies
+      Harness color replies
     </label>
   );
 }

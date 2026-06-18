@@ -17,7 +17,7 @@ from transport_matters.api.v1.test_run_routes import (
 )
 from transport_matters.api.v1.test_terminal import _receive_until_disconnect, _wait_until
 from transport_matters.captured_run import (
-    CLAUDE_CLIENT_NAME,
+    CLAUDE_HARNESS_NAME,
     CapturedRunBindConflict,
     CapturedRunDependencies,
     CapturedRunLease,
@@ -50,7 +50,7 @@ def test_websocket_binary_input_reaches_child(
     with client:
         run_id = client.post(
             "/v1/runs",
-            json={"cli": "claude", "cwd": str(tmp_path)},
+            json={"harness": "claude", "cwd": str(tmp_path)},
             headers=_http_headers(BACKEND_ORIGIN),
         ).json()["run"]["runId"]
         with client.websocket_connect(
@@ -91,7 +91,7 @@ def test_post_launch_failure_returns_machine_error(
     with client:
         response = client.post(
             "/v1/runs",
-            json={"cli": "claude", "cwd": str(tmp_path)},
+            json={"harness": "claude", "cwd": str(tmp_path)},
             headers=_http_headers(BACKEND_ORIGIN),
         )
 
@@ -141,7 +141,7 @@ def test_post_launch_typed_prepare_errors_return_machine_status(
     with client:
         response = client.post(
             "/v1/runs",
-            json={"cli": "claude", "cwd": str(tmp_path)},
+            json={"harness": "claude", "cwd": str(tmp_path)},
             headers=_http_headers(BACKEND_ORIGIN),
         )
 
@@ -208,7 +208,7 @@ def install_real_pty_manager(
             client=cast(
                 "Any",
                 FakeManagedClient(
-                    name=CLAUDE_CLIENT_NAME,
+                    name=CLAUDE_HARNESS_NAME,
                     display_name="Claude",
                     argv=argv,
                     env={**os.environ, "PYTHONUNBUFFERED": "1", "TERM": "xterm-256color"},
@@ -223,7 +223,7 @@ def install_real_pty_manager(
                     source_descriptor='{"kind":"claude"}',
                 ),
             ),
-            client_name=request.client_name,
+            harness=request.harness,
         )
         return spawn_spec, cast("CapturedRunLease", fake_lease)
 

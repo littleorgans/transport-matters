@@ -21,7 +21,7 @@ _CREATED_YOUNG = "2026-06-14T11:58:00+00:00"
 def _run(
     *,
     run_id: str = "run-abc",
-    cli: str = "claude",
+    harness: str = "claude",
     workspace_id: str = "workspace/hash",
     session_id: str = "session-abc",
     state: str = "RUNNING",
@@ -31,7 +31,7 @@ def _run(
         "runId": run_id,
         "workspaceId": workspace_id,
         "sessionId": session_id,
-        "cli": cli,
+        "harness": harness,
         "state": state,
     }
     if created_at is not None:

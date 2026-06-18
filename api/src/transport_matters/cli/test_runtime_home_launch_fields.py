@@ -30,7 +30,7 @@ async def test_launch_fields_carrier_reaches_owned_cursor(
 
     class FakeAdapter:
         provider = "codex"
-        cli = "codex"
+        harness = "codex"
 
         async def bind(self, run: Any) -> SessionBinding:
             return SessionBinding(
@@ -41,7 +41,7 @@ async def test_launch_fields_carrier_reaches_owned_cursor(
                 workspace_slug=run.workspace_slug,
                 workspace_hash=run.workspace_hash,
                 started_at=run.started_at,
-                cli=self.cli,
+                harness=self.harness,
                 native_session_id=run.native_session_id,
             )
 
@@ -64,7 +64,7 @@ async def test_launch_fields_carrier_reaches_owned_cursor(
     settings = Settings(
         run_id="run-1",
         cwd=tmp_path,
-        cli="codex",
+        harness="codex",
         owned_native_session_id="native-1",
         owned_source_descriptor="descriptor-1",
         launch_fields={
@@ -101,7 +101,7 @@ async def test_register_session_cursor_preserves_launch_fields(tmp_path: Path) -
         workspace_slug="workspace",
         workspace_hash="hash",
         started_at="2026-06-15T12:00:00+00:00",
-        cli="codex",
+        harness="codex",
         native_session_id="native-1",
         source_descriptor=descriptor,
         template_provenance=template_provenance,
@@ -111,7 +111,7 @@ async def test_register_session_cursor_preserves_launch_fields(tmp_path: Path) -
 
     class FakeAdapter:
         provider = "codex"
-        cli = "codex"
+        harness = "codex"
 
         async def bind(self, _run: Any) -> SessionBinding:
             return binding.model_copy(update={"template_provenance": None})
@@ -147,7 +147,7 @@ def test_template_provenance_is_a_declared_session_field(tmp_path: Path) -> None
         workspace_slug="workspace",
         workspace_hash="hash",
         started_at="2026-06-15T12:00:00+00:00",
-        cli="codex",
+        harness="codex",
         native_session_id="native-1",
         template_provenance=template_provenance,
     )

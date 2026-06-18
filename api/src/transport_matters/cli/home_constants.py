@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 
-from transport_matters.launch_environment import CLIENT_NAME_CLAUDE, CLIENT_NAME_CODEX
+from transport_matters.launch_environment import HARNESS_NAME_CLAUDE, HARNESS_NAME_CODEX
 
 _CLAUDE_CONFIG_ENV = "CLAUDE_CONFIG_DIR"
 _CODEX_HOME_ENV = "CODEX_HOME"
@@ -53,9 +53,9 @@ _CLAUDE_OVERLAY_LOCAL_NAMES = (
 _CODEX_OVERLAY_COPIED_NAMES = frozenset({_CODEX_CONFIG_FILENAME})
 _CODEX_OVERLAY_CREDENTIAL_NAMES = frozenset({_CODEX_AUTH_FILENAME})
 _CODEX_OVERLAY_LOCAL_NAMES = _CODEX_OVERLAY_COPIED_NAMES | _CODEX_OVERLAY_CREDENTIAL_NAMES
-_OVERLAY_CREDENTIAL_NAMES_BY_CLIENT = {
-    CLIENT_NAME_CLAUDE: _CLAUDE_OVERLAY_CREDENTIAL_NAMES,
-    CLIENT_NAME_CODEX: _CODEX_OVERLAY_CREDENTIAL_NAMES,
+_OVERLAY_CREDENTIAL_NAMES_BY_HARNESS: dict[str, frozenset[str]] = {
+    HARNESS_NAME_CLAUDE: _CLAUDE_OVERLAY_CREDENTIAL_NAMES,
+    HARNESS_NAME_CODEX: _CODEX_OVERLAY_CREDENTIAL_NAMES,
 }
 # Entries never symlinked into any overlay, regardless of client. A source home that is
 # or contains a git repo must not leak its ``.git`` into the per-run overlay.

@@ -28,8 +28,8 @@ UPSTREAM_URL = f"{ENV_PREFIX}UPSTREAM_URL"
 STORAGE_DIR = f"{ENV_PREFIX}STORAGE_DIR"
 RUN_ID = f"{ENV_PREFIX}RUN_ID"
 CWD = f"{ENV_PREFIX}CWD"
-CLI = f"{ENV_PREFIX}CLI"
-# Managed-mint (§5.2b/§5.2c): provider-neutral. The launcher owns the transcript a managed CLI will
+HARNESS = f"{ENV_PREFIX}HARNESS"
+# Managed-mint (§5.2b/§5.2c): provider-neutral. The launcher owns the transcript a managed harness will
 # write, so it hands the addon the native id it minted (== the wire-observed session id) and the JSON
 # source_descriptor for that owned transcript. The addon stamps both onto the session row whose wire
 # id matches, before cursor registration, so the tailer byte-tails the owned path instead of globbing.

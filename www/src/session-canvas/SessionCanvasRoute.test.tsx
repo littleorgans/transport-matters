@@ -48,7 +48,7 @@ describe("SessionCanvasRoute", () => {
     window.history.pushState(
       {},
       "",
-      "/canvas?owner=local&workspace_hash=hash-1&cli=claude&run_id=run-live",
+      "/canvas?owner=local&workspace_hash=hash-1&harness=claude&run_id=run-live",
     );
     vi.stubGlobal("EventSource", MockEventSource);
     installMockTransport((path) =>

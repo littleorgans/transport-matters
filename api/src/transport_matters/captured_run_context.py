@@ -11,8 +11,8 @@ from typing import TYPE_CHECKING
 
 from transport_matters.captured_claude import build_claude_captured_invocation
 from transport_matters.captured_run_models import (
-    CLAUDE_CLIENT_NAME,
-    CODEX_CLIENT_NAME,
+    CLAUDE_HARNESS_NAME,
+    CODEX_HARNESS_NAME,
     WEB_RUNTIME_EMBEDDED,
     WEB_RUNTIME_EXTERNAL,
     CapturedRunRequest,
@@ -63,14 +63,14 @@ def build_captured_run_context(
     write: bool,
 ) -> CapturedRunContext:
     """Resolve launch state and build the provider specific invocation factory."""
-    from transport_matters.cli.launch_profile import PROFILES, prepare_managed_session
+    from transport_matters.cli.launch_profile import HARNESSES, prepare_managed_session
     from transport_matters.cli.launch_runtime import prepare_launch
     from transport_matters.cli.runtime_home import plan_runtime_home, prepare_runtime_home
 
     try:
-        launch_profile = profile or PROFILES[request.client_name]
+        launch_profile = profile or HARNESSES[request.harness]
     except KeyError as exc:
-        raise ValueError(f"unsupported captured client: {request.client_name!r}") from exc
+        raise ValueError(f"unsupported captured harness: {request.harness!r}") from exc
     if request.web_runtime == WEB_RUNTIME_EXTERNAL and request.web_port is not None:
         raise ValueError("external captured run must not include a web port")
     prepared = prepare_launch(
@@ -79,10 +79,10 @@ def build_captured_run_context(
         proxy_port=request.proxy_port,
         web_port=request.web_port,
         storage_dir=request.storage_dir,
-        client_name=request.client_name,
+        harness=request.harness,
         bin_override=request.client_bin,
         client_disabled=request.client_disabled,
-        not_found_hint=_client_not_found_hint(request.client_name),
+        not_found_hint=_client_not_found_hint(request.harness),
         require_addon=require_addon,
         resolve_mitmdump=resolve_mitmdump,
         which=which,
@@ -97,7 +97,7 @@ def build_captured_run_context(
     try:
         runtime_home_root = prepared.resolved_storage / "runtime-home"
         runtime_home_plan = plan_runtime_home(
-            request.client_name,
+            request.harness,
             home_dir=request.home_dir,
             runtime_template=request.runtime_template,
             runtime_home_root=runtime_home_root,
@@ -131,7 +131,7 @@ def build_captured_run_context(
             **dict(request.launch_fields),
             **runtime_home_plan.launch_fields,
         }
-        if request.client_name == CLAUDE_CLIENT_NAME:
+        if request.harness == CLAUDE_HARNESS_NAME:
             build_invocation = build_claude_captured_invocation(
                 addon_path=addon_path,
                 mitmdump=prepared.mitmdump,
@@ -241,8 +241,8 @@ def write_captured_run_manifest(
     )
 
 
-def _client_not_found_hint(client_name: str) -> str:
-    if client_name == CODEX_CLIENT_NAME:
+def _client_not_found_hint(harness: str) -> str:
+    if harness == CODEX_HARNESS_NAME:
         from transport_matters.cli.identity import CLI_COMMAND
 
         return (

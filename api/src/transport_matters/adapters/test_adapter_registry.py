@@ -58,8 +58,8 @@ class TestGetAdapter:
 
         assert adapter.name == expected_adapter
 
-    def test_provider_lookup_rejects_launch_client_name(self) -> None:
-        """Executable client names are not provider adapter names."""
+    def test_provider_lookup_rejects_launch_harness(self) -> None:
+        """Executable harness names are not provider adapter names."""
         with pytest.raises(UnsupportedProviderError) as exc_info:
             get_adapter_for_provider("claude-code")
 
@@ -99,7 +99,7 @@ class TestGetAdapter:
         adapter = get_adapter(flow)
         assert adapter.name == "codex"
 
-    def test_flow_selection_and_ir_provider_ignore_launch_client_name(self) -> None:
+    def test_flow_selection_and_ir_provider_ignore_launch_harness(self) -> None:
         """Provider identity comes from wire flow and adapter parsing."""
         flow = _flow(
             "/backend-api/codex/responses?client=claude-code",

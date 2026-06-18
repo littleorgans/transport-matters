@@ -119,8 +119,8 @@ class PreparedRunHarness:
         self.leases.append(lease)
         cwd = request.directory or self.tmp_path
         client = ManagedClient(
-            name=request.client_name,
-            display_name=request.client_name.title(),
+            name=request.harness,
+            display_name=request.harness.title(),
             argv=["fake-agent"],
             env={},
             cwd=cwd,
@@ -135,7 +135,7 @@ class PreparedRunHarness:
             client=client,
             launch_env={},
             managed_session=None,
-            client_name=request.client_name,
+            harness=request.harness,
         )
         return spawn_spec, cast("CapturedRunLease", lease)
 
@@ -219,7 +219,7 @@ def patch_pty_teardown(monkeypatch: pytest.MonkeyPatch, pty: PtyHarness) -> None
 
 async def spawn_run(manager: RunManager, tmp_path: Path) -> ManagedRun:
     return await manager.spawn(
-        SpawnRun(cli="claude", cwd=tmp_path, web_runtime=WEB_RUNTIME_EMBEDDED)
+        SpawnRun(harness="claude", cwd=tmp_path, web_runtime=WEB_RUNTIME_EMBEDDED)
     )
 
 
@@ -294,7 +294,9 @@ async def test_post_prepare_spawn_failure_closes_lease(tmp_path: Path) -> None:
     )
 
     with pytest.raises(RunManagerError, match="pty spawn failed"):
-        await manager.spawn(SpawnRun(cli="claude", cwd=tmp_path, web_runtime=WEB_RUNTIME_EMBEDDED))
+        await manager.spawn(
+            SpawnRun(harness="claude", cwd=tmp_path, web_runtime=WEB_RUNTIME_EMBEDDED)
+        )
 
     assert prepared.leases[0].close_count == 1
 
@@ -306,7 +308,7 @@ async def test_idempotency_key_returns_existing_run_without_reprepare(tmp_path: 
 
     first = await manager.spawn(
         SpawnRun(
-            cli="claude",
+            harness="claude",
             cwd=tmp_path,
             web_runtime=WEB_RUNTIME_EMBEDDED,
             idempotency_key="retry-1",
@@ -314,7 +316,7 @@ async def test_idempotency_key_returns_existing_run_without_reprepare(tmp_path: 
     )
     second = await manager.spawn(
         SpawnRun(
-            cli="claude",
+            harness="claude",
             cwd=tmp_path,
             web_runtime=WEB_RUNTIME_EMBEDDED,
             idempotency_key="retry-1",
@@ -333,7 +335,7 @@ async def test_different_idempotency_keys_spawn_distinct_runs(tmp_path: Path) ->
 
     first = await manager.spawn(
         SpawnRun(
-            cli="claude",
+            harness="claude",
             cwd=tmp_path,
             web_runtime=WEB_RUNTIME_EMBEDDED,
             idempotency_key="fork-a",
@@ -341,7 +343,7 @@ async def test_different_idempotency_keys_spawn_distinct_runs(tmp_path: Path) ->
     )
     second = await manager.spawn(
         SpawnRun(
-            cli="claude",
+            harness="claude",
             cwd=tmp_path,
             web_runtime=WEB_RUNTIME_EMBEDDED,
             idempotency_key="fork-b",
@@ -358,14 +360,14 @@ async def test_spawn_passes_runtime_template_to_captured_request(tmp_path: Path)
     manager = make_manager(tmp_path, pty, prepared)
     runtime_template = RuntimeTemplateRef(
         template_id="codex-base",
-        client_name="codex",
+        harness="codex",
         template_home=tmp_path / "template",
         provenance={"registry_source": "agent-runtimes"},
     )
 
     await manager.spawn(
         SpawnRun(
-            cli="codex",
+            harness="codex",
             cwd=tmp_path,
             web_runtime=WEB_RUNTIME_EMBEDDED,
             runtime_template=runtime_template,
@@ -385,7 +387,7 @@ async def test_close_during_in_flight_spawn_rolls_back_prepared_run(
     manager = make_manager(tmp_path, pty, prepared)
 
     spawn_task = asyncio.create_task(
-        manager.spawn(SpawnRun(cli="claude", cwd=tmp_path, web_runtime=WEB_RUNTIME_EMBEDDED))
+        manager.spawn(SpawnRun(harness="claude", cwd=tmp_path, web_runtime=WEB_RUNTIME_EMBEDDED))
     )
     assert await asyncio.to_thread(prepared.entered.wait, 1.0)
 
@@ -649,7 +651,7 @@ async def test_disabled_osc_color_replies_stay_silent(
 
     run = await manager.spawn(
         SpawnRun(
-            cli="claude",
+            harness="claude",
             cwd=tmp_path,
             web_runtime=WEB_RUNTIME_EMBEDDED,
             osc_color_replies=False,

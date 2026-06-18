@@ -73,7 +73,7 @@ async def test_drive_one_request_logs_failure(
 ) -> None:
     run = harness.LoadRun(
         run_id="load-fail",
-        cli="codex",
+        harness="codex",
         listen_port=9,
         storage_root=tmp_path,
     )
@@ -87,4 +87,4 @@ async def test_drive_one_request_logs_failure(
 
     assert failed is True
     assert contaminated is False
-    assert "load request failed for run_id=load-fail cli=codex seq=0" in caplog.text
+    assert "load request failed for run_id=load-fail harness=codex seq=0" in caplog.text

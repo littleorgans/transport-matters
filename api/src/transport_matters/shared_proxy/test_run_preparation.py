@@ -168,7 +168,7 @@ async def test_prepare_shared_captured_run_maps_listener_timeout(
 
 def _request(tmp_path: Path) -> CapturedRunRequest:
     return CapturedRunRequest(
-        client_name="claude",
+        harness="claude",
         passthrough=(),
         directory=tmp_path,
         proxy_port=None,

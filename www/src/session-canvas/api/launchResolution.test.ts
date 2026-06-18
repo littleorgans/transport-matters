@@ -3,15 +3,15 @@ import { makeSessionSummary } from "../testUtils";
 import { resolveLaunchSession } from "./launchResolution";
 
 describe("resolveLaunchSession", () => {
-  it("resolves the active matching cli and workspace", () => {
-    const otherCli = makeSessionSummary({ sessionId: "other-cli", cli: "codex" });
-    const exact = makeSessionSummary({ sessionId: "exact", cli: "claude" });
+  it("resolves the active matching harness and workspace", () => {
+    const otherCli = makeSessionSummary({ sessionId: "other-harness", harness: "codex" });
+    const exact = makeSessionSummary({ sessionId: "exact", harness: "claude" });
 
     expect(
       resolveLaunchSession([otherCli, exact], {
         owner: "local",
         workspaceHash: "hash-1",
-        cli: "claude",
+        harness: "claude",
         runId: "run-target",
       }),
     ).toEqual({ status: "resolved", session: exact });
@@ -25,7 +25,7 @@ describe("resolveLaunchSession", () => {
       resolveLaunchSession([completed, active], {
         owner: "local",
         workspaceHash: "hash-1",
-        cli: "claude",
+        harness: "claude",
         runId: null,
       }),
     ).toEqual({ status: "resolved", session: active });
@@ -36,7 +36,7 @@ describe("resolveLaunchSession", () => {
       resolveLaunchSession([], {
         owner: "local",
         workspaceHash: "hash-1",
-        cli: "claude",
+        harness: "claude",
         runId: "run-late",
       }),
     ).toEqual({ status: "pending" });
@@ -44,7 +44,7 @@ describe("resolveLaunchSession", () => {
 
   it("is unavailable for direct browser development without launch fields", () => {
     expect(
-      resolveLaunchSession([], { owner: "local", workspaceHash: null, cli: null, runId: null }),
+      resolveLaunchSession([], { owner: "local", workspaceHash: null, harness: null, runId: null }),
     ).toEqual({ status: "unavailable" });
   });
 });

@@ -41,7 +41,7 @@ _SESSION = synth_session_id(_RUN, "codex", _NATIVE)
 
 def _binding() -> SessionBinding:
     return make_binding(
-        _SESSION, provider="codex", cli="codex", run_id=_RUN, native_session_id=_NATIVE
+        _SESSION, provider="codex", harness="codex", run_id=_RUN, native_session_id=_NATIVE
     )
 
 
@@ -145,7 +145,7 @@ class TestNormalize:
         for t in _turns():
             assert t.session_id == _SESSION
             assert t.model == _MODEL
-            assert (t.provider, t.cli) == ("codex", "codex")
+            assert (t.provider, t.harness) == ("codex", "codex")
 
     def test_parent_id_threaded_from_ctx(self) -> None:
         # The tailer passes the prior emitted turn_id as ctx.parent_id; normalize must carry it.
@@ -176,7 +176,7 @@ class TestBindLocate:
             cwd="/w",
             workspace_slug="s",
             workspace_hash="h",
-            cli="codex",
+            harness="codex",
             started_at="t",
             native_session_id=_NATIVE,
         )
@@ -193,7 +193,7 @@ class TestBindLocate:
             cwd="/w",
             workspace_slug="s",
             workspace_hash="h",
-            cli="codex",
+            harness="codex",
             started_at="t",
             native_session_id=_NATIVE,
         )
@@ -206,7 +206,7 @@ class TestBindLocate:
             cwd="/w",
             workspace_slug="s",
             workspace_hash="h",
-            cli="codex",
+            harness="codex",
             started_at="t",
         )
         with pytest.raises(ValueError, match="native_session_id"):
@@ -225,4 +225,4 @@ class TestRegistry:
 
         adapter = get_adapter("codex")
         assert isinstance(adapter, CodexAdapter)
-        assert (adapter.provider, adapter.cli) == ("codex", "codex")
+        assert (adapter.provider, adapter.harness) == ("codex", "codex")

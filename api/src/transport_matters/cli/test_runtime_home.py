@@ -31,8 +31,8 @@ from transport_matters.index.adapters.base import (
     decode_source_descriptor,
 )
 from transport_matters.launch_environment import (
-    CLIENT_NAME_CLAUDE,
-    CLIENT_NAME_CODEX,
+    HARNESS_NAME_CLAUDE,
+    HARNESS_NAME_CODEX,
     build_launch_env,
     build_managed_child_env,
     managed_child_shell_env_excludes,
@@ -90,11 +90,11 @@ def test_codex_template_overlay_links_native_auth_fallback(tmp_path: Path) -> No
     workdir.mkdir()
 
     plan = plan_runtime_home(
-        CLIENT_NAME_CODEX,
+        HARNESS_NAME_CODEX,
         home_dir=None,
         runtime_template=RuntimeTemplateRef(
             template_id="codex/base",
-            client_name=CLIENT_NAME_CODEX,
+            harness=HARNESS_NAME_CODEX,
             template_home=template,
             provenance={"source": "test"},
         ),
@@ -108,7 +108,7 @@ def test_codex_template_overlay_links_native_auth_fallback(tmp_path: Path) -> No
     assert plan.mode == RuntimeHomeMode.TEMPLATE
     assert plan.content_source == template
     assert plan.auth_source == native
-    assert plan.child_home == runtime_root / CLIENT_NAME_CODEX
+    assert plan.child_home == runtime_root / HARNESS_NAME_CODEX
     auth_link = plan.child_home / "auth.json"
     assert auth_link.is_symlink()
     assert auth_link.resolve() == (native / "auth.json").resolve()
@@ -128,11 +128,11 @@ def test_template_overlay_symlinks_unknown_entries(tmp_path: Path) -> None:
     (custom_dir / "nested.txt").write_text("nested\n", encoding="utf-8")
 
     plan = plan_runtime_home(
-        CLIENT_NAME_CODEX,
+        HARNESS_NAME_CODEX,
         home_dir=None,
         runtime_template=RuntimeTemplateRef(
             template_id="codex/base",
-            client_name=CLIENT_NAME_CODEX,
+            harness=HARNESS_NAME_CODEX,
             template_home=template,
             provenance={},
         ),
@@ -164,11 +164,11 @@ def test_template_overlay_excludes_runtime_toml(tmp_path: Path) -> None:
     (template / "runtime.toml").write_text("[runtime]\n", encoding="utf-8")
 
     plan = plan_runtime_home(
-        CLIENT_NAME_CODEX,
+        HARNESS_NAME_CODEX,
         home_dir=None,
         runtime_template=RuntimeTemplateRef(
             template_id="codex/base",
-            client_name=CLIENT_NAME_CODEX,
+            harness=HARNESS_NAME_CODEX,
             template_home=template,
             provenance={},
         ),
@@ -203,7 +203,7 @@ def test_non_template_overlays_keep_implicit_catch_all_symlinks(
     (source / "operator-content").mkdir()
 
     plan = plan_runtime_home(
-        CLIENT_NAME_CODEX,
+        HARNESS_NAME_CODEX,
         home_dir=source if home_dir is not None else None,
         runtime_template=runtime_template,
         runtime_home_root=tmp_path / "run" / "runtime-home",
@@ -233,11 +233,11 @@ def test_codex_template_descriptor_seeds_runtime_sessions_without_mutating_templ
     workdir.mkdir()
 
     plan = plan_runtime_home(
-        CLIENT_NAME_CODEX,
+        HARNESS_NAME_CODEX,
         home_dir=None,
         runtime_template=RuntimeTemplateRef(
             template_id="codex/base",
-            client_name=CLIENT_NAME_CODEX,
+            harness=HARNESS_NAME_CODEX,
             template_home=template,
             provenance={},
         ),
@@ -293,11 +293,11 @@ def test_codex_template_tree_is_byte_identical_after_full_launch_prep(
     workdir.mkdir()
 
     plan = plan_runtime_home(
-        CLIENT_NAME_CODEX,
+        HARNESS_NAME_CODEX,
         home_dir=None,
         runtime_template=RuntimeTemplateRef(
             template_id="codex/base",
-            client_name=CLIENT_NAME_CODEX,
+            harness=HARNESS_NAME_CODEX,
             template_home=template,
             provenance={},
         ),
@@ -344,7 +344,7 @@ def test_codex_captured_run_template_launch_records_provenance_and_runtime_descr
     addon.write_text("# addon\n", encoding="utf-8")
     runtime_template = RuntimeTemplateRef(
         template_id="codex/base",
-        client_name=CLIENT_NAME_CODEX,
+        harness=HARNESS_NAME_CODEX,
         template_home=template,
         provenance={"registry_source": "agent-runtimes"},
     )
@@ -352,7 +352,7 @@ def test_codex_captured_run_template_launch_records_provenance_and_runtime_descr
 
     spawn_spec, lease = prepare_captured_run(
         CapturedRunRequest(
-            client_name=CLIENT_NAME_CODEX,
+            harness=HARNESS_NAME_CODEX,
             passthrough=(),
             directory=workdir,
             proxy_port=None,
@@ -379,7 +379,7 @@ def test_codex_captured_run_template_launch_records_provenance_and_runtime_descr
         now=_now(),
     )
     try:
-        child_home = storage / "runtime-home" / CLIENT_NAME_CODEX
+        child_home = storage / "runtime-home" / HARNESS_NAME_CODEX
         launch_fields = json.loads(spawn_spec.launch_env[env_keys.LAUNCH_FIELDS])
         expected_provenance = {
             "template_id": "codex/base",
@@ -414,11 +414,11 @@ def test_claude_template_descriptor_resolves_under_runtime_projects(tmp_path: Pa
     workdir.mkdir()
 
     plan = plan_runtime_home(
-        CLIENT_NAME_CLAUDE,
+        HARNESS_NAME_CLAUDE,
         home_dir=None,
         runtime_template=RuntimeTemplateRef(
             template_id="claude/base",
-            client_name=CLIENT_NAME_CLAUDE,
+            harness=HARNESS_NAME_CLAUDE,
             template_home=template,
             provenance={},
         ),
@@ -471,11 +471,11 @@ def test_claude_template_tree_is_byte_identical_after_full_launch_prep(
     workdir.mkdir()
 
     plan = plan_runtime_home(
-        CLIENT_NAME_CLAUDE,
+        HARNESS_NAME_CLAUDE,
         home_dir=None,
         runtime_template=RuntimeTemplateRef(
             template_id="claude/base",
-            client_name=CLIENT_NAME_CLAUDE,
+            harness=HARNESS_NAME_CLAUDE,
             template_home=template,
             provenance={},
         ),
@@ -516,11 +516,11 @@ def test_manual_plan_preserves_descriptor_home_and_no_overlay(tmp_path: Path) ->
     invalid_template.mkdir()
     (invalid_template / "auth.json").write_text("{}", encoding="utf-8")
     plan = plan_runtime_home(
-        CLIENT_NAME_CODEX,
+        HARNESS_NAME_CODEX,
         home_dir=manual,
         runtime_template=RuntimeTemplateRef(
             template_id="codex/base",
-            client_name=CLIENT_NAME_CODEX,
+            harness=HARNESS_NAME_CODEX,
             template_home=invalid_template,
             provenance={},
         ),
@@ -542,11 +542,11 @@ def test_manual_plan_ignores_invalid_runtime_template(tmp_path: Path) -> None:
     missing_template = tmp_path / "missing-template"
 
     plan = plan_runtime_home(
-        CLIENT_NAME_CODEX,
+        HARNESS_NAME_CODEX,
         home_dir=manual,
         runtime_template=RuntimeTemplateRef(
             template_id="codex/base",
-            client_name=CLIENT_NAME_CODEX,
+            harness=HARNESS_NAME_CODEX,
             template_home=missing_template,
             provenance={},
         ),
@@ -566,7 +566,7 @@ def test_proxy_only_plan_preserves_manual_home(tmp_path: Path) -> None:
     manual.mkdir()
 
     plan = plan_runtime_home(
-        CLIENT_NAME_CODEX,
+        HARNESS_NAME_CODEX,
         home_dir=manual,
         runtime_template=None,
         runtime_home_root=tmp_path / "run" / "runtime-home",
@@ -619,7 +619,7 @@ def test_resume_context_launch_env_reaches_child_but_not_shell(tmp_path: Path) -
     )
     child_env = build_managed_child_env(
         env,
-        client_name=CLIENT_NAME_CLAUDE,
+        harness=HARNESS_NAME_CLAUDE,
         home_dir=tmp_path / "home",
     )
 

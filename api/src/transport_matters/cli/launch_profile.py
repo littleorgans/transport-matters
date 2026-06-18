@@ -1,19 +1,19 @@
-"""The managed-launch port (§5.2c): one launch profile per mint-capable CLI.
+"""The managed-launch port (§5.2c): one launch profile per mint-capable harness.
 
 This is the launch-side counterpart to the read-side :class:`~transport_matters.index.adapters.base.
-TranscriptAdapter`. Where the adapter answers *how to read* a CLI's transcript (bind/locate/normalize),
-a :class:`LaunchProfile` answers *how to own* a CLI's session at launch:
+TranscriptAdapter`. Where the adapter answers *how to read* a harness transcript (bind/locate/normalize),
+a :class:`LaunchProfile` answers *how to own* a harness session at launch:
 
 * **inject** (:meth:`LaunchProfile.client_argv`) — put the owned id into argv (claude:
   ``--session-id <uuid>``; codex: ``resume <uuid>``).
 * **prepare** (:meth:`LaunchProfile.prepare`) — compute the owned ``source_descriptor`` up front, and
-  pre-seed the transcript if the CLI needs one (claude: deterministic path, no seed; codex: seed the
+  pre-seed the transcript if the harness needs one (claude: deterministic path, no seed; codex: seed the
   minimal ``session_meta`` rollout, then the path).
 * **honor passthrough** (:meth:`LaunchProfile.user_supplied_session`) — skip minting when the user
   already pinned a session, so their flag wins (external adoption).
 
 Both ``transport-matters claude`` and ``transport-matters codex`` flow through the SAME
-:func:`prepare_managed_session`; a future mint-capable CLI is one new profile + a registry entry, with
+:func:`prepare_managed_session`; a future mint-capable harness is one new profile + a registry entry, with
 ZERO launch-flow duplication. The mint itself (a uuid4 native id) is shared here, not per-profile.
 
 The read-side ``minted``/``session_id`` derivation is its symmetric twin in adapter binding plus
@@ -31,8 +31,8 @@ from typing import TYPE_CHECKING, ClassVar
 from transport_matters.index.adapters.base import encode_source_descriptor
 from transport_matters.index.adapters.claude import claude_transcript_source
 from transport_matters.launch_environment import (
-    CLIENT_NAME_CLAUDE,
-    CLIENT_NAME_CODEX,
+    HARNESS_NAME_CLAUDE,
+    HARNESS_NAME_CODEX,
     managed_child_shell_env_excludes,
 )
 from transport_matters.storage.session_facts import OwnedSessionFacts, write_owned_session_facts
@@ -62,17 +62,17 @@ class ManagedSession:
 
 
 class LaunchProfile(ABC):
-    """Launch-side anti-corruption layer. One concrete subclass per mint-capable CLI, registered by
-    ``cli`` in :data:`PROFILES`. A profile is mint-capable by construction (it implements ``prepare``
-    + ``client_argv``); a non-mint CLI simply has no profile and never reaches the managed path."""
+    """Launch-side anti-corruption layer. One concrete subclass per mint-capable harness, registered by
+    ``harness`` in :data:`HARNESSES`. A profile is mint-capable by construction (it implements ``prepare``
+    + ``client_argv``); a non-mint harness simply has no profile and never reaches the managed path."""
 
-    cli: ClassVar[str]
+    harness: ClassVar[str]
     # Whether this profile's managed launch MINTS the session_id PK (claude: the injected
     # ``--session-id`` is adopted as the PK → ``minted=True``) or merely owns the transcript while the
     # PK is synthesized (codex read-back → ``minted=False``). The launch-side declaration of the same
     # truth adapter binding derives from the provider's read-back family; recorded here only for the
     # durable per-run ``sessions.json`` (§11.1), so a §10.5 rebuild reads it without re-deriving. The
-    # two MUST agree per CLI (claude anthropic → True; codex read-back → False).
+    # two MUST agree per harness (claude anthropic → True; codex read-back → False).
     mints_session_id: ClassVar[bool]
 
     @abstractmethod
@@ -87,7 +87,7 @@ class LaunchProfile(ABC):
         now: datetime,
         write: bool,
     ) -> str:
-        """Produce the owned transcript's ``source_descriptor``, pre-seeding it if the CLI needs one.
+        """Produce the owned transcript's ``source_descriptor``, pre-seeding it if the harness needs one.
 
         ``write=False`` (print-command dry run) computes the descriptor without touching disk."""
 
@@ -108,7 +108,7 @@ class LaunchProfile(ABC):
 
 
 class ClaudeLaunchProfile(LaunchProfile):
-    cli = CLIENT_NAME_CLAUDE
+    harness = HARNESS_NAME_CLAUDE
     mints_session_id = True  # claude adopts the injected --session-id as its PK
 
     def prepare(
@@ -152,7 +152,7 @@ class ClaudeLaunchProfile(LaunchProfile):
 
 
 class CodexLaunchProfile(LaunchProfile):
-    cli = CLIENT_NAME_CODEX
+    harness = HARNESS_NAME_CODEX
     mints_session_id = False  # codex synthesizes the PK from the read-back native id
 
     def prepare(
@@ -206,9 +206,9 @@ def _codex_shell_environment_policy_args() -> list[str]:
     return ["-c", f"shell_environment_policy.exclude=[{excluded}]"]
 
 
-PROFILES: dict[str, LaunchProfile] = {
-    CLIENT_NAME_CLAUDE: ClaudeLaunchProfile(),
-    CLIENT_NAME_CODEX: CodexLaunchProfile(),
+HARNESSES: dict[str, LaunchProfile] = {
+    HARNESS_NAME_CLAUDE: ClaudeLaunchProfile(),
+    HARNESS_NAME_CODEX: CodexLaunchProfile(),
 }
 
 
@@ -225,7 +225,7 @@ def prepare_managed_session(
 ) -> ManagedSession | None:
     """Mint + prepare the owned session for a managed launch, or ``None`` for external adoption.
 
-    This is the single managed-launch entry point claude and codex (and any future mint-capable CLI)
+    This is the single managed-launch entry point claude and codex (and any future mint-capable harness)
     share. ``None`` when there is no managed client (proxy-only) or the user already pinned a session.
     A ``None`` result means the launcher emits no owned id/descriptor, so adapter binding leaves the
     session ``minted=False`` and the read side falls back to ``locate`` (claude) or stays pending."""
@@ -258,7 +258,7 @@ def persist_owned_session_facts(
     """Persist the §11.1 durable owned-launch facts for a managed session under the run dir.
 
     Shared by ``transport-matters claude`` and ``transport-matters codex`` (zero duplication). The
-    facts (native id, descriptor incl. ``home_dir``, cli, ``minted``) are launch-authoritative, so the
+    facts (native id, descriptor incl. ``home_dir``, harness, ``minted``) are launch-authoritative, so the
     launcher writes them once — inside the per-run lock (the run dir is guaranteed to exist) and before
     the retry loop — to ``<run_dir>/sessions.json``, surviving process exit for a §10.5 rebuild. The
     minted value is the profile's launch-side declaration (:attr:`LaunchProfile.mints_session_id`)."""
@@ -266,7 +266,7 @@ def persist_owned_session_facts(
         storage_root,
         OwnedSessionFacts(
             run_id=run_id,
-            cli=profile.cli,
+            harness=profile.harness,
             native_session_id=managed_session.native_session_id,
             minted=profile.mints_session_id,
             source_descriptor=managed_session.source_descriptor,

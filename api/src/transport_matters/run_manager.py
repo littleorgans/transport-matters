@@ -12,13 +12,13 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, Protocol
 
 from transport_matters.captured_run import (
-    CLAUDE_CLIENT_NAME,
+    CLAUDE_HARNESS_NAME,
     CLAUDE_UPSTREAM_DEFAULT,
-    CODEX_CLIENT_NAME,
+    CODEX_HARNESS_NAME,
     WEB_RUNTIME_EXTERNAL,
     CapturedRunBindConflict,
-    CapturedRunCli,
     CapturedRunDependencies,
+    CapturedRunHarness,
     CapturedRunProxyStartTimeout,
     CapturedRunRequest,
     CapturedRunSpawnSpec,
@@ -68,7 +68,7 @@ RunManagerErrorCode = Literal[
     "run_stale",
     "run_terminated",
     "session_store_unavailable",
-    "unsupported_cli",
+    "unsupported_harness",
 ]
 
 
@@ -121,7 +121,7 @@ class RunNotFoundError(KeyError):
 
 @dataclass(frozen=True, slots=True)
 class SpawnRun:
-    cli: CapturedRunCli
+    harness: CapturedRunHarness
     cwd: Path | None = None
     cols: int = DEFAULT_TERMINAL_COLS
     rows: int = DEFAULT_TERMINAL_ROWS
@@ -140,7 +140,7 @@ class SpawnRun:
     runtime_template: RuntimeTemplateRef | None = None
     launch_fields: dict[str, object] = field(default_factory=dict)
     idempotency_key: str | None = None
-    # Bridge answers the CLI's OSC 10/11 color queries (see osc_color_responder).
+    # Bridge answers the harness OSC 10/11 color queries (see osc_color_responder).
     osc_color_replies: bool = True
 
 
@@ -153,7 +153,7 @@ class _ValidatedSpawnRun:
 
 @dataclass(frozen=True, slots=True)
 class RunFilters:
-    cli: CapturedRunCli | None = None
+    harness: CapturedRunHarness | None = None
     cwd: Path | None = None
     states: frozenset[RunState] | None = None
 
@@ -161,7 +161,7 @@ class RunFilters:
 @dataclass(frozen=True, slots=True)
 class ManagedRunView:
     run_id: str
-    cli: CapturedRunCli
+    harness: CapturedRunHarness
     cwd: Path
     storage_dir: Path
     proxy_port: int
@@ -183,7 +183,7 @@ class ManagedRunView:
 @dataclass(slots=True)
 class ManagedRun:
     run_id: str
-    cli: CapturedRunCli
+    harness: CapturedRunHarness
     cwd: Path
     state: RunState
     spawn_spec: CapturedRunSpawnSpec
@@ -212,7 +212,7 @@ class ManagedRun:
     def view(self) -> ManagedRunView:
         return ManagedRunView(
             run_id=self.run_id,
-            cli=self.cli,
+            harness=self.harness,
             cwd=self.cwd,
             storage_dir=self.spawn_spec.storage_dir,
             proxy_port=self.spawn_spec.proxy_port,
@@ -306,7 +306,7 @@ class RunManager:
             if client is None:
                 raise RunManagerError(
                     "launch_failed",
-                    f"captured {request.cli} launch did not produce a client process",
+                    f"captured {request.harness} launch did not produce a client process",
                 )
 
             terminal = await asyncio.to_thread(
@@ -320,7 +320,7 @@ class RunManager:
             now = self._clock()
             run = ManagedRun(
                 run_id=spawn_spec.run_id,
-                cli=request.cli,
+                harness=request.harness,
                 cwd=spawn_spec.working_dir,
                 state=RunState.STARTING,
                 spawn_spec=spawn_spec,
@@ -373,8 +373,8 @@ class RunManager:
     def list(self, filters: RunFilters | None = None) -> list[ManagedRunView]:
         runs = tuple(self._runs.values())
         if filters is not None:
-            if filters.cli is not None:
-                runs = tuple(run for run in runs if run.cli == filters.cli)
+            if filters.harness is not None:
+                runs = tuple(run for run in runs if run.harness == filters.harness)
             if filters.cwd is not None:
                 runs = tuple(run for run in runs if run.cwd == filters.cwd)
             if filters.states is not None:
@@ -476,18 +476,20 @@ class RunManager:
             raise RunManagerError("launch_failed", str(exc)) from exc
 
     def _validate_spawn_request(self, request: SpawnRun) -> _ValidatedSpawnRun:
-        if request.cli not in _VALID_CAPTURED_RUN_CLIS:
-            raise RunManagerError("unsupported_cli", f"unsupported captured run cli: {request.cli}")
+        if request.harness not in _VALID_CAPTURED_RUN_HARNESSES:
+            raise RunManagerError(
+                "unsupported_harness", f"unsupported captured run harness: {request.harness}"
+            )
         cwd = self._resolve_cwd(request.cwd)
         upstream = request.upstream
         if upstream is None:
-            upstream = CLAUDE_UPSTREAM_DEFAULT if request.cli == CLAUDE_CLIENT_NAME else ""
+            upstream = CLAUDE_UPSTREAM_DEFAULT if request.harness == CLAUDE_HARNESS_NAME else ""
         return _ValidatedSpawnRun(request=request, cwd=cwd, upstream=upstream)
 
     def _captured_request(self, validated: _ValidatedSpawnRun) -> CapturedRunRequest:
         request = validated.request
         return CapturedRunRequest(
-            client_name=request.cli,
+            harness=request.harness,
             passthrough=request.passthrough,
             directory=validated.cwd,
             proxy_port=request.proxy_port,
@@ -576,8 +578,8 @@ class RunManager:
         if run.state not in {RunState.RUNNING, RunState.TERMINATING}:
             return
         if run.osc_responder is not None:
-            # Answer color queries inside the CLI's startup window; an fd that
-            # closed mid-callback just drops the reply (the CLI is exiting).
+            # Answer color queries inside the harness startup window; an fd that
+            # closed mid-callback just drops the reply (the harness is exiting).
             for reply in run.osc_responder.replies_for(data):
                 with contextlib.suppress(OSError):
                     write_all(run.terminal.master_fd, reply)
@@ -681,4 +683,4 @@ class RunManager:
 
 
 _TERMINAL_STATES = frozenset({RunState.TERMINATED, RunState.EXITED, RunState.FAILED})
-_VALID_CAPTURED_RUN_CLIS = frozenset({CLAUDE_CLIENT_NAME, CODEX_CLIENT_NAME})
+_VALID_CAPTURED_RUN_HARNESSES = frozenset({CLAUDE_HARNESS_NAME, CODEX_HARNESS_NAME})

@@ -39,7 +39,7 @@ export function makeSessionSummary(patch: Partial<SessionSummary> = {}): Session
     title: patch.title ?? "Project agent",
     status: patch.status ?? "active",
     provider: patch.provider ?? "anthropic",
-    cli: patch.cli ?? "claude",
+    harness: patch.harness ?? "claude",
     createdAt: patch.createdAt ?? "2026-06-06T17:00:00Z",
     lastActivityAt: patch.lastActivityAt ?? "2026-06-06T17:01:00Z",
     purpose: patch.purpose ?? "user",

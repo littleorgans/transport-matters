@@ -39,7 +39,7 @@ _DESKTOP_BACKEND_STALE_ENV_KEYS = (
     DESKTOP_CLIENT_ENV,
     DESKTOP_ROUTE_URL_ENV,
     env_keys.AGENT_HOME_DIR,
-    env_keys.CLI,
+    env_keys.HARNESS,
     env_keys.DEFAULT_CLIENT_PASSTHROUGH,
     env_keys.LAUNCH_FIELDS,
     env_keys.OWNED_NATIVE_SESSION_ID,

@@ -6,7 +6,7 @@ import type {
   WorldRect,
 } from "../../engine";
 import type { LayoutParams, ParamValue } from "../../engine/layout";
-import type { CliName } from "../../types";
+import type { HarnessName } from "../../types";
 import type { FramingState } from "../model/paneAffordances";
 import type { DockedPane, PaneContentRef } from "../model/paneRecords";
 
@@ -37,7 +37,7 @@ export interface CanvasLabState {
   paneCounters: Record<string, number>;
   addPane(): void;
   addTerminal(): void;
-  addCapturedRun(provider: CliName): void;
+  addCapturedRun(provider: HarnessName): void;
   /** Open (or focus/restore) a content pane at its registry pane id. Used by canvas file drops. */
   spawnPane(ref: PaneContentRef, options?: { focus?: boolean }): PaneId;
   /** Minimize ([-]): park the pane in the dock and remove it. Generic, runs the kind's onMinimize hook (captured keeps its run alive). */

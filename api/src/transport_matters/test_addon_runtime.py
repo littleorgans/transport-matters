@@ -371,7 +371,7 @@ def _codex_binding() -> SessionBinding:
         workspace_slug="s",
         workspace_hash="h",
         started_at="t",
-        cli="codex",
+        harness="codex",
         native_session_id="019e0000-0000-7000-8000-00000000c0de",
         minted=False,
     )
@@ -380,7 +380,7 @@ def _codex_binding() -> SessionBinding:
 async def test_cursor_registrar_registers_codex_session(monkeypatch: pytest.MonkeyPatch) -> None:
     """A codex wire binding (read-back) must resolve to the codex adapter and schedule its cursor.
 
-    The registrar maps wire provider → cli via _PROVIDER_CLI; codex was claude-only before slice 5,
+    The registrar maps wire provider → harness via _PROVIDER_HARNESS; codex was claude-only before slice 5,
     so a codex binding silently no-op'd (no transcript tail), this guards the codex mapping.
     """
     calls: list[tuple[str, str]] = []
@@ -388,7 +388,7 @@ async def test_cursor_registrar_registers_codex_session(monkeypatch: pytest.Monk
     async def fake_register(
         tailer: TranscriptTailer, adapter: object, binding: SessionBinding
     ) -> None:
-        calls.append((getattr(adapter, "cli", "?"), binding.session_id))
+        calls.append((getattr(adapter, "harness", "?"), binding.session_id))
 
     monkeypatch.setattr(addon_runtime, "register_session_cursor", fake_register)
     registrar = addon_runtime._make_cursor_registrar(TranscriptTailer(), asyncio.get_running_loop())
@@ -427,7 +427,7 @@ async def test_register_owned_cursor_uses_launch_settings(
     settings = Settings(
         run_id="run1",
         cwd=tmp_path / "workspace",
-        cli="codex",
+        harness="codex",
         owned_native_session_id=native,
         owned_source_descriptor=descriptor,
         agent_home_dir=tmp_path / "home",
@@ -437,7 +437,7 @@ async def test_register_owned_cursor_uses_launch_settings(
     async def fake_register(
         tailer: TranscriptTailer, adapter: object, binding: SessionBinding
     ) -> None:
-        calls.append((getattr(adapter, "cli", "?"), binding))
+        calls.append((getattr(adapter, "harness", "?"), binding))
 
     monkeypatch.setattr(addon_runtime, "register_session_cursor", fake_register)
 
@@ -449,8 +449,8 @@ async def test_register_owned_cursor_uses_launch_settings(
     )
 
     assert len(calls) == 1
-    cli, binding = calls[0]
-    assert cli == "codex"
+    harness, binding = calls[0]
+    assert harness == "codex"
     assert binding.session_id == synth_session_id("run1", "codex", native)
     assert binding.source_descriptor == descriptor
     assert binding.home_dir == str(tmp_path / "home")

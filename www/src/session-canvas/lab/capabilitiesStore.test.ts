@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { CliCapability } from "../../types";
+import type { HarnessCapability } from "../../types";
 
 // The store's only side effect is GET /api/capabilities via fetchCapabilities;
 // mock that so the test controls install state without a server.
@@ -7,17 +7,17 @@ const fetchCapabilities = vi.hoisted(() => vi.fn());
 vi.mock("../../api", () => ({ fetchCapabilities }));
 
 import {
-  cliInstalled,
+  harnessInstalled,
   resetCapabilitiesStoreForTests,
   useCapabilitiesStore,
 } from "./capabilitiesStore";
 
 const state = useCapabilitiesStore.getState;
 
-function capability(installed: boolean): CliCapability {
+function capability(installed: boolean): HarnessCapability {
   return {
     installed,
-    path: installed ? "/usr/local/bin/cli" : null,
+    path: installed ? "/usr/local/bin/harness" : null,
     version: installed ? "1.0.0" : null,
   };
 }
@@ -32,15 +32,15 @@ describe("capabilitiesStore", () => {
     resetCapabilitiesStoreForTests();
   });
 
-  it("treats CLIs as available until a probe confirms otherwise (fail-open)", () => {
+  it("treats harnesses as available until a probe confirms otherwise (fail-open)", () => {
     expect(state().status).toBe("idle");
-    expect(cliInstalled(state(), "claude")).toBe(true);
-    expect(cliInstalled(state(), "codex")).toBe(true);
+    expect(harnessInstalled(state(), "claude")).toBe(true);
+    expect(harnessInstalled(state(), "codex")).toBe(true);
   });
 
-  it("loads capabilities once and exposes per-CLI install state", async () => {
+  it("loads capabilities once and exposes per-harness install state", async () => {
     fetchCapabilities.mockResolvedValue({
-      clis: { claude: capability(true), codex: capability(false) },
+      harnesses: { claude: capability(true), codex: capability(false) },
     });
 
     state().ensureLoaded();
@@ -48,13 +48,13 @@ describe("capabilitiesStore", () => {
     await vi.waitFor(() => expect(state().status).toBe("ready"));
 
     expect(fetchCapabilities).toHaveBeenCalledTimes(1);
-    expect(cliInstalled(state(), "claude")).toBe(true);
-    expect(cliInstalled(state(), "codex")).toBe(false);
+    expect(harnessInstalled(state(), "claude")).toBe(true);
+    expect(harnessInstalled(state(), "codex")).toBe(false);
   });
 
   it("does not re-fetch once loaded", async () => {
     fetchCapabilities.mockResolvedValue({
-      clis: { claude: capability(true), codex: capability(true) },
+      harnesses: { claude: capability(true), codex: capability(true) },
     });
     state().ensureLoaded();
     await vi.waitFor(() => expect(state().status).toBe("ready"));
@@ -70,7 +70,7 @@ describe("capabilitiesStore", () => {
     await vi.waitFor(() => expect(state().status).toBe("error"));
 
     // Fail-open: a failed probe must not hide the buttons (the dev-server regression).
-    expect(cliInstalled(state(), "claude")).toBe(true);
-    expect(cliInstalled(state(), "codex")).toBe(true);
+    expect(harnessInstalled(state(), "claude")).toBe(true);
+    expect(harnessInstalled(state(), "codex")).toBe(true);
   });
 });

@@ -20,13 +20,13 @@ from transport_matters.captured_run_dependencies import (
     default_claude_run_dependencies,
 )
 from transport_matters.captured_run_models import (
-    CLAUDE_CLIENT_NAME,
+    CLAUDE_HARNESS_NAME,
     CLAUDE_UPSTREAM_DEFAULT,
-    CODEX_CLIENT_NAME,
+    CODEX_HARNESS_NAME,
     WEB_RUNTIME_EMBEDDED,
     WEB_RUNTIME_EXTERNAL,
     CapturedRunBindConflict,
-    CapturedRunCli,
+    CapturedRunHarness,
     CapturedRunLease,
     CapturedRunProxyStartTimeout,
     CapturedRunRequest,
@@ -48,14 +48,14 @@ if TYPE_CHECKING:
     )
 
 __all__ = [
-    "CLAUDE_CLIENT_NAME",
+    "CLAUDE_HARNESS_NAME",
     "CLAUDE_UPSTREAM_DEFAULT",
-    "CODEX_CLIENT_NAME",
+    "CODEX_HARNESS_NAME",
     "WEB_RUNTIME_EMBEDDED",
     "WEB_RUNTIME_EXTERNAL",
     "CapturedRunBindConflict",
-    "CapturedRunCli",
     "CapturedRunDependencies",
+    "CapturedRunHarness",
     "CapturedRunLease",
     "CapturedRunProxyStartTimeout",
     "CapturedRunRequest",
@@ -243,7 +243,7 @@ def prepare_captured_run(
                     client=client,
                     launch_env=launch_env,
                     managed_session=ctx.managed_session,
-                    client_name=ctx.request.client_name,
+                    harness=ctx.request.harness,
                 )
                 lease = CapturedRunLease(
                     spawn_spec=spawn_spec,
@@ -308,7 +308,7 @@ def prepare_captured_run(
 
 def require_web_port(web_port: int | None) -> int:
     if web_port is None:
-        msg = "standalone CLI captured runs require an embedded web port"
+        msg = "standalone harness captured runs require an embedded web port"
         raise ValueError(msg)
     return web_port
 

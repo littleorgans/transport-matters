@@ -18,7 +18,7 @@ import typer
 
 from transport_matters.captured_run import require_web_port
 from transport_matters.launch_environment import (
-    CLIENT_NAME_CODEX,
+    HARNESS_NAME_CODEX,
     build_launch_env,
     build_managed_child_env,
 )
@@ -338,7 +338,7 @@ def build_codex_invocation(
             web_port=web_port,
             run_id=run_id,
             web_runtime=web_runtime,
-            cli=CLIENT_NAME_CODEX,
+            harness=HARNESS_NAME_CODEX,
             home_dir=home_dir,
             owned_native_session_id=native_session_id,
             owned_source_descriptor=(
@@ -366,7 +366,7 @@ def build_codex_invocation(
         if codex_path is not None:
             client_env = build_managed_child_env(
                 env,
-                client_name=CLIENT_NAME_CODEX,
+                harness=HARNESS_NAME_CODEX,
                 home_dir=runtime_home_dir or home_dir,
                 proxy_url=proxy_url,
                 codex_ca_certificate=codex_ca_certificate,
@@ -374,7 +374,7 @@ def build_codex_invocation(
             # The codex profile owns the argv shape (§5.2c): the top-level `-c` policy, then
             # ``resume <native>`` to continue the owned rollout, then user passthrough.
             client = ManagedClient(
-                name=CLIENT_NAME_CODEX,
+                name=HARNESS_NAME_CODEX,
                 display_name="Codex",
                 argv=profile.client_argv(
                     client_path=codex_path,
@@ -478,7 +478,7 @@ def _prepare_codex_launch_parts(
 ) -> _CodexLaunchParts:
     runtime_home_root = prepared.resolved_storage / "runtime-home"
     runtime_home_plan = plan_runtime_home(
-        CLIENT_NAME_CODEX,
+        HARNESS_NAME_CODEX,
         home_dir=home_dir,
         runtime_template=None,
         runtime_home_root=runtime_home_root,
@@ -579,7 +579,7 @@ def run_codex(
         proxy_port=proxy_port,
         web_port=web_port,
         storage_dir=storage_dir,
-        client_name=CLIENT_NAME_CODEX,
+        harness=HARNESS_NAME_CODEX,
         bin_override=codex_bin,
         client_disabled=no_codex,
         not_found_hint=(

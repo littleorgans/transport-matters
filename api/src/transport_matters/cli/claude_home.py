@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any  # Any: Claude JSON config accepts arbitrary values.
 
 from transport_matters import env_keys
-from transport_matters.launch_environment import CLIENT_NAME_CLAUDE, LOOPBACK_NO_PROXY
+from transport_matters.launch_environment import HARNESS_NAME_CLAUDE, LOOPBACK_NO_PROXY
 
 from . import home_constants, home_io
 
@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 class ClaudeSeeder:
     """Seed Claude Code onboarding, account metadata, and cwd trust."""
 
-    client_name = CLIENT_NAME_CLAUDE
+    harness: str = HARNESS_NAME_CLAUDE
 
     def seed(
         self,

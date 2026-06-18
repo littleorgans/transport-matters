@@ -45,7 +45,7 @@ def test_claude_managed_mint_injects_session_id_and_owns_descriptor(
     client = kwargs["client"]
 
     # the addon learns the owned claude identity through the SAME provider-neutral env contract codex uses
-    assert env["TRANSPORT_MATTERS_CLI"] == "claude"
+    assert env["TRANSPORT_MATTERS_HARNESS"] == "claude"
     native = env["TRANSPORT_MATTERS_OWNED_NATIVE_SESSION_ID"]
     UUID(native)  # a real uuid4 TM owns
     source = decode_source_descriptor(env["TRANSPORT_MATTERS_OWNED_SOURCE_DESCRIPTOR"])
@@ -69,7 +69,7 @@ def test_claude_managed_mint_writes_durable_session_facts_under_home_dir(
 ) -> None:
     # §11.1 durable owned-launch facts: under --agent-home-dir the descriptor records the launched
     # overlay home AND <run_dir>/sessions.json carries the owned facts (native id, descriptor incl.
-    # home_dir, cli, minted) so a §10.5 rebuild reads owned state WITHOUT the live env. The home
+    # home_dir, harness, minted) so a §10.5 rebuild reads owned state WITHOUT the live env. The home
     # reaches the addon via the OWNED_* env channel (AGENT_HOME_DIR), not only the manifest.
     monkeypatch.setattr(
         "transport_matters.cli.shutil.which",
@@ -110,7 +110,7 @@ def test_claude_managed_mint_writes_durable_session_facts_under_home_dir(
     assert facts is not None
     (owned,) = facts.sessions
     assert owned.native_session_id == native
-    assert owned.cli == "claude"
+    assert owned.harness == "claude"
     assert owned.minted is True  # claude adopts the injected --session-id as its session_id PK
     assert owned.home_dir == str(expected_home)
     assert owned.source_descriptor == env["TRANSPORT_MATTERS_OWNED_SOURCE_DESCRIPTOR"]

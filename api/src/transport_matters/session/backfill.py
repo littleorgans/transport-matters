@@ -67,7 +67,7 @@ def replay_transcript_runs(
 
 
 def _replay_owned(root: Path, owned: OwnedSessionFacts) -> Iterator[ReplayRecord]:
-    adapter = get_adapter(owned.cli)
+    adapter = get_adapter(owned.harness)
     session_id = _session_id(owned, adapter.provider)
     source = decode_source_descriptor(owned.source_descriptor)
     if not isinstance(source, FileTailSource):
@@ -146,7 +146,7 @@ def _binding(
         workspace_slug=slug,
         workspace_hash=workspace_hash,
         started_at=started_at,
-        cli=owned.cli,
+        harness=owned.harness,
         native_session_id=owned.native_session_id,
         minted=owned.minted,
         source_descriptor=owned.source_descriptor,

@@ -2,12 +2,12 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { createCapturedRun, terminateRun } from "../../api";
 import { createFrontendPersistStorage, FRONTEND_STORAGE_KEYS } from "../../stores/persistence";
-import type { CliName } from "../../types";
+import type { HarnessName } from "../../types";
 
 export type CapturedRunKey = string;
 
 export interface CapturedRunRecord {
-  provider: CliName;
+  provider: HarnessName;
   runId: string;
   /**
    * True while this run's pane is parked in the dock. Persisted so a browser reload re-docks the run
@@ -85,16 +85,16 @@ export interface CapturedRunState {
   /** Live run id per captured pane. Persisted so a reload re-attaches instead of re-spawning. */
   runs: Record<CapturedRunKey, CapturedRunRecord>;
   /**
-   * Bridge answers the CLIs' OSC 10/11 color queries at spawn (backend osc_color_responder), so
+   * Bridge answers the harness OSC 10/11 color queries at spawn (backend osc_color_responder), so
    * terminal background-sensitive styling renders deterministically. Spawn-time only.
    */
   oscColorReplies: boolean;
   /** Resolve this pane's run id: reuse a persisted/in-flight run, else spawn one. */
   ensureRun(
     runKey: CapturedRunKey,
-    provider: CliName,
+    provider: HarnessName,
     cwd?: string,
-    /** Bridge answers the CLI's OSC color queries (default true; spawn-time only). */
+    /** Bridge answers the harness OSC color queries (default true; spawn-time only). */
     oscColorReplies?: boolean,
   ): Promise<string>;
   /**
@@ -115,7 +115,7 @@ export interface CapturedRunState {
   setOscColorReplies(on: boolean): void;
 }
 
-export function createCapturedRunKey(provider: CliName): CapturedRunKey {
+export function createCapturedRunKey(provider: HarnessName): CapturedRunKey {
   const randomUUID = globalThis.crypto?.randomUUID;
   const uniqueId =
     typeof randomUUID === "function"

@@ -9,7 +9,7 @@ launched, so the frontend caches this value with ``staleTime: Infinity``.
 UI does not act on it, but the apply-at-intercept pipeline will key
 overlays by it when that slice lands.
 
-``harnesses`` describes executable client behavior. Upstream provider wire
+``harnesses`` describes executable harness behavior. Upstream provider wire
 semantics stay on the provider adapters and captured IR provider fields.
 """
 

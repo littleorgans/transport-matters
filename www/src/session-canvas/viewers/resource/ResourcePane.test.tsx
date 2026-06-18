@@ -52,7 +52,7 @@ function paneProps(ref: ResourcePaneRef = REF): ViewerProps<ResourcePaneRef> {
       owner: "local",
       workspaceHash: "hash-1",
       focusedPaneId: null,
-      launch: { owner: "local", workspaceHash: "hash-1", cli: "claude", runId: null },
+      launch: { owner: "local", workspaceHash: "hash-1", harness: "claude", runId: null },
       launchStatus: "unavailable",
       launchSessionId: null,
     },

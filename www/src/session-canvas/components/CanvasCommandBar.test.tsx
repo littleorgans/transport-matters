@@ -1,18 +1,18 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import type { CliName } from "../../types";
+import type { HarnessName } from "../../types";
 import type { CanvasLaunchContext } from "../route";
 import { CanvasCommandBar } from "./CanvasCommandBar";
 
 const launch = {
   owner: "local",
   workspaceHash: "hash-1",
-  cli: null,
+  harness: null,
   runId: null,
 } satisfies CanvasLaunchContext;
 
 function setup() {
-  const onSpawnCapturedRun = vi.fn<(provider: CliName) => void>();
+  const onSpawnCapturedRun = vi.fn<(provider: HarnessName) => void>();
   render(
     <CanvasCommandBar
       focusedTitle={null}

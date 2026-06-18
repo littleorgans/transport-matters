@@ -7,24 +7,21 @@ import os
 from typing import TYPE_CHECKING
 
 from transport_matters import env_keys
-from transport_matters.capabilities import CLI_NAME_CLAUDE, CLI_NAME_CODEX
+from transport_matters.capabilities import HARNESS_NAME_CLAUDE, HARNESS_NAME_CODEX
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
     from pathlib import Path
 
 __all__ = [
-    "CLIENT_NAME_CLAUDE",
-    "CLIENT_NAME_CODEX",
-    "HOME_DIR_ENV_BY_CLIENT",
+    "HARNESS_NAME_CLAUDE",
+    "HARNESS_NAME_CODEX",
+    "HOME_DIR_ENV_BY_HARNESS",
     "LOOPBACK_NO_PROXY",
     "build_launch_env",
     "build_managed_child_env",
     "managed_child_shell_env_excludes",
 ]
-
-CLIENT_NAME_CLAUDE: str = CLI_NAME_CLAUDE
-CLIENT_NAME_CODEX: str = CLI_NAME_CODEX
 
 _MANAGED_CHILD_PROXY_ENV_KEYS = frozenset(
     {
@@ -91,9 +88,9 @@ _MANAGED_CHILD_SHELL_INTERNAL_ENV_KEYS = frozenset({env_keys.RESUME_CONTEXT})
 
 LOOPBACK_NO_PROXY = "127.0.0.1,localhost"
 
-HOME_DIR_ENV_BY_CLIENT: dict[str, str] = {
-    CLIENT_NAME_CLAUDE: "CLAUDE_CONFIG_DIR",
-    CLIENT_NAME_CODEX: "CODEX_HOME",
+HOME_DIR_ENV_BY_HARNESS: dict[str, str] = {
+    HARNESS_NAME_CLAUDE: "CLAUDE_CONFIG_DIR",
+    HARNESS_NAME_CODEX: "CODEX_HOME",
 }
 
 
@@ -117,7 +114,7 @@ def build_launch_env(
     web_port: int | None,
     run_id: str,
     web_runtime: str = "embedded",
-    cli: str | None = None,
+    harness: str | None = None,
     home_dir: Path | None = None,
     owned_native_session_id: str | None = None,
     owned_source_descriptor: str | None = None,
@@ -126,8 +123,8 @@ def build_launch_env(
 ) -> dict[str, str]:
     """Return the shared runtime environment for a launch attempt.
 
-    ``cli`` and the ``owned_*`` values are the managed mint contract: a mint capable
-    launcher hands the addon the harness cli plus the native id and source descriptor
+    ``harness`` and the ``owned_*`` values are the managed mint contract: a mint capable
+    launcher hands the addon the harness plus the native id and source descriptor
     of the transcript it owns, so the addon can stamp them onto the session row before
     cursor registration.
 
@@ -144,8 +141,8 @@ def build_launch_env(
     env[env_keys.PROXY_PORT] = str(proxy_port)
     env[env_keys.RUN_ID] = run_id
     env[env_keys.CWD] = str(working_dir)
-    if cli is not None:
-        env[env_keys.CLI] = cli
+    if harness is not None:
+        env[env_keys.HARNESS] = harness
     if home_dir is not None:
         env[env_keys.AGENT_HOME_DIR] = str(home_dir)
     if default_client_passthrough:
@@ -179,7 +176,7 @@ def build_launch_env(
 def build_managed_child_env(
     base_env: Mapping[str, str],
     *,
-    client_name: str | None = None,
+    harness: str | None = None,
     home_dir: Path | None = None,
     proxy_url: str | None = None,
     codex_ca_certificate: str | None = None,
@@ -215,12 +212,12 @@ def build_managed_child_env(
     if codex_ca_certificate is not None:
         env["CODEX_CA_CERTIFICATE"] = codex_ca_certificate
     if home_dir is not None:
-        if client_name is None:
-            raise ValueError(f"unmapped managed client home dir: {client_name!r}")
+        if harness is None:
+            raise ValueError(f"unmapped managed client home dir: {harness!r}")
         try:
-            env_key = HOME_DIR_ENV_BY_CLIENT[client_name]
+            env_key = HOME_DIR_ENV_BY_HARNESS[harness]
         except KeyError as exc:
-            raise ValueError(f"unmapped managed client home dir: {client_name!r}") from exc
+            raise ValueError(f"unmapped managed client home dir: {harness!r}") from exc
         env[env_key] = str(home_dir)
     if extra_env is not None:
         env.update(extra_env)

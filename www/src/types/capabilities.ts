@@ -33,20 +33,20 @@ export interface HarnessDescriptor {
   capabilities: HarnessCapabilities;
 }
 
-// Managed CLI capabilities returned by GET /api/capabilities.
-// Local install state for each managed CLI the desktop can spawn as a captured
+// Managed harness capabilities returned by GET /api/capabilities.
+// Local install state for each managed harness the desktop can spawn as a captured
 // run. Distinct from HarnessCapabilities above, which describes protocol
 // features for a harness.
 
-/** The managed CLIs that can be spawned as a captured run. Doubles as the captured pane provider. */
-export type CliName = "claude" | "codex";
+/** The managed harnesses that can be spawned as a captured run. Doubles as the captured pane provider. */
+export type HarnessName = "claude" | "codex";
 
-export interface CliCapability {
+export interface HarnessCapability {
   installed: boolean;
   path: string | null;
   version: string | null;
 }
 
 export interface CapabilitiesResponse {
-  clis: Record<CliName, CliCapability>;
+  harnesses: Record<HarnessName, HarnessCapability>;
 }

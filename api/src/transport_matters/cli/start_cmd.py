@@ -75,7 +75,7 @@ def run_start(
 
     run_captured_run_on_local_tty(
         CapturedRunRequest(
-            client_name="claude",
+            harness="claude",
             passthrough=tuple(claude_passthrough),
             directory=directory,
             proxy_port=proxy_port,

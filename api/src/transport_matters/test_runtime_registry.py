@@ -19,7 +19,7 @@ def test_resolve_runtime_template_from_agent_runtimes_registry(tmp_path: Path) -
     ref = resolve_runtime_template("base", "codex", env={"HOME": str(tmp_path)})
 
     assert ref.template_id == "base"
-    assert ref.client_name == "codex"
+    assert ref.harness == "codex"
     assert ref.template_home == template.resolve()
     assert ref.provenance == {
         "registry_source": "agent-runtimes",

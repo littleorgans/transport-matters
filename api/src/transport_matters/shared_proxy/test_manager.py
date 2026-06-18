@@ -324,7 +324,7 @@ async def wait_for_request_count(
 def make_binding(tmp_path: Path, *, run_id: str, port: int) -> ProxyRunBinding:
     return ProxyRunBinding(
         run_id=run_id,
-        cli="claude",
+        harness="claude",
         working_dir=tmp_path,
         storage=DiskStorageBackend(tmp_path / run_id),
         listen_port=port,

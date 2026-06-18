@@ -12,13 +12,13 @@ export function resolveLaunchSession(
   sessions: readonly SessionSummary[],
   launch: CanvasLaunchContext,
 ): LaunchResolution {
-  if (!launch.workspaceHash || !launch.cli) return { status: "unavailable" };
+  if (!launch.workspaceHash || !launch.harness) return { status: "unavailable" };
   const workspaceHash = launch.workspaceHash;
-  const cli = launch.cli;
+  const harness = launch.harness;
   const active = sessions.find(
     (session) =>
       session.status === "active" &&
-      session.cli === cli &&
+      session.harness === harness &&
       sessionWorkspaceMatches(session.workspaceId, workspaceHash),
   );
   if (active) return { status: "resolved", session: active };

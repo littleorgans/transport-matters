@@ -1,8 +1,8 @@
 """The tier-1 transcript snapshot writer (§7.1/§11, slice 8b-i): byte-faithful prefix-copy append.
 
 The writer is the injected callback the §9.2 tailer tees consumed transcript bytes into. Its job:
-keep ``<run_dir>/transcripts/<session_id>.jsonl`` a byte-faithful copy of the CLI transcript's
-consumed prefix, idempotently across re-tails (a fresh process re-reads the CLI file from offset 0).
+keep ``<run_dir>/transcripts/<session_id>.jsonl`` a byte-faithful copy of the harness transcript's
+consumed prefix, idempotently across re-tails (a fresh process re-reads the harness file from offset 0).
 """
 
 from typing import TYPE_CHECKING
@@ -54,7 +54,7 @@ def test_empty_consumed_is_a_noop_and_creates_no_file(tmp_path: Path) -> None:
 
 
 def test_retail_from_offset_zero_does_not_duplicate(tmp_path: Path) -> None:
-    # A fresh process re-registers the cursor at byte_offset=0 and re-reads the WHOLE CLI file.
+    # A fresh process re-registers the cursor at byte_offset=0 and re-reads the WHOLE harness file.
     # The snapshot already holds that prefix, so re-teeing the same range must append nothing.
     snapshot = make_transcript_snapshot_writer(tmp_path)
     data = b'{"a":1}\n{"b":2}\n'
@@ -66,7 +66,7 @@ def test_retail_from_offset_zero_does_not_duplicate(tmp_path: Path) -> None:
 
 
 def test_retail_from_offset_zero_appends_only_the_new_tail(tmp_path: Path) -> None:
-    # Restart where the CLI file grew while we were down: re-read [0, M+k) but only [M, M+k) is new.
+    # Restart where the harness file grew while we were down: re-read [0, M+k) but only [M, M+k) is new.
     snapshot = make_transcript_snapshot_writer(tmp_path)
     prefix = b'{"a":1}\n'
     snapshot(_SID, 0, prefix)

@@ -10,22 +10,22 @@ from transport_matters.cli.runtime_home import (
     RuntimeTemplateRef,
     plan_runtime_home,
 )
-from transport_matters.launch_environment import CLIENT_NAME_CLAUDE, CLIENT_NAME_CODEX
+from transport_matters.launch_environment import HARNESS_NAME_CLAUDE, HARNESS_NAME_CODEX
 
 if TYPE_CHECKING:
     from pathlib import Path
 
 
 @pytest.mark.parametrize(
-    ("client_name", "secret_name"),
+    ("harness", "secret_name"),
     [
-        (CLIENT_NAME_CLAUDE, ".credentials.json"),
-        (CLIENT_NAME_CODEX, "auth.json"),
+        (HARNESS_NAME_CLAUDE, ".credentials.json"),
+        (HARNESS_NAME_CODEX, "auth.json"),
     ],
 )
 def test_template_credential_files_are_rejected(
     tmp_path: Path,
-    client_name: str,
+    harness: str,
     secret_name: str,
 ) -> None:
     template = tmp_path / "template"
@@ -34,16 +34,16 @@ def test_template_credential_files_are_rejected(
 
     with pytest.raises(ValueError, match="credential"):
         plan_runtime_home(
-            client_name,
+            harness,
             home_dir=None,
             runtime_template=RuntimeTemplateRef(
                 template_id="client/base",
-                client_name=client_name,
+                harness=harness,
                 template_home=template,
                 provenance={},
             ),
             runtime_home_root=tmp_path / "run" / "runtime-home",
-            client_path=f"/bin/{client_name}",
+            client_path=f"/bin/{harness}",
             env={},
             use_runtime_overlay=True,
         )
@@ -63,11 +63,11 @@ def test_claude_template_account_fields_are_rejected(
 
     with pytest.raises(ValueError, match=field_name):
         plan_runtime_home(
-            CLIENT_NAME_CLAUDE,
+            HARNESS_NAME_CLAUDE,
             home_dir=None,
             runtime_template=RuntimeTemplateRef(
                 template_id="claude/base",
-                client_name=CLIENT_NAME_CLAUDE,
+                harness=HARNESS_NAME_CLAUDE,
                 template_home=template,
                 provenance={},
             ),
@@ -95,11 +95,11 @@ def test_codex_template_config_auth_material_is_rejected(
 
     with pytest.raises(ValueError, match="auth material"):
         plan_runtime_home(
-            CLIENT_NAME_CODEX,
+            HARNESS_NAME_CODEX,
             home_dir=None,
             runtime_template=RuntimeTemplateRef(
                 template_id="codex/base",
-                client_name=CLIENT_NAME_CODEX,
+                harness=HARNESS_NAME_CODEX,
                 template_home=template,
                 provenance={},
             ),
@@ -121,11 +121,11 @@ def test_codex_template_config_benign_auth_like_keys_are_allowed(
     )
 
     plan = plan_runtime_home(
-        CLIENT_NAME_CODEX,
+        HARNESS_NAME_CODEX,
         home_dir=None,
         runtime_template=RuntimeTemplateRef(
             template_id="codex/base",
-            client_name=CLIENT_NAME_CODEX,
+            harness=HARNESS_NAME_CODEX,
             template_home=template,
             provenance={},
         ),
@@ -146,11 +146,11 @@ def test_runtime_template_missing_root_is_rejected(tmp_path: Path) -> None:
         match=f"runtime template {missing_template} does not exist",
     ):
         plan_runtime_home(
-            CLIENT_NAME_CODEX,
+            HARNESS_NAME_CODEX,
             home_dir=None,
             runtime_template=RuntimeTemplateRef(
                 template_id="codex/base",
-                client_name=CLIENT_NAME_CODEX,
+                harness=HARNESS_NAME_CODEX,
                 template_home=missing_template,
                 provenance={},
             ),
@@ -162,15 +162,15 @@ def test_runtime_template_missing_root_is_rejected(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize(
-    ("client_name", "seed_file"),
+    ("harness", "seed_file"),
     [
-        (CLIENT_NAME_CLAUDE, ".claude.json"),
-        (CLIENT_NAME_CODEX, "config.toml"),
+        (HARNESS_NAME_CLAUDE, ".claude.json"),
+        (HARNESS_NAME_CODEX, "config.toml"),
     ],
 )
 def test_template_unknown_top_level_entries_do_not_fail_planning(
     tmp_path: Path,
-    client_name: str,
+    harness: str,
     seed_file: str,
 ) -> None:
     template = tmp_path / "template"
@@ -180,16 +180,16 @@ def test_template_unknown_top_level_entries_do_not_fail_planning(
     (template / "mystery-state").mkdir()
 
     plan = plan_runtime_home(
-        client_name,
+        harness,
         home_dir=None,
         runtime_template=RuntimeTemplateRef(
             template_id="client/base",
-            client_name=client_name,
+            harness=harness,
             template_home=template,
             provenance={},
         ),
         runtime_home_root=tmp_path / "run" / "runtime-home",
-        client_path=f"/bin/{client_name}",
+        client_path=f"/bin/{harness}",
         env={},
         use_runtime_overlay=True,
     )

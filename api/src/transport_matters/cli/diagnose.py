@@ -2,7 +2,7 @@
 
 Split out from :mod:`transport_matters.cli` so the package entry point stays
 under the 700-LOC invariant. The typer command itself stays in
-``cli/__init__.py`` as a thin wrapper that calls :func:`run_doctor`.
+``harness/__init__.py`` as a thin wrapper that calls :func:`run_doctor`.
 
 Tests that previously patched ``transport_matters.cli.shutil.which`` /
 ``transport_matters.cli.port_in_use`` continue to work because those
@@ -23,7 +23,7 @@ from urllib.parse import urlsplit
 import typer
 
 from transport_matters import __version__
-from transport_matters.capabilities import detect_clis
+from transport_matters.capabilities import detect_harnesses
 from transport_matters.config import (
     DATABASE_URL_GUIDANCE,
     MissingDatabaseConfigError,
@@ -103,7 +103,7 @@ def report_runs_health(
     typer.echo(f"\n  running > {age_label} (possible stale captured runs):")
     for run in candidates:
         run_id = run.get("runId", "?")
-        cli = run.get("cli", "?")
+        harness = run.get("harness", "?")
         workspace_id = run.get("workspaceId", "?")
         created_at = run.get("createdAt")
         if created_at is not None:
@@ -116,7 +116,7 @@ def report_runs_health(
             age_str = f"{age_secs}s"
         else:
             age_str = "?"
-        typer.echo(f"    {run_id}  {cli}  {workspace_id}  running {age_str}")
+        typer.echo(f"    {run_id}  {harness}  {workspace_id}  running {age_str}")
 
     if not reap_orphans:
         typer.echo(f"\n  hint: reap with: {CLI_COMMAND} doctor --reap-orphans")
@@ -213,8 +213,8 @@ def run_doctor(
         typer.echo("        The web UI will not load. This is expected for")
         typer.echo("        source checkouts; release wheels embed the bundle.")
 
-    # Managed client CLIs.
-    for name, capability in detect_clis().items():
+    # Managed harnesses.
+    for name, capability in detect_harnesses().items():
         if capability.installed:
             _ok(name, capability.version or "version unknown")
         else:
@@ -287,9 +287,9 @@ def run_doctor(
 
     def _default_confirm(run: dict[str, object]) -> bool:
         run_id = run.get("runId", "?")
-        cli = run.get("cli", "?")
+        harness = run.get("harness", "?")
         cwd = run.get("cwd", "?")
-        return typer.confirm(f"Reap run {run_id} ({cli} in {cwd})?")
+        return typer.confirm(f"Reap run {run_id} ({harness} in {cwd})?")
 
     report_runs_health(
         reap_orphans=reap_orphans,

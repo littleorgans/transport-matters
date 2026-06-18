@@ -45,7 +45,7 @@ class SessionHeader(TimelineModel):
     session_id: str
     workspace_id: str
     provider: str
-    cli: str | None
+    harness: str | None
     status: str
     title: str | None
     purpose: str
@@ -61,7 +61,7 @@ class SessionHeader(TimelineModel):
             session_id=row.session_id,
             workspace_id=f"{row.workspace_slug}/{row.workspace_hash}",
             provider=row.provider,
-            cli=row.cli,
+            harness=row.harness,
             status=str(row.status),
             title=row.title,
             purpose=str(row.session_purpose),
@@ -113,7 +113,7 @@ class SubagentSummary(TimelineModel):
     parent_session_id: str
     parent_seq: int | None
     provider: str
-    cli: str
+    harness: str
     title: str
     status: SessionStatus
     first_seq: int | None

@@ -83,7 +83,7 @@ def test_auth_headers_ignores_unrelated_headers() -> None:
 def _auth_binding(tmp_path: Path) -> ProxyRunBinding:
     return ProxyRunBinding(
         run_id="run-auth",
-        cli="claude",
+        harness="claude",
         working_dir=None,
         storage=cast("StorageBackend", object()),
         listen_port=9191,

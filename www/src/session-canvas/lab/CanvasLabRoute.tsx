@@ -24,7 +24,7 @@ import {
 } from "../viewers/registry";
 import { ControlsPanel, OscColorReplyToggle } from "./ControlsPanel";
 import { framedPaneId, useCanvasLabStore } from "./canvasLabStore";
-import { cliInstalled, useCapabilitiesStore } from "./capabilitiesStore";
+import { harnessInstalled, useCapabilitiesStore } from "./capabilitiesStore";
 import "./canvas-lab.css";
 import { LabCardPane } from "./viewers/LabCardPane";
 import { LabRulerPane } from "./viewers/LabRulerPane";
@@ -76,10 +76,10 @@ export function CanvasLabRoute() {
   const setBounds = useCanvasLabStore((state) => state.setBounds);
   const setViewport = useCanvasLabStore((state) => state.setViewport);
 
-  // Managed-CLI availability gates the captured-run spawn buttons: a CLI that is
+  // Managed harness availability gates the captured-run spawn buttons: a harness that is
   // not installed never offers a launch that would fail.
-  const claudeInstalled = useCapabilitiesStore((state) => cliInstalled(state, "claude"));
-  const codexInstalled = useCapabilitiesStore((state) => cliInstalled(state, "codex"));
+  const claudeInstalled = useCapabilitiesStore((state) => harnessInstalled(state, "claude"));
+  const codexInstalled = useCapabilitiesStore((state) => harnessInstalled(state, "codex"));
 
   const stageRef = useRef<HTMLDivElement>(null);
   const { reorderActive, markReorderActive, finishReorder } = useReorderSettle();
@@ -135,7 +135,7 @@ export function CanvasLabRoute() {
   // seedPaneFromRecord path that spawn uses. A captured pane re-attaches to its own run by id when its
   // viewer mounts (capturedRunStore keeps the runId), so no mount-time reconcile is needed here.
 
-  // Probe managed-CLI availability once so the Spawn buttons reflect what's installed.
+  // Probe managed harness availability once so the Spawn buttons reflect what's installed.
   useEffect(() => {
     useCapabilitiesStore.getState().ensureLoaded();
   }, []);
@@ -371,7 +371,7 @@ function labContentProps(
       owner: "local",
       workspaceHash: null,
       focusedPaneId,
-      launch: { owner: "local", workspaceHash: null, cli: null, runId: null },
+      launch: { owner: "local", workspaceHash: null, harness: null, runId: null },
       launchStatus: "unavailable",
       launchSessionId: null,
     },
