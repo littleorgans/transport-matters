@@ -54,10 +54,10 @@ export interface Interaction {
   advance: Lifecycle;
 }
 
-export const SCOPE_INTERACTION: Interaction = { enter: "descend", advance: "descend" };
-export const RUN_AND_CLOSE: Interaction = { enter: "run-close", advance: "none" };
-export const COMMAND_INTERACTIONS: Partial<Record<LauncherCommand["kind"], Interaction>> = {};
-export const EFFECT_INTERACTIONS: Record<LauncherEffect, Interaction> = {
+const SCOPE_INTERACTION: Interaction = { enter: "descend", advance: "descend" };
+const RUN_AND_CLOSE: Interaction = { enter: "run-close", advance: "none" };
+const COMMAND_INTERACTIONS: Partial<Record<LauncherCommand["kind"], Interaction>> = {};
+const EFFECT_INTERACTIONS: Record<LauncherEffect, Interaction> = {
   "retry-agents": { enter: "run-stay", advance: "none" },
 };
 
