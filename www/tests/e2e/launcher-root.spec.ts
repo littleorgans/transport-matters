@@ -1,4 +1,5 @@
 import { expect, type Page, test } from "@playwright/test";
+import { pressMod } from "./keyboard";
 
 test.use({ reducedMotion: "reduce" });
 
@@ -24,9 +25,11 @@ async function openCanvas(page: Page) {
   await expect(page.locator(".canvas-route-shell")).toBeVisible();
 }
 
-test("⌘K root lists the five domains with agents collapsed; ↵ enters Agents", async ({ page }) => {
+test("$mod+K root lists the five domains with agents collapsed; ↵ enters Agents", async ({
+  page,
+}) => {
   await openCanvas(page);
-  await page.keyboard.press("Meta+k");
+  await pressMod(page, "k");
   await expect(page.getByRole("combobox")).toBeVisible();
 
   // Domains-first root: the five enterable domains, the count, the search hint.
@@ -45,9 +48,9 @@ test("⌘K root lists the five domains with agents collapsed; ↵ enters Agents"
   await expect(titles.filter({ hasText: "Claude" })).toBeVisible();
 });
 
-test("⌘A jumps straight into Agents from cold", async ({ page }) => {
+test("$mod+A jumps straight into Agents from cold", async ({ page }) => {
   await openCanvas(page);
-  await page.keyboard.press("Meta+a");
+  await pressMod(page, "a");
   const titles = page.locator(".launcher__row-title");
   await expect(titles.filter({ hasText: "Codex" })).toBeVisible();
   await expect(titles.filter({ hasText: "Claude" })).toBeVisible();
@@ -55,7 +58,7 @@ test("⌘A jumps straight into Agents from cold", async ({ page }) => {
 
 test("typing at root flat-searches across domains and surfaces agents", async ({ page }) => {
   await openCanvas(page);
-  await page.keyboard.press("Meta+k");
+  await pressMod(page, "k");
   await expect(page.getByRole("combobox")).toBeVisible();
 
   await page.getByRole("combobox").pressSequentially("research");

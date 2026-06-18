@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { pressMod } from "./keyboard";
 
 // Settled, unanimated transforms so boundingBox reads are deterministic.
 test.use({ reducedMotion: "reduce" });
@@ -26,8 +27,8 @@ test("arrowing keeps the highlighted Agents row visible and clear of the footer"
   await page.goto("/canvas");
   await expect(page.locator(".canvas-route-shell")).toBeVisible();
 
-  // ⌘A opens straight into the Agents scope; wait for specialists to load.
-  await page.keyboard.press("Meta+a");
+  // $mod+A opens straight into the Agents scope; wait for specialists to load.
+  await pressMod(page, "a");
   await expect(page.getByRole("combobox")).toBeVisible();
   await expect(page.getByText("specialist-0")).toBeVisible();
 

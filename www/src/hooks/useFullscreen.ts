@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
+import { useFullscreenKeybindings } from "../keybindings/engine";
 
 interface UseFullscreenOptions {
   onClose?: () => void;
@@ -20,20 +21,7 @@ export function useFullscreen({ onClose }: UseFullscreenOptions = {}): Fullscree
     onClose?.();
   }, [onClose]);
 
-  useEffect(() => {
-    if (!isFullscreen) return;
-
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        closeFullscreen();
-      }
-    };
-
-    window.addEventListener("keydown", onKeyDown);
-    return () => {
-      window.removeEventListener("keydown", onKeyDown);
-    };
-  }, [isFullscreen, closeFullscreen]);
+  useFullscreenKeybindings({ close: closeFullscreen, isOpen: () => isFullscreen });
 
   return {
     isFullscreen,

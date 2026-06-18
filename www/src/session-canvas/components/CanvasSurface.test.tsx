@@ -1,6 +1,7 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PaneId } from "../../engine";
+import { KeybindingEngineProvider } from "../../keybindings/engine";
 import type { HarnessName } from "../../types";
 import { resetCanvasStoreForTests, useCanvasStore } from "../model/canvasStore";
 import type { CanvasLaunchContext } from "../route";
@@ -37,14 +38,16 @@ describe("CanvasSurface", () => {
     useCanvasStore.setState({ addCapturedRun });
 
     renderWithQuery(
-      <CanvasSurface launch={launch} launchSessionId={null} launchStatus="resolved" />,
+      <KeybindingEngineProvider>
+        <CanvasSurface launch={launch} launchSessionId={null} launchStatus="resolved" />
+      </KeybindingEngineProvider>,
     );
 
     // Zero-chrome: the always-visible command bar is gone.
     expect(screen.queryByRole("toolbar", { name: "Canvas commands" })).not.toBeInTheDocument();
 
     // ⌘A jumps into Agents; both native harnesses are always present.
-    fireEvent.keyDown(window, { key: "a", metaKey: true });
+    fireEvent.keyDown(window, { key: "a", code: "KeyA", metaKey: true });
     expect(await screen.findByText("Codex")).toBeInTheDocument();
     expect(screen.getByText("Claude")).toBeInTheDocument();
 
@@ -59,12 +62,14 @@ describe("CanvasSurface", () => {
     installMockTransport(() => jsonResponse({ items: [] }));
 
     renderWithQuery(
-      <CanvasSurface launch={launch} launchSessionId={null} launchStatus="resolved" />,
+      <KeybindingEngineProvider>
+        <CanvasSurface launch={launch} launchSessionId={null} launchStatus="resolved" />
+      </KeybindingEngineProvider>,
     );
 
     // Open into the Agents scope, then Escape must close the WHOLE palette — the
     // root capture handler beats Ark, which would otherwise only close its listbox.
-    fireEvent.keyDown(window, { key: "a", metaKey: true });
+    fireEvent.keyDown(window, { key: "a", code: "KeyA", metaKey: true });
     const input = await screen.findByRole("combobox");
 
     fireEvent.keyDown(input, { key: "Escape" });
