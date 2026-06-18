@@ -2,6 +2,7 @@ import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PaneId } from "../../engine";
 import { KeybindingEngineProvider } from "../../keybindings/engine";
+import { resolveKeybindingPlatform } from "../../keybindings/platform";
 import type { HarnessName } from "../../types";
 import { resetCanvasStoreForTests, useCanvasStore } from "../model/canvasStore";
 import type { CanvasLaunchContext } from "../route";
@@ -22,6 +23,10 @@ const launch = {
   runId: null,
 } satisfies CanvasLaunchContext;
 
+const testPlatform = resolveKeybindingPlatform({
+  navigator: { userAgent: "Macintosh" } as Navigator,
+});
+
 describe("CanvasSurface", () => {
   afterEach(() => {
     resetCanvasStoreForTests();
@@ -38,7 +43,7 @@ describe("CanvasSurface", () => {
     useCanvasStore.setState({ addCapturedRun });
 
     renderWithQuery(
-      <KeybindingEngineProvider>
+      <KeybindingEngineProvider platform={testPlatform}>
         <CanvasSurface launch={launch} launchSessionId={null} launchStatus="resolved" />
       </KeybindingEngineProvider>,
     );
@@ -62,7 +67,7 @@ describe("CanvasSurface", () => {
     installMockTransport(() => jsonResponse({ items: [] }));
 
     renderWithQuery(
-      <KeybindingEngineProvider>
+      <KeybindingEngineProvider platform={testPlatform}>
         <CanvasSurface launch={launch} launchSessionId={null} launchStatus="resolved" />
       </KeybindingEngineProvider>,
     );

@@ -47,12 +47,12 @@ export function KeybindingEngineProvider({
 }: KeybindingEngineProviderProps) {
   const launcherRef = useRef<LauncherKeybindingTarget | null>(null);
   const dockRef = useRef<DockKeybindingTarget | null>(null);
-  const fullscreenRef = useRef<FullscreenKeybindingTarget | null>(null);
+  const fullscreenTargetsRef = useRef(new Set<FullscreenKeybindingTarget>());
   const resolvedPlatform = useMemo(() => platform ?? getKeybindingPlatform(), [platform]);
   const api = useMemo<KeybindingEngineApi>(
     () => ({
       registerDock: (target) => registerSlot(dockRef, target),
-      registerFullscreen: (target) => registerSlot(fullscreenRef, target),
+      registerFullscreen: (target) => registerTarget(fullscreenTargetsRef, target),
       registerLauncher: (target) => registerSlot(launcherRef, target),
     }),
     [],
@@ -64,7 +64,7 @@ export function KeybindingEngineProvider({
         editableTarget: isEditableTarget(event.target),
         launcher: launcherRef.current,
         dock: dockRef.current,
-        fullscreen: fullscreenRef.current,
+        fullscreen: activeFullscreenTarget(fullscreenTargetsRef.current),
       }),
     [],
   );
@@ -120,17 +120,8 @@ export function selectCommand(commands: readonly Command[], ctx: CommandContext)
 }
 
 export function precompileKeybinding(binding: string, platform: KeybindingPlatform): string {
-  return binding
-    .trim()
-    .split(" ")
-    .filter((press) => press.length > 0)
-    .map((press) =>
-      press
-        .split("+")
-        .map((token) => precompileKeybindingToken(token, platform))
-        .join("+"),
-    )
-    .join(" ");
+  const tokens = binding.split("+").map((token) => token.trim());
+  return precompileModTokens(tokens, platform).join("+");
 }
 
 export function useLauncherKeybindings(target: LauncherKeybindingTarget): void {
@@ -197,6 +188,24 @@ function registerSlot<T>(slot: MutableRefObject<T | null>, target: T): () => voi
   };
 }
 
+function registerTarget<T>(targets: MutableRefObject<Set<T>>, target: T): () => void {
+  targets.current.add(target);
+  return () => {
+    targets.current.delete(target);
+  };
+}
+
+function activeFullscreenTarget(
+  targets: ReadonlySet<FullscreenKeybindingTarget>,
+): FullscreenKeybindingTarget | null {
+  const ordered = Array.from(targets);
+  for (let index = ordered.length - 1; index >= 0; index -= 1) {
+    const target = ordered[index];
+    if (target?.isOpen()) return target;
+  }
+  return null;
+}
+
 function useLatestTarget<T>(target: T): MutableRefObject<T> {
   const targetRef = useRef(target);
   targetRef.current = target;
@@ -214,13 +223,6 @@ function useEscapeFallback(enabled: boolean, close: () => void): void {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [enabled]);
-}
-
-function precompileKeybindingToken(token: string, platform: KeybindingPlatform): string {
-  const trimmed = token.trim();
-  const optional = trimmed.match(/^\[(.*)\]$/);
-  if (optional) return `[${precompileKeybindingToken(optional[1] ?? "", platform)}]`;
-  return precompileModTokens([trimmed], platform)[0] ?? trimmed;
 }
 
 function priorityOf(command: Command): number {
