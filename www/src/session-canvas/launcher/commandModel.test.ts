@@ -6,6 +6,10 @@ import {
   filterRows,
   firstSelectableValue,
   groupRows,
+  type Interaction,
+  interactionFor,
+  type LauncherCommand,
+  type RowAction,
   recommendedSubtitle,
   type ScopeRowInputs,
   templateSpawnHarness,
@@ -145,7 +149,7 @@ describe("buildAgentRows — Native is always present and first", () => {
   it("error shows native plus a retry action", () => {
     const rows = buildAgentRows([], "error");
     const retry = rows.find((row) => row.value === "action:retry-agents");
-    expect(retry?.action).toEqual({ kind: "command", command: { kind: "retry-agents" } });
+    expect(retry?.action).toEqual({ kind: "effect", effect: "retry-agents" });
   });
 
   it("empty shows native plus a quiet install note and nothing spawnable beyond native", () => {
@@ -157,6 +161,37 @@ describe("buildAgentRows — Native is always present and first", () => {
       "agent:native:codex",
     ]);
   });
+});
+
+describe("interactionFor", () => {
+  const runAndClose: Interaction = { enter: "run-close", advance: "none" };
+  const commandCases: [LauncherCommand, Interaction][] = [
+    [{ kind: "spawn", harness: "claude" }, runAndClose],
+    [{ kind: "reset-view" }, runAndClose],
+    [{ kind: "focus-picker" }, runAndClose],
+    [{ kind: "goto", path: "/canvas-lab" }, runAndClose],
+    [{ kind: "cycle-theme" }, runAndClose],
+    [{ kind: "set-canvas-gesture-modifier", modifier: "Shift" }, runAndClose],
+  ];
+  const actionCases: [string, RowAction, Interaction][] = [
+    ["enter scope", { kind: "enter", scope: "agents" }, { enter: "descend", advance: "descend" }],
+    ...commandCases.map(([command, expected]): [string, RowAction, Interaction] => [
+      `command ${command.kind}`,
+      { kind: "command", command },
+      expected,
+    ]),
+    [
+      "retry effect",
+      { kind: "effect", effect: "retry-agents" },
+      { enter: "run-stay", advance: "none" },
+    ],
+  ];
+
+  for (const [name, action, expected] of actionCases) {
+    it(`maps ${name} to its gesture lifecycle`, () => {
+      expect(interactionFor(action)).toEqual(expected);
+    });
+  }
 });
 
 describe("buildScopeRows — domains-first root", () => {

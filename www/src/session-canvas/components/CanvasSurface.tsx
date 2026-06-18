@@ -99,9 +99,6 @@ function useCanvasCommandHandler({
         case "set-canvas-gesture-modifier":
           setCanvasGestureModifier(command.modifier);
           return;
-        case "retry-agents":
-          // Owned inside the command center (re-fetches the fleet); never dispatched out.
-          return;
       }
     },
     [addCapturedRun, resetViewport, focusPane, cycleTheme, setCanvasGestureModifier],

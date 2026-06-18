@@ -34,13 +34,43 @@ export type LauncherCommand =
   | { kind: "focus-picker" }
   | { kind: "goto"; path: string }
   | { kind: "cycle-theme" }
-  | { kind: "set-canvas-gesture-modifier"; modifier: CanvasGestureModifier }
-  | { kind: "retry-agents" };
+  | { kind: "set-canvas-gesture-modifier"; modifier: CanvasGestureModifier };
 
-/** What a row does on `↵`: enter a sub-scope, or fire a leaf command. */
+/** Command-center-local effects handled inside the launcher hook. */
+export type LauncherEffect = "retry-agents";
+
+/** What a row does on `↵`: enter a sub-scope, fire a command, or run a local effect. */
 export type RowAction =
   | { kind: "enter"; scope: LauncherScope }
-  | { kind: "command"; command: LauncherCommand };
+  | { kind: "command"; command: LauncherCommand }
+  | { kind: "effect"; effect: LauncherEffect };
+
+/** What a single gesture does to the palette. */
+export type Lifecycle = "descend" | "run-close" | "run-stay" | "commit-close" | "none";
+
+/** Per-action key bindings. Enter/click reads `enter`; ArrowRight reads `advance`. */
+export interface Interaction {
+  enter: Lifecycle;
+  advance: Lifecycle;
+}
+
+const SCOPE_INTERACTION: Interaction = { enter: "descend", advance: "descend" };
+const RUN_AND_CLOSE: Interaction = { enter: "run-close", advance: "none" };
+const COMMAND_INTERACTIONS: Partial<Record<LauncherCommand["kind"], Interaction>> = {};
+const EFFECT_INTERACTIONS: Record<LauncherEffect, Interaction> = {
+  "retry-agents": { enter: "run-stay", advance: "none" },
+};
+
+export function interactionFor(action: RowAction): Interaction {
+  switch (action.kind) {
+    case "enter":
+      return SCOPE_INTERACTION;
+    case "command":
+      return COMMAND_INTERACTIONS[action.command.kind] ?? RUN_AND_CLOSE;
+    case "effect":
+      return EFFECT_INTERACTIONS[action.effect];
+  }
+}
 
 export interface CommandRow {
   /** Stable, unique id; also the combobox item value. */
@@ -164,7 +194,7 @@ function agentsStatusRows(status: AgentsStatus): CommandRow[] {
           title: "Retry",
           subtitle: "Fetch the specialist fleet again",
           group: GROUP_AGENTS,
-          action: { kind: "command", command: { kind: "retry-agents" } },
+          action: { kind: "effect", effect: "retry-agents" },
         },
       ];
     case "empty":
