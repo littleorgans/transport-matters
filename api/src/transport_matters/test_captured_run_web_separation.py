@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Any
 
@@ -295,6 +294,7 @@ def test_prepare_captured_run_codex_external_web_uses_explicit_proxy_env(
             debug=False,
             web_runtime=WEB_RUNTIME_EXTERNAL,
             default_client_passthrough=("--dangerously-skip-permissions",),
+            defer_session_ownership=True,
         ),
         require_addon=lambda: addon_path,
         resolve_mitmdump=lambda: "/usr/bin/mitmdump",
@@ -321,6 +321,10 @@ def test_prepare_captured_run_codex_external_web_uses_explicit_proxy_env(
         assert spawn_spec.client is not None
         assert spawn_spec.client.name == CODEX_HARNESS_NAME
         assert "--dangerously-skip-permissions" in spawn_spec.client.argv
+        assert "resume" not in spawn_spec.client.argv
+        assert spawn_spec.managed_session is None
+        assert env_keys.OWNED_NATIVE_SESSION_ID not in spawn_spec.launch_env
+        assert env_keys.OWNED_SOURCE_DESCRIPTOR not in spawn_spec.launch_env
         assert spawn_spec.client.env["HTTPS_PROXY"] == loopback_http_url(spawn_spec.proxy_port)
         assert spawn_spec.client.env["HTTP_PROXY"] == loopback_http_url(spawn_spec.proxy_port)
         assert spawn_spec.client.env["CODEX_CA_CERTIFICATE"] == str(ca_path)
@@ -334,7 +338,7 @@ def test_prepare_captured_run_codex_external_web_uses_explicit_proxy_env(
     assert supervisors[0].restored is True
 
 
-def test_prepare_captured_run_codex_manual_home_seeds_runtime_home(
+def test_prepare_captured_run_deferred_codex_manual_home_uses_runtime_home_without_resume(
     tmp_path: Path,
 ) -> None:
     workspace = tmp_path / "workspace"
@@ -368,6 +372,7 @@ def test_prepare_captured_run_codex_manual_home_seeds_runtime_home(
             no_system_prompt=False,
             debug=False,
             web_runtime=WEB_RUNTIME_EXTERNAL,
+            defer_session_ownership=True,
         ),
         require_addon=lambda: addon_path,
         resolve_mitmdump=lambda: "/usr/bin/mitmdump",
@@ -386,16 +391,14 @@ def test_prepare_captured_run_codex_manual_home_seeds_runtime_home(
 
     try:
         assert spawn_spec.client is not None
-        assert spawn_spec.managed_session is not None
+        assert spawn_spec.managed_session is None
         runtime_home = Path(spawn_spec.client.env["CODEX_HOME"])
         assert runtime_home != source_home
         assert runtime_home.parent == storage / "runtime-home"
         runtime_rollouts = list(runtime_home.glob("sessions/**/*.jsonl"))
         source_rollouts = list(source_home.glob("sessions/**/*.jsonl"))
-        assert len(runtime_rollouts) == 1
+        assert runtime_rollouts == []
         assert source_rollouts == []
-        first_record = json.loads(runtime_rollouts[0].read_text(encoding="utf-8").splitlines()[0])
-        assert first_record["payload"]["id"] == spawn_spec.managed_session.native_session_id
-        assert spawn_spec.managed_session.native_session_id in spawn_spec.client.argv
+        assert "resume" not in spawn_spec.client.argv
     finally:
         lease.close()

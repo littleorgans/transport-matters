@@ -84,9 +84,11 @@ class SharedProxyCore:
         *,
         capture: CaptureRuntime,
         snapshots: SharedTranscriptSnapshotWriter,
+        bindings_by_run_id: dict[str, ProxyRunBinding] | None = None,
     ) -> None:
         self.capture = capture
         self.snapshots = snapshots
+        self._bindings_by_run_id = bindings_by_run_id if bindings_by_run_id is not None else {}
 
     @property
     def token_counter(self) -> TokenCountingClient:
@@ -94,8 +96,6 @@ class SharedProxyCore:
 
     async def register_binding(self, binding: ProxyRunBinding) -> None:
         run_id = require_run_id(binding.run_id)
-        if binding.owned_native_session_id is None or binding.owned_source_descriptor is None:
-            return
         tailer = self.capture.index_tailer
         if tailer is None:
             msg = "shared proxy session capture is unavailable"
@@ -108,6 +108,9 @@ class SharedProxyCore:
 
         try:
             self.snapshots.register_run(run_id, storage_root)
+            self._bindings_by_run_id[run_id] = binding
+            if binding.owned_native_session_id is None or binding.owned_source_descriptor is None:
+                return
             await register_owned_cursor(
                 tailer,
                 binding,
@@ -115,12 +118,14 @@ class SharedProxyCore:
                 on_session_bound=bind_snapshot_writer,
             )
         except Exception as exc:
+            self._bindings_by_run_id.pop(run_id, None)
             self.snapshots.unregister(run_id)
             msg = f"owned transcript cursor registration failed for run {run_id!r}"
             raise SharedProxyControlError("owned_cursor_registration_failed", msg) from exc
 
     def unregister_binding(self, binding: ProxyRunBinding) -> None:
         run_id = require_run_id(binding.run_id)
+        self._bindings_by_run_id.pop(run_id, None)
         session_ids = self.snapshots.unregister(run_id)
         if self.capture.index_tailer is not None:
             for session_id in session_ids:
@@ -132,11 +137,17 @@ class SharedProxyCore:
 
 def load_shared_proxy_core() -> SharedProxyCore:
     snapshots = SharedTranscriptSnapshotWriter()
+    bindings_by_run_id: dict[str, ProxyRunBinding] = {}
     capture = load_shared_capture_runtime(
         snapshot_writer=snapshots,
         on_cursor_registered=snapshots.register_cursor,
+        binding_for_run_id=bindings_by_run_id.get,
     )
-    return SharedProxyCore(capture=capture, snapshots=snapshots)
+    return SharedProxyCore(
+        capture=capture,
+        snapshots=snapshots,
+        bindings_by_run_id=bindings_by_run_id,
+    )
 
 
 def _storage_root(binding: ProxyRunBinding) -> Path:

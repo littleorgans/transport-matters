@@ -113,6 +113,45 @@ async def test_prepare_shared_captured_run_preserves_explicit_home_without_runti
 
 
 @pytest.mark.asyncio
+async def test_prepare_shared_captured_run_allows_deferred_codex_ownership(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    request = replace(
+        _request(tmp_path),
+        harness="codex",
+        upstream="",
+        defer_session_ownership=True,
+    )
+    runtime_home = tmp_path / "runtime-home"
+    ctx = replace(
+        _context(tmp_path, request=request),
+        managed_session=None,
+        runtime_home_dir=runtime_home,
+    )
+    monkeypatch.setattr(
+        "transport_matters.shared_proxy.run_preparation.build_captured_run_context",
+        lambda *args, **kwargs: ctx,
+    )
+    monkeypatch.setattr(
+        "transport_matters.shared_proxy.run_preparation.persist_owned_session_facts",
+        lambda ctx: None,
+    )
+    manager = FakeSharedProxyManager()
+
+    _spawn_spec, lease = await prepare_shared_captured_run(
+        request,
+        shared_proxy=cast("Any", manager),
+        dependencies=_dependencies(),
+    )
+
+    binding = manager.registered[0]
+    assert binding.agent_home_dir == runtime_home
+    assert binding.owned_native_session_id is None
+    assert binding.owned_source_descriptor is None
+    await lease.aclose()
+
+
+@pytest.mark.asyncio
 async def test_shared_captured_run_lease_sync_close_is_loop_safe(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

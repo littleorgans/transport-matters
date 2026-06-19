@@ -84,8 +84,7 @@ def test_post_get_attach_detach_and_terminate(
         assert listed["nextCursor"] is None
 
         managed = harness.manager.get(run_id)
-        harness.pty.write(managed.terminal, b"past")
-        _wait_until(lambda: managed.scrollback.total_bytes >= len(b"past"))
+        assert managed.terminal is None
 
         with client.websocket_connect(
             f"/v1/runs/{run_id}/terminal",
@@ -101,13 +100,24 @@ def test_post_get_attach_detach_and_terminate(
                 "state",
                 "createdAt",
             }
-            assert ready["scrollback"]["replayedBytes"] == len(b"past")
-            assert websocket.receive_bytes() == b"past"
+            assert ready["scrollback"]["replayedBytes"] == 0
             assert websocket.receive_json() == {"type": "run.terminal.scrollback-end"}
-            harness.pty.write(managed.terminal, b"live")
+            terminal = managed.terminal
+            assert terminal is not None
+            harness.pty.write(terminal, b"live")
             assert websocket.receive_bytes() == b"live"
 
         _wait_until(lambda: harness.manager.get(run_id).view().viewer_count == 0)
+        with client.websocket_connect(
+            f"/v1/runs/{run_id}/terminal",
+            headers=_websocket_headers(BACKEND_ORIGIN),
+        ) as websocket:
+            ready = websocket.receive_json()
+            assert ready["type"] == "run.terminal.ready"
+            assert ready["scrollback"]["replayedBytes"] == len(b"live")
+            assert websocket.receive_bytes() == b"live"
+            assert websocket.receive_json() == {"type": "run.terminal.scrollback-end"}
+
         still_running = client.get(
             f"/v1/runs?state={RunState.RUNNING}",
             headers=_http_headers(BACKEND_ORIGIN),
@@ -529,7 +539,11 @@ def test_websocket_stale_run_sends_typed_error(
             json={"harness": "claude", "cwd": str(tmp_path)},
             headers=_http_headers(BACKEND_ORIGIN),
         ).json()["run"]["runId"]
-        harness.pty.close_master(harness.manager.get(run_id).terminal)
+        attached = asyncio.run(harness.manager.attach(run_id, cols=80, rows=24))
+        harness.manager.detach(run_id, attached.attachment.attachment_id)
+        terminal = harness.manager.get(run_id).terminal
+        assert terminal is not None
+        harness.pty.close_master(terminal)
         with client.websocket_connect(
             f"/v1/runs/{run_id}/terminal",
             headers=_websocket_headers(BACKEND_ORIGIN),

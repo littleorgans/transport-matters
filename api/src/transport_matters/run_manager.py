@@ -140,6 +140,8 @@ class SpawnRun:
     runtime_template: RuntimeTemplateRef | None = None
     launch_fields: dict[str, object] = field(default_factory=dict)
     idempotency_key: str | None = None
+    start_on_attach: bool = False
+    defer_session_ownership: bool = False
     # Bridge answers the harness OSC 10/11 color queries (see osc_color_responder).
     osc_color_replies: bool = True
 
@@ -188,7 +190,7 @@ class ManagedRun:
     state: RunState
     spawn_spec: CapturedRunSpawnSpec
     lease: CapturedRunLeaseHandle
-    terminal: TerminalPty
+    terminal: TerminalPty | None
     terminal_output: TerminalFanout
     created_at: datetime
     started_at: datetime
@@ -199,7 +201,8 @@ class ManagedRun:
     error: str | None
     # None when the bridge should stay silent (osc_color_replies disabled).
     osc_responder: OscColorResponder | None
-    drain_task: asyncio.Task[None] = field(init=False)
+    start_lock: asyncio.Lock = field(default_factory=asyncio.Lock, init=False)
+    drain_task: asyncio.Task[None] | None = None
 
     @property
     def scrollback(self) -> ScrollbackRing:
@@ -298,8 +301,6 @@ class RunManager:
             raise RunManagerError("run_manager_closed", "run manager is closed")
 
         spawn_spec, lease = await self._prepare_request(validated)
-        terminal: TerminalPty | None = None
-        drain_task: asyncio.Task[None] | None = None
         registered_run_id: str | None = None
         try:
             client = spawn_spec.client
@@ -309,14 +310,6 @@ class RunManager:
                     f"captured {request.harness} launch did not produce a client process",
                 )
 
-            terminal = await asyncio.to_thread(
-                self._spawn_pty,
-                argv=client.argv,
-                env=client.env,
-                cwd=client.cwd,
-                cols=request.cols,
-                rows=request.rows,
-            )
             now = self._clock()
             run = ManagedRun(
                 run_id=spawn_spec.run_id,
@@ -325,7 +318,7 @@ class RunManager:
                 state=RunState.STARTING,
                 spawn_spec=spawn_spec,
                 lease=lease,
-                terminal=terminal,
+                terminal=None,
                 terminal_output=TerminalFanout(
                     clock=self._clock,
                     scrollback_bytes=self._scrollback_bytes,
@@ -345,21 +338,13 @@ class RunManager:
 
             self._runs[run.run_id] = run
             registered_run_id = run.run_id
-            drain_task = asyncio.create_task(
-                self._drain_run(run), name=f"transport-run-drain:{run.run_id}"
-            )
-            run.drain_task = drain_task
-            run.state = RunState.RUNNING
-            run.updated_at = self._clock()
+            if not request.start_on_attach:
+                await self._start_run_terminal(run, cols=request.cols, rows=request.rows)
             return run
         except Exception as exc:
             if registered_run_id is not None:
                 self._runs.pop(registered_run_id, None)
-            await self._rollback_post_prepare(
-                terminal=terminal,
-                drain_task=drain_task,
-                lease=lease,
-            )
+            await self._rollback_post_prepare(run if registered_run_id is not None else None, lease)
             if isinstance(exc, RunManagerError):
                 raise
             raise RunManagerError("launch_failed", str(exc)) from exc
@@ -381,7 +366,7 @@ class RunManager:
                 runs = tuple(run for run in runs if run.state in filters.states)
         return [run.view() for run in runs]
 
-    def attach(
+    async def attach(
         self,
         run_id: str,
         *,
@@ -393,9 +378,9 @@ class RunManager:
         run = self.get(run_id)
         if run.state is RunState.TERMINATED:
             raise RunManagerError("run_terminated", f"run {run_id} was terminated")
-        if run.terminal.closed:
+        if run.terminal is not None and run.terminal.closed:
             raise RunManagerError("run_stale", f"run {run_id} has no live terminal")
-        if run.state is not RunState.RUNNING:
+        if run.state not in {RunState.STARTING, RunState.RUNNING}:
             raise RunManagerError("run_not_attachable", f"run {run_id} is {run.state}")
         attached = run.terminal_output.attach(
             cols=cols,
@@ -403,9 +388,15 @@ class RunManager:
             attachment_id=attachment_id,
             queue_maxsize=queue_maxsize,
         )
-        run.viewerless_since = None
-        run.updated_at = self._clock()
-        return attached
+        try:
+            if run.terminal is None:
+                await self._start_run_terminal(run, cols=cols, rows=rows)
+            run.viewerless_since = None
+            run.updated_at = self._clock()
+            return attached
+        except Exception:
+            run.terminal_output.detach(attached.attachment.attachment_id)
+            raise
 
     def detach(self, run_id: str, attachment_id: str) -> None:
         run = self.get(run_id)
@@ -423,6 +414,57 @@ class RunManager:
         runs = [run for run in self._runs.values() if run.state not in _TERMINAL_STATES]
         for run in runs:
             await self._teardown_run(run, force=True, reason="shutdown")
+
+    async def _start_run_terminal(self, run: ManagedRun, *, cols: int, rows: int) -> None:
+        async with run.start_lock:
+            if run.terminal is not None:
+                return
+            if self._closed:
+                raise RunManagerError("run_manager_closed", "run manager is closed")
+            if run.state not in {RunState.STARTING, RunState.RUNNING}:
+                raise RunManagerError("run_not_attachable", f"run {run.run_id} is {run.state}")
+            client = run.spawn_spec.client
+            if client is None:
+                raise RunManagerError(
+                    "launch_failed",
+                    f"captured {run.harness} launch did not produce a client process",
+                )
+
+            terminal: TerminalPty | None = None
+            try:
+                terminal = await asyncio.to_thread(
+                    self._spawn_pty,
+                    argv=client.argv,
+                    env=client.env,
+                    cwd=client.cwd,
+                    cols=cols,
+                    rows=rows,
+                )
+                now = self._clock()
+                run.terminal = terminal
+                run.started_at = now
+                run.updated_at = now
+                run.drain_task = asyncio.create_task(
+                    self._drain_run(run), name=f"transport-run-drain:{run.run_id}"
+                )
+                run.state = RunState.RUNNING
+                run.updated_at = self._clock()
+            except Exception as exc:
+                if terminal is not None:
+                    await asyncio.to_thread(terminate_terminal_pty, terminal)
+                run.state = RunState.FAILED
+                run.error = str(exc)
+                run.updated_at = self._clock()
+                self._close_all_attachments(
+                    run,
+                    code="run-start-failed",
+                    retryable=False,
+                    message=f"run failed to start: {exc}",
+                )
+                await self._close_lease(run.lease)
+                if isinstance(exc, RunManagerError):
+                    raise
+                raise RunManagerError("launch_failed", str(exc)) from exc
 
     async def _prepare_request(
         self, validated: _ValidatedSpawnRun
@@ -505,6 +547,7 @@ class RunManager:
             default_client_passthrough=request.default_client_passthrough,
             runtime_template=request.runtime_template,
             launch_fields=request.launch_fields,
+            defer_session_ownership=request.defer_session_ownership,
         )
 
     async def _ensure_session_store_available(self) -> None:
@@ -535,9 +578,12 @@ class RunManager:
         return working_dir.resolve()
 
     async def _drain_run(self, run: ManagedRun) -> None:
+        terminal = run.terminal
+        if terminal is None:
+            return
         loop = asyncio.get_running_loop()
         done: asyncio.Future[None] = loop.create_future()
-        fd = run.terminal.master_fd
+        fd = terminal.master_fd
         loop.add_reader(fd, self._handle_pty_readable, run, done)
         failure: BaseException | None = None
         try:
@@ -562,8 +608,12 @@ class RunManager:
     def _handle_pty_readable(self, run: ManagedRun, done: asyncio.Future[None]) -> None:
         if done.done():
             return
+        terminal = run.terminal
+        if terminal is None:
+            done.set_result(None)
+            return
         try:
-            data = os.read(run.terminal.master_fd, self._read_chunk_size)
+            data = os.read(terminal.master_fd, self._read_chunk_size)
         except OSError as exc:
             if exc.errno in {errno.EIO, errno.EBADF}:
                 done.set_result(None)
@@ -582,7 +632,7 @@ class RunManager:
             # closed mid-callback just drops the reply (the harness is exiting).
             for reply in run.osc_responder.replies_for(data):
                 with contextlib.suppress(OSError):
-                    write_all(run.terminal.master_fd, reply)
+                    write_all(terminal.master_fd, reply)
         _, closed_attachment_ids = run.terminal_output.append(data, emitted_at=now)
         run.updated_at = now
         if closed_attachment_ids and not run.attachments and run.state is RunState.RUNNING:
@@ -597,7 +647,8 @@ class RunManager:
         failure: BaseException | None = None,
     ) -> None:
         async with self._teardown_lock:
-            if run.state in _TERMINAL_STATES and run.terminal.closed:
+            terminal = run.terminal
+            if run.state in _TERMINAL_STATES and (terminal is None or terminal.closed):
                 return
 
             run.state = RunState.TERMINATING if force else RunState.EXITED
@@ -618,31 +669,35 @@ class RunManager:
             )
 
             current_task = asyncio.current_task()
-            if run.drain_task is not current_task and not run.drain_task.done():
+            if (
+                run.drain_task is not None
+                and run.drain_task is not current_task
+                and not run.drain_task.done()
+            ):
                 run.drain_task.cancel()
-                self._remove_reader(run.terminal.master_fd)
+                if terminal is not None:
+                    self._remove_reader(terminal.master_fd)
                 with contextlib.suppress(asyncio.CancelledError):
                     await run.drain_task
 
-            self._remove_reader(run.terminal.master_fd)
-            if force:
-                await asyncio.to_thread(terminate_terminal_pty, run.terminal)
-            else:
-                await asyncio.to_thread(close_terminal_master, run.terminal)
+            if terminal is not None:
+                self._remove_reader(terminal.master_fd)
+                if force:
+                    await asyncio.to_thread(terminate_terminal_pty, terminal)
+                else:
+                    await asyncio.to_thread(close_terminal_master, terminal)
             await self._close_lease(run.lease)
 
-            run.exit_code = run.terminal.process.poll()
+            run.exit_code = terminal.process.poll() if terminal is not None else None
             if run.state is RunState.TERMINATING:
                 run.state = RunState.TERMINATED
             run.updated_at = self._clock()
 
     async def _rollback_post_prepare(
-        self,
-        *,
-        terminal: TerminalPty | None,
-        drain_task: asyncio.Task[None] | None,
-        lease: CapturedRunLeaseHandle,
+        self, run: ManagedRun | None, lease: CapturedRunLeaseHandle
     ) -> None:
+        terminal = run.terminal if run is not None else None
+        drain_task = run.drain_task if run is not None else None
         if drain_task is not None and not drain_task.done():
             drain_task.cancel()
             if terminal is not None:
@@ -652,7 +707,8 @@ class RunManager:
         if terminal is not None:
             self._remove_reader(terminal.master_fd)
             await asyncio.to_thread(terminate_terminal_pty, terminal)
-        await self._close_lease(lease)
+        if run is None or run.state is not RunState.FAILED:
+            await self._close_lease(lease)
 
     async def _close_lease(self, lease: CapturedRunLeaseHandle) -> None:
         aclose = getattr(lease, "aclose", None)

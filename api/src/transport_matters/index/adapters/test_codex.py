@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 from transport_matters.index.adapters.base import (
+    FileTailSource,
     RunContext,
     SessionBinding,
     TurnContext,
@@ -212,11 +213,47 @@ class TestBindLocate:
         with pytest.raises(ValueError, match="native_session_id"):
             await CodexAdapter().bind(run)
 
-    async def test_does_not_discover_a_source(self) -> None:
-        # codex is MANAGED-MINT (§5.2b): it owns the rollout path via source_descriptor and does NOT
-        # implement locate — the old ~/.codex glob is deleted. The inherited base default returns
-        # None, so a binding with no owned descriptor registers no cursor (stays pending).
+    async def test_does_not_discover_without_explicit_home(self) -> None:
+        # No native ~/.codex fallback. Deferred discovery is only safe under an explicit managed home.
         assert await CodexAdapter().locate(_binding()) is None
+
+    async def test_locates_rollout_by_native_id_under_explicit_home(self, tmp_path: Path) -> None:
+        rollout = (
+            tmp_path
+            / "sessions"
+            / "2026"
+            / "06"
+            / "19"
+            / f"rollout-2026-06-19T12-00-00-{_NATIVE}.jsonl"
+        )
+        rollout.parent.mkdir(parents=True)
+        rollout.write_text('{"type":"session_meta"}\n', encoding="utf-8")
+
+        source = await CodexAdapter().locate(
+            _binding().model_copy(update={"home_dir": str(tmp_path)})
+        )
+
+        assert isinstance(source, FileTailSource)
+        assert source.path == str(rollout)
+        assert source.home_dir == str(tmp_path)
+
+    async def test_locate_fails_closed_on_duplicate_native_rollouts(self, tmp_path: Path) -> None:
+        for index in range(2):
+            rollout = (
+                tmp_path
+                / "sessions"
+                / "2026"
+                / "06"
+                / f"{19 + index:02d}"
+                / f"rollout-2026-06-{19 + index:02d}T12-00-00-{_NATIVE}.jsonl"
+            )
+            rollout.parent.mkdir(parents=True)
+            rollout.write_text('{"type":"session_meta"}\n', encoding="utf-8")
+
+        assert (
+            await CodexAdapter().locate(_binding().model_copy(update={"home_dir": str(tmp_path)}))
+            is None
+        )
 
 
 class TestRegistry:

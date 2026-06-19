@@ -66,6 +66,7 @@ class CapturedRunRequest:
     default_client_passthrough: tuple[str, ...] = ()
     runtime_template: RuntimeTemplateRef | None = None
     launch_fields: Mapping[str, object] = field(default_factory=dict)
+    defer_session_ownership: bool = False
 
 
 @dataclass(frozen=True, slots=True)

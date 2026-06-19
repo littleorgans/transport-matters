@@ -32,6 +32,7 @@ from transport_matters.workspace import run_root
 
 if TYPE_CHECKING:
     from contextlib import ExitStack
+    from pathlib import Path
 
     from transport_matters.captured_run_dependencies import CapturedRunDependencies
 
@@ -119,8 +120,8 @@ async def _finish_shared_preparation(
         persist_owned_session_facts(ctx)
         write_captured_run_manifest(ctx, wslock, proxy_port=proxy_port, web_port=web_port)
         _mitmdump_argv, launch_env, client = ctx.build_invocation(proxy_port, web_port)
-        _require_owned_session(ctx)
         binding = _binding_from_context(ctx, proxy_port=proxy_port)
+        _require_session_binding(ctx, binding)
         try:
             await shared_proxy.register(binding)
         except SharedProxyRegistryError as exc:
@@ -166,7 +167,7 @@ def _binding_from_context(ctx: CapturedRunContext, *, proxy_port: int) -> ProxyR
         storage=DiskStorageBackend(ctx.prepared.resolved_storage),
         listen_port=proxy_port,
         upstream=ctx.request.upstream,
-        agent_home_dir=descriptor_home(ctx),
+        agent_home_dir=_binding_home(ctx),
         owned_native_session_id=(
             ctx.managed_session.native_session_id if ctx.managed_session is not None else None
         ),
@@ -178,7 +179,18 @@ def _binding_from_context(ctx: CapturedRunContext, *, proxy_port: int) -> ProxyR
     )
 
 
-def _require_owned_session(ctx: CapturedRunContext) -> None:
+def _binding_home(ctx: CapturedRunContext) -> Path | None:
+    if ctx.request.defer_session_ownership and ctx.runtime_home_dir is not None:
+        return ctx.runtime_home_dir
+    return descriptor_home(ctx)
+
+
+def _require_session_binding(ctx: CapturedRunContext, binding: ProxyRunBinding) -> None:
+    if ctx.request.defer_session_ownership:
+        if binding.agent_home_dir is not None:
+            return
+        msg = "deferred captured run requires a managed agent home"
+        raise RuntimeError(msg)
     if (
         ctx.managed_session is not None
         and ctx.managed_session.native_session_id is not None

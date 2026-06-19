@@ -348,8 +348,9 @@ def _spawn_request(
     runtime_template: RuntimeTemplateRef | None = None,
 ) -> SpawnRun:
     terminal = body.terminal or TerminalSizeModel()
+    harness = _validated_harness(body.harness)
     return SpawnRun(
-        harness=_validated_harness(body.harness),
+        harness=harness,
         cwd=_request_cwd(body.cwd, settings),
         cols=terminal.cols,
         rows=terminal.rows,
@@ -360,6 +361,8 @@ def _spawn_request(
         runtime_template=runtime_template,
         launch_fields=launch_fields or {},
         idempotency_key=body.idempotency_key,
+        start_on_attach=True,
+        defer_session_ownership=harness == CODEX_HARNESS_NAME,
     )
 
 
@@ -548,9 +551,12 @@ async def bridge_attached_run_terminal(
     ready_frame: Callable[[ManagedRun, AttachedTerminal], dict[str, object]],
     include_scrollback_end: bool,
 ) -> None:
-    attached = manager.attach(run_id, cols=cols, rows=rows)
+    attached = await manager.attach(run_id, cols=cols, rows=rows)
     attachment_id = attached.attachment.attachment_id
     run = manager.get(run_id)
+    terminal = run.terminal
+    if terminal is None:
+        raise RunManagerError("run_not_attachable", f"run {run_id} has not started")
     send_lock = asyncio.Lock()
 
     async def send_json(payload: dict[str, object]) -> None:
@@ -590,7 +596,7 @@ async def bridge_attached_run_terminal(
         input_task = asyncio.create_task(
             terminal_bridge.receive_websocket_input(
                 websocket,
-                run.terminal.master_fd,
+                terminal.master_fd,
                 on_invalid_control_frame=invalid_control_frame,
             )
         )

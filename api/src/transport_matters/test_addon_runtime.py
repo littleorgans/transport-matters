@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, cast
 
 import httpx
@@ -36,8 +37,16 @@ from transport_matters.index.adapters.base import (
 )
 from transport_matters.index.sessions import synth_session_id
 from transport_matters.index.tailer import TranscriptTailer
+from transport_matters.ir import (
+    InternalRequest,
+    Message,
+    RequestMetadata,
+    SamplingParams,
+    TextBlock,
+)
 from transport_matters.main import create_app
 from transport_matters.session.models import SessionPurpose
+from transport_matters.storage.base import ExchangeArtifacts, IndexEntry, ReqStats
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -377,6 +386,18 @@ def _codex_binding() -> SessionBinding:
     )
 
 
+def _codex_request(native_session_id: str) -> InternalRequest:
+    return InternalRequest(
+        model="gpt-5",
+        provider="codex",
+        system=[],
+        tools=[],
+        messages=[Message(role="user", content=[TextBlock(text="hello")])],
+        sampling=SamplingParams(max_tokens=1024),
+        metadata=RequestMetadata(session_id=native_session_id),
+    )
+
+
 async def test_cursor_registrar_registers_codex_session(monkeypatch: pytest.MonkeyPatch) -> None:
     """A codex wire binding (read-back) must resolve to the codex adapter and schedule its cursor.
 
@@ -397,6 +418,58 @@ async def test_cursor_registrar_registers_codex_session(monkeypatch: pytest.Monk
     await asyncio.sleep(0.05)  # let the scheduled coroutine run
 
     assert calls == [("codex", "sess-codex")]
+
+
+async def test_exchange_cursor_sink_registers_deferred_codex_session(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    native = "019e0000-0000-7000-8000-00000000c0de"
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    settings = Settings(
+        run_id="run1",
+        cwd=workspace,
+        harness="codex",
+        agent_home_dir=tmp_path / "runtime-home",
+    )
+    proxy_binding = addon_runtime.build_proxy_run_binding(
+        settings, cast("StorageBackend", object())
+    )
+    calls: list[tuple[str, SessionBinding]] = []
+
+    async def fake_register(
+        tailer: TranscriptTailer, adapter: object, binding: SessionBinding
+    ) -> None:
+        calls.append((getattr(adapter, "harness", "?"), binding))
+
+    monkeypatch.setattr(addon_runtime, "register_session_cursor", fake_register)
+    sink = addon_runtime._make_exchange_cursor_sink(
+        TranscriptTailer(),
+        asyncio.get_running_loop(),
+        lambda run_id: proxy_binding if run_id == "run1" else None,
+    )
+
+    sink(
+        IndexEntry(
+            id="exchange-1",
+            run_id="run1",
+            ts=datetime(2026, 6, 19, tzinfo=UTC),
+            provider="codex",
+            model="gpt-5",
+            path="exchanges/exchange-1.json",
+            req=ReqStats(),
+        ),
+        ExchangeArtifacts(request_raw=b"{}", request_ir=_codex_request(native)),
+    )
+    await asyncio.sleep(0.05)
+
+    assert len(calls) == 1
+    harness, binding = calls[0]
+    assert harness == "codex"
+    assert binding.session_id == synth_session_id("run1", "codex", native)
+    assert binding.native_session_id == native
+    assert binding.home_dir == str(tmp_path / "runtime-home")
+    assert binding.cwd == str(workspace)
 
 
 async def test_close_runtime_clears_counter_and_auth() -> None:
