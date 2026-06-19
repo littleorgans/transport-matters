@@ -19,6 +19,7 @@ export interface LauncherRowsArgs {
   status: AgentsStatus;
   themeName: string;
   canvasGestureModifier: CanvasGestureModifier;
+  bypassPermissions: boolean;
   setHighlighted: Dispatch<SetStateAction<string | undefined>>;
 }
 
@@ -36,11 +37,18 @@ export function useLauncherRows({
   status,
   themeName,
   canvasGestureModifier,
+  bypassPermissions,
   setHighlighted,
 }: LauncherRowsArgs) {
   const inputs = useMemo<ScopeRowInputs>(
-    () => ({ templates, agentsStatus: status, themeName, canvasGestureModifier }),
-    [templates, status, themeName, canvasGestureModifier],
+    () => ({
+      templates,
+      agentsStatus: status,
+      themeName,
+      canvasGestureModifier,
+      bypassPermissions,
+    }),
+    [templates, status, themeName, canvasGestureModifier, bypassPermissions],
   );
   const visibleRows = useMemo(
     () => filterRows(buildScopeRows(scope, inputs, query), query),

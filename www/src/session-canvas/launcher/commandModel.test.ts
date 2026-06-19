@@ -67,6 +67,7 @@ const baseInputs = (overrides: Partial<ScopeRowInputs> = {}): ScopeRowInputs => 
   agentsStatus: "populated",
   themeName: "NONE",
   canvasGestureModifier: "Shift",
+  bypassPermissions: false,
   ...overrides,
 });
 
@@ -178,6 +179,7 @@ describe("interactionFor", () => {
     [{ kind: "focus-picker" }, runAndClose],
     [{ kind: "goto", path: "/canvas-lab" }, runAndClose],
     [{ kind: "cycle-theme" }, commitCycleTheme],
+    [{ kind: "toggle-bypass-permissions" }, commitCycleTheme],
     [{ kind: "set-canvas-gesture-modifier", modifier: "Shift" }, runAndClose],
   ];
   const actionCases: [string, RowAction, Interaction][] = [
@@ -291,10 +293,11 @@ describe("buildScopeRows — domains-first root", () => {
     ).toContain("agent:native:claude");
   });
 
-  it("Settings scope carries Theme and the current canvas gesture modifier", () => {
+  it("Settings scope carries Theme, the bypass toggle, and the current canvas gesture modifier", () => {
     const rows = buildScopeRows("settings", baseInputs(), "");
     expect(rows.map((row) => row.value)).toEqual([
       "cmd:cycle-theme",
+      "settings:bypass-permissions",
       "settings:canvas-gesture-modifier:Shift",
       "settings:canvas-gesture-modifier:Space",
     ]);
@@ -304,6 +307,25 @@ describe("buildScopeRows — domains-first root", () => {
       kind: "command",
       command: { kind: "set-canvas-gesture-modifier", modifier: "Space" },
     });
+  });
+
+  it("Settings scope shows the bypass toggle Off by default with a toggle action", () => {
+    const row = buildScopeRows("settings", baseInputs(), "").find(
+      (candidate) => candidate.value === "settings:bypass-permissions",
+    );
+    expect(row?.title).toBe("Bypass all permission checks");
+    expect(row?.trailing).toBe("Off");
+    expect(row?.action).toEqual({
+      kind: "command",
+      command: { kind: "toggle-bypass-permissions" },
+    });
+  });
+
+  it("Settings scope reflects bypass permissions On when enabled", () => {
+    const row = buildScopeRows("settings", baseInputs({ bypassPermissions: true }), "").find(
+      (candidate) => candidate.value === "settings:bypass-permissions",
+    );
+    expect(row?.trailing).toBe("On");
   });
 
   it("Settings scope reflects Space as the current canvas gesture modifier", () => {

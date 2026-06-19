@@ -76,6 +76,7 @@ export type LauncherCommand =
   | { kind: "focus-picker" }
   | { kind: "goto"; path: string }
   | { kind: "cycle-theme" }
+  | { kind: "toggle-bypass-permissions" }
   | { kind: "set-canvas-gesture-modifier"; modifier: CanvasGestureModifier };
 
 /** Command-center-local effects handled inside the launcher hook. */
@@ -100,6 +101,8 @@ const SCOPE_INTERACTION: Interaction = { enter: "descend", advance: "descend" };
 const RUN_AND_CLOSE: Interaction = { enter: "run-close", advance: "none" };
 const COMMAND_INTERACTIONS: Partial<Record<LauncherCommand["kind"], Interaction>> = {
   "cycle-theme": { enter: "commit-close", advance: "run-stay" },
+  // Single in-place toggle: → flips on/off and keeps the palette open; ↵ closes.
+  "toggle-bypass-permissions": { enter: "commit-close", advance: "run-stay" },
 };
 const EFFECT_INTERACTIONS: Record<LauncherEffect, Interaction> = {
   "retry-agents": { enter: "run-stay", advance: "none" },
@@ -287,6 +290,7 @@ export function buildCanvasRows(): CommandRow[] {
 export function buildSettingsRows(
   themeName: string,
   canvasGestureModifier: CanvasGestureModifier,
+  bypassPermissions: boolean,
 ): CommandRow[] {
   return [
     {
@@ -295,6 +299,16 @@ export function buildSettingsRows(
       subtitle: `Current: ${themeName}`,
       group: GROUP_SETTINGS,
       action: { kind: "command", command: { kind: "cycle-theme" } },
+    },
+    {
+      value: "settings:bypass-permissions",
+      title: "Bypass all permission checks",
+      subtitle: bypassPermissions
+        ? "On — spawned agents skip permission prompts"
+        : "Off — spawned agents prompt for permissions",
+      group: GROUP_SETTINGS,
+      trailing: bypassPermissions ? "On" : "Off",
+      action: { kind: "command", command: { kind: "toggle-bypass-permissions" } },
     },
     ...CANVAS_GESTURE_MODIFIERS.map((modifier): CommandRow => {
       const selected = modifier === canvasGestureModifier;
@@ -353,7 +367,7 @@ function buildFlatSearchRows(inputs: ScopeRowInputs): CommandRow[] {
   return [
     ...agentSpawnRows(inputs.templates),
     ...buildCanvasRows(),
-    ...buildSettingsRows(inputs.themeName, inputs.canvasGestureModifier),
+    ...buildSettingsRows(inputs.themeName, inputs.canvasGestureModifier, inputs.bypassPermissions),
   ];
 }
 
@@ -375,6 +389,7 @@ export interface ScopeRowInputs {
   agentsStatus: AgentsStatus;
   themeName: string;
   canvasGestureModifier: CanvasGestureModifier;
+  bypassPermissions: boolean;
 }
 
 /**
@@ -387,7 +402,7 @@ export function buildScopeRows(
   inputs: ScopeRowInputs,
   query: string,
 ): CommandRow[] {
-  const { templates, agentsStatus, themeName, canvasGestureModifier } = inputs;
+  const { templates, agentsStatus, themeName, canvasGestureModifier, bypassPermissions } = inputs;
   switch (scope) {
     case "root":
       return query.trim().length === 0 ? buildDomainRows() : buildFlatSearchRows(inputs);
@@ -396,7 +411,7 @@ export function buildScopeRows(
     case "canvas":
       return buildCanvasRows();
     case "settings":
-      return buildSettingsRows(themeName, canvasGestureModifier);
+      return buildSettingsRows(themeName, canvasGestureModifier, bypassPermissions);
     case "workdir":
       return buildDeferredRows("Workdir");
     case "sessions":

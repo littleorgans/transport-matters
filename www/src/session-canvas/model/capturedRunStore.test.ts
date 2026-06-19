@@ -44,7 +44,7 @@ describe("capturedRunStore", () => {
 
     await expect(store().ensureRun("claude:k1", "claude")).resolves.toBe("run-1");
 
-    expect(createCapturedRunMock).toHaveBeenCalledWith("claude", undefined, true, undefined);
+    expect(createCapturedRunMock).toHaveBeenCalledWith("claude", undefined, true, undefined, false);
     expect(store().runs["claude:k1"]).toEqual({ provider: "claude", runId: "run-1" });
   });
 
@@ -65,7 +65,38 @@ describe("capturedRunStore", () => {
 
     await store().ensureRun("claude:k1", "claude", undefined, false);
 
-    expect(createCapturedRunMock).toHaveBeenCalledWith("claude", undefined, false, undefined);
+    expect(createCapturedRunMock).toHaveBeenCalledWith(
+      "claude",
+      undefined,
+      false,
+      undefined,
+      false,
+    );
+  });
+
+  it("defaults bypass permissions off and toggles + persists the flag", () => {
+    expect(store().bypassPermissions).toBe(false);
+
+    store().toggleBypassPermissions();
+
+    expect(store().bypassPermissions).toBe(true);
+    expect(
+      JSON.parse(localStorage.getItem(FRONTEND_STORAGE_KEYS.capturedRunStore) as string).state
+        .bypassPermissions,
+    ).toBe(true);
+
+    store().toggleBypassPermissions();
+
+    expect(store().bypassPermissions).toBe(false);
+  });
+
+  it("threads the current bypass-permissions flag through to the spawn", async () => {
+    createCapturedRunMock.mockResolvedValue("run-1");
+    store().toggleBypassPermissions();
+
+    await store().ensureRun("claude:k1", "claude");
+
+    expect(createCapturedRunMock).toHaveBeenCalledWith("claude", undefined, true, undefined, true);
   });
 
   it("threads a runtime template through to the spawn", async () => {
@@ -73,7 +104,13 @@ describe("capturedRunStore", () => {
 
     await store().ensureRun("claude:k1", "claude", undefined, true, "research");
 
-    expect(createCapturedRunMock).toHaveBeenCalledWith("claude", undefined, true, "research");
+    expect(createCapturedRunMock).toHaveBeenCalledWith(
+      "claude",
+      undefined,
+      true,
+      "research",
+      false,
+    );
   });
 
   it("keeps two same-provider panes on independent runs (no shared PTY)", async () => {

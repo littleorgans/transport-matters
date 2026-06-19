@@ -433,6 +433,29 @@ def test_post_runtime_template_resolves_and_sets_spawn_request(
     assert captured.launch_fields == {}
 
 
+def test_post_bypass_permissions_sets_spawn_request(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    harness = ManagedRunHarness(tmp_path, monkeypatch)
+    client = _client(monkeypatch, tmp_path)
+
+    with client:
+        response = client.post(
+            "/v1/runs",
+            json={
+                "harness": "claude",
+                "cwd": str(tmp_path),
+                "bypassPermissions": True,
+            },
+            headers=_http_headers(BACKEND_ORIGIN),
+        )
+
+    assert response.status_code == 201
+    assert len(harness.prepared.requests) == 1
+    captured = harness.prepared.requests[0]
+    assert captured.bypass_permissions is True
+
+
 def test_post_empty_runtime_template_preserves_native_launch(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -623,6 +646,7 @@ def test_spawn_request_is_nested_capture_only(tmp_path: Path) -> None:
 
     assert request.web_port is None
     assert request.web_runtime == "external"
+    assert request.bypass_permissions is False
 
 
 def test_post_after_manager_close_returns_machine_error(

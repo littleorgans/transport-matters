@@ -314,6 +314,7 @@ def build_codex_invocation(
     default_client_passthrough: Sequence[str] = (),
     runtime_home_dir: Path | None = None,
     launch_fields: Mapping[str, object] | None = None,
+    bypass_permissions: bool = False,
 ) -> Callable[[int, int | None], tuple[list[str], dict[str, str], ManagedClient | None]]:
     """Build the retry-safe invocation factory for `transport-matters codex`.
 
@@ -380,6 +381,7 @@ def build_codex_invocation(
                     client_path=codex_path,
                     passthrough=codex_passthrough_user,
                     native_session_id=native_session_id,
+                    bypass_permissions=bypass_permissions,
                 ),
                 env=client_env,
                 cwd=working_dir,

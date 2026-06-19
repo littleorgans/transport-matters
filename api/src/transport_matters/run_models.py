@@ -107,6 +107,7 @@ class SpawnRun:
     idempotency_key: str | None = None
     start_on_attach: bool = False
     defer_session_ownership: bool = False
+    bypass_permissions: bool = False
     # Bridge answers the harness OSC 10/11 color queries.
     osc_color_replies: bool = True
 

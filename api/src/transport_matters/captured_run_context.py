@@ -157,6 +157,7 @@ def build_captured_run_context(
                 web_runtime=request.web_runtime,
                 default_client_passthrough=request.default_client_passthrough,
                 launch_fields=launch_fields,
+                bypass_permissions=request.bypass_permissions,
             )
         else:
             from transport_matters.captured_codex import build_codex_captured_invocation
@@ -179,6 +180,7 @@ def build_captured_run_context(
                 web_runtime=request.web_runtime,
                 default_client_passthrough=request.default_client_passthrough,
                 launch_fields=launch_fields,
+                bypass_permissions=request.bypass_permissions,
             )
     except Exception:
         stack.close()
