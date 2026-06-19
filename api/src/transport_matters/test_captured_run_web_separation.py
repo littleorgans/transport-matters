@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 from pathlib import Path
 from typing import Any
 
@@ -35,7 +36,11 @@ class FakeSupervisor:
 
 
 def _prepare_bypass_permissions_run(
-    tmp_path: Path, *, harness: str, bypass_permissions: bool
+    tmp_path: Path,
+    *,
+    harness: str,
+    bypass_permissions: bool,
+    defer_session_ownership: bool | None = None,
 ) -> tuple[Any, Any]:
     tmp_path.mkdir(parents=True, exist_ok=True)
     workspace = tmp_path / f"{harness}-workspace"
@@ -67,7 +72,11 @@ def _prepare_bypass_permissions_run(
             no_system_prompt=False,
             debug=False,
             web_runtime=WEB_RUNTIME_EXTERNAL,
-            defer_session_ownership=harness == CODEX_HARNESS_NAME,
+            defer_session_ownership=(
+                harness == CODEX_HARNESS_NAME
+                if defer_session_ownership is None
+                else defer_session_ownership
+            ),
             **request_kwargs,
         ),
         require_addon=lambda: addon_path,
@@ -87,41 +96,59 @@ def _prepare_bypass_permissions_run(
 def test_prepare_captured_run_claude_bypass_permissions_argv(
     tmp_path: Path,
 ) -> None:
-    enabled_spec, enabled_lease = _prepare_bypass_permissions_run(
-        tmp_path / "enabled", harness=CLAUDE_HARNESS_NAME, bypass_permissions=True
-    )
-    default_spec, default_lease = _prepare_bypass_permissions_run(
-        tmp_path / "default", harness=CLAUDE_HARNESS_NAME, bypass_permissions=False
-    )
+    with contextlib.ExitStack() as leases:
+        enabled_spec, enabled_lease = _prepare_bypass_permissions_run(
+            tmp_path / "enabled", harness=CLAUDE_HARNESS_NAME, bypass_permissions=True
+        )
+        leases.callback(enabled_lease.close)
+        default_spec, default_lease = _prepare_bypass_permissions_run(
+            tmp_path / "default", harness=CLAUDE_HARNESS_NAME, bypass_permissions=False
+        )
+        leases.callback(default_lease.close)
 
-    try:
         assert enabled_spec.client is not None
         assert enabled_spec.client.argv.count("--dangerously-skip-permissions") == 1
         assert default_spec.client is not None
         assert "--dangerously-skip-permissions" not in default_spec.client.argv
-    finally:
-        enabled_lease.close()
-        default_lease.close()
 
 
 def test_prepare_captured_run_codex_bypass_permissions_argv(
     tmp_path: Path,
 ) -> None:
-    enabled_spec, enabled_lease = _prepare_bypass_permissions_run(
-        tmp_path / "enabled", harness=CODEX_HARNESS_NAME, bypass_permissions=True
-    )
-    default_spec, default_lease = _prepare_bypass_permissions_run(
-        tmp_path / "default", harness=CODEX_HARNESS_NAME, bypass_permissions=False
-    )
+    with contextlib.ExitStack() as leases:
+        enabled_spec, enabled_lease = _prepare_bypass_permissions_run(
+            tmp_path / "enabled", harness=CODEX_HARNESS_NAME, bypass_permissions=True
+        )
+        leases.callback(enabled_lease.close)
+        default_spec, default_lease = _prepare_bypass_permissions_run(
+            tmp_path / "default", harness=CODEX_HARNESS_NAME, bypass_permissions=False
+        )
+        leases.callback(default_lease.close)
 
-    try:
         assert enabled_spec.client is not None
         assert enabled_spec.client.argv.count("--yolo") == 1
         assert default_spec.client is not None
         assert "--yolo" not in default_spec.client.argv
-    finally:
-        enabled_lease.close()
-        default_lease.close()
+
+
+def test_prepare_captured_run_owned_codex_bypass_permissions_precedes_resume(
+    tmp_path: Path,
+) -> None:
+    with contextlib.ExitStack() as leases:
+        spawn_spec, lease = _prepare_bypass_permissions_run(
+            tmp_path / "owned",
+            harness=CODEX_HARNESS_NAME,
+            bypass_permissions=True,
+            defer_session_ownership=False,
+        )
+        leases.callback(lease.close)
+
+        assert spawn_spec.client is not None
+        assert spawn_spec.managed_session is not None
+        argv = spawn_spec.client.argv
+        assert argv.count("--yolo") == 1
+        assert "resume" in argv
+        assert argv.index("--yolo") < argv.index("resume")
 
 
 def test_prepare_captured_run_external_web_starts_capture_only_proxy(
