@@ -74,6 +74,10 @@ _CURATED_STATES = frozenset(
 )
 _END_REASONS = frozenset({"explicit", "idle-timeout", "shutdown", "deploy-restart"})
 PublicRunState = Literal["RUNNING", "TERMINATING", "TERMINATED", "EXITED", "FAILED"]
+# Single source of truth for internal states presented under a different public label.
+# STARTING is the pre-attach phase of a run and surfaces to clients as RUNNING; the
+# curated view and the list-filter expansion both derive from this mapping.
+_PUBLIC_STATE_ALIASES: dict[RunState, PublicRunState] = {RunState.STARTING: "RUNNING"}
 
 router = APIRouter()
 
@@ -234,9 +238,10 @@ def _validated_state(state: str) -> RunState:
 
 def _public_state_filter(state: str) -> frozenset[RunState]:
     parsed = _validated_state(state)
-    if parsed is RunState.RUNNING:
-        return frozenset({RunState.STARTING, RunState.RUNNING})
-    return frozenset({parsed})
+    aliased = frozenset(
+        internal for internal, public in _PUBLIC_STATE_ALIASES.items() if public == parsed.value
+    )
+    return frozenset({parsed, *aliased})
 
 
 def _cursor_filter_key(state: str | None) -> dict[str, str | None]:
@@ -387,8 +392,9 @@ def _session_id_for_view(view: ManagedRunView) -> str:
 
 
 def _curated_state(state: RunState) -> PublicRunState:
-    if state is RunState.STARTING:
-        return "RUNNING"
+    alias = _PUBLIC_STATE_ALIASES.get(state)
+    if alias is not None:
+        return alias
     return cast("PublicRunState", state.value)
 
 

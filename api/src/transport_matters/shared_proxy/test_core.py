@@ -49,14 +49,18 @@ class SlowItemsDict(dict[str, str]):
 
 
 class SpySnapshotWriter(SharedTranscriptSnapshotWriter):
-    __slots__ = ("unregistered",)
+    __slots__ = ("calls",)
 
     def __init__(self) -> None:
         super().__init__()
-        self.unregistered: list[str] = []
+        self.calls: list[str] = []
+
+    def register_run(self, run_id: str, storage_root: Path) -> None:
+        self.calls.append(f"register:{run_id}")
+        super().register_run(run_id, storage_root)
 
     def unregister(self, run_id: str) -> tuple[str, ...]:
-        self.unregistered.append(run_id)
+        self.calls.append(f"unregister:{run_id}")
         return super().unregister(run_id)
 
 
@@ -148,7 +152,7 @@ async def test_register_owned_binding_requires_session_capture_and_cleans_up(
 
     assert error.value.code == "session_capture_unavailable"
     assert core._bindings_by_run_id == {}
-    assert snapshots.unregistered == ["run-1"]
+    assert snapshots.calls == ["register:run-1", "unregister:run-1"]
 
 
 @pytest.mark.asyncio
@@ -175,7 +179,7 @@ async def test_register_owned_binding_cursor_failure_cleans_up(
 
     assert error.value.code == "owned_cursor_registration_failed"
     assert core._bindings_by_run_id == {}
-    assert snapshots.unregistered == ["run-1"]
+    assert snapshots.calls == ["register:run-1", "unregister:run-1"]
 
 
 @pytest.mark.asyncio
