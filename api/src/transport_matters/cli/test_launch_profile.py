@@ -284,7 +284,6 @@ class _FakeMintProfile(LaunchProfile):
         native_session_id: str | None,
         bypass_permissions: bool = False,
     ) -> list[str]:
-        del bypass_permissions
         session = [] if native_session_id is None else [f"--id={native_session_id}"]
         return [client_path, *session, *passthrough]
 
