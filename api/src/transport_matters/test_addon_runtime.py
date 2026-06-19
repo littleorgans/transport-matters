@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, cast
 
 import httpx
@@ -31,17 +32,32 @@ from transport_matters.counting import (
 )
 from transport_matters.index.adapters.base import (
     FileTailSource,
+    NormalizedTurn,
+    RawRecord,
+    RunContext,
     SessionBinding,
+    TranscriptAdapter,
+    TranscriptSource,
+    TurnContext,
     encode_source_descriptor,
 )
 from transport_matters.index.sessions import synth_session_id
-from transport_matters.index.tailer import TranscriptTailer
+from transport_matters.index.tailer import TailCursor, TranscriptTailer
+from transport_matters.ir import (
+    InternalRequest,
+    Message,
+    RequestMetadata,
+    SamplingParams,
+    TextBlock,
+)
 from transport_matters.main import create_app
 from transport_matters.session.models import SessionPurpose
+from transport_matters.storage.base import ExchangeArtifacts, IndexEntry, ReqStats
 
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from transport_matters.shared_proxy.binding import ProxyRunBinding
     from transport_matters.storage.base import StorageBackend
 
 # ---------------------------------------------------------------------------
@@ -68,6 +84,36 @@ def _make_runtime(
         ),
         serve_task,
     )
+
+
+class _CursorAdapter(TranscriptAdapter):
+    provider = "codex"
+    harness = "codex"
+
+    def __init__(self, source: TranscriptSource) -> None:
+        self.source = source
+        self.locate_calls = 0
+
+    async def bind(self, run: RunContext) -> SessionBinding:
+        return SessionBinding(
+            session_id=synth_session_id(run.run_id, self.provider, run.native_session_id or ""),
+            provider=self.provider,
+            run_id=run.run_id,
+            cwd=run.cwd,
+            workspace_slug=run.workspace_slug,
+            workspace_hash=run.workspace_hash,
+            started_at=run.started_at,
+            harness=run.harness,
+            native_session_id=run.native_session_id,
+            home_dir=run.home_dir,
+        )
+
+    async def locate(self, binding: SessionBinding) -> TranscriptSource | None:
+        self.locate_calls += 1
+        return self.source
+
+    def normalize(self, record: RawRecord, ctx: TurnContext) -> NormalizedTurn | None:
+        raise AssertionError("normalize is not used by cursor registration tests")
 
 
 async def _serve_until_exit(server: uvicorn.Server) -> None:
@@ -377,6 +423,52 @@ def _codex_binding() -> SessionBinding:
     )
 
 
+def _codex_request(native_session_id: str) -> InternalRequest:
+    return InternalRequest(
+        model="gpt-5",
+        provider="codex",
+        system=[],
+        tools=[],
+        messages=[Message(role="user", content=[TextBlock(text="hello")])],
+        sampling=SamplingParams(max_tokens=1024),
+        metadata=RequestMetadata(session_id=native_session_id),
+    )
+
+
+async def _register_exchange_cursor(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    proxy_binding: ProxyRunBinding,
+    *,
+    native_session_id: str,
+) -> tuple[_CursorAdapter, list[TailCursor]]:
+    source = FileTailSource(path=str(tmp_path / "rollout.jsonl"), format="codex_rollout")
+    adapter = _CursorAdapter(source)
+    registered: list[TailCursor] = []
+    monkeypatch.setattr(addon_runtime, "get_adapter", lambda _: adapter)
+    tailer = TranscriptTailer(on_cursor_registered=registered.append)
+    sink = addon_runtime._make_exchange_cursor_sink(
+        tailer,
+        asyncio.get_running_loop(),
+        lambda run_id: proxy_binding if run_id == "run1" else None,
+    )
+
+    sink(
+        IndexEntry(
+            id="exchange-1",
+            run_id="run1",
+            ts=datetime(2026, 6, 19, tzinfo=UTC),
+            provider="codex",
+            model="gpt-5",
+            path="exchanges/exchange-1.json",
+            req=ReqStats(),
+        ),
+        ExchangeArtifacts(request_raw=b"{}", request_ir=_codex_request(native_session_id)),
+    )
+    await asyncio.sleep(0.05)
+    return adapter, registered
+
+
 async def test_cursor_registrar_registers_codex_session(monkeypatch: pytest.MonkeyPatch) -> None:
     """A codex wire binding (read-back) must resolve to the codex adapter and schedule its cursor.
 
@@ -397,6 +489,69 @@ async def test_cursor_registrar_registers_codex_session(monkeypatch: pytest.Monk
     await asyncio.sleep(0.05)  # let the scheduled coroutine run
 
     assert calls == [("codex", "sess-codex")]
+
+
+async def test_exchange_cursor_sink_registers_deferred_codex_session(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    native = "019e0000-0000-7000-8000-00000000c0de"
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    settings = Settings(
+        run_id="run1",
+        cwd=workspace,
+        harness="codex",
+        agent_home_dir=tmp_path / "runtime-home",
+    )
+    proxy_binding = addon_runtime.build_proxy_run_binding(
+        settings, cast("StorageBackend", object())
+    )
+
+    adapter, registered = await _register_exchange_cursor(
+        tmp_path, monkeypatch, proxy_binding, native_session_id=native
+    )
+
+    assert adapter.locate_calls == 1
+    assert len(registered) == 1
+    binding = registered[0].binding
+    assert binding.session_id == synth_session_id("run1", "codex", native)
+    assert binding.native_session_id == native
+    assert binding.home_dir == str(tmp_path / "runtime-home")
+    assert binding.cwd == str(workspace)
+
+
+async def test_exchange_cursor_sink_uses_owned_source_descriptor_without_locate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    native = "019e0000-0000-7000-8000-00000000c0de"
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    descriptor = encode_source_descriptor(
+        FileTailSource(path=str(tmp_path / "owned-rollout.jsonl"), format="codex_rollout")
+    )
+    settings = Settings(
+        run_id="run1",
+        cwd=workspace,
+        harness="codex",
+        owned_native_session_id=native,
+        owned_source_descriptor=descriptor,
+        agent_home_dir=tmp_path / "runtime-home",
+    )
+    proxy_binding = addon_runtime.build_proxy_run_binding(
+        settings, cast("StorageBackend", object())
+    )
+
+    adapter, registered = await _register_exchange_cursor(
+        tmp_path, monkeypatch, proxy_binding, native_session_id=native
+    )
+
+    assert adapter.locate_calls == 0
+    assert len(registered) == 1
+    cursor = registered[0]
+    assert cursor.binding.source_descriptor == descriptor
+    assert cursor.source == FileTailSource(
+        path=str(tmp_path / "owned-rollout.jsonl"), format="codex_rollout"
+    )
 
 
 async def test_close_runtime_clears_counter_and_auth() -> None:

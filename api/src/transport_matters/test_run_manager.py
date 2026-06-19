@@ -102,6 +102,21 @@ class PtyHarness:
                 os.close(write_fd)
 
 
+class StartupWritingPtyHarness(PtyHarness):
+    def spawn(
+        self,
+        *,
+        argv: Sequence[str],
+        env: Mapping[str, str],
+        cwd: Path,
+        cols: int,
+        rows: int,
+    ) -> TerminalPty:
+        terminal = super().spawn(argv=argv, env=env, cwd=cwd, cols=cols, rows=rows)
+        os.write(self.write_fds[terminal.master_fd], b"startup-frame")
+        return terminal
+
+
 class PreparedRunHarness:
     def __init__(self, tmp_path: Path, *, events: list[str] | None = None) -> None:
         self.tmp_path = tmp_path
@@ -223,6 +238,11 @@ async def spawn_run(manager: RunManager, tmp_path: Path) -> ManagedRun:
     )
 
 
+def require_terminal(run: ManagedRun) -> TerminalPty:
+    assert run.terminal is not None
+    return run.terminal
+
+
 def test_package_root_seams_do_not_import_api() -> None:
     api_root = Path(__file__).resolve().parents[2]
     for relative in (
@@ -251,7 +271,7 @@ async def test_detach_does_not_close_run_lease(
     manager = make_manager(tmp_path, pty, prepared, events=events)
 
     run = await spawn_run(manager, tmp_path)
-    attached = manager.attach(run.run_id, cols=80, rows=24, attachment_id="viewer")
+    attached = await manager.attach(run.run_id, cols=80, rows=24, attachment_id="viewer")
     manager.detach(run.run_id, attached.attachment.attachment_id)
 
     assert prepared.leases[0].close_count == 0
@@ -270,13 +290,43 @@ async def test_headless_run_drains_pty_output_into_scrollback(
     manager = make_manager(tmp_path, pty, prepared)
 
     run = await spawn_run(manager, tmp_path)
-    pty.write(run.terminal, b"headless-output")
+    pty.write(require_terminal(run), b"headless-output")
 
     await wait_until(
         lambda: b"headless-output" in b"".join(c.data for c in run.scrollback.snapshot())
     )
     assert run.attachments == {}
     assert run.state is RunState.RUNNING
+
+    await manager.close()
+
+
+async def test_start_on_attach_registers_viewer_before_pty_start(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    pty = StartupWritingPtyHarness()
+    patch_pty_teardown(monkeypatch, pty)
+    prepared = PreparedRunHarness(tmp_path)
+    manager = make_manager(tmp_path, pty, prepared)
+
+    run = await manager.spawn(
+        SpawnRun(
+            harness="claude",
+            cwd=tmp_path,
+            web_runtime=WEB_RUNTIME_EMBEDDED,
+            start_on_attach=True,
+        )
+    )
+
+    assert run.terminal is None
+    assert run.scrollback.snapshot() == ()
+
+    attached = await manager.attach(run.run_id, cols=80, rows=24, attachment_id="viewer")
+    item = await asyncio.wait_for(attached.attachment.queue.get(), timeout=1)
+
+    assert isinstance(item, PtyChunk)
+    assert item.data == b"startup-frame"
+    assert attached.scrollback == ()
 
     await manager.close()
 
@@ -427,19 +477,19 @@ async def test_reattach_receives_scrollback_then_live_output(
     manager = make_manager(tmp_path, pty, prepared)
 
     run = await spawn_run(manager, tmp_path)
-    pty.write(run.terminal, b"past")
+    pty.write(require_terminal(run), b"past")
     await wait_until(lambda: b"past" in b"".join(c.data for c in run.scrollback.snapshot()))
 
-    attached = manager.attach(run.run_id, cols=80, rows=24, attachment_id="viewer-1")
+    attached = await manager.attach(run.run_id, cols=80, rows=24, attachment_id="viewer-1")
     assert b"past" in b"".join(chunk.data for chunk in attached.scrollback)
 
-    pty.write(run.terminal, b"live")
+    pty.write(require_terminal(run), b"live")
     live_item = await asyncio.wait_for(attached.attachment.queue.get(), timeout=1)
     assert isinstance(live_item, PtyChunk)
     assert live_item.data == b"live"
 
     manager.detach(run.run_id, attached.attachment.attachment_id)
-    reattached = manager.attach(run.run_id, cols=80, rows=24, attachment_id="viewer-2")
+    reattached = await manager.attach(run.run_id, cols=80, rows=24, attachment_id="viewer-2")
     replay = b"".join(chunk.data for chunk in reattached.scrollback)
     assert b"past" in replay
     assert b"live" in replay
@@ -515,13 +565,13 @@ async def test_attach_errors_distinguish_terminated_and_stale_runs(
     terminated = await spawn_run(manager, tmp_path)
     await manager.terminate(terminated.run_id)
     with pytest.raises(RunManagerError) as terminated_error:
-        manager.attach(terminated.run_id, cols=80, rows=24)
+        await manager.attach(terminated.run_id, cols=80, rows=24)
     assert terminated_error.value.code == "run_terminated"
 
     stale = await spawn_run(manager, tmp_path)
-    pty.close_master(stale.terminal)
+    pty.close_master(require_terminal(stale))
     with pytest.raises(RunManagerError) as stale_error:
-        manager.attach(stale.run_id, cols=80, rows=24)
+        await manager.attach(stale.run_id, cols=80, rows=24)
     assert stale_error.value.code == "run_stale"
     await manager.close()
 
@@ -535,11 +585,13 @@ async def test_slow_viewer_is_closed_without_stopping_run(
     manager = make_manager(tmp_path, pty, prepared)
 
     run = await spawn_run(manager, tmp_path)
-    attached = manager.attach(run.run_id, cols=80, rows=24, attachment_id="slow", queue_maxsize=1)
+    attached = await manager.attach(
+        run.run_id, cols=80, rows=24, attachment_id="slow", queue_maxsize=1
+    )
 
-    pty.write(run.terminal, b"first")
+    pty.write(require_terminal(run), b"first")
     await wait_until(lambda: attached.attachment.queue.qsize() == 1)
-    pty.write(run.terminal, b"second")
+    pty.write(require_terminal(run), b"second")
     await wait_until(lambda: "slow" not in run.attachments)
 
     assert attached.attachment.closed_reason == SLOW_VIEWER_CLOSE_CODE
@@ -622,12 +674,12 @@ async def test_bridge_answers_cli_osc_color_queries(
     )
 
     run = await spawn_run(manager, tmp_path)
-    pty.child_write(run.terminal, b"\x1b]11;?\x07")
+    pty.child_write(require_terminal(run), b"\x1b]11;?\x07")
 
     received = bytearray()
 
     def reply_arrived() -> bool:
-        received.extend(pty.child_read(run.terminal))
+        received.extend(pty.child_read(require_terminal(run)))
         return OSC_BACKGROUND_REPLY in received
 
     await wait_until(reply_arrived)
@@ -657,9 +709,9 @@ async def test_disabled_osc_color_replies_stay_silent(
             osc_color_replies=False,
         )
     )
-    pty.child_write(run.terminal, b"\x1b]11;?\x07")
+    pty.child_write(require_terminal(run), b"\x1b]11;?\x07")
     # Give the drain loop time to swallow the query, then prove no reply came.
     await wait_until(lambda: run.scrollback.total_bytes > 0)
     await asyncio.sleep(0.05)
-    assert pty.child_read(run.terminal) == b""
+    assert pty.child_read(require_terminal(run)) == b""
     await manager.close()

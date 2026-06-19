@@ -53,11 +53,13 @@ def test_websocket_binary_input_reaches_child(
             json={"harness": "claude", "cwd": str(tmp_path)},
             headers=_http_headers(BACKEND_ORIGIN),
         ).json()["run"]["runId"]
+        assert _lease.sessions == []
         with client.websocket_connect(
             f"/v1/runs/{run_id}/terminal",
             headers=_websocket_headers(BACKEND_ORIGIN),
         ) as websocket:
             assert websocket.receive_json()["type"] == "run.terminal.ready"
+            assert len(_lease.sessions) == 1
             assert websocket.receive_json() == {"type": "run.terminal.scrollback-end"}
             websocket.send_bytes(b"ping\n")
             output = _receive_until_disconnect(websocket, needle=b"ECHO:ping")

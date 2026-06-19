@@ -8,14 +8,18 @@ and this transcript adapter independently converge on the SAME ``session_id``
 both streams (§3.3).
 """
 
+import asyncio
 import json
 import uuid
+from pathlib import Path
 from typing import TYPE_CHECKING, Any  # Any: rollout records are provider-shaped JSON
 
 from transport_matters.index.adapters.base import (
+    FileTailSource,
     NormalizedTurn,
     SessionBinding,
     TranscriptAdapter,
+    TranscriptSource,
 )
 from transport_matters.index.sessions import SESSION_NS, synth_session_id
 from transport_matters.ir import (
@@ -38,6 +42,8 @@ if TYPE_CHECKING:
 class CodexAdapter(TranscriptAdapter):
     provider = "codex"
     harness = "codex"
+    _locate_timeout_s = 2.0
+    _locate_interval_s = 0.05
 
     async def bind(self, run: RunContext) -> SessionBinding:
         if run.native_session_id is None:
@@ -60,15 +66,41 @@ class CodexAdapter(TranscriptAdapter):
             home_dir=run.home_dir,  # carried like cwd (codex has no ``locate``, but the binding stays honest)
         )
 
-    # No ``locate``: codex is MANAGED-MINT (§5.2b). The launcher mints the native uuid, pre-seeds the
-    # rollout, and stamps the owned ``source_descriptor`` onto any wire binding whose
-    # ``metadata.session_id`` matches that uuid, so the tailer byte-tails the owned path. The old
-    # read-back glob (any wire frame ⇒ TM launched it ⇒ TM owns the uuid + path) is deleted; discovery
-    # is unreachable for anything TM sees. Uncorrelated codex non-conversational requests, such as
-    # memory-style calls, carry no session id, bind to ``None``, and land as null exchange metadata
-    # rows; handshake-failure frames are tier-1 only and create no indexed wire row. These recur several
-    # times per session, not a single frame-1 phantom (§15 risk 2). The base default ``locate`` returns
-    # None, so codex ids with no owned descriptor register no cursor.
+    async def locate(self, binding: SessionBinding) -> TranscriptSource | None:
+        """Locate a deferred Codex rollout under an explicit managed home.
+
+        Native home discovery remains disabled. Canvas Codex runs get a per-run
+        ``CODEX_HOME``, so matching exactly one rollout filename by the wire-observed
+        native session id is deterministic and does not recreate the old newest-file race.
+        """
+        if binding.native_session_id is None or binding.home_dir is None:
+            return None
+        path = await self._locate_rollout_path(
+            Path(binding.home_dir) / "sessions",
+            binding.native_session_id,
+        )
+        if path is None:
+            return None
+        return FileTailSource(
+            path=str(path),
+            format="codex_rollout",
+            home_dir=binding.home_dir,
+        )
+
+    async def _locate_rollout_path(
+        self, sessions_root: Path, native_session_id: str
+    ) -> Path | None:
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + self._locate_timeout_s
+        while True:
+            matches = _matching_rollouts(sessions_root, native_session_id)
+            if len(matches) == 1:
+                return matches[0]
+            if len(matches) > 1:
+                return None
+            if loop.time() >= deadline:
+                return None
+            await asyncio.sleep(self._locate_interval_s)
 
     def model_hint(self, record: RawRecord) -> str | None:
         # codex's model lives on the `turn_context` record (which normalize skips); the tailer threads
@@ -108,6 +140,15 @@ class CodexAdapter(TranscriptAdapter):
             source_line=ctx.source_line,
             parts=parts,
         )
+
+
+def _matching_rollouts(sessions_root: Path, native_session_id: str) -> list[Path]:
+    if not sessions_root.exists():
+        return []
+    suffix = f"-{native_session_id}.jsonl"
+    return sorted(
+        path for path in sessions_root.rglob("rollout-*.jsonl") if path.name.endswith(suffix)
+    )
 
 
 def _payload_to_role_and_parts(payload: dict[str, Any]) -> tuple[str, list[ContentBlock]]:

@@ -74,6 +74,10 @@ _CURATED_STATES = frozenset(
 )
 _END_REASONS = frozenset({"explicit", "idle-timeout", "shutdown", "deploy-restart"})
 PublicRunState = Literal["RUNNING", "TERMINATING", "TERMINATED", "EXITED", "FAILED"]
+# Single source of truth for internal states presented under a different public label.
+# STARTING is the pre-attach phase of a run and surfaces to clients as RUNNING; the
+# curated view and the list-filter expansion both derive from this mapping.
+_PUBLIC_STATE_ALIASES: dict[RunState, PublicRunState] = {RunState.STARTING: "RUNNING"}
 
 router = APIRouter()
 
@@ -232,6 +236,14 @@ def _validated_state(state: str) -> RunState:
     return parsed
 
 
+def _public_state_filter(state: str) -> frozenset[RunState]:
+    parsed = _validated_state(state)
+    aliased = frozenset(
+        internal for internal, public in _PUBLIC_STATE_ALIASES.items() if public == parsed.value
+    )
+    return frozenset({parsed, *aliased})
+
+
 def _cursor_filter_key(state: str | None) -> dict[str, str | None]:
     return {"state": state}
 
@@ -348,8 +360,9 @@ def _spawn_request(
     runtime_template: RuntimeTemplateRef | None = None,
 ) -> SpawnRun:
     terminal = body.terminal or TerminalSizeModel()
+    harness = _validated_harness(body.harness)
     return SpawnRun(
-        harness=_validated_harness(body.harness),
+        harness=harness,
         cwd=_request_cwd(body.cwd, settings),
         cols=terminal.cols,
         rows=terminal.rows,
@@ -360,6 +373,8 @@ def _spawn_request(
         runtime_template=runtime_template,
         launch_fields=launch_fields or {},
         idempotency_key=body.idempotency_key,
+        start_on_attach=True,
+        defer_session_ownership=harness == CODEX_HARNESS_NAME,
     )
 
 
@@ -377,8 +392,9 @@ def _session_id_for_view(view: ManagedRunView) -> str:
 
 
 def _curated_state(state: RunState) -> PublicRunState:
-    if state is RunState.STARTING:
-        return "RUNNING"
+    alias = _PUBLIC_STATE_ALIASES.get(state)
+    if alias is not None:
+        return alias
     return cast("PublicRunState", state.value)
 
 
@@ -448,7 +464,7 @@ async def list_runs(
     cursor_filters = _cursor_filter_key(state)
     offset = _decode_cursor(cursor, filters=cursor_filters) if cursor is not None else 0
     filters = RunFilters(
-        states=frozenset({_validated_state(state)}) if state is not None else None,
+        states=_public_state_filter(state) if state is not None else None,
     )
     manager = _run_manager(request)
     views = manager.list(filters)
@@ -548,9 +564,12 @@ async def bridge_attached_run_terminal(
     ready_frame: Callable[[ManagedRun, AttachedTerminal], dict[str, object]],
     include_scrollback_end: bool,
 ) -> None:
-    attached = manager.attach(run_id, cols=cols, rows=rows)
+    attached = await manager.attach(run_id, cols=cols, rows=rows)
     attachment_id = attached.attachment.attachment_id
     run = manager.get(run_id)
+    terminal = run.terminal
+    if terminal is None:
+        raise RunManagerError("run_not_attachable", f"run {run_id} has not started")
     send_lock = asyncio.Lock()
 
     async def send_json(payload: dict[str, object]) -> None:
@@ -590,7 +609,7 @@ async def bridge_attached_run_terminal(
         input_task = asyncio.create_task(
             terminal_bridge.receive_websocket_input(
                 websocket,
-                run.terminal.master_fd,
+                terminal.master_fd,
                 on_invalid_control_frame=invalid_control_frame,
             )
         )

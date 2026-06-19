@@ -24,8 +24,9 @@ from transport_matters.counting import (
     set_recent_auth,
 )
 from transport_matters.index.adapters import get_adapter
-from transport_matters.index.adapters.base import RunContext
+from transport_matters.index.adapters.base import RunContext, SessionBinding
 from transport_matters.index.commit_dispatcher import ShardedCommitDispatcher
+from transport_matters.index.sessions import synth_session_id
 from transport_matters.index.tailer import TranscriptTailer, register_session_cursor
 from transport_matters.main import create_app
 from transport_matters.session.ingest import EventWrite, build_event, build_event_batch
@@ -34,6 +35,7 @@ from transport_matters.session.pool import create_async_pool
 from transport_matters.session.writer import SessionWriter
 from transport_matters.shared_proxy import ProxyRunBinding
 from transport_matters.storage import init_storage
+from transport_matters.storage.exchange_sink import clear_exchange_sink, set_exchange_sink
 from transport_matters.storage.transcript_snapshot import make_transcript_snapshot_writer
 from transport_matters.workspace import workspace_id
 
@@ -43,9 +45,8 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from transport_matters.config import Settings
-    from transport_matters.index.adapters.base import SessionBinding
     from transport_matters.index.tailer import TailCursor
-    from transport_matters.storage.base import StorageBackend
+    from transport_matters.storage.base import ExchangeArtifacts, IndexEntry, StorageBackend
 
 logger = logging.getLogger(__name__)
 
@@ -83,6 +84,66 @@ def _make_cursor_registrar(
         )
 
     return register
+
+
+def _make_exchange_cursor_sink(
+    tailer: TranscriptTailer,
+    loop: asyncio.AbstractEventLoop | None,
+    binding_for_run_id: Callable[[str], ProxyRunBinding | None],
+) -> Callable[[IndexEntry, ExchangeArtifacts], None]:
+    """Register read-back transcript cursors from persisted wire exchanges."""
+
+    def register(entry: IndexEntry, artifacts: ExchangeArtifacts) -> None:
+        if loop is None or entry.run_id is None:
+            return
+        request = artifacts.request_ir
+        native_session_id = request.metadata.session_id
+        harness = _PROVIDER_HARNESS.get(request.provider)
+        if harness is None or native_session_id is None:
+            return
+        binding = binding_for_run_id(entry.run_id)
+        if binding is None or binding.working_dir is None:
+            return
+        workspace = workspace_id(binding.working_dir)
+        home_dir = str(binding.agent_home_dir) if binding.agent_home_dir is not None else None
+        session_binding = SessionBinding(
+            session_id=_wire_session_id(entry.run_id, request.provider, native_session_id),
+            provider=request.provider,
+            run_id=entry.run_id,
+            cwd=str(binding.working_dir),
+            workspace_slug=workspace.slug,
+            workspace_hash=workspace.hash,
+            started_at=entry.ts.isoformat(),
+            harness=harness,
+            native_session_id=native_session_id,
+            minted=request.provider in _DIRECT_MINT_PROVIDERS,
+            source_descriptor=binding.owned_source_descriptor,
+            template_provenance=_template_provenance(binding),
+            parent_session_id=_string_launch_field(binding, "parent_session_id"),
+            title=_string_launch_field(binding, "title"),
+            home_dir=home_dir,
+        )
+        asyncio.run_coroutine_threadsafe(
+            register_session_cursor(tailer, get_adapter(harness), session_binding), loop
+        )
+
+    return register
+
+
+def _wire_session_id(run_id: str, provider: str, native_session_id: str) -> str:
+    if provider == "codex":
+        return synth_session_id(run_id, provider, native_session_id)
+    return native_session_id
+
+
+def _template_provenance(binding: ProxyRunBinding) -> dict[str, Any] | None:
+    value = binding.launch_fields.get("template_provenance")
+    return dict(value) if isinstance(value, dict) else None
+
+
+def _string_launch_field(binding: ProxyRunBinding, key: str) -> str | None:
+    value = binding.launch_fields.get(key)
+    return value if isinstance(value, str) else None
 
 
 @dataclass(slots=True)
@@ -240,6 +301,7 @@ def _start_session_capture(
     *,
     snapshot_writer: Callable[[str, int, bytes], None] | None,
     on_cursor_registered: Callable[[TailCursor], None] | None = None,
+    binding_for_run_id: Callable[[str], ProxyRunBinding | None] | None = None,
 ) -> SessionCaptureRuntime:
     loop = _running_loop()
     if loop is None:
@@ -318,6 +380,8 @@ def _start_session_capture(
         on_cursor_registered=on_cursor_registered,
     )
     index_tailer.start()
+    if binding_for_run_id is not None:
+        set_exchange_sink(_make_exchange_cursor_sink(index_tailer, loop, binding_for_run_id))
     return SessionCaptureRuntime(
         session_writer=writer,
         index_tailer=index_tailer,
@@ -384,6 +448,7 @@ def load_shared_capture_runtime(
     *,
     snapshot_writer: Callable[[str, int, bytes], None] | None = None,
     on_cursor_registered: Callable[[TailCursor], None] | None = None,
+    binding_for_run_id: Callable[[str], ProxyRunBinding | None] | None = None,
 ) -> CaptureRuntime:
     settings = settings or get_settings()
     http_client, token_counter = _build_capture_primitives()
@@ -392,6 +457,7 @@ def load_shared_capture_runtime(
             settings,
             snapshot_writer=snapshot_writer,
             on_cursor_registered=on_cursor_registered,
+            binding_for_run_id=binding_for_run_id,
         )
     except Exception:
         logger.exception("shared session capture failed to start")
@@ -452,6 +518,7 @@ async def close_capture_runtime(runtime: CaptureRuntime | None) -> None:
         set_recent_auth(None, binding=runtime.binding)
     else:
         set_recent_auth(None)
+    clear_exchange_sink()
 
 
 async def close_web_runtime(runtime: WebRuntime | None) -> None:

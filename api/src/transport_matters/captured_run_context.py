@@ -116,16 +116,20 @@ def build_captured_run_context(
             # be promoted onto request.home_dir. Native launches keep home_dir=None so
             # AGENT_HOME_DIR stays unset.
 
-        managed_session = prepare_managed_session(
-            launch_profile,
-            client_path=prepared.client_path,
-            passthrough=prepared.passthrough_user,
-            working_dir=prepared.working_dir,
-            home_dir=runtime_home_plan.descriptor_home,
-            env=env,
-            now=now or datetime.now().astimezone(),
-            write=write,
-        )
+        if request.defer_session_ownership and request.harness != CODEX_HARNESS_NAME:
+            raise ValueError("deferred session ownership is only supported for codex")
+        managed_session = None
+        if not request.defer_session_ownership:
+            managed_session = prepare_managed_session(
+                launch_profile,
+                client_path=prepared.client_path,
+                passthrough=prepared.passthrough_user,
+                working_dir=prepared.working_dir,
+                home_dir=runtime_home_plan.descriptor_home,
+                env=env,
+                now=now or datetime.now().astimezone(),
+                write=write,
+            )
         addon_path = stack.enter_context(as_file(prepared.addon_traversable))
         launch_fields = {
             **dict(request.launch_fields),

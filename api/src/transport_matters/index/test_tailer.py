@@ -57,7 +57,9 @@ def _codex_response_item(text: str) -> str:
     )
 
 
-def _codex_wire_binding(native: str, descriptor: str | None) -> SessionBinding:
+def _codex_wire_binding(
+    native: str, descriptor: str | None, *, home_dir: str | None = None
+) -> SessionBinding:
     """A codex wire binding as adapter binding resolves it: synth session_id, harness unset on the
     wire side, ``source_descriptor`` present only for the session the launcher owns (§5.2b)."""
     return SessionBinding(
@@ -72,6 +74,7 @@ def _codex_wire_binding(native: str, descriptor: str | None) -> SessionBinding:
         native_session_id=native,
         minted=False,
         source_descriptor=descriptor,
+        home_dir=home_dir,
     )
 
 
@@ -511,6 +514,34 @@ class TestRegisterCursor:
         assert tailer._snapshot() == []  # nothing registered
         tailer.poll()  # nothing to poll
         assert submitted == []
+
+    async def test_deferred_codex_binding_locates_runtime_home_rollout(
+        self, tmp_path: Path
+    ) -> None:
+        native = "019e0000-0000-7000-8000-0000000000ff"
+        rollout = (
+            tmp_path
+            / "sessions"
+            / "2026"
+            / "06"
+            / "19"
+            / f"rollout-2026-06-19T12-00-00-{native}.jsonl"
+        )
+        rollout.parent.mkdir(parents=True)
+        rollout.write_text(_codex_session_meta(native) + "\n", encoding="utf-8")
+        submitted: list[EventWrite] = []
+        tailer = _event_tailer(submitted)
+
+        await register_session_cursor(
+            tailer,
+            CodexAdapter(),
+            _codex_wire_binding(native, None, home_dir=str(tmp_path)),
+        )
+
+        (cursor,) = tailer._snapshot()
+        assert isinstance(cursor.source, FileTailSource)
+        assert cursor.source.path == str(rollout)
+        assert cursor.source.home_dir == str(tmp_path)
 
     async def test_five_managed_sessions_same_cwd_no_cross_binding(self, tmp_path: Path) -> None:
         # Regression (b): 5 managed codex sessions in the SAME cwd, each a unique uuid + owned
