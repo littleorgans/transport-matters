@@ -211,7 +211,7 @@ export function CanvasSurface({ launch, launchStatus, launchSessionId }: CanvasS
   const resetViewport = useCanvasStore((state) => state.resetViewport);
   const spawnOrFocusTranscript = useCanvasStore((state) => state.spawnOrFocusTranscript);
   const addCapturedRun = useCanvasStore((state) => state.addCapturedRun);
-  const themeName = useThemeStore((state) => state.theme?.name ?? "none");
+  const themeName = useThemeStore((state) => state.theme?.name ?? "NONE");
   const cycleTheme = useThemeStore((state) => state.cycleTheme);
   const canvasGestureModifier = useKeymapStore((state) => state.canvasGestureModifier);
   const setCanvasGestureModifier = useKeymapStore((state) => state.setCanvasGestureModifier);

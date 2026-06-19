@@ -43,9 +43,11 @@ describe("RootShell", () => {
 
     cycleTheme();
 
-    expect(useThemeStore.getState().theme?.id).toBe("littleorgans");
+    expect(useThemeStore.getState().theme?.id).toBe("open-water");
     expect(document.documentElement.style.getPropertyValue("--color-accent")).not.toBe("");
-    expect(document.documentElement.style.getPropertyValue("--pane-surface-alpha")).toBe("0.74");
+    expect(document.documentElement.style.getPropertyValue("--pane-blur")).toBe(
+      "blur(18px) saturate(120%)",
+    );
   });
 
   it("clears the tokens again when the cycle returns to unthemed", async () => {
@@ -55,12 +57,12 @@ describe("RootShell", () => {
     renderWithQuery(<RootShell />);
     await findCanvasShell();
 
-    cycleTheme(); // littleorgans
     cycleTheme(); // open-water
     expect(document.documentElement.style.getPropertyValue("--pane-blur")).toBe(
       "blur(18px) saturate(120%)",
     );
 
+    cycleTheme(); // littleorgans
     cycleTheme(); // back to unthemed
     expect(useThemeStore.getState().theme).toBeNull();
     expect(document.documentElement.style.getPropertyValue("--pane-blur")).toBe("");
