@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 from fastapi import Request
+from mitmproxy.test import tflow
 
 from transport_matters import exchange_recorder as recorder
 from transport_matters._exchange_recorder_http_support import (
@@ -11,12 +12,15 @@ from transport_matters._exchange_recorder_http_support import (
     _make_response_body,
     _Response,
 )
+from transport_matters.addon_handlers import handle_response, handle_response_headers
 from transport_matters.api.v1.exchanges import get_exchange
+from transport_matters.codex.adapter import CodexAdapter
 from transport_matters.codex.derivation_contract import CodexDerivedTurnArtifacts
 from transport_matters.codex.test_derivation_support import (
     make_completed_turn,
     make_event,
 )
+from transport_matters.flow_state import capture_request_flow_state
 from transport_matters.storage import CodexTurnListSummary, get_storage
 from transport_matters.test_exchange_recorder_support import (
     reset_exchange_recorder_runtime_state,
@@ -178,3 +182,67 @@ async def test_persist_http_exchange_stores_codex_transport_artifacts(
     assert isinstance(client_payload, dict)
     assert client_payload["type"] == "response.create"
     assert "upgrade" not in transport.model_dump(mode="json")
+
+
+async def test_handle_response_derives_codex_http_from_streamed_bytes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fake_derive_codex_http_turn(**kwargs: Any) -> CodexDerivedTurnArtifacts:
+        return _derived_artifacts(cast("str", kwargs["exchange_id"]))
+
+    monkeypatch.setattr(
+        "transport_matters.codex.http_derivation.derive_codex_http_turn",
+        fake_derive_codex_http_turn,
+    )
+    flow = tflow.tflow(resp=True)
+    assert flow.response is not None
+    flow.request.method = "POST"
+    flow.request.scheme = "https"
+    flow.request.host = "chatgpt.com"
+    flow.request.path = "/backend-api/codex/responses"
+    flow.request.headers.clear()
+    flow.request.headers.update(
+        {
+            "authorization": "Bearer secret-token",
+            "session-id": "session-1",
+            "thread-id": "thread-1",
+            "x-codex-turn-metadata": '{"turn_id":"turn-1"}',
+        }
+    )
+    flow.response.status_code = 200
+    flow.response.headers.clear()
+    flow.response.headers["set-cookie"] = "secret-cookie"
+    flow.response.raw_content = None
+    flow.server_conn.timestamp_start = 1.0
+    state = _make_codex_state()
+    state.adapter = CodexAdapter()
+    capture_request_flow_state(
+        flow,
+        adapter=state.adapter,
+        request_ir=state.request_ir,
+        raw_request=state.raw_request,
+        curated_request_ir=state.curated_request_ir,
+        audit=state.audit,
+        codex_request_headers=state.codex_request_headers,
+    )
+
+    handle_response_headers(flow)
+    assert callable(flow.response.stream)
+    stream = cast("Callable[[bytes], bytes]", flow.response.stream)
+    body = _SseResponse().get_text().encode()
+    assert stream(body[:60]) == body[:60]
+    assert flow.response.raw_content is None
+    assert stream(body[60:]) == body[60:]
+    await handle_response(flow, None)
+
+    storage = await get_storage()
+    entries = await storage.read_index(limit=10, offset=0)
+    artifacts = await storage.read_exchange(entries[0].id)
+
+    assert artifacts.response_raw == body
+    assert artifacts.transport is not None
+    assert [message.event_type for message in artifacts.transport.messages] == [
+        "response.create",
+        "response.output_text.delta",
+        "response.completed",
+    ]

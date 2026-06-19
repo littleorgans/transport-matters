@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 
 from transport_matters import breakpoint as bp
 from transport_matters.adapters import get_adapter
+from transport_matters.adapters.anthropic import is_anthropic_event_stream_content_type
 from transport_matters.codex.exchange import (
     delete_codex_provisional_exchange,
     finalize_codex_provisional_exchange,
@@ -54,6 +55,10 @@ from transport_matters.request_pipeline import (
     parse_request_ir,
     run_pipeline,
 )
+from transport_matters.response_stream import (
+    install_response_tee,
+    restore_streamed_response,
+)
 
 if TYPE_CHECKING:
     from mitmproxy import http
@@ -68,6 +73,27 @@ def _should_skip_breakpoint(model: str, binding: ProxyRunBinding | None = None) 
         return any(s in model for s in binding.breakpoint_skip_models)
     settings = get_settings()
     return any(s in model for s in settings.breakpoint_skip_models)
+
+
+def handle_response_headers(flow: http.HTTPFlow) -> None:
+    install_response_tee(flow, should_stream=_should_stream_response(flow))
+
+
+def _should_stream_response(flow: http.HTTPFlow) -> bool:
+    if flow.response is None:
+        return False
+    if flow.response.status_code == 101:
+        return False
+    upgrade = str(flow.request.headers.get("Upgrade", "")).strip().lower()
+    if upgrade == "websocket":
+        return False
+    if getattr(getattr(flow, "server_conn", None), "timestamp_start", None) is None:
+        return False
+
+    content_type = flow.response.headers.get("content-type", "")
+    return is_anthropic_event_stream_content_type(content_type) or is_codex_http_responses_flow(
+        flow
+    )
 
 
 async def handle_http_request(
@@ -306,6 +332,7 @@ async def handle_response(
     token_counter: TokenCountingClient | None,
     binding: ProxyRunBinding | None = None,
 ) -> None:
+    restore_streamed_response(flow)
     if is_codex_http_responses_flow(flow):
         request_state = get_request_flow_state(flow)
         if request_state is None:

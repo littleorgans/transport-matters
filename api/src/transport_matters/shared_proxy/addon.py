@@ -15,11 +15,13 @@ from transport_matters.addon_handlers import (
     handle_codex_websocket_message,
     handle_http_request,
     handle_response,
+    handle_response_headers,
     log_websocket_start,
 )
 from transport_matters.codex.transport import is_codex_http_responses_flow, is_codex_websocket_flow
 from transport_matters.exchange_recorder import delete_http_provisional_exchange
 from transport_matters.flow_state import get_request_flow_state
+from transport_matters.response_stream import clear_response_capture
 from transport_matters.shared_proxy.binding import ProxyRunBinding
 from transport_matters.storage.disk import DiskStorageBackend
 
@@ -209,12 +211,16 @@ class SharedProxyAddon:
         finally:
             self._bindings.finish_flow(flow.id)
 
+    def responseheaders(self, flow: http.HTTPFlow) -> None:
+        handle_response_headers(flow)
+
     async def error(self, flow: http.HTTPFlow) -> None:
-        binding = self._resolve_existing_flow(flow)
-        if binding is None:
-            self._fail_http(flow)
-            return
+        binding: ProxyRunBinding | None = None
         try:
+            binding = self._resolve_existing_flow(flow)
+            if binding is None:
+                self._fail_http(flow)
+                return
             if is_codex_websocket_flow(flow) and not is_codex_http_responses_flow(flow):
                 return
             request_state = get_request_flow_state(flow)
@@ -222,7 +228,9 @@ class SharedProxyAddon:
                 return
             await delete_http_provisional_exchange(flow, request_state, binding)
         finally:
-            self._bindings.finish_flow(flow.id)
+            if binding is not None:
+                self._bindings.finish_flow(flow.id)
+            clear_response_capture(flow)
 
     def _resolve_new_flow(self, flow: http.HTTPFlow) -> ProxyRunBinding | None:
         result = _flow_listen_port(flow)

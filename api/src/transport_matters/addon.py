@@ -13,6 +13,7 @@ from transport_matters.addon_handlers import (
     handle_codex_websocket_message,
     handle_http_request,
     handle_response,
+    handle_response_headers,
     log_websocket_start,
 )
 from transport_matters.addon_runtime import AddonRuntime, close_runtime, load_runtime
@@ -35,6 +36,7 @@ from transport_matters.pause_session import (
     fire_pause_count,
     resolve_paused_flow,
 )
+from transport_matters.response_stream import clear_response_capture
 
 __all__ = [
     "TransportMattersAddon",
@@ -91,17 +93,23 @@ class TransportMattersAddon:
             self._runtime.binding if self._runtime is not None else None,
         )
 
+    def responseheaders(self, flow: http.HTTPFlow) -> None:
+        handle_response_headers(flow)
+
     async def error(self, flow: http.HTTPFlow) -> None:
-        if is_codex_websocket_flow(flow) and not is_codex_http_responses_flow(flow):
-            return
-        request_state = get_request_flow_state(flow)
-        if request_state is None or request_state.provisional_exchange_id is None:
-            return
-        await delete_http_provisional_exchange(
-            flow,
-            request_state,
-            self._runtime.binding if self._runtime is not None else None,
-        )
+        try:
+            if is_codex_websocket_flow(flow) and not is_codex_http_responses_flow(flow):
+                return
+            request_state = get_request_flow_state(flow)
+            if request_state is None or request_state.provisional_exchange_id is None:
+                return
+            await delete_http_provisional_exchange(
+                flow,
+                request_state,
+                self._runtime.binding if self._runtime is not None else None,
+            )
+        finally:
+            clear_response_capture(flow)
 
 
 addons = [TransportMattersAddon()]

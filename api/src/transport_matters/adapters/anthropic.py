@@ -32,6 +32,11 @@ from transport_matters.sse import iter_sse_data_objects
 
 ANTHROPIC_MODEL_PREFIX = "anthropic/"
 
+
+def is_anthropic_event_stream_content_type(content_type: str) -> bool:
+    return "event-stream" in content_type
+
+
 # Top-level keys that are explicitly mapped into IR fields.
 _MAPPED_REQUEST_KEYS = frozenset(
     {
@@ -193,7 +198,7 @@ class AnthropicAdapter(ProviderAdapter):
     # ── inbound response ────────────────────────────────────────────
 
     def inbound_response(self, raw_body: bytes, content_type: str) -> InternalResponse:
-        if "event-stream" in content_type:
+        if is_anthropic_event_stream_content_type(content_type):
             return self._inbound_response_sse(raw_body)
         data: dict[str, Any] = json.loads(raw_body)  # Any: raw JSON
 

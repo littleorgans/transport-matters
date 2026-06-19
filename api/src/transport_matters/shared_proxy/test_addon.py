@@ -1,14 +1,15 @@
 from __future__ import annotations
 
 import json
+from types import SimpleNamespace
 from typing import TYPE_CHECKING, cast
 
 import pytest
+from mitmproxy import http
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
-
-    from mitmproxy import http
 
 import transport_matters.addon_handlers as addon_handlers
 import transport_matters.breakpoint as bp
@@ -21,6 +22,7 @@ from transport_matters.ir import (
     SystemPart,
     TextBlock,
 )
+from transport_matters.response_stream import _STREAM_BUFFER_KEY
 from transport_matters.shared_proxy.addon import (
     FLOW_LISTEN_PORT_METADATA_KEY,
     FLOW_RUN_ID_METADATA_KEY,
@@ -102,6 +104,7 @@ class _Flow:
             listen_port=listen_port,
             custom_listen_port=custom_listen_port,
         )
+        self.server_conn = SimpleNamespace(timestamp_start=None)
         self.websocket = _WebSocket() if websocket else None
         self.killed = False
         self.live = True
@@ -262,6 +265,42 @@ async def test_http_flows_demux_pipeline_and_persistence_by_listen_port(
     assert metrics.unmapped_flow_total == 0
 
 
+async def test_responseheaders_streams_without_demux_or_finish(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    table = SharedProxyBindingTable()
+    addon = SharedProxyAddon(table)
+    storage_roots = _register_bindings(tmp_path, table, ("run-a", 38101))
+    seen: list[SeenEvent] = []
+    _install_recording_http_kernel(monkeypatch, seen)
+    flow = cast("http.HTTPFlow", _Flow("flow-a", listen_port=38101))
+    flow.response = http.Response.make(200, b"", {"content-type": "text/event-stream"})
+    flow.server_conn.timestamp_start = 1.0
+    binding = table.snapshot().runtime_by_run_id["run-a"]
+
+    addon.responseheaders(flow)
+
+    assert FLOW_RUN_ID_METADATA_KEY not in flow.metadata
+    assert flow.id not in binding.active_flows
+    assert flow.response is not None
+    assert callable(flow.response.stream)
+    flow.response.raw_content = None
+    stream = cast("Callable[[bytes], bytes]", flow.response.stream)
+    assert stream(b"data: ping\n") == b"data: ping\n"
+
+    await addon.request(flow)
+    assert flow.id in binding.active_flows
+    await addon.response(flow)
+
+    assert flow.id not in binding.active_flows
+    assert seen == [
+        ("pipeline", "flow-a", "run-a", None, None),
+        ("provisional", "flow-a", "run-a", storage_roots["run-a"], 38101),
+        ("final", "flow-a", "run-a", storage_roots["run-a"], 38101),
+    ]
+
+
 async def test_interleaved_http_flows_keep_run_storage_isolated(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -335,6 +374,23 @@ async def test_http_error_hook_uses_stamped_binding_for_cleanup(
     await addon.error(flow)
 
     assert deleted == [("flow-error", "run-a")]
+
+
+async def test_error_hook_clears_response_capture_without_request_state(
+    tmp_path: Path,
+) -> None:
+    table = SharedProxyBindingTable()
+    addon = SharedProxyAddon(table)
+    _register_bindings(tmp_path, table, ("run-a", 38101))
+    flow = cast("http.HTTPFlow", _Flow("flow-error", listen_port=38101))
+    _set_demux_metadata(cast("_Flow", flow), run_id="run-a", listen_port=38101)
+    flow.metadata[_STREAM_BUFFER_KEY] = bytearray(b"chunk")
+
+    await addon.error(flow)
+
+    assert _STREAM_BUFFER_KEY not in flow.metadata
+    binding = table.snapshot().runtime_by_run_id["run-a"]
+    assert flow.id not in binding.active_flows
 
 
 async def test_stamped_flow_fails_closed_after_port_reuse(
