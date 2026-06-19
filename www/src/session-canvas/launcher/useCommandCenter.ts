@@ -1,13 +1,28 @@
-import { type KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type KeyboardEvent,
+  type SetStateAction,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type { CanvasGestureModifier } from "../../keybindings/gestureModifier";
 import {
   type CommandRow,
+  createRootNavFrame,
+  domainRowValue,
   interactionFor,
   type LauncherCommand,
   type LauncherEffect,
   type LauncherScope,
   type Lifecycle,
+  type NavFrame,
+  popFrame,
+  pushFrame,
   type RowAction,
+  topFrame,
+  updateTopFrame,
 } from "./commandModel";
 import { useLauncherHotkeys } from "./useLauncherHotkeys";
 import { useLauncherRows } from "./useLauncherRows";
@@ -30,16 +45,27 @@ interface LauncherActionInterpreterArgs {
   onCommand: (command: LauncherCommand) => void;
   retry: () => void;
   close: () => void;
-  setScope: (scope: LauncherScope) => void;
+  descend: (scope: LauncherScope, originValue: string) => void;
+}
+
+interface NavFrameController {
+  scope: LauncherScope;
+  query: string;
+  highlighted: string | undefined;
+  canBack: boolean;
+  resetStack: () => void;
   setQuery: (query: string) => void;
+  setHighlighted: (next: SetStateAction<string | undefined>) => void;
+  descend: (scope: LauncherScope, originValue: string) => void;
+  back: () => void;
+  openScopeStack: (scope: LauncherScope) => void;
 }
 
 function useLauncherActionInterpreter({
   onCommand,
   retry,
   close,
-  setScope,
-  setQuery,
+  descend,
 }: LauncherActionInterpreterArgs) {
   const effectSink = useMemo<Record<LauncherEffect, () => void>>(
     () => ({ "retry-agents": retry }),
@@ -69,8 +95,7 @@ function useLauncherActionInterpreter({
       switch (lifecycle) {
         case "descend":
           if (action.kind === "enter") {
-            setScope(action.scope);
-            setQuery("");
+            descend(action.scope, row.value);
           }
           return;
         case "run-close":
@@ -89,8 +114,62 @@ function useLauncherActionInterpreter({
           assertNever(lifecycle);
       }
     },
-    [close, fire, setQuery, setScope],
+    [close, descend, fire],
   );
+}
+
+function useNavFrameStack(): NavFrameController {
+  const [stack, setStack] = useState<NavFrame[]>(() => [createRootNavFrame()]);
+  const frame = topFrame(stack);
+
+  const resetStack = useCallback(() => setStack([createRootNavFrame()]), []);
+
+  const setQuery = useCallback(
+    (nextQuery: string) =>
+      setStack((current) => {
+        const currentFrame = topFrame(current);
+        return currentFrame.query === nextQuery
+          ? current
+          : updateTopFrame(current, { query: nextQuery });
+      }),
+    [],
+  );
+
+  const setHighlighted = useCallback((next: SetStateAction<string | undefined>) => {
+    setStack((current) => {
+      const currentValue = topFrame(current).highlightedValue;
+      const nextValue = typeof next === "function" ? next(currentValue) : next;
+      return currentValue === nextValue
+        ? current
+        : updateTopFrame(current, { highlightedValue: nextValue });
+    });
+  }, []);
+
+  const descend = useCallback(
+    (target: LauncherScope, originValue: string) =>
+      setStack((current) => pushFrame(current, target, originValue)),
+    [],
+  );
+
+  const back = useCallback(() => setStack(popFrame), []);
+  const openScopeStack = useCallback(
+    (target: LauncherScope) =>
+      setStack(pushFrame([createRootNavFrame()], target, domainRowValue(target))),
+    [],
+  );
+
+  return {
+    scope: frame.scope,
+    query: frame.query,
+    highlighted: frame.highlightedValue,
+    canBack: stack.length > 1,
+    resetStack,
+    setQuery,
+    setHighlighted,
+    descend,
+    back,
+    openScopeStack,
+  };
 }
 
 /**
@@ -107,8 +186,18 @@ export function useCommandCenter({
   canvasGestureModifier,
 }: UseCommandCenterArgs) {
   const [open, setOpen] = useState(false);
-  const [scope, setScope] = useState<LauncherScope>("root");
-  const [query, setQuery] = useState("");
+  const {
+    scope,
+    query,
+    highlighted,
+    canBack,
+    resetStack,
+    setQuery,
+    setHighlighted,
+    descend,
+    back,
+    openScopeStack,
+  } = useNavFrameStack();
   // Sticky: the specialist fleet fetches on the FIRST open and stays cached, so
   // a never-opened palette never hits the endpoint (and never blocks a spawn).
   const [hasOpened, setHasOpened] = useState(false);
@@ -118,11 +207,10 @@ export function useCommandCenter({
 
   const close = useCallback(() => {
     setOpen(false);
-    setScope("root");
-    setQuery("");
+    resetStack();
     restoreFocusRef.current?.focus?.();
     restoreFocusRef.current = null;
-  }, []);
+  }, [resetStack]);
 
   const rememberFocus = useCallback(() => {
     const active = document.activeElement;
@@ -140,34 +228,38 @@ export function useCommandCenter({
       return true;
     });
     setHasOpened(true);
-    setScope("root");
-    setQuery("");
-  }, [rememberFocus]);
+    resetStack();
+  }, [rememberFocus, resetStack]);
 
   const openScope = useCallback(
     (target: LauncherScope) => {
       rememberFocus();
       setHasOpened(true);
-      setScope(target);
-      setQuery("");
+      openScopeStack(target);
       setOpen(true);
     },
-    [rememberFocus],
+    [rememberFocus, openScopeStack],
   );
 
   const isOpenRef = useRef(open);
   isOpenRef.current = open;
   useLauncherHotkeys({ toggleRoot, openScope, isOpen: () => isOpenRef.current });
 
-  const { collection, grouped, rowByValue, highlighted, setHighlighted, fleetStatus } =
-    useLauncherRows({ scope, query, templates, status, themeName, canvasGestureModifier });
+  const { collection, grouped, rowByValue, fleetStatus } = useLauncherRows({
+    scope,
+    query,
+    templates,
+    status,
+    themeName,
+    canvasGestureModifier,
+    setHighlighted,
+  });
 
   const applyGesture = useLauncherActionInterpreter({
     onCommand,
     retry,
     close,
-    setScope,
-    setQuery,
+    descend,
   });
 
   const selectValue = useCallback(
@@ -213,12 +305,12 @@ export function useCommandCenter({
       }
       const popsToRoot =
         event.key === "ArrowLeft" ? caret === 0 : event.key === "Backspace" && query.length === 0;
-      if (popsToRoot && scope !== "root") {
+      if (popsToRoot && canBack) {
         event.preventDefault();
-        setScope("root");
+        back();
       }
     },
-    [query.length, highlighted, rowByValue, applyGesture, scope],
+    [query.length, highlighted, rowByValue, applyGesture, canBack, back],
   );
 
   return {

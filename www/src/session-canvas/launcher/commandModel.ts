@@ -24,6 +24,48 @@ export const LAUNCHER_SCOPES = [
 ] as const;
 export type LauncherScope = (typeof LAUNCHER_SCOPES)[number];
 
+/** One level of the launcher navigation stack. The top frame is the live state. */
+export interface NavFrame {
+  scope: LauncherScope;
+  query: string;
+  highlightedValue?: string;
+}
+
+export function topFrame(stack: NavFrame[]): NavFrame {
+  const frame = stack.at(-1);
+  if (!frame) throw new Error("Launcher navigation stack cannot be empty");
+  return frame;
+}
+
+export function createScopeNavFrame(scope: LauncherScope): NavFrame {
+  return { scope, query: "", highlightedValue: undefined };
+}
+
+export function createRootNavFrame(): NavFrame {
+  return createScopeNavFrame("root");
+}
+
+export function domainRowValue(scope: LauncherScope): string {
+  return `domain:${scope}`;
+}
+
+export function pushFrame(
+  stack: NavFrame[],
+  target: LauncherScope,
+  originValue: string,
+): NavFrame[] {
+  const parent = { ...topFrame(stack), highlightedValue: originValue };
+  return [...stack.slice(0, -1), parent, createScopeNavFrame(target)];
+}
+
+export function popFrame(stack: NavFrame[]): NavFrame[] {
+  return stack.length > 1 ? stack.slice(0, -1) : stack;
+}
+
+export function updateTopFrame(stack: NavFrame[], patch: Partial<NavFrame>): NavFrame[] {
+  return [...stack.slice(0, -1), { ...topFrame(stack), ...patch }];
+}
+
 /** Resolution status of the runtime-template fetch (drives the Agents states). */
 export type AgentsStatus = "loading" | "error" | "empty" | "populated";
 
@@ -295,7 +337,7 @@ export const LAUNCHER_DOMAIN_COUNT = DOMAINS.length;
 
 function buildDomainRows(): CommandRow[] {
   return DOMAINS.map(({ scope, title, subtitle, accelerator }) => ({
-    value: `domain:${scope}`,
+    value: domainRowValue(scope),
     title,
     subtitle,
     group: GROUP_DOMAINS,
