@@ -31,6 +31,23 @@ describe("themeStore", () => {
     expect(useThemeStore.getState().theme).toBeNull();
   });
 
+  it("cycleTheme walks presets plus none and wraps to open-water", () => {
+    useThemeStore.getState().setTheme(openWater);
+
+    useThemeStore.getState().cycleTheme();
+    expect(useThemeStore.getState().theme?.id).toBe("littleorgans");
+
+    useThemeStore.getState().cycleTheme();
+    expect(useThemeStore.getState().theme).toBeNull();
+
+    useThemeStore.getState().cycleTheme();
+    expect(useThemeStore.getState().theme?.id).toBe("open-water");
+
+    useThemeStore.getState().setTheme({ ...openWater, id: "custom", name: "Custom" });
+    useThemeStore.getState().cycleTheme();
+    expect(useThemeStore.getState().theme?.id).toBe("open-water");
+  });
+
   it("setSceneParam writes through to the persisted theme settings", () => {
     useThemeStore.getState().setTheme(littleorgans);
     useThemeStore.getState().setSceneParam("dayProgress", 0.8);

@@ -65,7 +65,7 @@ const vendorMismatch: RuntimeTemplateSummary = {
 const baseInputs = (overrides: Partial<ScopeRowInputs> = {}): ScopeRowInputs => ({
   templates: [],
   agentsStatus: "populated",
-  themeName: "none",
+  themeName: "NONE",
   canvasGestureModifier: "Shift",
   ...overrides,
 });
@@ -171,12 +171,13 @@ describe("buildAgentRows — Native is always present and first", () => {
 
 describe("interactionFor", () => {
   const runAndClose: Interaction = { enter: "run-close", advance: "none" };
+  const commitCycleTheme: Interaction = { enter: "commit-close", advance: "run-stay" };
   const commandCases: [LauncherCommand, Interaction][] = [
     [{ kind: "spawn", harness: "claude" }, runAndClose],
     [{ kind: "reset-view" }, runAndClose],
     [{ kind: "focus-picker" }, runAndClose],
     [{ kind: "goto", path: "/canvas-lab" }, runAndClose],
-    [{ kind: "cycle-theme" }, runAndClose],
+    [{ kind: "cycle-theme" }, commitCycleTheme],
     [{ kind: "set-canvas-gesture-modifier", modifier: "Shift" }, runAndClose],
   ];
   const actionCases: [string, RowAction, Interaction][] = [
@@ -297,6 +298,7 @@ describe("buildScopeRows — domains-first root", () => {
       "settings:canvas-gesture-modifier:Shift",
       "settings:canvas-gesture-modifier:Space",
     ]);
+    expect(rows.find((row) => row.value === "cmd:cycle-theme")?.subtitle).toBe("Current: NONE");
     expect(rows.find((row) => row.value.endsWith(":Shift"))?.trailing).toBe("Current");
     expect(rows.find((row) => row.value.endsWith(":Space"))?.action).toEqual({
       kind: "command",

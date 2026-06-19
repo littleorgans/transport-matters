@@ -44,6 +44,20 @@ const defaultPersistedSlice = (): PersistedThemeSlice => ({
   liveDayCycle: true,
 });
 
+const defaultCycleTheme = presetTheme("open-water");
+const cycleThemeStops: readonly (ThemeDefinition | null)[] = [
+  ...(defaultCycleTheme
+    ? [defaultCycleTheme, ...presetThemes.filter((theme) => theme.id !== defaultCycleTheme.id)]
+    : presetThemes),
+  null,
+];
+
+const nextPresetTheme = (theme: ThemeDefinition | null): ThemeDefinition | null => {
+  const currentIndex = cycleThemeStops.findIndex((stop) => stop?.id === theme?.id);
+  const nextIndex = (currentIndex + 1) % cycleThemeStops.length;
+  return cycleThemeStops[nextIndex] ?? null;
+};
+
 /**
  * Resolves the persisted `theme` field. `null` is a real choice (explicit
  * unthemed) and survives; a record is trusted verbatim (matching the store's
@@ -84,10 +98,9 @@ export const useThemeStore = create<ThemeState>()(
       setTheme: (theme) => set({ theme }),
       clearTheme: () => set({ theme: null }),
       cycleTheme: () =>
-        set((state) => {
-          const next = presetThemes[presetThemes.findIndex((p) => p.id === state.theme?.id) + 1];
-          return { theme: next ?? null };
-        }),
+        set((state) => ({
+          theme: nextPresetTheme(state.theme),
+        })),
       setSceneParam: (paramId, value) =>
         set((state) => {
           if (!state.theme) return state;

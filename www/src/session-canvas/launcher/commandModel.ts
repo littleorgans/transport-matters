@@ -98,7 +98,9 @@ export interface Interaction {
 
 const SCOPE_INTERACTION: Interaction = { enter: "descend", advance: "descend" };
 const RUN_AND_CLOSE: Interaction = { enter: "run-close", advance: "none" };
-const COMMAND_INTERACTIONS: Partial<Record<LauncherCommand["kind"], Interaction>> = {};
+const COMMAND_INTERACTIONS: Partial<Record<LauncherCommand["kind"], Interaction>> = {
+  "cycle-theme": { enter: "commit-close", advance: "run-stay" },
+};
 const EFFECT_INTERACTIONS: Record<LauncherEffect, Interaction> = {
   "retry-agents": { enter: "run-stay", advance: "none" },
 };
