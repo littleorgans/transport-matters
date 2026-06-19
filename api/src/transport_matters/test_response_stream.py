@@ -92,11 +92,24 @@ def test_restore_streamed_response_reconstructs_body_and_text() -> None:
     assert _STREAM_BUFFER_KEY not in flow.metadata
 
 
-def test_restore_streamed_response_keeps_existing_body() -> None:
+def test_restore_streamed_response_uses_tee_buffer_when_body_is_empty() -> None:
+    flow = _flow()
+    assert flow.response is not None
+    body = b'data: {"type":"late"}\n'
+    flow.response.raw_content = b""
+    flow.metadata[_STREAM_BUFFER_KEY] = bytearray(body)
+
+    restore_streamed_response(flow)
+
+    assert flow.response.raw_content == body
+    assert flow.response.get_text() == body.decode()
+    assert _STREAM_BUFFER_KEY not in flow.metadata
+
+
+def test_restore_streamed_response_without_buffer_keeps_existing_body() -> None:
     flow = _flow()
     assert flow.response is not None
     flow.response.raw_content = b"existing"
-    flow.metadata[_STREAM_BUFFER_KEY] = bytearray(b"streamed")
 
     restore_streamed_response(flow)
 

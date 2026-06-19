@@ -29,8 +29,11 @@ def install_response_tee(flow: http.HTTPFlow, *, should_stream: bool) -> None:
 def restore_streamed_response(flow: http.HTTPFlow) -> None:
     """Restore captured streamed bytes onto the response for existing parsers."""
     buffer = flow.metadata.pop(_STREAM_BUFFER_KEY, None)
-    if buffer is None or flow.response is None or flow.response.raw_content is not None:
+    if buffer is None or flow.response is None:
         return
+    # mitmproxy 12.2.x streams response data through state_stream_response_body.
+    # With store_streamed_bodies at its default False, raw_content is normally None
+    # after streaming, but the tee buffer is the source of truth for teed flows.
     flow.response.raw_content = bytes(buffer)
 
 

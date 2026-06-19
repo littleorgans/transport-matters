@@ -100,6 +100,16 @@ async def _finalize_provisional(
 
 
 async def test_streamed_provisional_finalize_matches_buffered_response() -> None:
+    """Pin mitmproxy 12.2.x streaming guarantees without a live proxy loop.
+
+    A full proxy loop would have to stand up mitmproxy plus an upstream server.
+    Instead, this exercises the same contract used by
+    mitmproxy/proxy/layers/http/__init__.py: state_stream_response_body calls
+    response.stream(data) and forwards returned chunks before send_response
+    runs the response hook, and only stores raw content when
+    store_streamed_bodies is true. The unit test also covers a defensive
+    raw_content == b"" restore edge.
+    """
     buffered_entry, buffered_artifacts = await _finalize_provisional(
         "flow-buffered",
         streamed=False,
