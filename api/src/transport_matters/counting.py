@@ -40,17 +40,24 @@ _AUTH_HEADER_KEYS = frozenset(
     }
 )
 
-# Fields /v1/messages/count_tokens ignores. Keeping them in the posted
-# body is harmless but inflates the cache key, so two requests that only
-# differ in max_tokens would miss the cache. Strip before hashing.
-_STRIP_KEYS = frozenset(
+# Top-level fields /v1/messages/count_tokens accepts. The endpoint
+# strict-validates the body and returns 400 ("Extra inputs are not permitted")
+# on anything else, so we project the /v1/messages payload onto this allowlist
+# rather than denylisting known-bad fields one at a time. Claude Code keeps
+# adding top-level fields the count endpoint rejects (metadata,
+# context_management, output_config, service_tier, …); an allowlist is resilient
+# to all of them, where the old sampling-only denylist let every new field 400
+# the whole call. Dropping the non-count fields (sampling, stream, max_tokens)
+# also stabilizes the cache key across payloads that differ only in, e.g., the
+# max_tokens the caller happened to pick.
+_COUNT_KEYS = frozenset(
     {
-        "max_tokens",
-        "stream",
-        "temperature",
-        "top_p",
-        "top_k",
-        "stop_sequences",
+        "model",
+        "messages",
+        "system",
+        "tools",
+        "tool_choice",
+        "thinking",
     }
 )
 
@@ -125,18 +132,20 @@ def relevant_auth_headers(headers: Any) -> dict[str, str]:
 
 
 def _strip_for_count(payload: bytes) -> bytes:
-    """Remove sampling and stream fields before posting to count_tokens.
+    """Project the /v1/messages payload onto the fields count_tokens accepts.
 
-    count_tokens silently discards them, but leaving them in the cache key
-    would churn the cache on payloads that differ only in, e.g., the
+    The count endpoint strict-validates and 400s on any unexpected top-level
+    field (metadata, context_management, output_config, sampling params, …), so
+    we keep only the allowlisted keys (_COUNT_KEYS). Dropping the rest also
+    stabilizes the cache key across payloads that differ only in, e.g., the
     max_tokens the caller happened to pick.
     """
     try:
         data: dict[str, Any] = json.loads(payload)  # Any: raw JSON
     except json.JSONDecodeError:
         return payload
-    stripped = {k: v for k, v in data.items() if k not in _STRIP_KEYS}
-    return json.dumps(stripped, separators=(",", ":"), sort_keys=True).encode()
+    projected = {k: v for k, v in data.items() if k in _COUNT_KEYS}
+    return json.dumps(projected, separators=(",", ":"), sort_keys=True).encode()
 
 
 def _cache_key(payload: bytes, auth: dict[str, str]) -> str:
