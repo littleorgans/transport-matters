@@ -37,12 +37,31 @@ class TestClaudeProfile:
         )
         assert argv == ["/bin/claude", "-p", "hi", "--session-id", "uuid-1"]
 
+    def test_client_argv_injects_bypass_permissions_once(self) -> None:
+        argv = ClaudeLaunchProfile().client_argv(
+            client_path="/bin/claude",
+            passthrough=["-p", "hi"],
+            native_session_id="uuid-1",
+            bypass_permissions=True,
+        )
+
+        assert argv.count("--dangerously-skip-permissions") == 1
+        assert argv == [
+            "/bin/claude",
+            "-p",
+            "hi",
+            "--dangerously-skip-permissions",
+            "--session-id",
+            "uuid-1",
+        ]
+
     def test_client_argv_omits_session_when_unowned(self) -> None:
         # External adoption / user passthrough: no owned id → no injection (their flag wins).
         argv = ClaudeLaunchProfile().client_argv(
             client_path="/bin/claude", passthrough=["-p", "hi"], native_session_id=None
         )
         assert argv == ["/bin/claude", "-p", "hi"]
+        assert "--dangerously-skip-permissions" not in argv
 
     def test_user_supplied_session_detects_claude_session_flags(self) -> None:
         profile = ClaudeLaunchProfile()
@@ -95,12 +114,30 @@ class TestCodexProfile:
         assert argv[resume_at + 1] == "native-9"
         assert argv[-2:] == ["exec", "ping"]
 
+    def test_client_argv_injects_bypass_permissions_once(self) -> None:
+        argv = CodexLaunchProfile().client_argv(
+            client_path="/bin/codex",
+            passthrough=["exec", "ping"],
+            native_session_id="native-9",
+            bypass_permissions=True,
+        )
+
+        assert argv.count("--yolo") == 1
+        assert argv[0] == "/bin/codex"
+        assert argv[1] == "-c"
+        yolo_at = argv.index("--yolo")
+        resume_at = argv.index("resume")
+        assert yolo_at < resume_at
+        assert argv[resume_at + 1] == "native-9"
+        assert argv[-2:] == ["exec", "ping"]
+
     def test_client_argv_omits_resume_when_unowned(self) -> None:
         argv = CodexLaunchProfile().client_argv(
             client_path="/bin/codex", passthrough=["exec", "ping"], native_session_id=None
         )
         assert "resume" not in argv
         assert argv[-2:] == ["exec", "ping"]
+        assert "--yolo" not in argv
 
     def test_user_supplied_session_detects_resume(self) -> None:
         profile = CodexLaunchProfile()
@@ -240,8 +277,14 @@ class _FakeMintProfile(LaunchProfile):
         )
 
     def client_argv(
-        self, *, client_path: str, passthrough: Sequence[str], native_session_id: str | None
+        self,
+        *,
+        client_path: str,
+        passthrough: Sequence[str],
+        native_session_id: str | None,
+        bypass_permissions: bool = False,
     ) -> list[str]:
+        del bypass_permissions
         session = [] if native_session_id is None else [f"--id={native_session_id}"]
         return [client_path, *session, *passthrough]
 

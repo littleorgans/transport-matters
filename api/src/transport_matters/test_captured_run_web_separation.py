@@ -34,6 +34,96 @@ class FakeSupervisor:
         self.restored = True
 
 
+def _prepare_bypass_permissions_run(
+    tmp_path: Path, *, harness: str, bypass_permissions: bool
+) -> tuple[Any, Any]:
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    workspace = tmp_path / f"{harness}-workspace"
+    workspace.mkdir()
+    addon_path = tmp_path / f"{harness}-addon.py"
+    addon_path.write_text("# addon\n")
+    ca_path = tmp_path / "codex-ca.pem"
+    ca_path.write_text("codex ca\n")
+
+    request_kwargs: dict[str, Any] = {}
+    if bypass_permissions:
+        request_kwargs["bypass_permissions"] = True
+
+    def proxy_starter(**_kwargs: Any) -> None:
+        return
+
+    spawn_spec, lease = prepare_captured_run(
+        CapturedRunRequest(
+            harness=harness,
+            passthrough=(),
+            directory=workspace,
+            proxy_port=None,
+            web_port=None,
+            upstream=CLAUDE_UPSTREAM_DEFAULT if harness == CLAUDE_HARNESS_NAME else "",
+            storage_dir=tmp_path / f"{harness}-storage",
+            home_dir=tmp_path / f"{harness}-agent-home",
+            client_bin=None,
+            client_disabled=False,
+            no_system_prompt=False,
+            debug=False,
+            web_runtime=WEB_RUNTIME_EXTERNAL,
+            defer_session_ownership=harness == CODEX_HARNESS_NAME,
+            **request_kwargs,
+        ),
+        require_addon=lambda: addon_path,
+        resolve_mitmdump=lambda: "/usr/bin/mitmdump",
+        which=lambda name, *_args, **_kwargs: f"/usr/bin/{name}",
+        port_in_use=lambda _port: False,
+        allocate_port_pair=lambda: (39123, 49123),
+        inject_system_prompt=lambda passthrough, **_kwargs: list(passthrough),
+        user_supplied_system_prompt=lambda _args: False,
+        supervisor_factory=FakeSupervisor,
+        proxy_starter=proxy_starter,
+        env={"CODEX_CA_CERTIFICATE": str(ca_path)} if harness == CODEX_HARNESS_NAME else {},
+    )
+    return spawn_spec, lease
+
+
+def test_prepare_captured_run_claude_bypass_permissions_argv(
+    tmp_path: Path,
+) -> None:
+    enabled_spec, enabled_lease = _prepare_bypass_permissions_run(
+        tmp_path / "enabled", harness=CLAUDE_HARNESS_NAME, bypass_permissions=True
+    )
+    default_spec, default_lease = _prepare_bypass_permissions_run(
+        tmp_path / "default", harness=CLAUDE_HARNESS_NAME, bypass_permissions=False
+    )
+
+    try:
+        assert enabled_spec.client is not None
+        assert enabled_spec.client.argv.count("--dangerously-skip-permissions") == 1
+        assert default_spec.client is not None
+        assert "--dangerously-skip-permissions" not in default_spec.client.argv
+    finally:
+        enabled_lease.close()
+        default_lease.close()
+
+
+def test_prepare_captured_run_codex_bypass_permissions_argv(
+    tmp_path: Path,
+) -> None:
+    enabled_spec, enabled_lease = _prepare_bypass_permissions_run(
+        tmp_path / "enabled", harness=CODEX_HARNESS_NAME, bypass_permissions=True
+    )
+    default_spec, default_lease = _prepare_bypass_permissions_run(
+        tmp_path / "default", harness=CODEX_HARNESS_NAME, bypass_permissions=False
+    )
+
+    try:
+        assert enabled_spec.client is not None
+        assert enabled_spec.client.argv.count("--yolo") == 1
+        assert default_spec.client is not None
+        assert "--yolo" not in default_spec.client.argv
+    finally:
+        enabled_lease.close()
+        default_lease.close()
+
+
 def test_prepare_captured_run_external_web_starts_capture_only_proxy(
     tmp_path: Path,
 ) -> None:

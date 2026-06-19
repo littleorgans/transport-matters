@@ -402,6 +402,7 @@ class RunManager:
             runtime_template=request.runtime_template,
             launch_fields=request.launch_fields,
             defer_session_ownership=request.defer_session_ownership,
+            bypass_permissions=request.bypass_permissions,
         )
 
     async def _ensure_session_store_available(self) -> None:

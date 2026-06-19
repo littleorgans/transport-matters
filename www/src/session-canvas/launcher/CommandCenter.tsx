@@ -15,6 +15,8 @@ export interface CommandCenterProps {
   themeName: string;
   /** Current persisted canvas gesture modifier, shown in Settings. */
   canvasGestureModifier: CanvasGestureModifier;
+  /** Current persisted bypass-permissions flag, shown on the Settings toggle. */
+  bypassPermissions: boolean;
 }
 
 const FOOTER_HINTS = "↵ run · → enter · ⌫ back · esc close";
@@ -25,8 +27,18 @@ const FOOTER_HINTS = "↵ run · → enter · ⌫ back · esc close";
  * (this file owns its vanilla CSS); all state, hotkeys, the lazy specialist
  * fetch, and the keyboard grammar live in {@link useCommandCenter}.
  */
-export function CommandCenter({ onCommand, themeName, canvasGestureModifier }: CommandCenterProps) {
-  const center = useCommandCenter({ onCommand, themeName, canvasGestureModifier });
+export function CommandCenter({
+  onCommand,
+  themeName,
+  canvasGestureModifier,
+  bypassPermissions,
+}: CommandCenterProps) {
+  const center = useCommandCenter({
+    onCommand,
+    themeName,
+    canvasGestureModifier,
+    bypassPermissions,
+  });
   const panelRef = useRef<HTMLDivElement>(null);
   // Keep the highlighted row scrolled into the bounded results list as the arrow
   // keys move it (and on auto-highlight). The combobox controls highlight, so we

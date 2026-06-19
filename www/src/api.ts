@@ -396,12 +396,17 @@ export async function createCapturedRun(
   // NATIVE launch (today's behaviour). Present → backend resolves the template
   // for this harness (api: CreateRunRequest.runtimeTemplate).
   runtimeTemplate?: string,
+  // Bypass all permission checks for this run. Always sent (like oscColorReplies,
+  // unlike the optional runtimeTemplate): the backend turns true into
+  // `claude --dangerously-skip-permissions` / `codex --yolo`.
+  bypassPermissions = false,
 ): Promise<string> {
   const body = {
     harness,
     ...(cwd === undefined ? {} : { cwd }),
     oscColorReplies,
     ...(runtimeTemplate === undefined ? {} : { runtimeTemplate }),
+    bypassPermissions,
   };
   const response = await requestJson<{ run: { runId: string } }>(
     "/v1/runs",

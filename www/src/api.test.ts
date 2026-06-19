@@ -133,7 +133,7 @@ describe("createCapturedRun", () => {
     expect(fetchMock).toHaveBeenCalledWith("/v1/runs", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ harness: "claude", oscColorReplies: true }),
+      body: JSON.stringify({ harness: "claude", oscColorReplies: true, bypassPermissions: false }),
     });
   });
 
@@ -145,7 +145,12 @@ describe("createCapturedRun", () => {
     expect(fetchMock).toHaveBeenCalledWith("/v1/runs", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ harness: "codex", cwd: "/work/proj", oscColorReplies: true }),
+      body: JSON.stringify({
+        harness: "codex",
+        cwd: "/work/proj",
+        oscColorReplies: true,
+        bypassPermissions: false,
+      }),
     });
   });
 
@@ -161,7 +166,22 @@ describe("createCapturedRun", () => {
         harness: "claude",
         oscColorReplies: true,
         runtimeTemplate: "research",
+        bypassPermissions: false,
       }),
+    });
+  });
+
+  it("always serializes bypassPermissions, sending true when permission checks are bypassed", async () => {
+    const fetchMock = stubFetch({ run: { runId: "run-yolo" } }, 201);
+
+    await expect(createCapturedRun("claude", undefined, true, undefined, true)).resolves.toBe(
+      "run-yolo",
+    );
+
+    expect(fetchMock).toHaveBeenCalledWith("/v1/runs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ harness: "claude", oscColorReplies: true, bypassPermissions: true }),
     });
   });
 

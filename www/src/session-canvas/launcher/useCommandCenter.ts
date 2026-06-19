@@ -35,6 +35,8 @@ export interface UseCommandCenterArgs {
   themeName: string;
   /** Current persisted canvas gesture modifier, shown in Settings. */
   canvasGestureModifier: CanvasGestureModifier;
+  /** Current persisted bypass-permissions flag, shown on the Settings toggle. */
+  bypassPermissions: boolean;
 }
 
 function assertNever(value: never): never {
@@ -184,6 +186,7 @@ export function useCommandCenter({
   onCommand,
   themeName,
   canvasGestureModifier,
+  bypassPermissions,
 }: UseCommandCenterArgs) {
   const [open, setOpen] = useState(false);
   const {
@@ -252,6 +255,7 @@ export function useCommandCenter({
     status,
     themeName,
     canvasGestureModifier,
+    bypassPermissions,
     setHighlighted,
   });
 

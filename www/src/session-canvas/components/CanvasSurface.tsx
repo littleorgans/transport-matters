@@ -11,6 +11,7 @@ import { useReorderSettle } from "../dnd/useReorderSettle";
 import { CommandCenter } from "../launcher/CommandCenter";
 import type { LauncherCommand } from "../launcher/commandModel";
 import { useCanvasStore } from "../model/canvasStore";
+import { useCapturedRunStore } from "../model/capturedRunStore";
 import { openPaneIds } from "../model/layoutPlanning";
 import type { CanvasLaunchContext } from "../route";
 import { bodyDragForRef, PICKER_PANE_ID, renderPaneContent } from "../viewers/registry";
@@ -33,6 +34,7 @@ const paneBodyDrag = (paneId: PaneId): boolean => {
 };
 
 type CanvasStoreSnapshot = ReturnType<typeof useCanvasStore.getState>;
+type CapturedRunStoreSnapshot = ReturnType<typeof useCapturedRunStore.getState>;
 type KeymapStoreSnapshot = ReturnType<typeof useKeymapStore.getState>;
 type ThemeStoreSnapshot = ReturnType<typeof useThemeStore.getState>;
 
@@ -42,6 +44,7 @@ interface CanvasCommandHandlerOptions {
   focusPane: CanvasStoreSnapshot["focusPane"];
   resetViewport: CanvasStoreSnapshot["resetViewport"];
   setCanvasGestureModifier: KeymapStoreSnapshot["setCanvasGestureModifier"];
+  toggleBypassPermissions: CapturedRunStoreSnapshot["toggleBypassPermissions"];
 }
 
 interface CanvasPaneRendererOptions {
@@ -77,6 +80,7 @@ function useCanvasCommandHandler({
   focusPane,
   resetViewport,
   setCanvasGestureModifier,
+  toggleBypassPermissions,
 }: CanvasCommandHandlerOptions): (command: LauncherCommand) => void {
   return useCallback(
     (command: LauncherCommand) => {
@@ -96,12 +100,22 @@ function useCanvasCommandHandler({
         case "cycle-theme":
           cycleTheme();
           return;
+        case "toggle-bypass-permissions":
+          toggleBypassPermissions();
+          return;
         case "set-canvas-gesture-modifier":
           setCanvasGestureModifier(command.modifier);
           return;
       }
     },
-    [addCapturedRun, resetViewport, focusPane, cycleTheme, setCanvasGestureModifier],
+    [
+      addCapturedRun,
+      resetViewport,
+      focusPane,
+      cycleTheme,
+      setCanvasGestureModifier,
+      toggleBypassPermissions,
+    ],
   );
 }
 
@@ -215,6 +229,8 @@ export function CanvasSurface({ launch, launchStatus, launchSessionId }: CanvasS
   const cycleTheme = useThemeStore((state) => state.cycleTheme);
   const canvasGestureModifier = useKeymapStore((state) => state.canvasGestureModifier);
   const setCanvasGestureModifier = useKeymapStore((state) => state.setCanvasGestureModifier);
+  const bypassPermissions = useCapturedRunStore((state) => state.bypassPermissions);
+  const toggleBypassPermissions = useCapturedRunStore((state) => state.toggleBypassPermissions);
   const surfaceRef = useRef<HTMLElement>(null);
   const focusedPaneId = layout.focusedPaneId;
   const { reorderActive, markReorderActive, finishReorder } = useReorderSettle();
@@ -227,6 +243,7 @@ export function CanvasSurface({ launch, launchStatus, launchSessionId }: CanvasS
     focusPane,
     resetViewport,
     setCanvasGestureModifier,
+    toggleBypassPermissions,
   });
   const dndDeps = useMemo(
     () => ({
@@ -297,6 +314,7 @@ export function CanvasSurface({ launch, launchStatus, launchSessionId }: CanvasS
     <main className="canvas-route-shell" ref={surfaceRef}>
       <AmbientBackdrop />
       <CommandCenter
+        bypassPermissions={bypassPermissions}
         canvasGestureModifier={canvasGestureModifier}
         onCommand={handleCommand}
         themeName={themeName}

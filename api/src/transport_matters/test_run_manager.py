@@ -428,6 +428,24 @@ async def test_spawn_passes_runtime_template_to_captured_request(tmp_path: Path)
     assert prepared.requests[0].runtime_template is runtime_template
 
 
+async def test_spawn_passes_bypass_permissions_to_captured_request(tmp_path: Path) -> None:
+    pty = PtyHarness()
+    prepared = PreparedRunHarness(tmp_path)
+    manager = make_manager(tmp_path, pty, prepared)
+
+    await manager.spawn(
+        SpawnRun(
+            harness="claude",
+            cwd=tmp_path,
+            web_runtime=WEB_RUNTIME_EMBEDDED,
+            bypass_permissions=True,
+        )
+    )
+
+    assert len(prepared.requests) == 1
+    assert prepared.requests[0].bypass_permissions is True
+
+
 async def test_close_during_in_flight_spawn_rolls_back_prepared_run(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

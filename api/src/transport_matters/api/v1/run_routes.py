@@ -104,6 +104,7 @@ class CreateRunRequest(BaseModel):
     continue_from_session_id: str | None = Field(default=None, alias="continueFromSessionId")
     idempotency_key: str | None = Field(default=None, alias="idempotencyKey")
     runtime_template: str | None = Field(default=None, alias="runtimeTemplate")
+    bypass_permissions: bool = Field(default=False, alias="bypassPermissions")
 
 
 class RunViewModel(BaseModel):
@@ -375,6 +376,7 @@ def _spawn_request(
         idempotency_key=body.idempotency_key,
         start_on_attach=True,
         defer_session_ownership=harness == CODEX_HARNESS_NAME,
+        bypass_permissions=body.bypass_permissions,
     )
 
 

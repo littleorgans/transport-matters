@@ -49,6 +49,8 @@ if TYPE_CHECKING:
 # flag wins, external adoption). ``--session-id`` sets it; ``--resume``/``-r`` and ``--continue``/``-c``
 # select an existing one.
 _CLAUDE_SESSION_FLAGS = frozenset({"--session-id", "--resume", "-r", "--continue", "-c"})
+CLAUDE_BYPASS_PERMISSIONS_ARG = "--dangerously-skip-permissions"
+CODEX_BYPASS_PERMISSIONS_ARG = "--yolo"
 
 
 @dataclass(frozen=True, slots=True)
@@ -98,6 +100,7 @@ class LaunchProfile(ABC):
         client_path: str,
         passthrough: Sequence[str],
         native_session_id: str | None,
+        bypass_permissions: bool = False,
     ) -> list[str]:
         """Assemble the client argv, injecting the owned id. ``native_session_id is None`` ⇒ external
         adoption / user passthrough: no injection (the user's own flag, if any, stays in passthrough)."""
@@ -139,9 +142,11 @@ class ClaudeLaunchProfile(LaunchProfile):
         client_path: str,
         passthrough: Sequence[str],
         native_session_id: str | None,
+        bypass_permissions: bool = False,
     ) -> list[str]:
         session = [] if native_session_id is None else ["--session-id", native_session_id]
-        return [client_path, *passthrough, *session]
+        bypass = [CLAUDE_BYPASS_PERMISSIONS_ARG] if bypass_permissions else []
+        return [client_path, *passthrough, *bypass, *session]
 
     def user_supplied_session(self, passthrough: Sequence[str]) -> bool:
         # Match both the space form (``--session-id <uuid>``, a bare flag token) and the equals form
@@ -185,14 +190,17 @@ class CodexLaunchProfile(LaunchProfile):
         client_path: str,
         passthrough: Sequence[str],
         native_session_id: str | None,
+        bypass_permissions: bool = False,
     ) -> list[str]:
         # The top-level `-c` shell-environment-policy arg precedes the `resume` subcommand, which
         # precedes user passthrough (resume's [PROMPT]/args). No owned id ⇒ no resume (the user's own
         # `resume`, if any, stays in passthrough).
         resume = [] if native_session_id is None else ["resume", native_session_id]
+        bypass = [CODEX_BYPASS_PERMISSIONS_ARG] if bypass_permissions else []
         return [
             client_path,
             *_codex_shell_environment_policy_args(),
+            *bypass,
             *resume,
             *passthrough,
         ]

@@ -67,6 +67,7 @@ class CapturedRunRequest:
     runtime_template: RuntimeTemplateRef | None = None
     launch_fields: Mapping[str, object] = field(default_factory=dict)
     defer_session_ownership: bool = False
+    bypass_permissions: bool = False
 
 
 @dataclass(frozen=True, slots=True)

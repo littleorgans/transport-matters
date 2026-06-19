@@ -36,6 +36,7 @@ def build_claude_captured_invocation(
     default_client_passthrough: Sequence[str] = (),
     runtime_home_dir: Path | None = None,
     launch_fields: Mapping[str, object] | None = None,
+    bypass_permissions: bool = False,
 ) -> Callable[[int, int | None], tuple[list[str], dict[str, str], ManagedClient | None]]:
     """Build the retry-safe invocation factory for a captured Claude launch."""
     from transport_matters.cli.home_seed import apply_claude_proxy_env_settings
@@ -120,6 +121,7 @@ def build_claude_captured_invocation(
                     client_path=claude_path,
                     passthrough=passthrough,
                     native_session_id=native_session_id,
+                    bypass_permissions=bypass_permissions,
                 ),
                 env=client_env,
                 cwd=working_dir,

@@ -89,6 +89,8 @@ export interface CapturedRunState {
    * terminal background-sensitive styling renders deterministically. Spawn-time only.
    */
   oscColorReplies: boolean;
+  /** Bypass all permission checks: spawned agents skip permission prompts. Spawn-time only. */
+  bypassPermissions: boolean;
   /** Resolve this pane's run id: reuse a persisted/in-flight run, else spawn one. */
   ensureRun(
     runKey: CapturedRunKey,
@@ -115,6 +117,8 @@ export interface CapturedRunState {
    */
   setMinimized(runKey: CapturedRunKey, minimized: boolean): void;
   setOscColorReplies(on: boolean): void;
+  /** Flip the persisted bypass-permissions flag in place (mirrors the Settings → toggle). */
+  toggleBypassPermissions(): void;
 }
 
 export function createCapturedRunKey(provider: HarnessName): CapturedRunKey {
@@ -131,6 +135,7 @@ export const useCapturedRunStore = create<CapturedRunState>()(
     (set, get) => ({
       runs: {},
       oscColorReplies: true,
+      bypassPermissions: false,
 
       ensureRun(runKey, provider, cwd, oscColorReplies = get().oscColorReplies, runtimeTemplate) {
         const existing = get().runs[runKey]?.runId;
@@ -142,7 +147,13 @@ export const useCapturedRunStore = create<CapturedRunState>()(
         cancelledKeys.delete(runKey);
         minimizedPendingKeys.delete(runKey);
         const spawn = withCapturedRunSpawnSlot(() =>
-          createCapturedRun(provider, cwd, oscColorReplies, runtimeTemplate),
+          createCapturedRun(
+            provider,
+            cwd,
+            oscColorReplies,
+            runtimeTemplate,
+            get().bypassPermissions,
+          ),
         )
           .then((runId) => {
             pendingSpawns.delete(runKey);
@@ -218,18 +229,30 @@ export const useCapturedRunStore = create<CapturedRunState>()(
       setOscColorReplies(on) {
         set({ oscColorReplies: on });
       },
+
+      toggleBypassPermissions() {
+        set((state) => ({ bypassPermissions: !state.bypassPermissions }));
+      },
     }),
     {
       name: FRONTEND_STORAGE_KEYS.capturedRunStore,
       storage: createFrontendPersistStorage(),
       version: CAPTURED_RUN_STORAGE_VERSION,
       migrate: (persisted) => {
-        const state = persisted as Partial<Pick<CapturedRunState, "runs" | "oscColorReplies">>;
-        return { runs: state.runs ?? {}, oscColorReplies: state.oscColorReplies !== false };
+        const state = persisted as Partial<
+          Pick<CapturedRunState, "runs" | "oscColorReplies" | "bypassPermissions">
+        >;
+        return {
+          runs: state.runs ?? {},
+          oscColorReplies: state.oscColorReplies !== false,
+          // Default OFF: only a stored `true` re-arms the bypass after a reload.
+          bypassPermissions: state.bypassPermissions === true,
+        };
       },
       partialize: (state) => ({
         runs: state.runs,
         oscColorReplies: state.oscColorReplies,
+        bypassPermissions: state.bypassPermissions,
       }),
     },
   ),
@@ -241,5 +264,5 @@ export function resetCapturedRunStoreForTests(): void {
   minimizedPendingKeys.clear();
   activeCapturedRunSpawns = 0;
   queuedCapturedRunSpawnSlots = [];
-  useCapturedRunStore.setState({ runs: {}, oscColorReplies: true });
+  useCapturedRunStore.setState({ runs: {}, oscColorReplies: true, bypassPermissions: false });
 }
