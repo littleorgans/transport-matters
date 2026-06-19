@@ -23,13 +23,21 @@ if TYPE_CHECKING:
 # ── _strip_for_count ──────────────────────────────────────────────────
 
 
-def test_strip_removes_sampling_and_stream() -> None:
+def test_strip_projects_onto_count_allowlist() -> None:
+    # A Claude-Code-shaped body: allowlisted count fields plus the top-level
+    # fields the count endpoint rejects with 400 ("Extra inputs are not
+    # permitted") — sampling/stream AND the newer metadata/context_management/
+    # output_config/service_tier that the old sampling-only denylist let through.
     payload = (
-        b'{"model":"c","messages":[],"max_tokens":1,"stream":true,'
-        b'"temperature":0.5,"top_p":0.9,"top_k":40,"stop_sequences":["\\n"]}'
+        b'{"model":"c","messages":[],"system":"s","tools":[],'
+        b'"tool_choice":{"type":"auto"},"thinking":{"type":"adaptive"},'
+        b'"max_tokens":1,"stream":true,"temperature":0.5,"top_p":0.9,'
+        b'"top_k":40,"stop_sequences":["\\n"],"metadata":{"user_id":"u"},'
+        b'"context_management":{"edits":[]},"output_config":{"effort":"high"},'
+        b'"service_tier":"auto"}'
     )
-    out = _strip_for_count(payload)
-    data = json.loads(out)
+    data = json.loads(_strip_for_count(payload))
+    # Everything not on the count allowlist is dropped.
     for key in (
         "max_tokens",
         "stream",
@@ -37,10 +45,21 @@ def test_strip_removes_sampling_and_stream() -> None:
         "top_p",
         "top_k",
         "stop_sequences",
+        "metadata",
+        "context_management",
+        "output_config",
+        "service_tier",
     ):
         assert key not in data
-    assert data["model"] == "c"
-    assert data["messages"] == []
+    # The allowlisted count fields survive verbatim.
+    assert data == {
+        "model": "c",
+        "messages": [],
+        "system": "s",
+        "tools": [],
+        "tool_choice": {"type": "auto"},
+        "thinking": {"type": "adaptive"},
+    }
 
 
 def test_strip_invalid_json_passes_through_unchanged() -> None:
@@ -201,7 +220,7 @@ class TestTokenCounterSuccessPaths:
         assert seen.get("x-api-key") == "sk-secret"
         assert seen.get("anthropic-version") == "2023-06-01"
 
-    async def test_strips_sampling_from_posted_body(self) -> None:
+    async def test_strips_non_count_fields_from_posted_body(self) -> None:
         body: dict[str, object] = {}
 
         def handler(request: httpx.Request) -> httpx.Response:
@@ -211,11 +230,13 @@ class TestTokenCounterSuccessPaths:
         async with _client_with_handler(handler) as c:
             counter = TokenCounter(c)
             await counter.count(
-                b'{"model":"x","messages":[],"max_tokens":99,"stream":true}',
+                b'{"model":"x","messages":[],"max_tokens":99,"stream":true,'
+                b'"metadata":{"user_id":"u"},"context_management":{"edits":[]}}',
                 {},
             )
-        assert "max_tokens" not in body
-        assert "stream" not in body
+        # The count endpoint 400s on these; the allowlist must drop them all.
+        for key in ("max_tokens", "stream", "metadata", "context_management"):
+            assert key not in body
         assert body.get("model") == "x"
 
 
