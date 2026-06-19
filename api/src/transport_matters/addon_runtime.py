@@ -117,6 +117,7 @@ def _make_exchange_cursor_sink(
             harness=harness,
             native_session_id=native_session_id,
             minted=request.provider in _DIRECT_MINT_PROVIDERS,
+            source_descriptor=binding.owned_source_descriptor,
             template_provenance=_template_provenance(binding),
             parent_session_id=_string_launch_field(binding, "parent_session_id"),
             title=_string_launch_field(binding, "title"),

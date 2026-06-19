@@ -232,6 +232,13 @@ def _validated_state(state: str) -> RunState:
     return parsed
 
 
+def _public_state_filter(state: str) -> frozenset[RunState]:
+    parsed = _validated_state(state)
+    if parsed is RunState.RUNNING:
+        return frozenset({RunState.STARTING, RunState.RUNNING})
+    return frozenset({parsed})
+
+
 def _cursor_filter_key(state: str | None) -> dict[str, str | None]:
     return {"state": state}
 
@@ -451,7 +458,7 @@ async def list_runs(
     cursor_filters = _cursor_filter_key(state)
     offset = _decode_cursor(cursor, filters=cursor_filters) if cursor is not None else 0
     filters = RunFilters(
-        states=frozenset({_validated_state(state)}) if state is not None else None,
+        states=_public_state_filter(state) if state is not None else None,
     )
     manager = _run_manager(request)
     views = manager.list(filters)

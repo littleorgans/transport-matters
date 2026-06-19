@@ -5,11 +5,10 @@ import contextlib
 import errno
 import logging
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from enum import StrEnum
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal, Protocol
+from typing import TYPE_CHECKING
 
 from transport_matters.captured_run import (
     CLAUDE_HARNESS_NAME,
@@ -18,18 +17,14 @@ from transport_matters.captured_run import (
     WEB_RUNTIME_EXTERNAL,
     CapturedRunBindConflict,
     CapturedRunDependencies,
-    CapturedRunHarness,
     CapturedRunProxyStartTimeout,
     CapturedRunRequest,
     CapturedRunSpawnSpec,
-    CapturedRunWebRuntime,
     default_claude_run_dependencies,
     prepare_captured_run,
 )
 from transport_matters.osc_color_responder import OscColorResponder
 from transport_matters.pty_session import (
-    DEFAULT_TERMINAL_COLS,
-    DEFAULT_TERMINAL_ROWS,
     PTY_READ_CHUNK_SIZE,
     SpawnPtyProcess,
     TerminalPty,
@@ -38,12 +33,24 @@ from transport_matters.pty_session import (
     terminate_terminal_pty,
     write_all,
 )
+from transport_matters.run_models import (
+    CapturedRunLeaseHandle,
+    ManagedRun,
+    ManagedRunView,
+    PrepareCapturedRun,
+    RunEndReason,
+    RunFilters,
+    RunManagerError,
+    RunManagerErrorCode,
+    RunNotFoundError,
+    RunState,
+    SpawnRun,
+    TerminateReason,
+)
 from transport_matters.run_terminal import (
     DEFAULT_ATTACHMENT_QUEUE_SIZE,
     DEFAULT_SCROLLBACK_BYTES,
     AttachedTerminal,
-    ScrollbackRing,
-    TerminalAttachment,
     TerminalFanout,
 )
 from transport_matters.shared_proxy.run_preparation import prepare_shared_captured_run
@@ -51,24 +58,24 @@ from transport_matters.shared_proxy.run_preparation import prepare_shared_captur
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from transport_matters.runtime_templates import RuntimeTemplateRef
     from transport_matters.shared_proxy.manager import SharedProxyManager
 
 logger = logging.getLogger(__name__)
 
-TerminateReason = Literal["explicit", "shutdown", "idle-timeout", "deploy-restart"]
-RunEndReason = TerminateReason | Literal["natural-exit", "failed"]
-RunManagerErrorCode = Literal[
-    "bind_conflict",
-    "invalid_cwd",
-    "launch_failed",
-    "proxy_start_timeout",
-    "run_manager_closed",
-    "run_not_attachable",
-    "run_stale",
-    "run_terminated",
-    "session_store_unavailable",
-    "unsupported_harness",
+__all__ = [
+    "CapturedRunLeaseHandle",
+    "ManagedRun",
+    "ManagedRunView",
+    "PrepareCapturedRun",
+    "RunEndReason",
+    "RunFilters",
+    "RunManager",
+    "RunManagerError",
+    "RunManagerErrorCode",
+    "RunNotFoundError",
+    "RunState",
+    "SpawnRun",
+    "TerminateReason",
 ]
 
 
@@ -79,164 +86,11 @@ def _utcnow() -> datetime:
 _SESSION_STORE_PREFLIGHT_CACHE_TTL = timedelta(seconds=3)
 
 
-class PrepareCapturedRun(Protocol):
-    def __call__(
-        self,
-        request: CapturedRunRequest,
-        *,
-        require_addon: Callable[[], Any],
-        resolve_mitmdump: Callable[[], str | None],
-        which: Callable[..., str | None],
-        port_in_use: Callable[[int], bool],
-        allocate_port_pair: Callable[[], tuple[int, int]],
-        inject_system_prompt: Callable[..., list[str]],
-        user_supplied_system_prompt: Callable[[list[str]], bool],
-        install_signal_handlers: bool = False,
-    ) -> tuple[CapturedRunSpawnSpec, CapturedRunLeaseHandle]: ...
-
-
-class CapturedRunLeaseHandle(Protocol):
-    def close(self) -> None: ...
-
-
-class RunState(StrEnum):
-    STARTING = "STARTING"
-    RUNNING = "RUNNING"
-    TERMINATING = "TERMINATING"
-    TERMINATED = "TERMINATED"
-    EXITED = "EXITED"
-    FAILED = "FAILED"
-
-
-class RunManagerError(RuntimeError):
-    def __init__(self, code: RunManagerErrorCode, message: str) -> None:
-        super().__init__(message)
-        self.code = code
-        self.message = message
-
-
-class RunNotFoundError(KeyError):
-    pass
-
-
-@dataclass(frozen=True, slots=True)
-class SpawnRun:
-    harness: CapturedRunHarness
-    cwd: Path | None = None
-    cols: int = DEFAULT_TERMINAL_COLS
-    rows: int = DEFAULT_TERMINAL_ROWS
-    passthrough: tuple[str, ...] = ()
-    proxy_port: int | None = None
-    web_port: int | None = None
-    upstream: str | None = None
-    storage_dir: Path | None = None
-    home_dir: Path | None = None
-    client_bin: Path | None = None
-    client_disabled: bool = False
-    no_system_prompt: bool = False
-    debug: bool = False
-    web_runtime: CapturedRunWebRuntime = WEB_RUNTIME_EXTERNAL
-    default_client_passthrough: tuple[str, ...] = ()
-    runtime_template: RuntimeTemplateRef | None = None
-    launch_fields: dict[str, object] = field(default_factory=dict)
-    idempotency_key: str | None = None
-    start_on_attach: bool = False
-    defer_session_ownership: bool = False
-    # Bridge answers the harness OSC 10/11 color queries (see osc_color_responder).
-    osc_color_replies: bool = True
-
-
 @dataclass(frozen=True, slots=True)
 class _ValidatedSpawnRun:
     request: SpawnRun
     cwd: Path
     upstream: str
-
-
-@dataclass(frozen=True, slots=True)
-class RunFilters:
-    harness: CapturedRunHarness | None = None
-    cwd: Path | None = None
-    states: frozenset[RunState] | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class ManagedRunView:
-    run_id: str
-    harness: CapturedRunHarness
-    cwd: Path
-    storage_dir: Path
-    proxy_port: int
-    web_port: int | None
-    native_session_id: str | None
-    state: RunState
-    created_at: datetime
-    started_at: datetime
-    updated_at: datetime
-    viewer_count: int
-    viewerless_since: datetime | None
-    exit_code: int | None
-    end_reason: str | None
-    error: str | None
-    scrollback_bytes: int
-    scrollback_limit_bytes: int
-
-
-@dataclass(slots=True)
-class ManagedRun:
-    run_id: str
-    harness: CapturedRunHarness
-    cwd: Path
-    state: RunState
-    spawn_spec: CapturedRunSpawnSpec
-    lease: CapturedRunLeaseHandle
-    terminal: TerminalPty | None
-    terminal_output: TerminalFanout
-    created_at: datetime
-    started_at: datetime
-    updated_at: datetime
-    viewerless_since: datetime | None
-    exit_code: int | None
-    end_reason: str | None
-    error: str | None
-    # None when the bridge should stay silent (osc_color_replies disabled).
-    osc_responder: OscColorResponder | None
-    start_lock: asyncio.Lock = field(default_factory=asyncio.Lock, init=False)
-    drain_task: asyncio.Task[None] | None = None
-
-    @property
-    def scrollback(self) -> ScrollbackRing:
-        return self.terminal_output.scrollback
-
-    @property
-    def attachments(self) -> dict[str, TerminalAttachment]:
-        return self.terminal_output.attachments
-
-    def view(self) -> ManagedRunView:
-        return ManagedRunView(
-            run_id=self.run_id,
-            harness=self.harness,
-            cwd=self.cwd,
-            storage_dir=self.spawn_spec.storage_dir,
-            proxy_port=self.spawn_spec.proxy_port,
-            web_port=self.spawn_spec.web_port,
-            native_session_id=(
-                self.spawn_spec.managed_session.native_session_id
-                if self.spawn_spec.managed_session is not None
-                else None
-            ),
-            state=self.state,
-            created_at=self.created_at,
-            started_at=self.started_at,
-            updated_at=self.updated_at,
-            viewer_count=len(self.attachments),
-            viewerless_since=self.viewerless_since,
-            exit_code=self.exit_code,
-            end_reason=self.end_reason,
-            error=self.error,
-            scrollback_bytes=self.scrollback.total_bytes,
-            scrollback_limit_bytes=self.scrollback.max_bytes,
-        )
 
 
 class RunManager:

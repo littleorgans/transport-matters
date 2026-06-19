@@ -10,6 +10,7 @@ from transport_matters.addon_runtime import CaptureRuntime
 from transport_matters.index.adapters.base import FileTailSource, SessionBinding
 from transport_matters.index.tailer import TailCursor, TranscriptTailer
 from transport_matters.shared_proxy.binding import ProxyRunBinding
+from transport_matters.shared_proxy.control import SharedProxyControlError
 from transport_matters.shared_proxy.core import SharedProxyCore, SharedTranscriptSnapshotWriter
 from transport_matters.storage.disk import DiskStorageBackend
 from transport_matters.storage.disk_layout import DiskStorageLayout
@@ -47,20 +48,20 @@ class SlowItemsDict(dict[str, str]):
             yield item
 
 
-@pytest.mark.asyncio
-async def test_register_binding_maps_transcript_snapshot_and_unregisters_cursor(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    tailer = FakeTailer()
-    core = SharedProxyCore(
-        capture=CaptureRuntime(
-            http_client=cast("Any", None),
-            token_counter=cast("Any", None),
-            index_tailer=cast("Any", tailer),
-        ),
-        snapshots=SharedTranscriptSnapshotWriter(),
-    )
-    binding = ProxyRunBinding(
+class SpySnapshotWriter(SharedTranscriptSnapshotWriter):
+    __slots__ = ("unregistered",)
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.unregistered: list[str] = []
+
+    def unregister(self, run_id: str) -> tuple[str, ...]:
+        self.unregistered.append(run_id)
+        return super().unregister(run_id)
+
+
+def _owned_binding(tmp_path: Path) -> ProxyRunBinding:
+    return ProxyRunBinding(
         run_id="run-1",
         harness="claude",
         working_dir=tmp_path,
@@ -71,6 +72,26 @@ async def test_register_binding_maps_transcript_snapshot_and_unregisters_cursor(
         owned_native_session_id="native-1",
         owned_source_descriptor="claude:owned",
     )
+
+
+def _capture_runtime(index_tailer: object | None) -> CaptureRuntime:
+    return CaptureRuntime(
+        http_client=cast("Any", None),
+        token_counter=cast("Any", None),
+        index_tailer=cast("Any", index_tailer),
+    )
+
+
+@pytest.mark.asyncio
+async def test_register_binding_maps_transcript_snapshot_and_unregisters_cursor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    tailer = FakeTailer()
+    core = SharedProxyCore(
+        capture=_capture_runtime(tailer),
+        snapshots=SharedTranscriptSnapshotWriter(),
+    )
+    binding = _owned_binding(tmp_path)
 
     async def fake_register_owned_cursor(
         received_tailer: object,
@@ -109,6 +130,52 @@ async def test_register_binding_maps_transcript_snapshot_and_unregisters_cursor(
 
     core.unregister_binding(binding)
     assert tailer.unregistered == ["session-1"]
+
+
+@pytest.mark.asyncio
+async def test_register_owned_binding_requires_session_capture_and_cleans_up(
+    tmp_path: Path,
+) -> None:
+    snapshots = SpySnapshotWriter()
+    core = SharedProxyCore(
+        capture=_capture_runtime(None),
+        snapshots=snapshots,
+    )
+    binding = _owned_binding(tmp_path)
+
+    with pytest.raises(SharedProxyControlError) as error:
+        await core.register_binding(binding)
+
+    assert error.value.code == "session_capture_unavailable"
+    assert core._bindings_by_run_id == {}
+    assert snapshots.unregistered == ["run-1"]
+
+
+@pytest.mark.asyncio
+async def test_register_owned_binding_cursor_failure_cleans_up(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    snapshots = SpySnapshotWriter()
+    core = SharedProxyCore(
+        capture=_capture_runtime(FakeTailer()),
+        snapshots=snapshots,
+    )
+    binding = _owned_binding(tmp_path)
+
+    async def fail_register_owned_cursor(*_: object, **__: object) -> None:
+        raise RuntimeError("cursor boom")
+
+    monkeypatch.setattr(
+        "transport_matters.shared_proxy.core.register_owned_cursor",
+        fail_register_owned_cursor,
+    )
+
+    with pytest.raises(SharedProxyControlError) as error:
+        await core.register_binding(binding)
+
+    assert error.value.code == "owned_cursor_registration_failed"
+    assert core._bindings_by_run_id == {}
+    assert snapshots.unregistered == ["run-1"]
 
 
 @pytest.mark.asyncio
