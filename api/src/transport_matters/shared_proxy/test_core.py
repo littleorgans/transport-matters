@@ -158,6 +158,51 @@ async def test_register_deferred_binding_maps_run_for_late_cursor(tmp_path: Path
     assert tailer.unregistered == ["session-1"]
 
 
+@pytest.mark.asyncio
+async def test_register_deferred_binding_does_not_require_session_capture(
+    tmp_path: Path,
+) -> None:
+    core = SharedProxyCore(
+        capture=CaptureRuntime(
+            http_client=cast("Any", None),
+            token_counter=cast("Any", None),
+            index_tailer=None,
+        ),
+        snapshots=SharedTranscriptSnapshotWriter(),
+    )
+    binding = ProxyRunBinding(
+        run_id="run-1",
+        harness="codex",
+        working_dir=tmp_path,
+        storage=DiskStorageBackend(tmp_path / "run-1"),
+        listen_port=19001,
+        upstream="",
+        agent_home_dir=tmp_path / "runtime-home",
+        owned_native_session_id=None,
+        owned_source_descriptor=None,
+    )
+
+    await core.register_binding(binding)
+    core.snapshots.register_session(
+        SessionBinding(
+            session_id="session-1",
+            provider="codex",
+            run_id="run-1",
+            cwd=str(tmp_path),
+            workspace_slug="workspace",
+            workspace_hash="hash",
+            started_at="2026-06-19T00:00:00+00:00",
+            harness="codex",
+            native_session_id="native-1",
+            home_dir=str(tmp_path / "runtime-home"),
+        )
+    )
+    core.snapshots("session-1", 0, b'{"type":"session_meta"}\n')
+
+    path = DiskStorageLayout(tmp_path / "run-1").transcript_snapshot_path("session-1")
+    assert path.read_bytes() == b'{"type":"session_meta"}\n'
+
+
 def test_shared_snapshot_writer_captures_child_cursor_and_advances(
     tmp_path: Path,
 ) -> None:

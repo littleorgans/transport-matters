@@ -96,10 +96,6 @@ class SharedProxyCore:
 
     async def register_binding(self, binding: ProxyRunBinding) -> None:
         run_id = require_run_id(binding.run_id)
-        tailer = self.capture.index_tailer
-        if tailer is None:
-            msg = "shared proxy session capture is unavailable"
-            raise SharedProxyControlError("session_capture_unavailable", msg)
         storage_root = _storage_root(binding)
         started_at = datetime.now(UTC).isoformat()
 
@@ -111,12 +107,20 @@ class SharedProxyCore:
             self._bindings_by_run_id[run_id] = binding
             if binding.owned_native_session_id is None or binding.owned_source_descriptor is None:
                 return
+            tailer = self.capture.index_tailer
+            if tailer is None:
+                msg = "shared proxy session capture is unavailable"
+                raise SharedProxyControlError("session_capture_unavailable", msg)
             await register_owned_cursor(
                 tailer,
                 binding,
                 started_at,
                 on_session_bound=bind_snapshot_writer,
             )
+        except SharedProxyControlError:
+            self._bindings_by_run_id.pop(run_id, None)
+            self.snapshots.unregister(run_id)
+            raise
         except Exception as exc:
             self._bindings_by_run_id.pop(run_id, None)
             self.snapshots.unregister(run_id)
