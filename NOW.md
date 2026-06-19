@@ -109,3 +109,23 @@ Fork / share / eval are the destination of the agent-runtimes initiative, not th
   `F`/`E`/`-`/`CLOSE` + a harness mascot on Claude panes) — fold in a persistent canvas banner
   while bypass is On and a per-pane bypass badge alongside the pane icon. Findings:
   `~/.mdx/projects/yolo-toggle-review.md`.
+- **No-DB startup + store picker (researched, not committed).** A DB stays
+  required; embedded is a zero-config no-brainer for non-technical users, not a
+  docker/hosted replacement. TM deliberately refuses to launch with no Postgres via
+  **two guards** — `launch_runtime.py preflight_session_store_or_exit` (front of
+  every CLI launch; `exit(2)` before proxy/run-dir/agent) and
+  `run_manager.py RunManager._ensure_session_store_available` (blocks `POST /v1/runs`
+  canvas spawn). Everything else already degrades: tier-1 disk capture
+  (`DiskStorageBackend.persist_exchange`), `main.lifespan`, `SessionWriter`, the
+  LISTEN/NOTIFY listener. So a degraded "capture-to-disk, watch the live run" mode +
+  a store picker needs only: relax the two guards, add a `db_status` signal to
+  `/api/meta` (www learns DB status nowhere today), and a `RootShell` picker
+  (local pgembed / docker / hosted DSN) ahead of `selectRootRoute`'s canvas fork.
+  Blast surface is small and confirmed: API 8 HARD (the `session_routes` cluster +
+  `POST /v1/runs`) / 29 SOFT (per-run exchange reads are disk-backed, survive); the
+  frontend gate is **exactly 3 mounted consumers, all under `/canvas`**
+  (`SessionPickerPane`, `TranscriptChatPane`, resource `ResourcePane` via
+  `session-canvas/api/*`) — 2-pane MoE confirmed, legacy `/` route needs no gate.
+  Couples with Next-up #1 (User onboarding): same ENV/settings → edit-overlays
+  surface. Findings: `~/.mdx/projects/transport-matters-nodb-mode-findings.md`;
+  embedded-PG path: `~/.mdx/projects/transport-matters-litepg-landscape.md`.
