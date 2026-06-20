@@ -61,7 +61,11 @@ transport-matters codex --no-codex
 
 For Codex, Transport Matters validates any user supplied CA bundle path or else snapshots the active Python trust roots, appends `~/.mitmproxy/mitmproxy-ca-cert.pem`, and passes that merged bundle only to the managed Codex process. Commands started inside Codex use their normal trust chain and are not routed through the Transport Matters proxy, including direct shell commands. No system keychain changes are required.
 
-`transport-matters desktop` starts the local backend and opens the Electron canvas. Start Claude or Codex from captured panes inside the desktop UI.
+`transport-matters desktop` starts the local backend detached by default and
+opens the Electron canvas. Use `--foreground` to stay attached,
+`transport-matters tail [channel]` to read logs, and `kill <pid>` from
+`transport-matters channel list` to stop a detached backend. Start Claude or
+Codex from captured panes inside the desktop UI.
 
 Standalone `claude` and `codex` launch print:
 - the proxy URL
@@ -230,6 +234,7 @@ Primary commands:
 - `transport-matters claude`
 - `transport-matters codex`
 - `transport-matters desktop`
+- `transport-matters tail`
 - `transport-matters doctor`
 - `transport-matters paths`
 - `transport-matters list`

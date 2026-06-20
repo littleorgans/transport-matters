@@ -21,6 +21,27 @@ The backend still requires an explicit Postgres server URL through
 `TRANSPORT_MATTERS_DATABASE_URL` or settings. The channel selects the database
 name on that server.
 
+## Running and managing instances
+
+`transport-matters desktop` launches detached by default, opens Electron, and
+returns immediately. Pass `--foreground` to keep the backend attached and stream
+logs in the terminal.
+
+Use `transport-matters channel list` to see channel ports and the PID for each
+live detached backend. Use `transport-matters tail [channel]` to read that
+channel's `desktop.log`; add `-f` to follow or `-n <lines>` to choose the
+history window. Stop an instance with `kill <PID>`. There is no separate stop
+command.
+
+Accepted edges:
+
+- Instances launched with `--storage-dir` sit outside the channel scoped
+  `list` and `tail` view.
+- Instances launched with `TRANSPORT_MATTERS_HOME` set also sit outside that
+  view. With `TRANSPORT_MATTERS_HOME`, all channels collapse to one shared
+  runtime record path.
+- PID reuse can briefly make a stale record look live.
+
 ## Isolation
 
 One channel id fans out to every local state boundary.
