@@ -60,6 +60,7 @@ export class BackendProcessSpawnError extends Error {
 export function buildBackendLaunch(
   options: BackendLaunchOptions,
 ): BackendLaunch {
+  const channel = options.env?.[ENV.CHANNEL] ?? "stable";
   const proxyPort = String(options.proxyPort);
   const webPort = String(options.webPort);
 
@@ -72,11 +73,14 @@ export function buildBackendLaunch(
       webPort,
       "--proxy-port",
       proxyPort,
+      "--channel",
+      channel,
     ],
     command: "transport-matters",
     cwd: options.workspaceDir,
     env: {
       ...options.env,
+      [ENV.CHANNEL]: channel,
       [ENV.CWD]: options.workspaceDir,
       [ENV.PROXY_PORT]: proxyPort,
       [ENV.WEB_PORT]: webPort,

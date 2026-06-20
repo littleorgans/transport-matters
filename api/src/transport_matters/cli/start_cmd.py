@@ -8,6 +8,8 @@ from urllib.parse import urlparse
 
 import typer
 
+from transport_matters.channel import activate_channel
+
 from .launch_runtime import preflight_session_store_or_exit, reject_passthrough_without_client
 
 if TYPE_CHECKING:
@@ -48,6 +50,7 @@ def run_start(
     no_system_prompt: bool,
     debug: bool,
     print_command: bool,
+    channel: str | None = None,
     require_addon: Callable[[], Traversable],
     resolve_mitmdump: Callable[[], str | None],
     which: Callable[[str], str | None] = shutil.which,
@@ -60,6 +63,7 @@ def run_start(
     default_client_passthrough: tuple[str, ...] = (),
 ) -> None:
     """Execute the `claude` launch lifecycle."""
+    activate_channel(channel)
     from transport_matters.captured_run import CapturedRunRequest, run_captured_run_on_local_tty
 
     reject_passthrough_without_client(

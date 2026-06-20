@@ -25,6 +25,7 @@ describe("backend process launch", () => {
     const launch = buildBackendLaunch({
       env: {
         PATH: "/bin",
+        TRANSPORT_MATTERS_CHANNEL: "preview",
         TRANSPORT_MATTERS_CWD: "/old/workspace",
         TRANSPORT_MATTERS_PROXY_PORT: "old-proxy",
         TRANSPORT_MATTERS_WEB_PORT: "old-web",
@@ -43,11 +44,14 @@ describe("backend process launch", () => {
         "9901",
         "--proxy-port",
         "9900",
+        "--channel",
+        "preview",
       ],
       command: "transport-matters",
       cwd: "/tmp/workspace",
       env: {
         PATH: "/bin",
+        TRANSPORT_MATTERS_CHANNEL: "preview",
         TRANSPORT_MATTERS_CWD: "/tmp/workspace",
         TRANSPORT_MATTERS_PROXY_PORT: "9900",
         TRANSPORT_MATTERS_WEB_PORT: "9901",
@@ -71,8 +75,11 @@ describe("backend process launch", () => {
       "9903",
       "--proxy-port",
       "9902",
+      "--channel",
+      "stable",
     ]);
     expect(launch.env).toEqual({
+      TRANSPORT_MATTERS_CHANNEL: "stable",
       TRANSPORT_MATTERS_CWD: "/tmp/workspace",
       TRANSPORT_MATTERS_PROXY_PORT: "9902",
       TRANSPORT_MATTERS_WEB_PORT: "9903",
@@ -105,10 +112,13 @@ describe("backend process launch", () => {
         "9901",
         "--proxy-port",
         "9900",
+        "--channel",
+        "stable",
       ],
       {
         cwd: "/tmp/workspace",
         env: {
+          TRANSPORT_MATTERS_CHANNEL: "stable",
           TRANSPORT_MATTERS_CWD: "/tmp/workspace",
           TRANSPORT_MATTERS_PROXY_PORT: "9900",
           TRANSPORT_MATTERS_WEB_PORT: "9901",

@@ -102,6 +102,7 @@ async def prepare_shared_captured_run(
         env=os.environ,
         now=None,
         write=True,
+        use_channel_defaults=False,
     )
     return await _finish_shared_preparation(ctx, shared_proxy=shared_proxy)
 

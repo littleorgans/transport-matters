@@ -67,8 +67,9 @@ _CLAUDE_HELP = dedent(f"""\
 
     Options
           --work-dir PATH       Working dir for Claude Code (default: cwd)
-      -p, --proxy-port INT      Proxy listener port (default: kernel-allocated free port)
-      -w, --web-port INT        Web UI port (default: kernel-allocated free port)
+          --channel ID          Channel id (default: stable)
+      -p, --proxy-port INT      Proxy listener port (default: active channel port)
+      -w, --web-port INT        Web UI port (default: active channel port)
       -u, --upstream URL        Upstream provider URL (default https://api.anthropic.com)
       -d, --storage-dir PATH    Data directory (default ~/.transport-matters/)
           --agent-home-dir PATH       Claude Code home for config and transcripts
@@ -80,11 +81,9 @@ _CLAUDE_HELP = dedent(f"""\
       -h, --help                Show this message and exit
 
     Port allocation
-      With no `--proxy-port` / `--web-port` flags, Transport Matters asks the
-      kernel for two free TCP ports on localhost and uses those. This
-      lets two `{CLI_COMMAND} claude` sessions in different workspaces run
-      concurrently without colliding on the default 8787 / 8788. Any
-      port you pin explicitly is honoured as-is.
+      With no `--proxy-port` / `--web-port` flags, Transport Matters uses the
+      active channel's deterministic proxy and web ports. Any port you pin
+      explicitly is honoured as-is.
 
     System-prompt injection
       Unless you pass `--no-system-prompt`, Transport Matters prepends an
@@ -123,8 +122,9 @@ _CODEX_HELP = dedent(f"""\
 
     Options
           --work-dir PATH       Working dir for Codex (default: cwd)
-      -p, --proxy-port INT      Proxy listener port (default: kernel-allocated free port)
-      -w, --web-port INT        Web UI port (default: kernel-allocated free port)
+          --channel ID          Channel id (default: stable)
+      -p, --proxy-port INT      Proxy listener port (default: active channel port)
+      -w, --web-port INT        Web UI port (default: active channel port)
       -d, --storage-dir PATH    Data directory (default ~/.transport-matters/)
           --agent-home-dir PATH       Codex home for config and transcripts
           --codex-bin PATH      Path to Codex (default: `codex` on PATH)
@@ -169,7 +169,8 @@ _DESKTOP_HELP = dedent(f"""\
 
     Options
           --work-dir PATH        Initial workspace hint for the canvas (default: cwd)
-      -w, --web-port INT         Web UI port (default: kernel-allocated free port)
+          --channel ID           Channel id (default: stable)
+      -w, --web-port INT         Web UI port (default: active channel port)
       -d, --storage-dir PATH     Data directory (default ~/.transport-matters/)
       -h, --help                 Show this message and exit
 

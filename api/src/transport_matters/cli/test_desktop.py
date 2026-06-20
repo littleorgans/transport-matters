@@ -34,6 +34,7 @@ def test_desktop_help_lists_backend_shell_options() -> None:
     assert result.exit_code == 0
     output = _plain(result.output)
     assert "--work-dir" in output
+    assert "--channel" in output
     assert "--web-port" in output
     assert "--storage-dir" in output
     assert "Electron canvas" in output
@@ -88,10 +89,10 @@ def test_desktop_ignores_ambient_cross_agent_env(
 
     assert result.exit_code == 0
     assert calls == {
+        "channel": None,
         "work_dir": None,
         "web_port": None,
         "storage_dir": None,
-        "allocate_port_pair_func": cli.allocate_port_pair,
     }
 
 
@@ -117,9 +118,9 @@ def test_desktop_command_uses_backend_server_path_not_provider_launches(
     )
 
     assert result.exit_code == 0
+    assert calls["channel"] is None
     assert calls["work_dir"] == tmp_path
     assert calls["web_port"] is None
-    assert calls["allocate_port_pair_func"] is cli.allocate_port_pair
 
 
 def test_desktop_command_passes_only_backend_launch_options(
@@ -137,6 +138,8 @@ def test_desktop_command_passes_only_backend_launch_options(
         main,
         [
             "desktop",
+            "--channel",
+            "preview",
             "--work-dir",
             str(tmp_path),
             "--web-port",
@@ -147,10 +150,34 @@ def test_desktop_command_passes_only_backend_launch_options(
     )
 
     assert result.exit_code == 0
+    assert calls["channel"] == "preview"
     assert calls["work_dir"] == tmp_path
     assert calls["web_port"] == 9901
     assert calls["storage_dir"] == tmp_path / "storage"
-    assert set(calls) == {"work_dir", "web_port", "storage_dir", "allocate_port_pair_func"}
+    assert set(calls) == {
+        "channel",
+        "work_dir",
+        "web_port",
+        "storage_dir",
+    }
+
+
+def test_desktop_unknown_channel_exits_with_list_hint(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: dict[str, Any] = {}
+
+    def fake_run_desktop_launch(**kwargs: Any) -> None:
+        calls.update(kwargs)
+
+    monkeypatch.setattr(cli, "run_desktop_launch", fake_run_desktop_launch)
+
+    result = runner.invoke(main, ["desktop", "--channel", "ghost"])
+
+    assert result.exit_code == 2
+    assert "unknown channel 'ghost'" in result.output
+    assert "transport-matters channel list" in result.output
+    assert calls == {}
 
 
 def test_desktop_startup_hook_emits_json_and_spawns_electron(
@@ -219,6 +246,37 @@ def test_desktop_backend_env_has_no_initial_run_fields(tmp_path: Path) -> None:
     assert env_keys.HARNESS not in plan.env
     assert env_keys.DEFAULT_CLIENT_PASSTHROUGH not in plan.env
     assert env_keys.RUN_ID not in plan.env
+
+
+def test_desktop_backend_env_and_command_carry_channel(tmp_path: Path) -> None:
+    plan = prepare_desktop_launch(
+        work_dir=tmp_path,
+        storage_dir=tmp_path / "storage",
+        launch_viewer=False,
+        env={env_keys.CHANNEL: "preview"},
+    )
+
+    assert plan.env[env_keys.CHANNEL] == "preview"
+    assert plan.env[env_keys.PROXY_PORT] == "8797"
+    assert plan.env[env_keys.WEB_PORT] == "8798"
+    assert plan.command[-2:] == ("--channel", "preview")
+    assert "--proxy-port" in plan.command
+    assert "8797" in plan.command
+    assert "--web-port" in plan.command
+    assert "8798" in plan.command
+
+
+def test_desktop_channel_default_port_in_use_fails_fast(tmp_path: Path) -> None:
+    with pytest.raises(typer.Exit) as exc:
+        prepare_desktop_launch(
+            work_dir=tmp_path,
+            storage_dir=tmp_path / "storage",
+            launch_viewer=False,
+            env={env_keys.CHANNEL: "preview"},
+            port_in_use_func=lambda port: port == 8797,
+        )
+
+    assert exc.value.exit_code == 2
 
 
 def test_desktop_backend_server_hard_blocks_on_session_store_preflight(

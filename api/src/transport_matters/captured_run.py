@@ -108,6 +108,7 @@ def run_captured_run_on_local_tty(
         env=env,
         now=now,
         write=not print_command,
+        use_channel_defaults=True,
     )
     try:
         web_port = require_web_port(ctx.prepared.web_port)
@@ -203,6 +204,7 @@ def prepare_captured_run(
         env=env,
         now=now,
         write=True,
+        use_channel_defaults=False,
     )
     make_supervisor = supervisor_factory or ProcessSupervisor
     start_proxy = proxy_starter or start_prepared_proxy

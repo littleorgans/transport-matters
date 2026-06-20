@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING
 import typer
 
 from transport_matters.captured_run import require_web_port
+from transport_matters.channel import activate_channel
 from transport_matters.launch_environment import (
     HARNESS_NAME_CODEX,
     build_launch_env,
@@ -552,6 +553,7 @@ def run_codex(
     debug: bool,
     force_http_fallback: bool,
     print_command: bool,
+    channel: str | None = None,
     require_addon: Callable[[], Traversable],
     require_force_http_fallback_addon: Callable[[], Traversable],
     resolve_mitmdump: Callable[[], str | None],
@@ -564,6 +566,7 @@ def run_codex(
     default_client_passthrough: tuple[str, ...] = (),
 ) -> None:
     """Execute the `codex` launch lifecycle."""
+    activate_channel(channel)
     reject_passthrough_without_client(
         disabled=no_codex,
         passthrough=codex_passthrough,
