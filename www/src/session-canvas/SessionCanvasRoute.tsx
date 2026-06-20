@@ -124,5 +124,5 @@ async function findStaleCapturedRunKeys(
 }
 
 function isAttachableRun(run: RunView | null): boolean {
-  return run?.state === "RUNNING";
+  return run?.state === "STARTING" || run?.state === "RUNNING";
 }

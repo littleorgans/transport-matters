@@ -460,7 +460,7 @@ export async function terminateRun(runId: string): Promise<void> {
 }
 
 /** Lifecycle of a managed captured run. Mirrors the backend `RunState` enum. */
-export type RunState = "RUNNING" | "TERMINATING" | "TERMINATED" | "EXITED" | "FAILED";
+export type RunState = "STARTING" | "RUNNING" | "TERMINATING" | "TERMINATED" | "EXITED" | "FAILED";
 export type RunEndReason = "explicit" | "idle-timeout" | "shutdown" | "deploy-restart";
 
 /**

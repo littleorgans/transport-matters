@@ -129,6 +129,25 @@ describe("SessionCanvasRoute", () => {
     expect(useCanvasStore.getState().panes["claude:live"]).toBeDefined();
   });
 
+  it("keeps a remembered STARTING captured run because backend attach accepts it", async () => {
+    resetCanvasStoreForTests();
+    resetCapturedRunStoreForTests();
+    rememberCapturedRun("claude:starting", "run-starting");
+    useCanvasStore.getState().spawnPane(makeCapturedRunRef("claude:starting"));
+    window.history.pushState({}, "", "/canvas");
+    installMockTransport((path) =>
+      path === "/v1/runs/run-starting"
+        ? runLookupResponse("run-starting", "STARTING")
+        : jsonResponse({ items: [], nextCursor: null }),
+    );
+
+    renderWithQuery(<SessionCanvasRoute />);
+
+    await waitFor(() => expect(capturedRunPaneRender).toHaveBeenCalledWith("claude:starting"));
+    expect(useCapturedRunStore.getState().runs["claude:starting"]?.runId).toBe("run-starting");
+    expect(useCanvasStore.getState().panes["claude:starting"]).toBeDefined();
+  });
+
   it("keeps a remembered captured run that would be beyond the first list page", async () => {
     resetCanvasStoreForTests();
     resetCapturedRunStoreForTests();
