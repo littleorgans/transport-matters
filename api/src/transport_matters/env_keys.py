@@ -19,6 +19,7 @@ ENV_PREFIX = "TRANSPORT_MATTERS_"
 # independent of the per-run STORAGE_DIR a launch sets into the child env. Default
 # ``~/.transport-matters``. Distinct from ``AGENT_HOME_DIR`` (the managed agent home).
 HOME = f"{ENV_PREFIX}HOME"
+CHANNEL = f"{ENV_PREFIX}CHANNEL"
 
 PROXY_PORT = f"{ENV_PREFIX}PROXY_PORT"
 WEB_PORT = f"{ENV_PREFIX}WEB_PORT"

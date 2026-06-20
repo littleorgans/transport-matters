@@ -91,6 +91,7 @@ exclude = ["**/test_*.py", "**/conftest.py", "src/transport_matters/session/test
 artifacts = [
     "src/transport_matters/www/**",
     "src/transport_matters/settings.example.toml",
+    "src/transport_matters/channel-specs.json",
     "migrations/**",
 ]
 
@@ -98,7 +99,15 @@ artifacts = [
 "migrations" = "migrations"
 
 [tool.hatch.build.targets.sdist]
-only-include = ["src/transport_matters", "migrations", "alembic.ini", "tests", "README.md", "LICENSE"]
+only-include = [
+    "src/transport_matters",
+    "src/transport_matters/channel-specs.json",
+    "migrations",
+    "alembic.ini",
+    "tests",
+    "README.md",
+    "LICENSE",
+]
 
 # ---- Ruff ----
 [tool.ruff]

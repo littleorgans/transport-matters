@@ -25,8 +25,11 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
+from psycopg import connect, sql
 
+from transport_matters.channel import resolve_channel_spec
 from transport_matters.config import MissingDatabaseConfigError
+from transport_matters.session.testing import database_url_for
 from transport_matters.session.testing import TestDb
 
 
@@ -63,13 +66,37 @@ def migrated_db() -> Iterator[TestDb]:
         db.drop()
 
 
+@pytest.fixture
+def stable_channel_db(migrated_db: TestDb) -> Iterator[TestDb]:
+    database_name = resolve_channel_spec("stable", {}).database_name
+    with connect(migrated_db.admin_url, autocommit=True) as conn:
+        exists = conn.execute(
+            "SELECT 1 FROM pg_database WHERE datname = %s",
+            (database_name,),
+        ).fetchone()
+        if exists is not None:
+            pytest.skip(f"{database_name} already exists on the test server")
+        conn.execute(sql.SQL("CREATE DATABASE {}").format(sql.Identifier(database_name)))
+
+    db = TestDb(
+        migrated_db.admin_url,
+        database_url_for(migrated_db.admin_url, database_name),
+        database_name,
+    )
+    try:
+        db.migrate()
+        yield db
+    finally:
+        db.drop()
+
+
 def test_launched_backend_reads_db_from_home_not_per_run_storage(
-    tmp_path: Path, migrated_db: TestDb
+    tmp_path: Path, stable_channel_db: TestDb
 ) -> None:
     home = tmp_path / "home"
     home.mkdir()
     (home / "settings.toml").write_text(
-        f'[database]\nurl = "{migrated_db.database_url}"\n', encoding="utf-8"
+        f'[database]\nurl = "{stable_channel_db.database_url}"\n', encoding="utf-8"
     )
     per_run = tmp_path / "run-storage"
     per_run.mkdir()

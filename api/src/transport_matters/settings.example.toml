@@ -1,8 +1,12 @@
 # Copy to $TRANSPORT_MATTERS_HOME/settings.toml (default ~/.transport-matters/settings.toml) and edit.
 # Transport Matters creates this file from the packaged example on first launch.
 # TRANSPORT_MATTERS_* env vars override these values.
+# Channel defaults:
+# stable  -> home ~/.transport-matters, database transport_matters, ports 8787/8788
+# preview -> home ~/.transport-matters-preview, database transport_matters_preview, ports 8797/8798
 [database]
 # Operator Postgres connection used by Transport Matters.
+# The configured server is reused for every channel. The database path is rewritten to the channel database name.
 url = "postgresql://tm:tm@localhost:55432/transport_matters"
 # Admin connection for tests. Defaults to url if unset.
 test_url = "postgresql://tm:tm@localhost:55432/postgres"

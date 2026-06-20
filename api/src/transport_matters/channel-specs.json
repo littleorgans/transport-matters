@@ -1,0 +1,35 @@
+{
+  "schema": 1,
+  "channels": [
+    {
+      "id": "stable",
+      "label": "Stable",
+      "homeDir": ".transport-matters",
+      "databaseName": "transport_matters",
+      "proxyPort": 8787,
+      "webPort": 8788,
+      "electron": {
+        "appName": "Transport Matters",
+        "appId": "io.helioy.transport-matters",
+        "userDataDir": null,
+        "dockIcon": "default"
+      },
+      "badge": null
+    },
+    {
+      "id": "preview",
+      "label": "Preview",
+      "homeDir": ".transport-matters-preview",
+      "databaseName": "transport_matters_preview",
+      "proxyPort": 8797,
+      "webPort": 8798,
+      "electron": {
+        "appName": "Transport Matters Preview",
+        "appId": "io.helioy.transport-matters.preview",
+        "userDataDir": "electron-user-data",
+        "dockIcon": "preview-amber"
+      },
+      "badge": { "text": "PREVIEW", "color": "amber", "hex": "#f59e0b" }
+    }
+  ]
+}

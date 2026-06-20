@@ -13,6 +13,7 @@ def test_prefix() -> None:
 
 
 def test_keys_match_wire_names() -> None:
+    assert env_keys.CHANNEL == "TRANSPORT_MATTERS_CHANNEL"
     assert env_keys.PROXY_PORT == "TRANSPORT_MATTERS_PROXY_PORT"
     assert env_keys.WEB_PORT == "TRANSPORT_MATTERS_WEB_PORT"
     assert env_keys.WEB_RUNTIME == "TRANSPORT_MATTERS_WEB_RUNTIME"
