@@ -16,12 +16,18 @@ from urllib.parse import urlencode
 import typer
 
 from transport_matters import env_keys
-from transport_matters.channel import activate_channel, resolve_channel_spec
+from transport_matters.channel import ChannelSpec, activate_channel, resolve_channel_spec
 from transport_matters.storage_roots import default_storage_root
 from transport_matters.workspace import workspace_id
 
 from .launch_runtime import preflight_session_store_or_exit
-from .net import LOOPBACK_HOST, loopback_http_url, port_in_use, wait_for_port_ready
+from .net import (
+    LOOPBACK_HOST,
+    loopback_http_url,
+    port_in_use,
+    raise_port_in_use,
+    wait_for_port_ready,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
@@ -99,8 +105,7 @@ def prepare_desktop_launch(
     resolved_proxy_port, resolved_web_port = _resolve_backend_ports(
         proxy_port,
         web_port,
-        channel=channel_spec.id,
-        env=source_env,
+        channel_spec=channel_spec,
         allocate_port_pair_func=allocate_port_pair_func,
         port_in_use_func=port_in_use_func,
     )
@@ -320,12 +325,10 @@ def _resolve_backend_ports(
     proxy_port: int | None,
     web_port: int | None,
     *,
-    channel: str | None = None,
-    env: Mapping[str, str] | None = None,
+    channel_spec: ChannelSpec,
     allocate_port_pair_func: Callable[[], tuple[int, int]] | None = None,
     port_in_use_func: Callable[[int], bool] = port_in_use,
 ) -> tuple[int, int]:
-    channel_spec = resolve_channel_spec(channel, os.environ if env is None else env)
     if allocate_port_pair_func is None:
         default_proxy_port = channel_spec.proxy_port
         default_web_port = channel_spec.web_port
@@ -333,17 +336,12 @@ def _resolve_backend_ports(
         default_proxy_port, default_web_port = allocate_port_pair_func()
     resolved_proxy_port = proxy_port if proxy_port is not None else default_proxy_port
     resolved_web_port = web_port if web_port is not None else default_web_port
-    for label, port in (
-        ("proxy", resolved_proxy_port),
-        ("web UI", resolved_web_port),
+    for label, flag, port in (
+        ("proxy", "--proxy-port", resolved_proxy_port),
+        ("web UI", "--web-port", resolved_web_port),
     ):
         if port_in_use_func(port):
-            typer.secho(
-                f"error: {label} port {port} is already in use.",
-                fg=typer.colors.RED,
-                err=True,
-            )
-            raise typer.Exit(2)
+            raise_port_in_use(label, flag, port)
     return resolved_proxy_port, resolved_web_port
 
 

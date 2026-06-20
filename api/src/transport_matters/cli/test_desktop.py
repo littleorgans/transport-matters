@@ -266,7 +266,10 @@ def test_desktop_backend_env_and_command_carry_channel(tmp_path: Path) -> None:
     assert "8798" in plan.command
 
 
-def test_desktop_channel_default_port_in_use_fails_fast(tmp_path: Path) -> None:
+def test_desktop_channel_default_port_in_use_fails_fast(
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
     with pytest.raises(typer.Exit) as exc:
         prepare_desktop_launch(
             work_dir=tmp_path,
@@ -277,6 +280,9 @@ def test_desktop_channel_default_port_in_use_fails_fast(tmp_path: Path) -> None:
         )
 
     assert exc.value.exit_code == 2
+    stderr = capsys.readouterr().err
+    assert "proxy port 8797 is already in use" in stderr
+    assert "pick a different port with --proxy-port" in stderr
 
 
 def test_desktop_backend_server_hard_blocks_on_session_store_preflight(

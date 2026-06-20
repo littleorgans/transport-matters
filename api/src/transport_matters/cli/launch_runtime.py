@@ -20,6 +20,7 @@ from transport_matters.session_store_preflight import check_session_store, sessi
 from transport_matters.workspace import run_root
 
 from .identity import CLI_COMMAND, PRODUCT_LABEL
+from .net import raise_port_in_use
 from .ports import PortAllocationError
 
 if TYPE_CHECKING:
@@ -103,19 +104,6 @@ def reject_passthrough_without_client(
         raise typer.Exit(2)
 
 
-def _raise_port_in_use(label: str, flag: str, port: int) -> None:
-    typer.secho(
-        f"error: {label} port {port} is already in use.",
-        fg=typer.colors.RED,
-        err=True,
-    )
-    typer.echo(
-        f"Another process is already bound to this port. Free it, or pick a different port with {flag}.",
-        err=True,
-    )
-    raise typer.Exit(2)
-
-
 def resolve_working_dir(directory: Path | None) -> Path:
     """Resolve the effective working directory and validate it exists."""
     working_dir = directory if directory is not None else Path.cwd()
@@ -158,7 +146,7 @@ def resolve_launch_ports(
         assert proxy_port is not None
         proxy_pinned = proxy_user_supplied or channel_spec is not None
         if proxy_pinned and port_in_use(proxy_port):
-            _raise_port_in_use("proxy", "--proxy-port", proxy_port)
+            raise_port_in_use("proxy", "--proxy-port", proxy_port)
         return proxy_port, None, proxy_pinned, False
 
     if proxy_port is None or web_port is None:
@@ -185,7 +173,7 @@ def resolve_launch_ports(
         ("web UI", "--web-port", web_port, web_pinned),
     ):
         if pinned and port_in_use(port):
-            _raise_port_in_use(label, flag, port)
+            raise_port_in_use(label, flag, port)
 
     return proxy_port, web_port, proxy_pinned, web_pinned
 
