@@ -197,10 +197,7 @@ export const useCapturedRunStore = create<CapturedRunState>()(
           // terminate, the user is killing the pane, so a failed POST /terminate must not block the UI; the
           // backend idle policy reaps anything that slips by. The terminated run also leaves the
           // director roster (it is no longer a live run).
-          set((state) => {
-            const { [runKey]: _removed, ...runs } = state.runs;
-            return { runs };
-          });
+          set((state) => forgetRunRecord(state, runKey));
           void terminateRun(runId).catch(() => {});
           return;
         }
@@ -217,11 +214,7 @@ export const useCapturedRunStore = create<CapturedRunState>()(
       dropRun(runKey) {
         cancelledKeys.delete(runKey);
         minimizedPendingKeys.delete(runKey);
-        set((state) => {
-          if (!state.runs[runKey]) return {};
-          const { [runKey]: _removed, ...runs } = state.runs;
-          return { runs };
-        });
+        set((state) => forgetRunRecord(state, runKey));
       },
 
       setMinimized(runKey, minimized) {
@@ -273,6 +266,15 @@ export const useCapturedRunStore = create<CapturedRunState>()(
     },
   ),
 );
+
+function forgetRunRecord(
+  state: CapturedRunState,
+  runKey: CapturedRunKey,
+): Partial<Pick<CapturedRunState, "runs">> {
+  if (!state.runs[runKey]) return {};
+  const { [runKey]: _removed, ...runs } = state.runs;
+  return { runs };
+}
 
 export function resetCapturedRunStoreForTests(): void {
   pendingSpawns.clear();

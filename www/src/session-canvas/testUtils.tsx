@@ -1,7 +1,10 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render } from "@testing-library/react";
 import { type ApiTransport, resetApiTransport, setApiTransport } from "../api";
+import type { HarnessName } from "../types";
 import type { SessionSummary } from "./api/sessionClient";
+import { type CapturedRunKey, useCapturedRunStore } from "./model/capturedRunStore";
+import type { PaneContentRef } from "./model/paneRecords";
 
 export function renderWithQuery(ui: React.ReactElement) {
   const queryClient = new QueryClient({
@@ -11,11 +14,11 @@ export function renderWithQuery(ui: React.ReactElement) {
 }
 
 export function installMockTransport(
-  handler: (path: string) => Response | Promise<Response>,
+  handler: (path: string, init?: RequestInit) => Response | Promise<Response>,
 ): void {
   const transport: ApiTransport = {
-    request(path) {
-      return Promise.resolve(handler(path));
+    request(path, init) {
+      return Promise.resolve(init === undefined ? handler(path) : handler(path, init));
     },
   };
   setApiTransport(transport);
@@ -30,6 +33,23 @@ export function jsonResponse(data: unknown, status = 200): Response {
     headers: { "Content-Type": "application/json" },
     status,
   });
+}
+
+export function makeCapturedRunRef(
+  runKey: CapturedRunKey = "claude:k1",
+  provider: HarnessName = "claude",
+): Extract<PaneContentRef, { kind: "captured-run" }> {
+  return { kind: "captured-run", owner: "local", provider, runKey };
+}
+
+export function rememberCapturedRun(
+  runKey: CapturedRunKey = "claude:k1",
+  runId = "run-1",
+  provider: HarnessName = "claude",
+): void {
+  useCapturedRunStore.setState((state) => ({
+    runs: { ...state.runs, [runKey]: { provider, runId } },
+  }));
 }
 
 export function makeSessionSummary(patch: Partial<SessionSummary> = {}): SessionSummary {

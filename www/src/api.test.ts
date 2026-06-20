@@ -5,6 +5,7 @@ import {
   fetchMeta,
   fetchRuntimeTemplates,
   fetchTurnContent,
+  getRun,
   listRuns,
   resetApiTransport,
   setApiTransport,
@@ -277,5 +278,39 @@ describe("listRuns", () => {
     stubFetch({ detail: "boom" }, 500);
 
     await expect(listRuns()).rejects.toThrow("Failed to list captured runs: 500");
+  });
+});
+
+describe("getRun", () => {
+  afterEach(() => {
+    resetApiTransport();
+    vi.unstubAllGlobals();
+  });
+
+  it("fetches one managed run via GET /v1/runs/{id}", async () => {
+    const run = {
+      runId: "run/id 1",
+      workspaceId: "workspace/hash",
+      sessionId: "session-1",
+      harness: "claude",
+      state: "RUNNING",
+      createdAt: "2026-06-09T00:00:00+00:00",
+    };
+    const fetchMock = stubFetch({ run });
+
+    await expect(getRun("run/id 1")).resolves.toEqual(run);
+    expect(fetchMock).toHaveBeenCalledWith("/v1/runs/run%2Fid%201", { signal: undefined });
+  });
+
+  it("returns null on a missing managed run", async () => {
+    stubFetch({ detail: "missing" }, 404);
+
+    await expect(getRun("missing")).resolves.toBeNull();
+  });
+
+  it("throws on a non-OK lookup response", async () => {
+    stubFetch({ detail: "boom" }, 500);
+
+    await expect(getRun("run-1")).rejects.toThrow("Failed to get captured run: 500");
   });
 });
