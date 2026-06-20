@@ -31,6 +31,7 @@ _ROOT_HELP = dedent(f"""\
   claude    Run proxy + Claude Code together (one command, one session)
   codex     Run proxy + Codex together (ChatGPT transport path)
   desktop   Open the desktop canvas and local backend
+  channel   List, prepare, and promote channels
   list      List live Transport Matters instances
       doctor    Diagnose the local environment
       paths     Show storage and package locations
@@ -44,9 +45,10 @@ _ROOT_HELP = dedent(f"""\
 
   Environment
       TRANSPORT_MATTERS_DATABASE_URL     Postgres session store (postgresql://USER:PASS@HOST:PORT/DB)
+      TRANSPORT_MATTERS_CHANNEL          active channel (default stable)
       TRANSPORT_MATTERS_HOME             config/data root for settings.toml (default ~/.transport-matters)
-      TRANSPORT_MATTERS_PROXY_PORT       pin proxy port (default: kernel-allocated)
-      TRANSPORT_MATTERS_WEB_PORT         pin web UI port (default: kernel-allocated)
+      TRANSPORT_MATTERS_PROXY_PORT       pin proxy port (default: active channel port)
+      TRANSPORT_MATTERS_WEB_PORT         pin web UI port (default: active channel port)
       TRANSPORT_MATTERS_STORAGE_DIR      addon/paths/doctor data dir; launches use per-run storage
       TRANSPORT_MATTERS_AGENT_HOME_DIR   managed agent home for config/transcripts (default: native)
       TRANSPORT_MATTERS_UPSTREAM_URL     upstream API (default https://api.anthropic.com)

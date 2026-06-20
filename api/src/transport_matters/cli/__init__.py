@@ -49,6 +49,7 @@ from transport_matters.supervisor import SIGNAL_EXIT, ProcessSupervisor
 from transport_matters.workspace import run_root, workspace_id, workspace_root
 
 from .banner import print_banner, print_client_banner
+from .channel_cmd import channel_app
 from .codex_cmd import run_codex
 from .db_cmd import db_app
 from .desktop_cmd import DESKTOP_BACKEND_COMMAND, run_desktop_backend_server, run_desktop_launch
@@ -117,6 +118,7 @@ main = typer.Typer(
     context_settings={"help_option_names": ["-h", "--help"]},
 )
 main.add_typer(db_app, name="db")
+main.add_typer(channel_app, name="channel")
 
 
 def _split_passthrough(ctx: typer.Context) -> list[str]:

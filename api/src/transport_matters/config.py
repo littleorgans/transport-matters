@@ -196,7 +196,7 @@ def load_toml_settings(path: Path) -> TomlSettings:
 def resolve_database_url(settings: Settings) -> str:
     resolved = settings.database_url or settings.database.url
     if resolved:
-        return _with_channel_database_name(
+        return database_url_with_database_name(
             resolved, resolve_channel_spec(settings.channel).database_name
         )
     raise MissingDatabaseConfigError(DATABASE_URL_GUIDANCE)
@@ -219,7 +219,8 @@ def get_settings() -> Settings:
     return Settings.load()
 
 
-def _with_channel_database_name(database_url: str, database_name: str) -> str:
+def database_url_with_database_name(database_url: str, database_name: str) -> str:
+    """Return ``database_url`` with only its database path replaced."""
     parts = urlsplit(database_url)
     if not parts.scheme:
         return database_url

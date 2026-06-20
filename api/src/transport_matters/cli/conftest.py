@@ -8,15 +8,22 @@ Plain helper functions live in ``_helpers.py`` so this file stays
 focused on pytest fixtures and hooks (per the pytest convention).
 """
 
+from __future__ import annotations
+
+import os
 import socket
+from pathlib import Path
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
+from uuid import uuid4
 
 import pytest
 
+from transport_matters.channel import ChannelSpec
+from transport_matters.session.testing import TestDb, database_url_for
+
 if TYPE_CHECKING:
-    from collections.abc import Iterator
-    from pathlib import Path
+    from collections.abc import Callable, Iterator
 
 
 @pytest.fixture(autouse=True)
@@ -62,6 +69,56 @@ def recently_closed_port() -> Iterator[int]:
             conn, _addr = listener.accept()
             conn.close()
     yield port
+
+
+@pytest.fixture
+def temporary_channel_database() -> Iterator[TestDb]:
+    from transport_matters import config
+
+    admin_url = config.resolve_test_database_url(config.Settings.load())
+    database_name = f"tm_channel_{os.getpid()}_{uuid4().hex}"
+    test_db = TestDb(admin_url, database_url_for(admin_url, database_name), database_name)
+    try:
+        yield test_db
+    finally:
+        test_db.drop()
+
+
+@pytest.fixture
+def channel_spec_factory() -> Callable[[str], ChannelSpec]:
+    def factory(database_name: str) -> ChannelSpec:
+        return ChannelSpec(
+            id="tmp",
+            label="Temporary",
+            home=Path.home() / ".transport-matters-tmp",
+            database_name=database_name,
+            proxy_port=18987,
+            web_port=18988,
+            electron_app_name="Transport Matters Temporary",
+            electron_app_id="io.helioy.transport-matters.temporary",
+            electron_user_data=None,
+            dock_icon="default",
+            badge=None,
+        )
+
+    return factory
+
+
+@pytest.fixture
+def patch_channel_specs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> Callable[..., None]:
+    def patch(*specs: ChannelSpec) -> None:
+        import transport_matters.channel as channel_module
+
+        monkeypatch.setattr(channel_module, "_channel_specs", lambda: tuple(specs))
+        monkeypatch.setattr(
+            channel_module,
+            "_channel_specs_by_id",
+            lambda: {spec.id: spec for spec in specs},
+        )
+
+    return patch
 
 
 @pytest.fixture
