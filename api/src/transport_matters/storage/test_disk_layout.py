@@ -4,7 +4,9 @@ from pathlib import Path
 from transport_matters.storage.disk_layout import DiskStorageLayout
 
 
-def test_default_root_uses_transport_matters_storage_root() -> None:
+def test_default_root_uses_transport_matters_storage_root(
+    clear_channel_storage_env: None,
+) -> None:
     layout = DiskStorageLayout()
 
     assert layout.root == Path.home() / ".transport-matters"

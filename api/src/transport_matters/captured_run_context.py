@@ -61,6 +61,7 @@ def build_captured_run_context(
     env: Mapping[str, str],
     now: datetime | None,
     write: bool,
+    use_channel_defaults: bool,
 ) -> CapturedRunContext:
     """Resolve launch state and build the provider specific invocation factory."""
     from transport_matters.cli.launch_profile import HARNESSES, prepare_managed_session
@@ -90,6 +91,7 @@ def build_captured_run_context(
         allocate_port_pair=allocate_port_pair,
         validate_after_client_resolution=validate_after_client_resolution,
         web_required=request.web_runtime == WEB_RUNTIME_EMBEDDED,
+        use_channel_defaults=use_channel_defaults,
     )
     stack = ExitStack()
     runtime_home_dir = None

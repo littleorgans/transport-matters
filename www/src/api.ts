@@ -332,10 +332,19 @@ export async function fetchPausedFlowDetail(flowId: string): Promise<PausedFlow>
 // ── Meta endpoint ─────────────────────────────────────────────────
 
 export interface Meta {
+  channel: string;
+  channelBadge: ChannelBadgeMeta | null;
+  channelLabel: string;
   cwd: string;
   harnesses: HarnessDescriptor[];
   workspaceId: string;
   runId?: string | null;
+}
+
+export interface ChannelBadgeMeta {
+  text: string;
+  color: "amber";
+  hex: string;
 }
 
 /**
@@ -351,12 +360,18 @@ export interface Meta {
 export async function fetchMeta(runId?: string): Promise<Meta> {
   const path = runId === undefined ? "/api/meta" : `/v1/runs/${encodeURIComponent(runId)}/meta`;
   const raw = await requestJson<{
+    channel: string;
+    channel_badge: ChannelBadgeMeta | null;
+    channel_label: string;
     cwd: string;
     harnesses: HarnessDescriptor[];
     workspace_id: string;
     run_id: string | null;
   }>(path, undefined, "Failed to fetch meta");
   return {
+    channel: raw.channel,
+    channelBadge: raw.channel_badge,
+    channelLabel: raw.channel_label,
     cwd: raw.cwd,
     harnesses: raw.harnesses,
     workspaceId: raw.workspace_id,

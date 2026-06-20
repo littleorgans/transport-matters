@@ -9,7 +9,7 @@ from unittest.mock import MagicMock
 import pytest
 from typer.testing import CliRunner
 
-from transport_matters.cli import BindFailure, main, workspace_root
+from transport_matters.cli import main, workspace_root
 from transport_matters.cli.codex_cmd import _reset_codex_ca_certificate_cache_for_tests
 from transport_matters.cli.trust import (
     ConfiguredCACertificateMissingError,
@@ -18,7 +18,7 @@ from transport_matters.cli.trust import (
     TrustBundleWriteError,
 )
 
-from ._helpers import _patch_allocate_pairs, _which_by_name
+from ._helpers import _which_by_name
 
 runner = CliRunner()
 
@@ -313,53 +313,6 @@ def test_codex_writes_workspace_manifest_visible_to_managed_child(
     assert raw["run_id"] == kwargs["mitmdump_env"]["TRANSPORT_MATTERS_RUN_ID"]
     assert raw["run_id"] == client_env["TRANSPORT_MATTERS_RUN_ID"]
     assert client_env["TRANSPORT_MATTERS_STORAGE_DIR"] == str(expected_storage)
-
-
-def test_codex_retries_after_bind_failure_then_succeeds(
-    tmp_storage: Path,
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    spy_run_client_children: MagicMock,
-) -> None:
-    monkeypatch.setattr(
-        "transport_matters.cli.shutil.which",
-        _which_by_name({"mitmdump": "/bin/mitmdump", "codex": "/bin/codex"}),
-    )
-    monkeypatch.setattr("transport_matters.cli.port_in_use", lambda _: False)
-    bundle_path = tmp_path / "ca.pem"
-    bundle_path.write_text("bundle", encoding="utf-8")
-    monkeypatch.setattr(
-        "transport_matters.cli.resolve_codex_ca_certificate",
-        lambda *, env, bundle_dir: bundle_path,
-    )
-    drawn = _patch_allocate_pairs(monkeypatch, [(54321, 54322), (60001, 60002)])
-    log_path = tmp_path / "mitmdump.log"
-
-    def _side_effect(**kwargs: Any) -> None:
-        if spy_run_client_children.call_count == 1:
-            raise BindFailure(
-                proxy_port=kwargs["proxy_port"],
-                web_port=kwargs["web_port"],
-                failing_ports=(),
-                log_path=log_path,
-            )
-
-    spy_run_client_children.side_effect = _side_effect
-
-    result = runner.invoke(main, ["codex"])
-    assert result.exit_code == 0, result.output
-    assert drawn == [(54321, 54322), (60001, 60002)]
-    assert spy_run_client_children.call_count == 2
-    first_kwargs = spy_run_client_children.call_args_list[0].kwargs
-    second_kwargs = spy_run_client_children.call_args_list[1].kwargs
-    assert first_kwargs["mitmdump_env"]["TRANSPORT_MATTERS_RUN_ID"]
-    assert (
-        second_kwargs["mitmdump_env"]["TRANSPORT_MATTERS_RUN_ID"]
-        == first_kwargs["mitmdump_env"]["TRANSPORT_MATTERS_RUN_ID"]
-    )
-    assert second_kwargs["proxy_port"] == 60001
-    assert second_kwargs["web_port"] == 60002
-    assert second_kwargs["client"].env["HTTP_PROXY"] == "http://127.0.0.1:60001"
 
 
 def test_codex_excludes_manicure_proxy_env_from_shell_commands(

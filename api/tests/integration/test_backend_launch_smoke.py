@@ -27,7 +27,7 @@ from pathlib import Path
 import pytest
 
 from transport_matters.config import MissingDatabaseConfigError
-from transport_matters.session.testing import TestDb
+from transport_matters.session.testing import TestDb, database_url_for
 
 
 def _free_port() -> int:
@@ -63,13 +63,59 @@ def migrated_db() -> Iterator[TestDb]:
         db.drop()
 
 
+@pytest.fixture
+def patched_channel_specs(tmp_path: Path, migrated_db: TestDb) -> Path:
+    patch_dir = tmp_path / "pythonpath"
+    patch_dir.mkdir()
+    (patch_dir / "sitecustomize.py").write_text(
+        """
+from pathlib import Path
+import os
+
+import transport_matters.channel as channel
+
+spec = channel.ChannelSpec(
+    id="stable",
+    label="Stable",
+    home=Path(os.environ["TRANSPORT_MATTERS_HOME"]),
+    database_name=os.environ["TM_TEST_CHANNEL_DATABASE_NAME"],
+    proxy_port=8787,
+    web_port=8788,
+    electron_app_name="Transport Matters",
+    electron_app_id="io.helioy.transport-matters",
+    electron_user_data=None,
+    dock_icon="default",
+    badge=None,
+)
+
+
+def _patched_channel_specs():
+    return (spec,)
+
+
+def _patched_channel_specs_by_id():
+    return {spec.id: spec}
+
+
+channel._channel_specs = _patched_channel_specs
+channel._channel_specs_by_id = _patched_channel_specs_by_id
+""",
+        encoding="utf-8",
+    )
+    return patch_dir
+
+
 def test_launched_backend_reads_db_from_home_not_per_run_storage(
-    tmp_path: Path, migrated_db: TestDb
+    tmp_path: Path, migrated_db: TestDb, patched_channel_specs: Path
 ) -> None:
     home = tmp_path / "home"
     home.mkdir()
+    configured_source_url = database_url_for(
+        migrated_db.admin_url,
+        f"{migrated_db.database_name}_source",
+    )
     (home / "settings.toml").write_text(
-        f'[database]\nurl = "{migrated_db.database_url}"\n', encoding="utf-8"
+        f'[database]\nurl = "{configured_source_url}"\n', encoding="utf-8"
     )
     per_run = tmp_path / "run-storage"
     per_run.mkdir()
@@ -80,6 +126,10 @@ def test_launched_backend_reads_db_from_home_not_per_run_storage(
         "TRANSPORT_MATTERS_HOME": str(home),
         "TRANSPORT_MATTERS_STORAGE_DIR": str(per_run),  # the per-run dir a launch injects
         "TRANSPORT_MATTERS_WEB_PORT": str(port),
+        "TM_TEST_CHANNEL_DATABASE_NAME": migrated_db.database_name,
+        "PYTHONPATH": os.pathsep.join(
+            [str(patched_channel_specs), os.environ.get("PYTHONPATH", "")]
+        ),
     }
     # Force resolution through HOME/settings.toml (the bug-#3 path), not an env override.
     env.pop("TRANSPORT_MATTERS_DATABASE_URL", None)

@@ -49,6 +49,20 @@ def port_in_use(port: int) -> bool:
         return sock.connect_ex(("127.0.0.1", port)) == 0
 
 
+def raise_port_in_use(label: str, flag: str, port: int) -> None:
+    """Emit the standard pinned-port error and exit."""
+    typer.secho(
+        f"error: {label} port {port} is already in use.",
+        fg=typer.colors.RED,
+        err=True,
+    )
+    typer.echo(
+        f"Another process is already bound to this port. Free it, or pick a different port with {flag}.",
+        err=True,
+    )
+    raise typer.Exit(2)
+
+
 def wait_for_port_ready(
     host: str, port: int, *, timeout: float = 5.0, interval: float = 0.1
 ) -> bool:

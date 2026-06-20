@@ -23,7 +23,13 @@ vi.mock("../../api", () => ({
   // BreakpointEditor pulls fetchMeta through useMeta to decide the
   // cwd it stamps on a SAVE AS OVERLAY draft. The mock must expose
   // it or the query throws when the editor mounts.
-  fetchMeta: vi.fn().mockResolvedValue({ cwd: "/tmp/test", workspaceId: "test/abc12345" }),
+  fetchMeta: vi.fn().mockResolvedValue({
+    channel: "stable",
+    channelBadge: null,
+    channelLabel: "Stable",
+    cwd: "/tmp/test",
+    workspaceId: "test/abc12345",
+  }),
 }));
 
 const mockIr: InternalRequest = {
@@ -642,7 +648,13 @@ describe("BreakpointEditor — SAVE AS OVERLAY in tab bar right slot", () => {
     // Seed meta directly so `handleSaveAsOverlay` stamps the fetched
     // cwd instead of the UNKNOWN_CWD cold-click fallback. Mirrors the
     // real app's main.tsx prefetch path.
-    qc.setQueryData(["meta"], { cwd: "/tmp/test", workspaceId: "test/abc12345" });
+    qc.setQueryData(["meta"], {
+      channel: "stable",
+      channelBadge: null,
+      channelLabel: "Stable",
+      cwd: "/tmp/test",
+      workspaceId: "test/abc12345",
+    });
 
     render(<BreakpointEditor pausedFlow={mockPausedFlow} onResolved={vi.fn()} />, { wrapper });
 

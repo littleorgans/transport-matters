@@ -23,6 +23,10 @@ A workspace is identified by the canonical target path, so two checkouts of one
 project share history. A run is one launched agent process. A turn is one
 outbound request and its response.
 
+Desktop launch can run `stable` and `preview` channels side by side. The channel
+id selects the home, Postgres database, ports, Electron identity, and in window
+badge from one package owned spec.
+
 The transcript side is owned by the launch facts. Managed launches record the
 native session id, transcript source descriptor, home directory, CLI, and
 whether the id was minted. The transcript tailer follows that exact source,

@@ -10,7 +10,11 @@ import {
   type LaunchedBackendProcess,
 } from "./backendProcess.js";
 import { waitForBackendHealth } from "./backendHealth.js";
-import { ENV } from "./env.js";
+import {
+  ENV,
+  resolveDesktopChannelSpec,
+  type DesktopChannelSpec,
+} from "./env.js";
 import {
   APP_NAME,
   DEFAULT_WEB_PORT,
@@ -22,14 +26,19 @@ import {
 const moduleDir = dirname(fileURLToPath(import.meta.url));
 
 const DEFAULT_PROXY_PORT = 8787;
+const PREVIEW_AMBER_ICON = join(moduleDir, "../assets/preview-amber.png");
 
 export interface MainWindowOptions {
+  icon?: string;
   preloadPath?: string;
   rendererUrl?: string;
+  title?: string;
 }
 
 export interface BackendStartupOptions extends BackendLaunchOptions {
+  icon?: string;
   preloadPath?: string;
+  title?: string;
 }
 
 export interface BackendStartupDependencies {
@@ -57,6 +66,27 @@ export interface AppWindowLifecycleSource extends AppReadySource {
   on(event: "activate" | "window-all-closed", listener: () => void): void;
 }
 
+export interface AppIdentitySource {
+  dock?: {
+    setIcon(icon: string): void;
+  };
+  setAppUserModelId(id: string): void;
+  setName(name: string): void;
+  setPath(name: "userData", path: string): void;
+}
+
+export interface AppliedChannelIdentity {
+  icon?: string;
+  title: string;
+}
+
+export interface AppLifecycleOptions {
+  channelSpec?: DesktopChannelSpec;
+  env?: NodeJS.ProcessEnv;
+  icon?: string;
+  title?: string;
+}
+
 export interface DesktopPackageSmokeOptions {
   appSource?: AppReadySource;
   createProbeWindow?: () => PreloadProbeWindow;
@@ -67,7 +97,9 @@ export interface DesktopPackageSmokeOptions {
 export interface HostedDesktopLifecycleOptions {
   appSource?: AppWindowLifecycleSource;
   createWindow?: (options: MainWindowOptions) => BrowserWindow;
+  icon?: string;
   routeUrl: string;
+  title?: string;
 }
 
 export function resolvePreloadPath(): string {
@@ -82,19 +114,41 @@ export function createMainWindow(
   options: MainWindowOptions = {},
 ): BrowserWindow {
   return createHostedWindow({
+    icon: options.icon,
     preloadPath: options.preloadPath ?? resolvePreloadPath(),
     rendererUrl: options.rendererUrl,
+    title: options.title,
   });
+}
+
+export function applyChannelIdentity(
+  appSource: AppIdentitySource,
+  spec: DesktopChannelSpec,
+): AppliedChannelIdentity {
+  appSource.setName(spec.electron.appName);
+  appSource.setAppUserModelId(spec.electron.appId);
+  if (spec.electron.userDataDir !== null) {
+    appSource.setPath(
+      "userData",
+      join(spec.home, spec.electron.userDataDir),
+    );
+  }
+  const icon = resolveChannelIcon(spec);
+  if (icon !== undefined) {
+    appSource.dock?.setIcon(icon);
+  }
+  return { icon, title: spec.electron.appName };
 }
 
 export function resolveBackendStartupOptions(
   env: NodeJS.ProcessEnv = process.env,
   cwd = process.cwd(),
+  spec: DesktopChannelSpec = resolveDesktopChannelSpec(env),
 ): BackendStartupOptions {
   return {
-    env: { ...env },
-    proxyPort: resolvePort(env[ENV.PROXY_PORT], DEFAULT_PROXY_PORT),
-    webPort: resolvePort(env[ENV.WEB_PORT], DEFAULT_WEB_PORT),
+    env: { ...env, [ENV.CHANNEL]: spec.id },
+    proxyPort: resolvePort(env[ENV.PROXY_PORT], spec.proxyPort),
+    webPort: resolvePort(env[ENV.WEB_PORT], spec.webPort),
     workspaceDir: cwd,
   };
 }
@@ -139,10 +193,14 @@ export async function startBackendAndCreateWindow(
     throw error;
   }
 
-  return createWindow({
-    preloadPath: options.preloadPath,
-    rendererUrl: rendererUrlForPort(options.webPort),
-  });
+  return createWindow(
+    buildMainWindowOptions({
+      icon: options.icon,
+      preloadPath: options.preloadPath,
+      rendererUrl: rendererUrlForPort(options.webPort),
+      title: options.title,
+    }),
+  );
 }
 
 export function bindBackendQuitCleanup(
@@ -162,10 +220,11 @@ export function bindHostedWindowLifecycle(
   appSource: AppWindowLifecycleSource,
   rendererUrl: string,
   createWindow: (options: MainWindowOptions) => BrowserWindow = createMainWindow,
+  windowOptions: Pick<MainWindowOptions, "icon" | "title"> = {},
 ): void {
   appSource.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {
-      createWindow({ rendererUrl });
+      createWindow({ ...windowOptions, rendererUrl });
     }
   });
 
@@ -185,22 +244,38 @@ export function showBackendStartupFailure(
   quitApp();
 }
 
-export function registerAppLifecycle(): void {
+export function registerAppLifecycle(options: AppLifecycleOptions = {}): void {
   let backend: LaunchedBackendProcess | null = null;
+  const env = options.env ?? process.env;
+  const channelSpec = options.channelSpec ?? resolveDesktopChannelSpec(env);
 
   bindBackendQuitCleanup(app, () => backend);
 
   void app.whenReady().then(() => {
-    const startupOptions = resolveBackendStartupOptions();
+    const startupOptions = resolveBackendStartupOptions(
+      env,
+      process.cwd(),
+      channelSpec,
+    );
+    startupOptions.icon = options.icon;
+    startupOptions.title = options.title;
     const rendererUrl = rendererUrlForPort(startupOptions.webPort);
     void startBackendAndCreateWindow(startupOptions, {
       launchBackend: (options) => {
         backend = launchBackendProcess(options);
         return backend;
       },
-    }).catch(showBackendStartupFailure);
+      }).catch(showBackendStartupFailure);
 
-    bindHostedWindowLifecycle(app, rendererUrl);
+    bindHostedWindowLifecycle(
+      app,
+      rendererUrl,
+      createMainWindow,
+      buildMainWindowOptions({
+        icon: options.icon,
+        title: options.title,
+      }),
+    );
   });
 }
 
@@ -211,9 +286,23 @@ export function registerHostedDesktopLifecycle(
   const createWindow = options.createWindow ?? createMainWindow;
 
   void appSource.whenReady().then(() => {
-    createWindow({ rendererUrl: options.routeUrl });
+    createWindow(
+      buildMainWindowOptions({
+        icon: options.icon,
+        rendererUrl: options.routeUrl,
+        title: options.title,
+      }),
+    );
   });
-  bindHostedWindowLifecycle(appSource, options.routeUrl, createWindow);
+  bindHostedWindowLifecycle(
+    appSource,
+    options.routeUrl,
+    createWindow,
+    buildMainWindowOptions({
+      icon: options.icon,
+      title: options.title,
+    }),
+  );
 }
 
 /**
@@ -335,6 +424,9 @@ export function registerDesktopPackageSmoke(
 export function registerDesktopLifecycleFromEnv(
   env: NodeJS.ProcessEnv = process.env,
 ): void {
+  const channelSpec = resolveDesktopChannelSpec(env);
+  const identity = applyChannelIdentity(app, channelSpec);
+
   if (env[ENV.DESKTOP_PACKAGE_SMOKE] === "1") {
     registerDesktopPackageSmoke({ env });
     return;
@@ -342,14 +434,46 @@ export function registerDesktopLifecycleFromEnv(
 
   const routeUrl = env[ENV.DESKTOP_ROUTE_URL];
   if (routeUrl !== undefined) {
-    registerHostedDesktopLifecycle({ routeUrl });
+    registerHostedDesktopLifecycle({
+      icon: identity.icon,
+      routeUrl,
+      title: identity.title,
+    });
     return;
   }
 
-  registerAppLifecycle();
+  registerAppLifecycle({
+    channelSpec,
+    env,
+    icon: identity.icon,
+    title: identity.title,
+  });
 }
 
 registerDesktopLifecycleFromEnv();
+
+function resolveChannelIcon(spec: DesktopChannelSpec): string | undefined {
+  return spec.electron.dockIcon === "preview-amber"
+    ? PREVIEW_AMBER_ICON
+    : undefined;
+}
+
+function buildMainWindowOptions(options: MainWindowOptions): MainWindowOptions {
+  const result: MainWindowOptions = {};
+  if (options.icon !== undefined) {
+    result.icon = options.icon;
+  }
+  if (options.preloadPath !== undefined) {
+    result.preloadPath = options.preloadPath;
+  }
+  if (options.rendererUrl !== undefined) {
+    result.rendererUrl = options.rendererUrl;
+  }
+  if (options.title !== undefined) {
+    result.title = options.title;
+  }
+  return result;
+}
 
 function resolvePort(value: string | undefined, fallback: number): number {
   if (value === undefined) {

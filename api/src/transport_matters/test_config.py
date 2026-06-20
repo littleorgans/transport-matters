@@ -28,6 +28,7 @@ def test_settings_use_transport_matters_env_prefix(
     monkeypatch.setenv("TRANSPORT_MATTERS_PROXY_PORT", "9900")
     monkeypatch.setenv("TRANSPORT_MATTERS_RUN_ID", "run-new")
     monkeypatch.setenv("TRANSPORT_MATTERS_CWD", str(tmp_path))
+    monkeypatch.setenv("TRANSPORT_MATTERS_CHANNEL", "preview")
     monkeypatch.setenv("TRANSPORT_MATTERS_DEBUG", "true")
 
     settings = get_settings()
@@ -37,6 +38,7 @@ def test_settings_use_transport_matters_env_prefix(
     assert settings.proxy_port == 9900
     assert settings.run_id == "run-new"
     assert settings.cwd == tmp_path
+    assert settings.channel == "preview"
     assert settings.debug is True
 
 
@@ -78,14 +80,22 @@ def test_shipped_trusted_hosts_default_is_loopback_only(
 
 
 def test_settings_default_storage_root_uses_transport_matters(
-    monkeypatch: pytest.MonkeyPatch,
+    clear_channel_storage_env: None,
 ) -> None:
-    monkeypatch.delenv("TRANSPORT_MATTERS_STORAGE_DIR", raising=False)
-    monkeypatch.delenv("TRANSPORT_MATTERS_HOME", raising=False)
-
     settings = get_settings()
 
     assert settings.storage_dir == Path.home() / ".transport-matters"
+
+
+def test_settings_preview_channel_relocates_default_storage_root(
+    monkeypatch: pytest.MonkeyPatch, clear_channel_storage_env: None
+) -> None:
+    monkeypatch.setenv("TRANSPORT_MATTERS_CHANNEL", "preview")
+
+    settings = get_settings()
+
+    assert settings.channel == "preview"
+    assert settings.storage_dir == Path.home() / ".transport-matters-preview"
 
 
 def test_transport_matters_home_relocates_storage_root(
@@ -211,7 +221,7 @@ def test_database_url_resolves_env_over_toml(
 
     settings = Settings.load_from(path)
 
-    assert resolve_database_url(settings) == "postgresql://env/db"
+    assert resolve_database_url(settings) == "postgresql://env/transport_matters"
     assert resolve_test_database_url(settings) == "postgresql://env/test"
 
 

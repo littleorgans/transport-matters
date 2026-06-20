@@ -23,13 +23,22 @@ WorkDirOption: TypeAlias = Annotated[
         resolve_path=True,
     ),
 ]
+ChannelOption: TypeAlias = Annotated[
+    str | None,
+    typer.Option(
+        "--channel",
+        envvar=env_keys.CHANNEL,
+        help="Transport Matters channel. Defaults to stable.",
+        show_default=False,
+    ),
+]
 ProxyPortOption: TypeAlias = Annotated[
     int | None,
     typer.Option(
         "--proxy-port",
         "-p",
         envvar=env_keys.PROXY_PORT,
-        help="Proxy listener port. Defaults to a kernel-allocated free port.",
+        help="Proxy listener port. Defaults to the active channel proxy port.",
         show_default=False,
         callback=validate_port_option,
     ),
@@ -40,7 +49,7 @@ WebPortOption: TypeAlias = Annotated[
         "--web-port",
         "-w",
         envvar=env_keys.WEB_PORT,
-        help="Embedded web UI port. Defaults to a kernel-allocated free port.",
+        help="Embedded web UI port. Defaults to the active channel web port.",
         show_default=False,
         callback=validate_port_option,
     ),

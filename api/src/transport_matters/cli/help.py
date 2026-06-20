@@ -31,6 +31,7 @@ _ROOT_HELP = dedent(f"""\
   claude    Run proxy + Claude Code together (one command, one session)
   codex     Run proxy + Codex together (ChatGPT transport path)
   desktop   Open the desktop canvas and local backend
+  channel   List, prepare, and promote channels
   list      List live Transport Matters instances
       doctor    Diagnose the local environment
       paths     Show storage and package locations
@@ -44,9 +45,10 @@ _ROOT_HELP = dedent(f"""\
 
   Environment
       TRANSPORT_MATTERS_DATABASE_URL     Postgres session store (postgresql://USER:PASS@HOST:PORT/DB)
+      TRANSPORT_MATTERS_CHANNEL          active channel (default stable)
       TRANSPORT_MATTERS_HOME             config/data root for settings.toml (default ~/.transport-matters)
-      TRANSPORT_MATTERS_PROXY_PORT       pin proxy port (default: kernel-allocated)
-      TRANSPORT_MATTERS_WEB_PORT         pin web UI port (default: kernel-allocated)
+      TRANSPORT_MATTERS_PROXY_PORT       pin proxy port (default: active channel port)
+      TRANSPORT_MATTERS_WEB_PORT         pin web UI port (default: active channel port)
       TRANSPORT_MATTERS_STORAGE_DIR      addon/paths/doctor data dir; launches use per-run storage
       TRANSPORT_MATTERS_AGENT_HOME_DIR   managed agent home for config/transcripts (default: native)
       TRANSPORT_MATTERS_UPSTREAM_URL     upstream API (default https://api.anthropic.com)
@@ -67,8 +69,9 @@ _CLAUDE_HELP = dedent(f"""\
 
     Options
           --work-dir PATH       Working dir for Claude Code (default: cwd)
-      -p, --proxy-port INT      Proxy listener port (default: kernel-allocated free port)
-      -w, --web-port INT        Web UI port (default: kernel-allocated free port)
+          --channel ID          Channel id (default: stable)
+      -p, --proxy-port INT      Proxy listener port (default: active channel port)
+      -w, --web-port INT        Web UI port (default: active channel port)
       -u, --upstream URL        Upstream provider URL (default https://api.anthropic.com)
       -d, --storage-dir PATH    Data directory (default ~/.transport-matters/)
           --agent-home-dir PATH       Claude Code home for config and transcripts
@@ -80,11 +83,9 @@ _CLAUDE_HELP = dedent(f"""\
       -h, --help                Show this message and exit
 
     Port allocation
-      With no `--proxy-port` / `--web-port` flags, Transport Matters asks the
-      kernel for two free TCP ports on localhost and uses those. This
-      lets two `{CLI_COMMAND} claude` sessions in different workspaces run
-      concurrently without colliding on the default 8787 / 8788. Any
-      port you pin explicitly is honoured as-is.
+      With no `--proxy-port` / `--web-port` flags, Transport Matters uses the
+      active channel's deterministic proxy and web ports. Any port you pin
+      explicitly is honoured as-is.
 
     System-prompt injection
       Unless you pass `--no-system-prompt`, Transport Matters prepends an
@@ -123,8 +124,9 @@ _CODEX_HELP = dedent(f"""\
 
     Options
           --work-dir PATH       Working dir for Codex (default: cwd)
-      -p, --proxy-port INT      Proxy listener port (default: kernel-allocated free port)
-      -w, --web-port INT        Web UI port (default: kernel-allocated free port)
+          --channel ID          Channel id (default: stable)
+      -p, --proxy-port INT      Proxy listener port (default: active channel port)
+      -w, --web-port INT        Web UI port (default: active channel port)
       -d, --storage-dir PATH    Data directory (default ~/.transport-matters/)
           --agent-home-dir PATH       Codex home for config and transcripts
           --codex-bin PATH      Path to Codex (default: `codex` on PATH)
@@ -169,7 +171,8 @@ _DESKTOP_HELP = dedent(f"""\
 
     Options
           --work-dir PATH        Initial workspace hint for the canvas (default: cwd)
-      -w, --web-port INT         Web UI port (default: kernel-allocated free port)
+          --channel ID           Channel id (default: stable)
+      -w, --web-port INT         Web UI port (default: active channel port)
       -d, --storage-dir PATH     Data directory (default ~/.transport-matters/)
       -h, --help                 Show this message and exit
 

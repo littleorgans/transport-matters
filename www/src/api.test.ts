@@ -103,6 +103,9 @@ describe("fetchMeta", () => {
       },
     ];
     const fetchMock = stubFetch({
+      channel: "preview",
+      channel_badge: { color: "amber", hex: "#f59e0b", text: "PREVIEW" },
+      channel_label: "Preview",
       cwd: "/tmp/workspace",
       harnesses,
       run_id: "run-123",
@@ -110,6 +113,9 @@ describe("fetchMeta", () => {
     });
 
     await expect(fetchMeta()).resolves.toEqual({
+      channel: "preview",
+      channelBadge: { color: "amber", hex: "#f59e0b", text: "PREVIEW" },
+      channelLabel: "Preview",
       cwd: "/tmp/workspace",
       harnesses,
       runId: "run-123",

@@ -6,7 +6,6 @@ from pathlib import Path
 
 from transport_matters.storage_roots import default_storage_root
 
-_DEFAULT_ROOT = default_storage_root()
 _INDEX_FILENAME = "index.jsonl"
 _INDEX_TMP_FILENAME = "index.jsonl.tmp"
 _SESSIONS_FILENAME = "sessions.json"
@@ -48,7 +47,7 @@ class DiskStorageLayout:
     """Path policy for disk backed storage."""
 
     def __init__(self, root: str | Path | None = None) -> None:
-        self.root = Path(root) if root else _DEFAULT_ROOT
+        self.root = Path(root) if root else _default_root()
 
     @property
     def index_path(self) -> Path:
@@ -172,3 +171,7 @@ class DiskStorageLayout:
 
     def short_id_from_dir_name(self, exchange_dir_name: str) -> str:
         return exchange_dir_name.rsplit("-", 1)[-1]
+
+
+def _default_root() -> Path:
+    return default_storage_root()

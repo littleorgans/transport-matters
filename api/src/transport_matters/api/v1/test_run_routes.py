@@ -318,6 +318,10 @@ def test_post_continuation_threads_lineage_context_and_idempotency(
     asyncio.run(_seed_continuation_parent(test_db.database_url))
     harness = ManagedRunHarness(tmp_path, monkeypatch)
     monkeypatch.setenv(env_keys.DATABASE_URL, test_db.database_url)
+    monkeypatch.setattr(
+        "transport_matters.main.resolve_database_url",
+        lambda _settings: test_db.database_url,
+    )
     client = _client(monkeypatch, tmp_path)
     body = {
         "harness": "claude",

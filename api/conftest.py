@@ -82,6 +82,13 @@ def _clear_settings_cache() -> None:
     get_settings.cache_clear()
 
 
+@pytest.fixture
+def clear_channel_storage_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Remove channel and storage root overrides for channel default assertions."""
+    for key in (env_keys.CHANNEL, env_keys.HOME, env_keys.STORAGE_DIR):
+        monkeypatch.delenv(key, raising=False)
+
+
 @pytest.fixture(autouse=True)
 def _trusted_test_hosts(
     _scrub_inherited_session_env: None, monkeypatch: pytest.MonkeyPatch

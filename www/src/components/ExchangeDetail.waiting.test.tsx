@@ -17,6 +17,9 @@ vi.mock("../api", () => ({
 vi.mock("../hooks/useMeta", () => ({
   useMeta: () => ({
     meta: {
+      channel: "stable",
+      channelBadge: null,
+      channelLabel: "Stable",
       cwd: "/Users/alphab/Dev/LLM/DEV/helioy/attention-matters",
       workspaceId: "helioy/attention-matters",
       runId: "run-123",

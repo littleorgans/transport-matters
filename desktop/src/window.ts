@@ -6,8 +6,10 @@ export const DEFAULT_WEB_PORT = 8788;
 export const DEFAULT_RENDERER_URL = rendererUrlForPort(DEFAULT_WEB_PORT);
 
 export interface HostedWindowOptions {
+  icon?: string;
   preloadPath: string;
   rendererUrl?: string;
+  title?: string;
 }
 
 export function rendererUrlForPort(webPort: number, route = "/canvas"): string {
@@ -16,13 +18,16 @@ export function rendererUrlForPort(webPort: number, route = "/canvas"): string {
 
 export function createWindowOptions(
   preloadPath: string,
+  title: string = APP_NAME,
+  icon?: string,
 ): BrowserWindowConstructorOptions {
   return {
     height: 900,
+    ...(icon !== undefined ? { icon } : {}),
     minHeight: 600,
     minWidth: 900,
     show: false,
-    title: APP_NAME,
+    title,
     // Hide the native title bar but keep the macOS traffic lights. The dark app
     // chrome flows to the top edge; the renderer recreates the bar's drag behavior
     // with a top strip (www WindowDragRegion). On Windows/Linux the equivalent
@@ -48,7 +53,9 @@ export function createHostedWindow(
     options.rendererUrl ?? DEFAULT_RENDERER_URL,
   );
 
-  const window = new BrowserWindow(createWindowOptions(options.preloadPath));
+  const window = new BrowserWindow(
+    createWindowOptions(options.preloadPath, options.title ?? APP_NAME, options.icon),
+  );
 
   registerHostedWindowPolicy(window, rendererUrl);
   window.once("ready-to-show", () => {

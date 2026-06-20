@@ -15,6 +15,12 @@ prompt**); anything the UI can do, the director must do programmatically. No UI-
 Full vision + the decision lens: `~/.mdx/projects/transport-matters-north-star.md`. Apply it
 to everything below.
 
+## Landed in the current branch
+
+- Side by side dogfooding channels: `stable` remains the daily driver, `preview`
+  runs the working tree with isolated home, DB, ports, and Electron identity. See
+  `docs/CHANNELS.md`.
+
 ## ★ Current focus — finish the ⌘K launcher
 
 The launcher is shipped end to end except two scope stubs: zero-chrome ⌘K command center,

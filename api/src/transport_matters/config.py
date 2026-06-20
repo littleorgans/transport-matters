@@ -5,10 +5,12 @@ from functools import lru_cache
 from importlib.resources import files
 from pathlib import Path
 from typing import Any, Literal
+from urllib.parse import quote, urlsplit, urlunsplit
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from transport_matters.channel import resolve_channel_spec
 from transport_matters.env_keys import ENV_PREFIX
 from transport_matters.storage_roots import default_storage_root
 
@@ -47,6 +49,10 @@ class TomlSettings(BaseModel):
     database: DatabaseSettings = Field(default_factory=DatabaseSettings)
 
 
+def _default_storage_dir(data: dict[str, Any]) -> Path:
+    return default_storage_root(str(data.get("channel", "stable")))
+
+
 class Settings(BaseSettings):
     """Runtime configuration.
 
@@ -65,6 +71,7 @@ class Settings(BaseSettings):
     app_name: str = "Transport Matters"
     debug: bool = False
 
+    channel: str = "stable"
     log_json: bool = False
 
     proxy_port: int = 8787
@@ -72,7 +79,7 @@ class Settings(BaseSettings):
     web_runtime: Literal["embedded", "external"] = "embedded"
     default_client_passthrough: tuple[str, ...] = ()
     upstream_url: str | None = None
-    storage_dir: Path = Field(default_factory=default_storage_root)
+    storage_dir: Path = Field(default_factory=_default_storage_dir)
     # Per-launch session boundary created by ``transport-matters claude``.
     # This is Transport Matters run identity, distinct from any provider
     # metadata session id inside captured requests. ``None`` for direct-uvicorn
@@ -189,7 +196,9 @@ def load_toml_settings(path: Path) -> TomlSettings:
 def resolve_database_url(settings: Settings) -> str:
     resolved = settings.database_url or settings.database.url
     if resolved:
-        return resolved
+        return database_url_with_database_name(
+            resolved, resolve_channel_spec(settings.channel).database_name
+        )
     raise MissingDatabaseConfigError(DATABASE_URL_GUIDANCE)
 
 
@@ -208,6 +217,27 @@ def resolve_test_database_url(settings: Settings) -> str:
 @lru_cache
 def get_settings() -> Settings:
     return Settings.load()
+
+
+def database_url_with_database_name(database_url: str, database_name: str) -> str:
+    """Return ``database_url`` with only its database path replaced."""
+    parts = urlsplit(database_url)
+    if not parts.scheme:
+        return database_url
+    quoted_database_name = quote(database_name)
+    if not parts.netloc and database_url.startswith(f"{parts.scheme}:///"):
+        query = f"?{parts.query}" if parts.query else ""
+        fragment = f"#{parts.fragment}" if parts.fragment else ""
+        return f"{parts.scheme}:///{quoted_database_name}{query}{fragment}"
+    return urlunsplit(
+        (
+            parts.scheme,
+            parts.netloc,
+            f"/{quoted_database_name}",
+            parts.query,
+            parts.fragment,
+        )
+    )
 
 
 __all__ = [

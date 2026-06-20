@@ -24,6 +24,7 @@ remain valid.
 
 from __future__ import annotations
 
+import os
 import shutil
 import sysconfig
 from importlib.resources import files
@@ -38,8 +39,9 @@ if TYPE_CHECKING:
 
     from transport_matters.captured_run import CapturedRunDependencies
 
-from transport_matters import __version__
+from transport_matters import __version__, env_keys
 from transport_matters.captured_run import default_claude_run_dependencies
+from transport_matters.channel import activate_channel
 from transport_matters.lock import WorkspaceLock, WorkspaceLocked
 from transport_matters.manifest import Manifest
 from transport_matters.manifest import write as manifest_write
@@ -47,6 +49,7 @@ from transport_matters.supervisor import SIGNAL_EXIT, ProcessSupervisor
 from transport_matters.workspace import run_root, workspace_id, workspace_root
 
 from .banner import print_banner, print_client_banner
+from .channel_cmd import channel_app
 from .codex_cmd import run_codex
 from .db_cmd import db_app
 from .desktop_cmd import DESKTOP_BACKEND_COMMAND, run_desktop_backend_server, run_desktop_launch
@@ -57,6 +60,7 @@ from .instances import list_instances as list_instances_impl
 from .launch_options import (
     CLAUDE_UPSTREAM_DEFAULT,
     AgentHomeDirOption,
+    ChannelOption,
     ClaudeBinOption,
     ClaudeUpstreamOption,
     CodexBinOption,
@@ -114,6 +118,7 @@ main = typer.Typer(
     context_settings={"help_option_names": ["-h", "--help"]},
 )
 main.add_typer(db_app, name="db")
+main.add_typer(channel_app, name="channel")
 
 
 def _split_passthrough(ctx: typer.Context) -> list[str]:
@@ -214,6 +219,20 @@ def _resolve_home_dir_option(home_dir: Path | None, *, create: bool) -> Path | N
     return resolved
 
 
+def _activate_channel_or_exit(channel: str | None) -> None:
+    try:
+        activate_channel(channel)
+    except (KeyError, ValueError) as exc:
+        requested = channel if channel is not None else os.environ.get(env_keys.CHANNEL, "stable")
+        typer.secho(
+            f"error: unknown channel {requested!r}.",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        typer.echo(f"Run `{CLI_COMMAND} channel list` to see available channels.", err=True)
+        raise typer.Exit(2) from exc
+
+
 @main.callback()
 def _root(
     _version: Annotated[
@@ -242,6 +261,7 @@ def _root(
 )
 def claude(
     ctx: typer.Context,
+    channel: ChannelOption = None,
     work_dir: WorkDirOption = None,
     proxy_port: ProxyPortOption = None,
     web_port: WebPortOption = None,
@@ -255,6 +275,7 @@ def claude(
     print_command: PrintCommandOption = False,
 ) -> None:
     """Start the Transport Matters workbench: proxy + Claude Code."""
+    _activate_channel_or_exit(channel)
     claude_passthrough = _split_passthrough(ctx)
     dependencies = _claude_run_dependencies()
     resolved_home_dir = _resolve_home_dir_option(
@@ -274,6 +295,7 @@ def claude(
         no_system_prompt=no_system_prompt,
         debug=debug,
         print_command=print_command,
+        channel=channel,
         require_addon=dependencies.require_addon,
         resolve_mitmdump=dependencies.resolve_mitmdump,
         which=dependencies.which,
@@ -297,6 +319,7 @@ def claude(
 )
 def codex(
     ctx: typer.Context,
+    channel: ChannelOption = None,
     work_dir: WorkDirOption = None,
     proxy_port: ProxyPortOption = None,
     web_port: WebPortOption = None,
@@ -309,6 +332,7 @@ def codex(
     print_command: PrintCommandOption = False,
 ) -> None:
     """Start the Transport Matters workbench: proxy + Codex."""
+    _activate_channel_or_exit(channel)
     codex_passthrough = _split_passthrough(ctx)
     dependencies = _claude_run_dependencies()
     resolved_home_dir = _resolve_home_dir_option(
@@ -327,6 +351,7 @@ def codex(
         debug=debug,
         force_http_fallback=force_http_fallback,
         print_command=print_command,
+        channel=channel,
         require_addon=dependencies.require_addon,
         require_force_http_fallback_addon=_require_force_http_fallback_addon,
         resolve_mitmdump=dependencies.resolve_mitmdump,
@@ -346,16 +371,18 @@ def codex(
     context_settings={"help_option_names": ["-h", "--help"]},
 )
 def desktop(
+    channel: ChannelOption = None,
     work_dir: WorkDirOption = None,
     web_port: WebPortOption = None,
     storage_dir: StorageDirOption = None,
 ) -> None:
     """Start the canvas desktop viewer and backend server."""
+    _activate_channel_or_exit(channel)
     run_desktop_launch(
+        channel=channel,
         work_dir=work_dir,
         web_port=web_port,
         storage_dir=storage_dir,
-        allocate_port_pair_func=allocate_port_pair,
     )
 
 
@@ -366,6 +393,7 @@ def desktop(
     context_settings={"help_option_names": ["-h", "--help"]},
 )
 def desktop_backend(
+    channel: ChannelOption = None,
     work_dir: WorkDirOption = None,
     proxy_port: ProxyPortOption = None,
     web_port: WebPortOption = None,
@@ -373,13 +401,14 @@ def desktop_backend(
     debug: DebugOption = False,
 ) -> None:
     """Run the internal desktop backend server."""
+    _activate_channel_or_exit(channel)
     run_desktop_backend_server(
+        channel=channel,
         work_dir=work_dir,
         proxy_port=proxy_port,
         web_port=web_port,
         storage_dir=storage_dir,
         debug=debug,
-        allocate_port_pair_func=allocate_port_pair,
     )
 
 

@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 
 from transport_matters import env_keys
 from transport_matters.capabilities import HARNESS_NAME_CLAUDE, HARNESS_NAME_CODEX
+from transport_matters.channel import resolve_channel_spec
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
@@ -134,6 +135,7 @@ def build_launch_env(
     locate resolve transcripts under the same managed home.
     """
     env = os.environ.copy()
+    env[env_keys.CHANNEL] = resolve_channel_spec().id
     env[env_keys.STORAGE_DIR] = str(storage_dir)
     if web_port is not None:
         env[env_keys.WEB_PORT] = str(web_port)

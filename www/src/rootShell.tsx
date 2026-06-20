@@ -1,4 +1,5 @@
 import { lazy, Suspense, useMemo } from "react";
+import { ChannelBadge } from "./components/ChannelBadge";
 import { useThemeTokens } from "./hooks/useThemeTokens";
 import { selectRootRoute } from "./session-canvas/route";
 
@@ -30,10 +31,13 @@ export function RootShell() {
   const route = useMemo(() => selectRootRoute(window.location.pathname), []);
   const RouteComponent = routeComponents[route];
   return (
-    <Suspense
-      fallback={<div className="min-h-screen bg-canvas text-txt">Loading Transport Matters</div>}
-    >
-      <RouteComponent />
-    </Suspense>
+    <>
+      <ChannelBadge />
+      <Suspense
+        fallback={<div className="min-h-screen bg-canvas text-txt">Loading Transport Matters</div>}
+      >
+        <RouteComponent />
+      </Suspense>
+    </>
   );
 }

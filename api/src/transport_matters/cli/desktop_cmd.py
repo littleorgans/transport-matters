@@ -16,11 +16,18 @@ from urllib.parse import urlencode
 import typer
 
 from transport_matters import env_keys
+from transport_matters.channel import ChannelSpec, activate_channel, resolve_channel_spec
 from transport_matters.storage_roots import default_storage_root
 from transport_matters.workspace import workspace_id
 
 from .launch_runtime import preflight_session_store_or_exit
-from .net import LOOPBACK_HOST, loopback_http_url, wait_for_port_ready
+from .net import (
+    LOOPBACK_HOST,
+    loopback_http_url,
+    port_in_use,
+    raise_port_in_use,
+    wait_for_port_ready,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
@@ -78,6 +85,7 @@ class DesktopBackendStartError(RuntimeError):
 
 def prepare_desktop_launch(
     *,
+    channel: str | None = None,
     route: RouteName = "canvas",
     work_dir: Path | None = None,
     proxy_port: int | None = None,
@@ -86,23 +94,29 @@ def prepare_desktop_launch(
     debug: bool = False,
     env: Mapping[str, str] | None = None,
     allocate_port_pair_func: Callable[[], tuple[int, int]] | None = None,
+    port_in_use_func: Callable[[int], bool] = port_in_use,
     launch_viewer: bool = True,
     resolve_electron_launch_func: Callable[[], ElectronLaunch] | None = None,
 ) -> DesktopLaunchPlan:
     """Resolve the backend server launch used by the desktop shell."""
+    source_env = os.environ if env is None else env
+    channel_spec = resolve_channel_spec(channel, source_env)
     normalized_route = _normalize_route(route)
     resolved_proxy_port, resolved_web_port = _resolve_backend_ports(
         proxy_port,
         web_port,
+        channel_spec=channel_spec,
         allocate_port_pair_func=allocate_port_pair_func,
+        port_in_use_func=port_in_use_func,
     )
     resolved_cwd = _resolve_work_dir(work_dir)
-    resolved_storage = _resolve_storage_dir(storage_dir)
+    resolved_storage = _resolve_storage_dir(storage_dir, channel=channel_spec.id, env=source_env)
     launch_env = _build_desktop_backend_env(
         cwd=resolved_cwd,
         storage_dir=resolved_storage,
         proxy_port=resolved_proxy_port,
         web_port=resolved_web_port,
+        channel=channel_spec.id,
         debug=debug,
         env=env,
     )
@@ -120,6 +134,7 @@ def prepare_desktop_launch(
             storage_dir=resolved_storage,
             proxy_port=resolved_proxy_port,
             web_port=resolved_web_port,
+            channel=channel_spec.id,
             debug=debug,
         ),
         electron_launch=electron_launch,
@@ -187,6 +202,7 @@ def spawn_detached_electron(launch: ElectronLaunch, event: dict[str, Any]) -> No
 
 def run_desktop_launch(
     *,
+    channel: str | None = None,
     route: RouteName = "canvas",
     work_dir: Path | None = None,
     proxy_port: int | None = None,
@@ -201,7 +217,9 @@ def run_desktop_launch(
     | None = None,
 ) -> None:
     """Run the desktop backend server and open the hosted Electron viewer."""
+    activate_channel(channel)
     plan = prepare_desktop_launch(
+        channel=channel,
         route=route,
         work_dir=work_dir,
         proxy_port=proxy_port,
@@ -229,6 +247,7 @@ def run_desktop_launch(
 
 def run_desktop_backend_server(
     *,
+    channel: str | None = None,
     work_dir: Path | None = None,
     proxy_port: int | None = None,
     web_port: int | None = None,
@@ -237,7 +256,9 @@ def run_desktop_backend_server(
     allocate_port_pair_func: Callable[[], tuple[int, int]] | None = None,
 ) -> None:
     """Run only the desktop backend server for the Electron owned child path."""
+    activate_channel(channel)
     plan = prepare_desktop_launch(
+        channel=channel,
         work_dir=work_dir,
         proxy_port=proxy_port,
         web_port=web_port,
@@ -304,19 +325,24 @@ def _resolve_backend_ports(
     proxy_port: int | None,
     web_port: int | None,
     *,
+    channel_spec: ChannelSpec,
     allocate_port_pair_func: Callable[[], tuple[int, int]] | None = None,
+    port_in_use_func: Callable[[int], bool] = port_in_use,
 ) -> tuple[int, int]:
-    if proxy_port is not None and web_port is not None:
-        return proxy_port, web_port
-    allocate = allocate_port_pair_func or _allocate_port_pair
-    allocated_proxy_port, allocated_web_port = allocate()
-    return proxy_port or allocated_proxy_port, web_port or allocated_web_port
-
-
-def _allocate_port_pair() -> tuple[int, int]:
-    from .ports import allocate_port_pair
-
-    return allocate_port_pair()
+    if allocate_port_pair_func is None:
+        default_proxy_port = channel_spec.proxy_port
+        default_web_port = channel_spec.web_port
+    else:
+        default_proxy_port, default_web_port = allocate_port_pair_func()
+    resolved_proxy_port = proxy_port if proxy_port is not None else default_proxy_port
+    resolved_web_port = web_port if web_port is not None else default_web_port
+    for label, flag, port in (
+        ("proxy", "--proxy-port", resolved_proxy_port),
+        ("web UI", "--web-port", resolved_web_port),
+    ):
+        if port_in_use_func(port):
+            raise_port_in_use(label, flag, port)
+    return resolved_proxy_port, resolved_web_port
 
 
 def _resolve_work_dir(work_dir: Path | None) -> Path:
@@ -330,9 +356,16 @@ def _resolve_work_dir(work_dir: Path | None) -> Path:
     return resolved
 
 
-def _resolve_storage_dir(storage_dir: Path | None) -> Path:
+def _resolve_storage_dir(
+    storage_dir: Path | None,
+    *,
+    channel: str | None = None,
+    env: Mapping[str, str] | None = None,
+) -> Path:
     return (
-        (storage_dir if storage_dir is not None else default_storage_root()).expanduser().resolve()
+        (storage_dir if storage_dir is not None else default_storage_root(channel, env=env))
+        .expanduser()
+        .resolve()
     )
 
 
@@ -342,6 +375,7 @@ def _build_desktop_backend_env(
     storage_dir: Path,
     proxy_port: int,
     web_port: int,
+    channel: str,
     debug: bool,
     env: Mapping[str, str] | None,
 ) -> dict[str, str]:
@@ -352,6 +386,7 @@ def _build_desktop_backend_env(
     backend_env[env_keys.PROXY_PORT] = str(proxy_port)
     backend_env[env_keys.STORAGE_DIR] = str(storage_dir)
     backend_env[env_keys.WEB_PORT] = str(web_port)
+    backend_env[env_keys.CHANNEL] = channel
     if debug:
         backend_env[DEBUG_ENV] = "1"
     return backend_env
@@ -363,6 +398,7 @@ def _build_desktop_backend_command(
     storage_dir: Path,
     proxy_port: int,
     web_port: int,
+    channel: str,
     debug: bool,
 ) -> tuple[str, ...]:
     command = [
@@ -376,6 +412,8 @@ def _build_desktop_backend_command(
         str(proxy_port),
         "--storage-dir",
         str(storage_dir),
+        "--channel",
+        channel,
     ]
     if debug:
         command.append("--debug")

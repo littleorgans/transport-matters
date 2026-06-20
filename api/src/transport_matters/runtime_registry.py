@@ -16,12 +16,12 @@ from transport_matters.runtime_templates import (
     RuntimeTemplateRef,
     RuntimeTemplateSummary,
 )
+from transport_matters.storage_roots import default_storage_root
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
 _AGENT_RUNTIMES_DIR = ".agent-runtimes"
-_TRANSPORT_MATTERS_DIR = ".transport-matters"
 _RUNTIMES_DIR = "runtimes"
 _CAPABILITIES_FILENAME = "capabilities.json"
 _RUNTIME_MANIFEST_FILENAME = "runtime.toml"
@@ -178,7 +178,7 @@ def _transport_matters_home(env: Mapping[str, str], home: Path) -> Path:
     override = env.get(env_keys.HOME)
     if override:
         return Path(override).expanduser()
-    return home / _TRANSPORT_MATTERS_DIR
+    return default_storage_root(env=env)
 
 
 def _validated_template_name(name: str) -> str:

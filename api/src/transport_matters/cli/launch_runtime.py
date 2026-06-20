@@ -14,11 +14,13 @@ from transport_matters.capabilities import (
     resolve_harness_binary,
     resolve_runnable_binary,
 )
+from transport_matters.channel import resolve_channel_spec
 from transport_matters.config import ensure_settings_scaffold, get_settings
 from transport_matters.session_store_preflight import check_session_store, session_store_setup_help
 from transport_matters.workspace import run_root
 
 from .identity import CLI_COMMAND, PRODUCT_LABEL
+from .net import raise_port_in_use
 from .ports import PortAllocationError
 
 if TYPE_CHECKING:
@@ -122,67 +124,58 @@ def resolve_launch_ports(
     port_in_use: Callable[[int], bool],
     allocate_port_pair: Callable[[], tuple[int, int]],
     web_required: bool = True,
+    use_channel_defaults: bool = True,
 ) -> tuple[int, int | None, bool, bool]:
     """Resolve the proxy and web ports, preserving which ones were pinned."""
     proxy_user_supplied = proxy_port is not None
     web_user_supplied = web_port is not None
+    channel_spec = resolve_channel_spec() if use_channel_defaults else None
 
     if not web_required:
         if web_port is not None:
             raise ValueError("capture-only launches must not include a web port")
         if proxy_port is None:
+            if channel_spec is None:
+                try:
+                    proxy_port, _unused_web = allocate_port_pair()
+                except PortAllocationError as exc:
+                    typer.secho(f"error: {exc}", fg=typer.colors.RED, err=True)
+                    raise typer.Exit(2) from exc
+            else:
+                proxy_port = channel_spec.proxy_port
+        assert proxy_port is not None
+        proxy_pinned = proxy_user_supplied or channel_spec is not None
+        if proxy_pinned and port_in_use(proxy_port):
+            raise_port_in_use("proxy", "--proxy-port", proxy_port)
+        return proxy_port, None, proxy_pinned, False
+
+    if proxy_port is None or web_port is None:
+        if channel_spec is None:
             try:
-                proxy_port, _unused_web = allocate_port_pair()
+                allocated_proxy, allocated_web = allocate_port_pair()
             except PortAllocationError as exc:
                 typer.secho(f"error: {exc}", fg=typer.colors.RED, err=True)
                 raise typer.Exit(2) from exc
-        assert proxy_port is not None
-        if proxy_user_supplied and port_in_use(proxy_port):
-            typer.secho(
-                f"error: proxy port {proxy_port} is already in use.",
-                fg=typer.colors.RED,
-                err=True,
-            )
-            typer.echo(
-                "Another process is already bound to this port. Either stop it, or pick "
-                f"a different port (omit --proxy-port to let {PRODUCT_LABEL} allocate one).",
-                err=True,
-            )
-            raise typer.Exit(2)
-        return proxy_port, None, proxy_user_supplied, False
-
-    if proxy_port is None or web_port is None:
-        try:
-            allocated_proxy, allocated_web = allocate_port_pair()
-        except PortAllocationError as exc:
-            typer.secho(f"error: {exc}", fg=typer.colors.RED, err=True)
-            raise typer.Exit(2) from exc
+        else:
+            allocated_proxy = channel_spec.proxy_port
+            allocated_web = channel_spec.web_port
         if proxy_port is None:
             proxy_port = allocated_proxy
         if web_port is None:
             web_port = allocated_web
     assert proxy_port is not None
     assert web_port is not None
+    proxy_pinned = proxy_user_supplied or channel_spec is not None
+    web_pinned = web_user_supplied or channel_spec is not None
 
     for label, flag, port, pinned in (
-        ("proxy", "--proxy-port", proxy_port, proxy_user_supplied),
-        ("web UI", "--web-port", web_port, web_user_supplied),
+        ("proxy", "--proxy-port", proxy_port, proxy_pinned),
+        ("web UI", "--web-port", web_port, web_pinned),
     ):
         if pinned and port_in_use(port):
-            typer.secho(
-                f"error: {label} port {port} is already in use.",
-                fg=typer.colors.RED,
-                err=True,
-            )
-            typer.echo(
-                "Another process is already bound to this port. Either stop it,\n"
-                f"or pick a different port (omit {flag} to let "
-                f"{PRODUCT_LABEL} allocate one).",
-                err=True,
-            )
-            raise typer.Exit(2)
+            raise_port_in_use(label, flag, port)
 
-    return proxy_port, web_port, proxy_user_supplied, web_user_supplied
+    return proxy_port, web_port, proxy_pinned, web_pinned
 
 
 def resolve_storage_dir(*, storage_dir: Path | None, working_dir: Path, run_id: str) -> Path:
@@ -270,6 +263,7 @@ def prepare_launch(
     allocate_port_pair: Callable[[], tuple[int, int]],
     validate_after_client_resolution: Callable[[], None] | None = None,
     web_required: bool = True,
+    use_channel_defaults: bool = True,
 ) -> LaunchPreparation:
     """Resolve the shared launch state in the legacy command order."""
     addon_traversable = require_addon()
@@ -296,6 +290,7 @@ def prepare_launch(
         port_in_use=port_in_use,
         allocate_port_pair=allocate_port_pair,
         web_required=web_required,
+        use_channel_defaults=use_channel_defaults,
     )
     run_id = new_run_id()
     resolved_storage = resolve_storage_dir(
