@@ -38,7 +38,7 @@ class ClaudeSeeder:
 
         config["hasCompletedOnboarding"] = True
         _ensure_claude_trust(config, str(working_dir))
-        home_io._write_atomic_json(target, config)
+        home_io.write_atomic_json(target, config)
         _ensure_claude_skip_dangerous_prompt(home_dir)
 
 
@@ -69,7 +69,7 @@ def apply_claude_proxy_env_settings(
     env[env_keys.RUN_ID] = run_id
     env[env_keys.AGENT_HOME_DIR] = str(runtime_home_dir)
     env[home_constants._NO_PROXY_ENV_KEY] = LOOPBACK_NO_PROXY
-    home_io._write_atomic_json(settings_path, settings)
+    home_io.write_atomic_json(settings_path, settings)
 
 
 def default_claude_home(env: Mapping[str, str]) -> Path:
@@ -115,4 +115,4 @@ def _ensure_claude_skip_dangerous_prompt(home_dir: Path) -> None:
     if settings.get(home_constants._CLAUDE_SKIP_DANGEROUS_KEY) is True:
         return
     settings[home_constants._CLAUDE_SKIP_DANGEROUS_KEY] = True
-    home_io._write_atomic_json(target, settings)
+    home_io.write_atomic_json(target, settings)

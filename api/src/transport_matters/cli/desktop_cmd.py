@@ -20,6 +20,12 @@ from transport_matters.channel import ChannelSpec, activate_channel, resolve_cha
 from transport_matters.storage_roots import default_storage_root
 from transport_matters.workspace import workspace_id
 
+from .desktop_runtime import (
+    DesktopRuntimeRecord,
+    desktop_log_path,
+    desktop_record_path,
+    write_desktop_record,
+)
 from .launch_runtime import preflight_session_store_or_exit
 from .net import (
     LOOPBACK_HOST,
@@ -243,6 +249,65 @@ def run_desktop_launch(
             _spawn_or_exit(spawn_electron, plan.electron_launch, plan.event)
 
     serve_backend(plan, on_backend_ready)
+
+
+def run_desktop_detached(
+    *,
+    channel: str | None = None,
+    route: RouteName = "canvas",
+    work_dir: Path | None = None,
+    proxy_port: int | None = None,
+    web_port: int | None = None,
+    storage_dir: Path | None = None,
+    debug: bool = False,
+    allocate_port_pair_func: Callable[[], tuple[int, int]] | None = None,
+    resolve_electron_launch_func: Callable[[], ElectronLaunch] | None = None,
+    spawn_electron_func: Callable[[ElectronLaunch, dict[str, Any]], None] | None = None,
+    popen_func: Callable[..., Any] | None = None,
+) -> None:
+    """Start the desktop backend detached, open the viewer, and return."""
+    channel_spec = activate_channel(channel)
+    plan = prepare_desktop_launch(
+        channel=channel_spec.id,
+        route=route,
+        work_dir=work_dir,
+        proxy_port=proxy_port,
+        web_port=web_port,
+        storage_dir=storage_dir,
+        debug=debug,
+        allocate_port_pair_func=allocate_port_pair_func,
+        launch_viewer=True,
+        resolve_electron_launch_func=resolve_electron_launch_func,
+    )
+    resolved_cwd = Path(plan.env[env_keys.CWD])
+    resolved_storage = Path(plan.event["storageDir"])
+    log_path = desktop_log_path(resolved_storage)
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    popen = popen_func or subprocess.Popen
+    with log_path.open("ab") as log_handle:
+        process = popen(
+            list(plan.command),
+            cwd=str(resolved_cwd),
+            env=plan.env,
+            stdin=subprocess.DEVNULL,
+            stdout=log_handle,
+            stderr=subprocess.STDOUT,
+            close_fds=True,
+            start_new_session=True,
+        )
+
+    record = DesktopRuntimeRecord(
+        channel=channel_spec.id,
+        pid=int(process.pid),
+        proxy_port=int(plan.env[env_keys.PROXY_PORT]),
+        web_port=plan.web_port,
+        log_path=str(log_path),
+    )
+    write_desktop_record(desktop_record_path(resolved_storage), record)
+
+    if plan.electron_launch is not None:
+        spawn_electron = spawn_electron_func or spawn_detached_electron
+        _spawn_or_exit(spawn_electron, plan.electron_launch, plan.event)
 
 
 def run_desktop_backend_server(
