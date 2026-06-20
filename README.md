@@ -64,9 +64,8 @@ For Codex, Transport Matters validates any user supplied CA bundle path or else 
 `transport-matters desktop` starts the local backend detached by default, waits
 until it accepts connections, then opens the Electron canvas. Use
 `--foreground` to stay attached, `transport-matters tail [channel]` to read
-logs, and `kill <pid>` from
-`transport-matters channel list` to stop a detached backend. Start Claude or
-Codex from captured panes inside the desktop UI.
+logs, and `transport-matters channel stop [channel]` to stop a detached
+backend. Start Claude or Codex from captured panes inside the desktop UI.
 
 Standalone `claude` and `codex` launch print:
 - the proxy URL

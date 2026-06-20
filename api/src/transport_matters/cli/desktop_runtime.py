@@ -6,9 +6,11 @@ import contextlib
 import errno
 import json
 import os
+import signal
+import time
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 from .home_io import write_atomic_json
 
@@ -33,6 +35,12 @@ class DesktopRuntimeRecord:
     started_at: str = field(
         default_factory=lambda: datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     )
+
+
+@dataclass(frozen=True, slots=True)
+class StopDesktopResult:
+    status: Literal["nothing", "stopped"]
+    pid: int | None = None
 
 
 def desktop_runtime_dir(storage_dir: Path) -> Path:
@@ -67,8 +75,7 @@ def read_live_desktop_record(
     if alive:
         return record
 
-    with contextlib.suppress(FileNotFoundError, PermissionError):
-        record_path.unlink()
+    _unlink_desktop_record(record_path, ignore_permission=True)
     return None
 
 
@@ -82,6 +89,68 @@ def is_pid_alive(pid: int) -> bool:
             return False
         raise
     return True
+
+
+def stop_desktop_record(
+    record_path: Path,
+    *,
+    timeout_s: float = 3.0,
+    poll_s: float = 0.1,
+    pid_alive: Callable[[int], bool] = is_pid_alive,
+    kill: Callable[[int, int], None] = os.kill,
+    sleep: Callable[[float], None] = time.sleep,
+) -> StopDesktopResult:
+    record = _read_desktop_record_for_stop(record_path)
+    if record is None:
+        return StopDesktopResult(status="nothing")
+
+    if not pid_alive(record.pid):
+        _unlink_desktop_record(record_path)
+        return StopDesktopResult(status="nothing")
+
+    try:
+        kill(record.pid, signal.SIGTERM)
+    except ProcessLookupError:
+        _unlink_desktop_record(record_path)
+        return StopDesktopResult(status="stopped", pid=record.pid)
+
+    remaining_s = max(timeout_s, 0.0)
+    interval_s = poll_s if poll_s > 0 else remaining_s
+    while remaining_s > 0:
+        if not pid_alive(record.pid):
+            _unlink_desktop_record(record_path)
+            return StopDesktopResult(status="stopped", pid=record.pid)
+        sleep_for_s = min(interval_s, remaining_s)
+        sleep(sleep_for_s)
+        remaining_s -= sleep_for_s
+
+    if not pid_alive(record.pid):
+        _unlink_desktop_record(record_path)
+        return StopDesktopResult(status="stopped", pid=record.pid)
+
+    with contextlib.suppress(ProcessLookupError):
+        kill(record.pid, signal.SIGKILL)
+    _unlink_desktop_record(record_path)
+    return StopDesktopResult(status="stopped", pid=record.pid)
+
+
+def _read_desktop_record_for_stop(record_path: Path) -> DesktopRuntimeRecord | None:
+    try:
+        payload = json.loads(record_path.read_text(encoding="utf-8"))
+        return _record_from_payload(payload)
+    except FileNotFoundError:
+        return None
+    except json.JSONDecodeError, TypeError, ValueError:
+        _unlink_desktop_record(record_path)
+        return None
+
+
+def _unlink_desktop_record(record_path: Path, *, ignore_permission: bool = False) -> None:
+    ignored_errors = (
+        (FileNotFoundError, PermissionError) if ignore_permission else (FileNotFoundError,)
+    )
+    with contextlib.suppress(*ignored_errors):
+        record_path.unlink()
 
 
 def _record_from_payload(payload: Any) -> DesktopRuntimeRecord:

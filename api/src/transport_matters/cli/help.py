@@ -31,7 +31,7 @@ _ROOT_HELP = dedent(f"""\
   claude    Run proxy + Claude Code together (one command, one session)
   codex     Run proxy + Codex together (ChatGPT transport path)
   desktop   Open the desktop canvas and local backend
-  channel   List, prepare, and promote channels
+  channel   List, prepare, stop, and promote channels
   tail      Print detached desktop backend logs
   list      List live Transport Matters instances
       doctor    Diagnose the local environment
@@ -168,8 +168,9 @@ _DESKTOP_HELP = dedent(f"""\
     Start the Transport Matters desktop canvas.
 
     Starts the local backend detached by default, waits until it accepts
-    connections, then opens the Electron canvas. Start Claude or Codex from
-    captured panes inside the desktop UI.
+    connections, then opens the Electron canvas. Use
+    `transport-matters channel stop [channel]` to stop a detached backend.
+    Start Claude or Codex from captured panes inside the desktop UI.
 
     Options
           --work-dir PATH        Initial workspace hint for the canvas (default: cwd)

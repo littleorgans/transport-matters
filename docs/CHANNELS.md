@@ -14,6 +14,7 @@ just channel-restart preview
 ```
 
 The recipe builds the web and desktop bundles from the working tree, runs
+`transport-matters channel stop preview`, runs
 `transport-matters channel ensure-db preview`, then launches
 `transport-matters desktop --channel preview`.
 
@@ -30,8 +31,7 @@ to keep the backend attached and stream logs in the terminal.
 Use `transport-matters channel list` to see channel ports and the PID for each
 live detached backend. Use `transport-matters tail [channel]` to read that
 channel's `desktop.log`; add `-f` to follow or `-n <lines>` to choose the
-history window. Stop an instance with `kill <PID>`. There is no separate stop
-command.
+history window. Stop an instance with `transport-matters channel stop [channel]`.
 
 Accepted edges:
 
@@ -64,6 +64,7 @@ ports, Electron identity, user data, and dock identity are separate.
 
 ```bash
 transport-matters channel list
+transport-matters channel stop preview
 transport-matters channel ensure-db stable
 transport-matters channel ensure-db preview
 ```
