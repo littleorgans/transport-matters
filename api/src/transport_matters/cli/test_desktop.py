@@ -25,6 +25,7 @@ from transport_matters.cli.desktop_cmd import (
     serve_desktop_backend,
 )
 from transport_matters.cli.desktop_runtime import desktop_record_path, read_live_desktop_record
+from transport_matters.cli.net import LOOPBACK_HOST
 
 from ._helpers import _plain
 
@@ -33,6 +34,14 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 runner = CliRunner()
+
+
+def _mark_backend_ready(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        desktop_cmd,
+        "wait_for_port_ready",
+        lambda *_args, **_kwargs: True,
+    )
 
 
 def test_desktop_help_lists_backend_shell_options() -> None:
@@ -398,6 +407,7 @@ def test_run_desktop_detached_activates_channel_before_prepare(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
+    _mark_backend_ready(monkeypatch)
     calls: list[str] = []
     electron = ElectronLaunch(argv=("/bin/electron",), cwd=tmp_path)
 
@@ -438,6 +448,7 @@ def test_run_desktop_detached_viewer_env_carries_activated_channel(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
+    _mark_backend_ready(monkeypatch)
     monkeypatch.delenv(env_keys.CHANNEL, raising=False)
     assert env_keys.CHANNEL not in os.environ
     electron = ElectronLaunch(argv=("/bin/electron",), cwd=tmp_path)
@@ -464,8 +475,10 @@ def test_run_desktop_detached_viewer_env_carries_activated_channel(
 
 
 def test_run_desktop_detached_popen_record_and_viewer(
+    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
+    _mark_backend_ready(monkeypatch)
     electron = ElectronLaunch(argv=("/bin/electron",), cwd=tmp_path)
     popen_calls: list[dict[str, Any]] = []
     spawned: list[tuple[ElectronLaunch, dict[str, Any]]] = []
@@ -510,9 +523,123 @@ def test_run_desktop_detached_popen_record_and_viewer(
     assert spawned[0][1]["storageDir"] == str(tmp_path / "storage")
 
 
-def test_run_desktop_detached_electron_failure_leaves_record(
+def test_run_desktop_detached_waits_for_backend_before_viewer(
+    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
+    events: list[str] = []
+    electron = ElectronLaunch(argv=("/bin/electron",), cwd=tmp_path)
+
+    def fake_popen(args: list[str], **kwargs: Any) -> SimpleNamespace:
+        events.append("popen")
+        return SimpleNamespace(pid=5432)
+
+    def fake_wait_for_port_ready(host: str, port: int, *, timeout: float) -> bool:
+        events.append("wait")
+        assert host == LOOPBACK_HOST
+        assert port == 9901
+        assert timeout == desktop_cmd._BACKEND_READY_TIMEOUT_S
+        return True
+
+    def fake_spawn(_launch: ElectronLaunch, _event: dict[str, Any]) -> None:
+        events.append("electron")
+
+    monkeypatch.setattr(desktop_cmd, "wait_for_port_ready", fake_wait_for_port_ready)
+
+    run_desktop_detached(
+        channel="preview",
+        work_dir=tmp_path,
+        proxy_port=9900,
+        web_port=9901,
+        storage_dir=tmp_path / "storage",
+        resolve_electron_launch_func=lambda: electron,
+        spawn_electron_func=fake_spawn,
+        popen_func=fake_popen,
+    )
+
+    assert events == ["popen", "wait", "electron"]
+
+
+def test_run_desktop_detached_timeout_does_not_spawn_viewer(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    spawned: list[ElectronLaunch] = []
+    process = SimpleNamespace(pid=5432, poll=lambda: None)
+    monkeypatch.setattr(
+        desktop_cmd,
+        "wait_for_port_ready",
+        lambda *_args, **_kwargs: False,
+    )
+
+    with pytest.raises(typer.Exit) as exc:
+        run_desktop_detached(
+            channel="preview",
+            work_dir=tmp_path,
+            proxy_port=9900,
+            web_port=9901,
+            storage_dir=tmp_path / "storage",
+            resolve_electron_launch_func=lambda: ElectronLaunch(
+                argv=("/bin/electron",), cwd=tmp_path
+            ),
+            spawn_electron_func=lambda launch, _event: spawned.append(launch),
+            popen_func=lambda *_args, **_kwargs: process,
+        )
+
+    assert exc.value.exit_code == 1
+    assert spawned == []
+    err = capsys.readouterr().err
+    assert "desktop backend did not become ready on http://127.0.0.1:9901" in err
+    assert "transport-matters tail preview" in err
+    assert str(tmp_path / "storage" / "runtime" / "desktop.log") in err
+    record = read_live_desktop_record(
+        desktop_record_path(tmp_path / "storage"), pid_alive=lambda pid: pid == 5432
+    )
+    assert record is not None
+
+
+def test_run_desktop_detached_timeout_reports_early_backend_exit(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    spawned: list[ElectronLaunch] = []
+    process = SimpleNamespace(pid=5432, poll=lambda: 42)
+    monkeypatch.setattr(
+        desktop_cmd,
+        "wait_for_port_ready",
+        lambda *_args, **_kwargs: False,
+    )
+
+    with pytest.raises(typer.Exit) as exc:
+        run_desktop_detached(
+            channel="preview",
+            work_dir=tmp_path,
+            proxy_port=9900,
+            web_port=9901,
+            storage_dir=tmp_path / "storage",
+            resolve_electron_launch_func=lambda: ElectronLaunch(
+                argv=("/bin/electron",), cwd=tmp_path
+            ),
+            spawn_electron_func=lambda launch, _event: spawned.append(launch),
+            popen_func=lambda *_args, **_kwargs: process,
+        )
+
+    assert exc.value.exit_code == 1
+    assert spawned == []
+    err = capsys.readouterr().err
+    assert "desktop backend exited before it became ready" in err
+    assert "exit code 42" in err
+    assert "transport-matters tail preview" in err
+
+
+def test_run_desktop_detached_electron_failure_leaves_record(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _mark_backend_ready(monkeypatch)
+
     def fail_spawn(_launch: ElectronLaunch, _event: dict[str, Any]) -> None:
         raise desktop_cmd.ElectronResolutionError("viewer failed")
 

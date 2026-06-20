@@ -265,7 +265,7 @@ def run_desktop_detached(
     spawn_electron_func: Callable[[ElectronLaunch, dict[str, Any]], None] | None = None,
     popen_func: Callable[..., Any] | None = None,
 ) -> None:
-    """Start the desktop backend detached, open the viewer, and return."""
+    """Start the detached backend, wait for readiness, open the viewer, and return."""
     channel_spec = activate_channel(channel)
     plan = prepare_desktop_launch(
         channel=channel_spec.id,
@@ -305,9 +305,46 @@ def run_desktop_detached(
     )
     write_desktop_record(desktop_record_path(resolved_storage), record)
 
+    _wait_for_detached_backend_or_exit(
+        process=process,
+        channel=channel_spec.id,
+        web_port=plan.web_port,
+        log_path=log_path,
+    )
+
     if plan.electron_launch is not None:
         spawn_electron = spawn_electron_func or spawn_detached_electron
         _spawn_or_exit(spawn_electron, plan.electron_launch, plan.event)
+
+
+def _wait_for_detached_backend_or_exit(
+    *,
+    process: Any,
+    channel: str,
+    web_port: int,
+    log_path: Path,
+) -> None:
+    if wait_for_port_ready(
+        LOOPBACK_HOST,
+        web_port,
+        timeout=_BACKEND_READY_TIMEOUT_S,
+    ):
+        return
+
+    exit_code = process.poll()
+    hint = f"Inspect logs with `transport-matters tail {channel}` or read {log_path}."
+    if exit_code is None:
+        msg = (
+            "desktop backend did not become ready on "
+            f"{loopback_http_url(web_port)} within {_BACKEND_READY_TIMEOUT_S:g}s. {hint}"
+        )
+    else:
+        msg = (
+            "desktop backend exited before it became ready on "
+            f"{loopback_http_url(web_port)} with exit code {exit_code}. {hint}"
+        )
+    typer.secho(f"error: {msg}", fg=typer.colors.RED, err=True)
+    raise typer.Exit(1)
 
 
 def run_desktop_backend_server(

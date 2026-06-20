@@ -23,9 +23,9 @@ name on that server.
 
 ## Running and managing instances
 
-`transport-matters desktop` launches detached by default, opens Electron, and
-returns immediately. Pass `--foreground` to keep the backend attached and stream
-logs in the terminal.
+`transport-matters desktop` launches detached by default, waits until the
+backend accepts connections, opens Electron, then returns. Pass `--foreground`
+to keep the backend attached and stream logs in the terminal.
 
 Use `transport-matters channel list` to see channel ports and the PID for each
 live detached backend. Use `transport-matters tail [channel]` to read that

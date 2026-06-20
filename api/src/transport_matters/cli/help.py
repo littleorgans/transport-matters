@@ -167,9 +167,9 @@ _CODEX_HELP = dedent(f"""\
 _DESKTOP_HELP = dedent(f"""\
     Start the Transport Matters desktop canvas.
 
-    Starts the local backend detached by default and opens the Electron canvas.
-    The command returns immediately. Start Claude or Codex from captured panes
-    inside the desktop UI.
+    Starts the local backend detached by default, waits until it accepts
+    connections, then opens the Electron canvas. Start Claude or Codex from
+    captured panes inside the desktop UI.
 
     Options
           --work-dir PATH        Initial workspace hint for the canvas (default: cwd)
