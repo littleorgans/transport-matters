@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import subprocess
 from types import SimpleNamespace
@@ -431,6 +432,35 @@ def test_run_desktop_detached_activates_channel_before_prepare(
     )
 
     assert calls == ["activate", "prepare", "electron"]
+
+
+def test_run_desktop_detached_viewer_env_carries_activated_channel(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.delenv(env_keys.CHANNEL, raising=False)
+    assert env_keys.CHANNEL not in os.environ
+    electron = ElectronLaunch(argv=("/bin/electron",), cwd=tmp_path)
+    viewer_calls: list[dict[str, Any]] = []
+
+    def fake_viewer_popen(args: list[str], **kwargs: Any) -> SimpleNamespace:
+        viewer_calls.append({"args": args, **kwargs})
+        return SimpleNamespace(pid=6543)
+
+    monkeypatch.setattr(subprocess, "Popen", fake_viewer_popen)
+
+    run_desktop_detached(
+        channel="preview",
+        work_dir=tmp_path,
+        proxy_port=9900,
+        web_port=9901,
+        storage_dir=tmp_path / "storage",
+        resolve_electron_launch_func=lambda: electron,
+        popen_func=lambda *_args, **_kwargs: SimpleNamespace(pid=5432),
+    )
+
+    assert len(viewer_calls) == 1
+    assert viewer_calls[0]["env"][env_keys.CHANNEL] == "preview"
 
 
 def test_run_desktop_detached_popen_record_and_viewer(
