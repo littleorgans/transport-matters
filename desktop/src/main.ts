@@ -111,6 +111,10 @@ export interface HostedDesktopLifecycleOptions {
 
 export type HostedBackendHealthProbe = (healthUrl: string) => Promise<boolean>;
 
+interface HostedWindowLifecycleOptions {
+  quitOnWindowAllClosed?: boolean;
+}
+
 export function resolvePreloadPath(): string {
   // CommonJS: sandboxed Electron preloads are evaluated as CommonJS, so the
   // build emits `preload.cjs` (from `src/preload.cts`) even though this package
@@ -230,6 +234,7 @@ export function bindHostedWindowLifecycle(
   rendererUrl: string,
   createWindow: (options: MainWindowOptions) => BrowserWindow = createMainWindow,
   windowOptions: Pick<MainWindowOptions, "icon" | "title"> = {},
+  lifecycleOptions: HostedWindowLifecycleOptions = {},
 ): void {
   appSource.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -238,7 +243,10 @@ export function bindHostedWindowLifecycle(
   });
 
   appSource.on("window-all-closed", () => {
-    if (process.platform !== "darwin") {
+    if (
+      lifecycleOptions.quitOnWindowAllClosed === true ||
+      process.platform !== "darwin"
+    ) {
       appSource.quit();
     }
   });
@@ -297,6 +305,7 @@ export function registerHostedDesktopLifecycle(
   const probeBackendHealth =
     options.probeBackendHealth ??
     ((targetHealthUrl: string) => isBackendHealthy(targetHealthUrl));
+  const quitHostedApp = appSource.quit.bind(appSource);
   const createWindowWithLiveness = (
     windowOptions: MainWindowOptions,
   ): BrowserWindow => {
@@ -306,6 +315,7 @@ export function registerHostedDesktopLifecycle(
         window,
         healthUrl,
         probeBackendHealth,
+        quitHostedApp,
       );
     }
     return window;
@@ -328,6 +338,7 @@ export function registerHostedDesktopLifecycle(
       icon: options.icon,
       title: options.title,
     }),
+    { quitOnWindowAllClosed: true },
   );
 }
 
@@ -335,6 +346,7 @@ function registerHostedBackendLivenessPoll(
   window: BrowserWindow,
   healthUrl: string,
   probeBackendHealth: HostedBackendHealthProbe,
+  quitHostedApp: () => void,
 ): void {
   let consecutiveFailures = 0;
   let hasClosed = false;
@@ -377,7 +389,7 @@ function registerHostedBackendLivenessPoll(
 
     consecutiveFailures = isHealthy ? 0 : consecutiveFailures + 1;
     if (consecutiveFailures >= HOSTED_BACKEND_FAILURE_LIMIT) {
-      window.close();
+      quitHostedApp();
       return;
     }
     scheduleNextProbe();

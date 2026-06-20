@@ -85,6 +85,18 @@ async function flushPromiseQueue(turns = 3): Promise<void> {
   }
 }
 
+function withProcessPlatform<T>(platform: NodeJS.Platform, run: () => T): T {
+  const descriptor = Object.getOwnPropertyDescriptor(process, "platform");
+  Object.defineProperty(process, "platform", { value: platform });
+  try {
+    return run();
+  } finally {
+    if (descriptor) {
+      Object.defineProperty(process, "platform", descriptor);
+    }
+  }
+}
+
 interface ProbeFixture {
   window: PreloadProbeWindow;
   handlers: Map<string, (...args: unknown[]) => void>;
@@ -138,7 +150,9 @@ function createHostedWindowFixture(): HostedWindowFixture {
 }
 
 interface RegisteredHostedLifecycleFixture extends HostedWindowFixture {
+  appHandlers: Map<string, () => void>;
   createWindow: Mock;
+  quit: Mock;
   probeBackendHealth: Mock;
 }
 
@@ -146,10 +160,13 @@ async function registerHostedLifecycleFixture(
   probeBackendHealth: Mock = vi.fn(async () => true),
 ): Promise<RegisteredHostedLifecycleFixture> {
   const fixture = createHostedWindowFixture();
+  const appHandlers = new Map<string, () => void>();
   const createWindow = vi.fn(() => fixture.window);
   const quit = vi.fn();
   const whenReady = vi.fn(async () => undefined);
-  const on = vi.fn();
+  const on = vi.fn((event: string, listener: () => void) => {
+    appHandlers.set(event, listener);
+  });
 
   const { registerHostedDesktopLifecycle } = await import("./main.js");
 
@@ -161,7 +178,7 @@ async function registerHostedLifecycleFixture(
   });
   await flushPromiseQueue();
 
-  return { ...fixture, createWindow, probeBackendHealth };
+  return { ...fixture, appHandlers, createWindow, probeBackendHealth, quit };
 }
 
 describe("desktop main process", () => {
@@ -431,6 +448,38 @@ describe("desktop main process", () => {
     expect(on).toHaveBeenCalledWith("window-all-closed", expect.any(Function));
   });
 
+  it("quits the hosted app when the only hosted window closes on darwin", async () => {
+    const fixture = await registerHostedLifecycleFixture();
+
+    withProcessPlatform("darwin", () => {
+      fixture.appHandlers.get("window-all-closed")?.();
+    });
+
+    expect(fixture.quit).toHaveBeenCalledOnce();
+  });
+
+  it("keeps the foreground window-all-closed default unchanged on darwin", async () => {
+    const appHandlers = new Map<string, () => void>();
+    const on = vi.fn((event: string, listener: () => void) => {
+      appHandlers.set(event, listener);
+    });
+    const quit = vi.fn();
+
+    const { bindHostedWindowLifecycle } = await import("./main.js");
+
+    bindHostedWindowLifecycle(
+      { on, quit, whenReady: vi.fn(async () => undefined) },
+      "http://127.0.0.1:9901/canvas",
+      vi.fn(),
+    );
+
+    withProcessPlatform("darwin", () => {
+      appHandlers.get("window-all-closed")?.();
+    });
+
+    expect(quit).not.toHaveBeenCalled();
+  });
+
   it("does not poll hosted backend liveness before the first successful load", async () => {
     vi.useFakeTimers();
     const probeBackendHealth = vi.fn(async () => true);
@@ -469,9 +518,10 @@ describe("desktop main process", () => {
 
     expect(probeBackendHealth).toHaveBeenCalledTimes(5);
     expect(fixture.close).not.toHaveBeenCalled();
+    expect(fixture.quit).not.toHaveBeenCalled();
   });
 
-  it("closes a hosted window after three consecutive failed liveness probes", async () => {
+  it("quits the hosted app after three consecutive failed liveness probes", async () => {
     vi.useFakeTimers();
     const probeBackendHealth = vi.fn(async () => false);
     const fixture = await registerHostedLifecycleFixture(probeBackendHealth);
@@ -482,7 +532,8 @@ describe("desktop main process", () => {
     await vi.advanceTimersByTimeAsync(1_000);
 
     expect(probeBackendHealth).toHaveBeenCalledTimes(3);
-    expect(fixture.close).toHaveBeenCalledOnce();
+    expect(fixture.quit).toHaveBeenCalledOnce();
+    expect(fixture.close).not.toHaveBeenCalled();
   });
 
   it("clears the hosted liveness timeout when the window closes", async () => {
@@ -497,6 +548,7 @@ describe("desktop main process", () => {
 
     expect(probeBackendHealth).toHaveBeenCalledOnce();
     expect(fixture.close).not.toHaveBeenCalled();
+    expect(fixture.quit).not.toHaveBeenCalled();
   });
 
   it("records package smoke readiness after the preload executes", async () => {
