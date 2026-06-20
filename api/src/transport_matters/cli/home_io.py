@@ -28,7 +28,7 @@ def _read_json_object_if_exists(path: Path) -> dict[str, Any]:
     return value
 
 
-def _write_atomic_json(path: Path, value: dict[str, Any]) -> None:
+def write_atomic_json(path: Path, value: dict[str, Any]) -> None:
     body = json.dumps(value, indent=2).encode("utf-8") + b"\n"
     _write_atomic_secret(path, body)
 

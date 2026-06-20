@@ -52,7 +52,12 @@ from .banner import print_banner, print_client_banner
 from .channel_cmd import channel_app
 from .codex_cmd import run_codex
 from .db_cmd import db_app
-from .desktop_cmd import DESKTOP_BACKEND_COMMAND, run_desktop_backend_server, run_desktop_launch
+from .desktop_cmd import (
+    DESKTOP_BACKEND_COMMAND,
+    run_desktop_backend_server,
+    run_desktop_detached,
+    run_desktop_launch,
+)
 from .diagnose import run_doctor
 from .help import PlainCommand, PlainGroup
 from .identity import CLI_COMMAND
@@ -81,6 +86,7 @@ from .ports import PortAllocationError, allocate_port_pair
 from .prompt import inject_system_prompt, user_supplied_system_prompt
 from .runner import BindFailure, run_children, run_client_with_retry
 from .start_cmd import run_start
+from .tail_cmd import run_tail
 from .trust import resolve_codex_ca_certificate
 
 __all__ = [
@@ -375,15 +381,47 @@ def desktop(
     work_dir: WorkDirOption = None,
     web_port: WebPortOption = None,
     storage_dir: StorageDirOption = None,
+    foreground: Annotated[
+        bool,
+        typer.Option(
+            "--foreground",
+            help="Run the desktop backend in the foreground and stream logs.",
+        ),
+    ] = False,
 ) -> None:
     """Start the canvas desktop viewer and backend server."""
     _activate_channel_or_exit(channel)
-    run_desktop_launch(
+    launcher = run_desktop_launch if foreground else run_desktop_detached
+    launcher(
         channel=channel,
         work_dir=work_dir,
         web_port=web_port,
         storage_dir=storage_dir,
     )
+
+
+@main.command(
+    cls=PlainCommand,
+    context_settings={"help_option_names": ["-h", "--help"]},
+)
+def tail(
+    channel: Annotated[
+        str | None,
+        typer.Argument(
+            help="Channel id to tail. Defaults to TRANSPORT_MATTERS_CHANNEL or stable.",
+        ),
+    ] = None,
+    follow: Annotated[
+        bool,
+        typer.Option("--follow", "-f", help="Continue printing appended log lines."),
+    ] = False,
+    lines: Annotated[
+        int,
+        typer.Option("--lines", "-n", min=0, help="Number of existing log lines to print."),
+    ] = 100,
+) -> None:
+    """Print detached desktop backend logs."""
+    run_tail(channel=channel, lines=lines, follow=follow)
 
 
 @main.command(

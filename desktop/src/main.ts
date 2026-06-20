@@ -9,7 +9,11 @@ import {
   type BackendLaunchOptions,
   type LaunchedBackendProcess,
 } from "./backendProcess.js";
-import { waitForBackendHealth } from "./backendHealth.js";
+import {
+  backendHealthUrl,
+  isBackendHealthy,
+  waitForBackendHealth,
+} from "./backendHealth.js";
 import {
   ENV,
   resolveDesktopChannelSpec,
@@ -26,6 +30,8 @@ import {
 const moduleDir = dirname(fileURLToPath(import.meta.url));
 
 const DEFAULT_PROXY_PORT = 8787;
+const HOSTED_BACKEND_FAILURE_LIMIT = 3;
+const HOSTED_BACKEND_POLL_GAP_MS = 1_000;
 const PREVIEW_AMBER_ICON = join(moduleDir, "../assets/preview-amber.png");
 
 export interface MainWindowOptions {
@@ -98,8 +104,15 @@ export interface HostedDesktopLifecycleOptions {
   appSource?: AppWindowLifecycleSource;
   createWindow?: (options: MainWindowOptions) => BrowserWindow;
   icon?: string;
+  probeBackendHealth?: HostedBackendHealthProbe;
   routeUrl: string;
   title?: string;
+}
+
+export type HostedBackendHealthProbe = (healthUrl: string) => Promise<boolean>;
+
+interface HostedWindowLifecycleOptions {
+  quitOnWindowAllClosed?: boolean;
 }
 
 export function resolvePreloadPath(): string {
@@ -221,6 +234,7 @@ export function bindHostedWindowLifecycle(
   rendererUrl: string,
   createWindow: (options: MainWindowOptions) => BrowserWindow = createMainWindow,
   windowOptions: Pick<MainWindowOptions, "icon" | "title"> = {},
+  lifecycleOptions: HostedWindowLifecycleOptions = {},
 ): void {
   appSource.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -229,7 +243,10 @@ export function bindHostedWindowLifecycle(
   });
 
   appSource.on("window-all-closed", () => {
-    if (process.platform !== "darwin") {
+    if (
+      lifecycleOptions.quitOnWindowAllClosed === true ||
+      process.platform !== "darwin"
+    ) {
       appSource.quit();
     }
   });
@@ -284,9 +301,28 @@ export function registerHostedDesktopLifecycle(
 ): void {
   const appSource = options.appSource ?? app;
   const createWindow = options.createWindow ?? createMainWindow;
+  const healthUrl = hostedRouteHealthUrl(options.routeUrl);
+  const probeBackendHealth =
+    options.probeBackendHealth ??
+    ((targetHealthUrl: string) => isBackendHealthy(targetHealthUrl));
+  const quitHostedApp = appSource.quit.bind(appSource);
+  const createWindowWithLiveness = (
+    windowOptions: MainWindowOptions,
+  ): BrowserWindow => {
+    const window = createWindow(windowOptions);
+    if (healthUrl !== null) {
+      registerHostedBackendLivenessPoll(
+        window,
+        healthUrl,
+        probeBackendHealth,
+        quitHostedApp,
+      );
+    }
+    return window;
+  };
 
   void appSource.whenReady().then(() => {
-    createWindow(
+    createWindowWithLiveness(
       buildMainWindowOptions({
         icon: options.icon,
         rendererUrl: options.routeUrl,
@@ -297,12 +333,80 @@ export function registerHostedDesktopLifecycle(
   bindHostedWindowLifecycle(
     appSource,
     options.routeUrl,
-    createWindow,
+    createWindowWithLiveness,
     buildMainWindowOptions({
       icon: options.icon,
       title: options.title,
     }),
+    { quitOnWindowAllClosed: true },
   );
+}
+
+function registerHostedBackendLivenessPoll(
+  window: BrowserWindow,
+  healthUrl: string,
+  probeBackendHealth: HostedBackendHealthProbe,
+  quitHostedApp: () => void,
+): void {
+  let consecutiveFailures = 0;
+  let hasClosed = false;
+  let hasLoaded = false;
+  let pendingTimeout: ReturnType<typeof setTimeout> | undefined;
+
+  const clearPendingTimeout = (): void => {
+    if (pendingTimeout !== undefined) {
+      clearTimeout(pendingTimeout);
+      pendingTimeout = undefined;
+    }
+  };
+
+  const scheduleNextProbe = (): void => {
+    if (hasClosed) {
+      return;
+    }
+    clearPendingTimeout();
+    pendingTimeout = setTimeout(() => {
+      pendingTimeout = undefined;
+      void runProbe();
+    }, HOSTED_BACKEND_POLL_GAP_MS);
+  };
+
+  const runProbe = async (): Promise<void> => {
+    if (hasClosed) {
+      return;
+    }
+
+    let isHealthy = false;
+    try {
+      isHealthy = await probeBackendHealth(healthUrl);
+    } catch {
+      isHealthy = false;
+    }
+
+    if (hasClosed) {
+      return;
+    }
+
+    consecutiveFailures = isHealthy ? 0 : consecutiveFailures + 1;
+    if (consecutiveFailures >= HOSTED_BACKEND_FAILURE_LIMIT) {
+      quitHostedApp();
+      return;
+    }
+    scheduleNextProbe();
+  };
+
+  window.webContents.on("did-finish-load", () => {
+    if (hasLoaded) {
+      return;
+    }
+    hasLoaded = true;
+    void runProbe();
+  });
+
+  window.on("closed", () => {
+    hasClosed = true;
+    clearPendingTimeout();
+  });
 }
 
 /**
@@ -451,6 +555,26 @@ export function registerDesktopLifecycleFromEnv(
 }
 
 registerDesktopLifecycleFromEnv();
+
+function hostedRouteHealthUrl(routeUrl: string): string | null {
+  let parsedRouteUrl: URL;
+  try {
+    parsedRouteUrl = new URL(routeUrl);
+  } catch {
+    return null;
+  }
+
+  if (parsedRouteUrl.port === "") {
+    return null;
+  }
+
+  const webPort = Number(parsedRouteUrl.port);
+  if (!Number.isInteger(webPort) || webPort <= 0 || webPort > 65_535) {
+    return null;
+  }
+
+  return backendHealthUrl(webPort);
+}
 
 function resolveChannelIcon(spec: DesktopChannelSpec): string | undefined {
   return spec.electron.dockIcon === "preview-amber"

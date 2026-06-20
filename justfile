@@ -71,11 +71,12 @@ install-local:
     transport-matters --version
 
 [no-exit-message]
-channel-restart channel="preview":
+channel-restart channel="preview" *desktop_args:
     cd "{{www_dir}}" && pnpm install && pnpm build
     cd "{{desktop_dir}}" && pnpm install && pnpm build && pnpm electron:install
+    uv run --project "{{api_dir}}" transport-matters channel stop {{channel}}
     uv run --project "{{api_dir}}" transport-matters channel ensure-db {{channel}}
-    TRANSPORT_MATTERS_CHANNEL={{channel}} uv run --project "{{api_dir}}" transport-matters desktop --channel {{channel}}
+    TRANSPORT_MATTERS_CHANNEL={{channel}} uv run --project "{{api_dir}}" transport-matters desktop --channel {{channel}} {{desktop_args}}
 
 [no-exit-message]
 tool-install-editable: install-local

@@ -460,7 +460,7 @@ export async function terminateRun(runId: string): Promise<void> {
 }
 
 /** Lifecycle of a managed captured run. Mirrors the backend `RunState` enum. */
-export type RunState = "RUNNING" | "TERMINATING" | "TERMINATED" | "EXITED" | "FAILED";
+export type RunState = "STARTING" | "RUNNING" | "TERMINATING" | "TERMINATED" | "EXITED" | "FAILED";
 export type RunEndReason = "explicit" | "idle-timeout" | "shutdown" | "deploy-restart";
 
 /**
@@ -483,6 +483,10 @@ export interface RunFilters {
   state?: RunState;
 }
 
+export interface RunLookupOptions {
+  signal?: AbortSignal;
+}
+
 /**
  * List managed runs via `GET /v1/runs`, optionally filtered by state.
  * Read-only: this never spawns a run. The director surface uses it to show live runs
@@ -498,4 +502,19 @@ export async function listRuns(filters?: RunFilters): Promise<RunView[]> {
     "Failed to list captured runs",
   );
   return response.items;
+}
+
+export async function getRun(
+  runId: string,
+  options: RunLookupOptions = {},
+): Promise<RunView | null> {
+  const response = await apiTransport.request(`/v1/runs/${encodeURIComponent(runId)}`, {
+    signal: options.signal,
+  });
+  if (response.status === 404) return null;
+  if (!response.ok) {
+    throw new Error(`Failed to get captured run: ${response.status}`);
+  }
+  const body = (await response.json()) as { run: RunView };
+  return body.run;
 }

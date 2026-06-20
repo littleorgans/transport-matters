@@ -31,7 +31,8 @@ _ROOT_HELP = dedent(f"""\
   claude    Run proxy + Claude Code together (one command, one session)
   codex     Run proxy + Codex together (ChatGPT transport path)
   desktop   Open the desktop canvas and local backend
-  channel   List, prepare, and promote channels
+  channel   List, prepare, stop, and promote channels
+  tail      Print detached desktop backend logs
   list      List live Transport Matters instances
       doctor    Diagnose the local environment
       paths     Show storage and package locations
@@ -166,20 +167,24 @@ _CODEX_HELP = dedent(f"""\
 _DESKTOP_HELP = dedent(f"""\
     Start the Transport Matters desktop canvas.
 
-    Starts the local backend and opens the Electron canvas. Start Claude or
-    Codex from captured panes inside the desktop UI.
+    Starts the local backend detached by default, waits until it accepts
+    connections, then opens the Electron canvas. Use
+    `transport-matters channel stop [channel]` to stop a detached backend.
+    Start Claude or Codex from captured panes inside the desktop UI.
 
     Options
           --work-dir PATH        Initial workspace hint for the canvas (default: cwd)
           --channel ID           Channel id (default: stable)
       -w, --web-port INT         Web UI port (default: active channel port)
       -d, --storage-dir PATH     Data directory (default ~/.transport-matters/)
+          --foreground           Keep backend in the foreground and stream logs
       -h, --help                 Show this message and exit
 
     Examples
       $ {CLI_COMMAND} desktop
       $ {CLI_COMMAND} desktop --work-dir ~/my-project
       $ {CLI_COMMAND} desktop --web-port 9001
+      $ {CLI_COMMAND} desktop --foreground
 """)
 
 _DOCTOR_HELP = dedent(f"""\
@@ -215,6 +220,23 @@ _PATHS_HELP = dedent(f"""\
       $ {CLI_COMMAND} paths --workspace ~/other-project
 """)
 
+_TAIL_HELP = dedent(f"""\
+    Print detached desktop backend logs.
+
+    Reads the channel scoped desktop.log written by detached desktop launches.
+    Without --follow, prints the last N lines and exits. With --follow, keeps
+    polling for appended lines until Ctrl C.
+
+    Options
+      -f, --follow             Continue printing appended log lines
+      -n, --lines INT          Number of existing log lines to print (default 100)
+      -h, --help               Show this message and exit
+
+    Examples
+      $ {CLI_COMMAND} tail preview
+      $ {CLI_COMMAND} tail -f preview
+""")
+
 _VERSION_HELP = dedent(f"""\
     Print the installed Transport Matters version and exit.
 
@@ -245,6 +267,7 @@ _SUBCOMMAND_HELP = {
     "claude": _CLAUDE_HELP,
     "codex": _CODEX_HELP,
     "desktop": _DESKTOP_HELP,
+    "tail": _TAIL_HELP,
     "list": _LIST_HELP,
     "doctor": _DOCTOR_HELP,
     "paths": _PATHS_HELP,

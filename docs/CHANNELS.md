@@ -14,12 +14,33 @@ just channel-restart preview
 ```
 
 The recipe builds the web and desktop bundles from the working tree, runs
+`transport-matters channel stop preview`, runs
 `transport-matters channel ensure-db preview`, then launches
 `transport-matters desktop --channel preview`.
 
 The backend still requires an explicit Postgres server URL through
 `TRANSPORT_MATTERS_DATABASE_URL` or settings. The channel selects the database
 name on that server.
+
+## Running and managing instances
+
+`transport-matters desktop` launches detached by default, waits until the
+backend accepts connections, opens Electron, then returns. Pass `--foreground`
+to keep the backend attached and stream logs in the terminal.
+
+Use `transport-matters channel list` to see channel ports and the PID for each
+live detached backend. Use `transport-matters tail [channel]` to read that
+channel's `desktop.log`; add `-f` to follow or `-n <lines>` to choose the
+history window. Stop an instance with `transport-matters channel stop [channel]`.
+
+Accepted edges:
+
+- Instances launched with `--storage-dir` sit outside the channel scoped
+  `list` and `tail` view.
+- Instances launched with `TRANSPORT_MATTERS_HOME` set also sit outside that
+  view. With `TRANSPORT_MATTERS_HOME`, all channels collapse to one shared
+  runtime record path.
+- PID reuse can briefly make a stale record look live.
 
 ## Isolation
 
@@ -43,6 +64,7 @@ ports, Electron identity, user data, and dock identity are separate.
 
 ```bash
 transport-matters channel list
+transport-matters channel stop preview
 transport-matters channel ensure-db stable
 transport-matters channel ensure-db preview
 ```

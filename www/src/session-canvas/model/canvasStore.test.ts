@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { PaneId, WorldRect } from "../../engine";
 import { resolveLayout, roundWorldRect } from "../../engine/layout";
 import { FRONTEND_STORAGE_KEYS } from "../../stores/persistence";
-import { makeSessionSummary } from "../testUtils";
+import { makeCapturedRunRef, makeSessionSummary, rememberCapturedRun } from "../testUtils";
 import { PICKER_PANE_ID } from "../viewers/registry";
 import { resetCanvasStoreForTests, useCanvasStore } from "./canvasStore";
 import { resetCapturedRunStoreForTests, useCapturedRunStore } from "./capturedRunStore";
@@ -53,14 +53,6 @@ function rectsFor(state: CanvasStoreSnapshot): Record<PaneId, WorldRect> {
     rects[paneId] = rect;
   }
   return rects;
-}
-
-function capturedRunRef(runKey = "claude:k1") {
-  return { kind: "captured-run", owner: "local", provider: "claude", runKey } as const;
-}
-
-function seedCapturedRun(runKey = "claude:k1", runId = "run-1"): void {
-  useCapturedRunStore.setState({ runs: { [runKey]: { provider: "claude", runId } } });
 }
 
 describe("canvasStore", () => {
@@ -243,8 +235,8 @@ describe("canvasStore", () => {
     vi.useFakeTimers();
     try {
       resetCanvasStoreForTests();
-      seedCapturedRun();
-      useCanvasStore.getState().spawnPane(capturedRunRef());
+      rememberCapturedRun();
+      useCanvasStore.getState().spawnPane(makeCapturedRunRef());
 
       useCanvasStore.getState().closePane("claude:k1");
       vi.runAllTimers();
@@ -263,7 +255,7 @@ describe("canvasStore", () => {
     try {
       resetCanvasStoreForTests();
       const paneId = useCanvasStore.getState().addCapturedRun("claude");
-      seedCapturedRun(paneId);
+      rememberCapturedRun(paneId);
 
       useCanvasStore.getState().closePane(paneId);
       vi.runAllTimers();
@@ -279,8 +271,8 @@ describe("canvasStore", () => {
 
   it("closeDockedPane stops a docked captured run through the core lifecycle policy", () => {
     resetCanvasStoreForTests();
-    seedCapturedRun();
-    const paneId = useCanvasStore.getState().dockPane(capturedRunRef());
+    rememberCapturedRun();
+    const paneId = useCanvasStore.getState().dockPane(makeCapturedRunRef());
 
     useCanvasStore.getState().closeDockedPane(paneId);
 
@@ -301,7 +293,7 @@ describe("canvasStore", () => {
       }),
     );
     await useCapturedRunStore.persist.rehydrate();
-    const paneId = useCanvasStore.getState().dockPane(capturedRunRef(runKey));
+    const paneId = useCanvasStore.getState().dockPane(makeCapturedRunRef(runKey));
 
     useCanvasStore.getState().closeDockedPane(paneId);
 
@@ -309,6 +301,26 @@ describe("canvasStore", () => {
     expect(terminateRunMock).toHaveBeenCalledWith("run-rehydrated");
     expect(useCapturedRunStore.getState().runs[runKey]).toBeUndefined();
     expect(useCanvasStore.getState().docked).toEqual([]);
+  });
+
+  it("dropCapturedRunPane removes open and docked captured refs without forgetting runs", () => {
+    resetCanvasStoreForTests();
+    rememberCapturedRun("claude:open", "run-open");
+    rememberCapturedRun("claude:docked", "run-docked");
+    useCanvasStore.getState().spawnPane(makeCapturedRunRef("claude:open"));
+    useCanvasStore.getState().dockPane(makeCapturedRunRef("claude:docked"));
+
+    useCanvasStore.getState().dropCapturedRunPane("claude:open");
+    useCanvasStore.getState().dropCapturedRunPane("claude:docked");
+
+    const state = useCanvasStore.getState();
+    const capturedRuns = useCapturedRunStore.getState().runs;
+    expect(capturedRuns["claude:open"]?.runId).toBe("run-open");
+    expect(capturedRuns["claude:docked"]?.runId).toBe("run-docked");
+    expect(state.panes["claude:open"]).toBeUndefined();
+    expect(state.layout.nodes["claude:open"]).toBeUndefined();
+    expect(state.layout.order).not.toContain("claude:open");
+    expect(state.docked).toEqual([]);
   });
 
   it("restorePaneAtIndex restores the docked pane into the order slot the drop chose", () => {

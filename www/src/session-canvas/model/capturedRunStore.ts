@@ -110,6 +110,12 @@ export interface CapturedRunState {
    */
   stopRun(runKey: CapturedRunKey): void;
   /**
+   * Forget a stale remembered run id without terminating anything server-side.
+   * Used when a fresh backend reports that a process-resident run no longer
+   * exists, so there is nothing safe or useful to POST /terminate.
+   */
+  dropRun(runKey: CapturedRunKey): void;
+  /**
    * Set/clear this pane's persisted dock flag so a reload re-docks a minimized run (true) or reopens a
    * restored one (false). On an established run it updates the record directly; when a minimize races
    * the in-flight spawn (no record yet) it defers the flag to the spawn's resolve. A genuine no-op
@@ -191,10 +197,7 @@ export const useCapturedRunStore = create<CapturedRunState>()(
           // terminate, the user is killing the pane, so a failed POST /terminate must not block the UI; the
           // backend idle policy reaps anything that slips by. The terminated run also leaves the
           // director roster (it is no longer a live run).
-          set((state) => {
-            const { [runKey]: _removed, ...runs } = state.runs;
-            return { runs };
-          });
+          set((state) => forgetRunRecord(state, runKey));
           void terminateRun(runId).catch(() => {});
           return;
         }
@@ -206,6 +209,12 @@ export const useCapturedRunStore = create<CapturedRunState>()(
           cancelledKeys.add(runKey);
           minimizedPendingKeys.delete(runKey);
         }
+      },
+
+      dropRun(runKey) {
+        cancelledKeys.delete(runKey);
+        minimizedPendingKeys.delete(runKey);
+        set((state) => forgetRunRecord(state, runKey));
       },
 
       setMinimized(runKey, minimized) {
@@ -257,6 +266,15 @@ export const useCapturedRunStore = create<CapturedRunState>()(
     },
   ),
 );
+
+function forgetRunRecord(
+  state: CapturedRunState,
+  runKey: CapturedRunKey,
+): Partial<Pick<CapturedRunState, "runs">> {
+  if (!state.runs[runKey]) return {};
+  const { [runKey]: _removed, ...runs } = state.runs;
+  return { runs };
+}
 
 export function resetCapturedRunStoreForTests(): void {
   pendingSpawns.clear();

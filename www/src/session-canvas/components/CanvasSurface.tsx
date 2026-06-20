@@ -23,6 +23,7 @@ import { PaneWindow } from "./PaneWindow";
 import { navigateToRoute } from "./RouteSwitcher";
 
 export interface CanvasSurfaceProps {
+  capturedRunsReady?: boolean;
   launch: CanvasLaunchContext;
   launchStatus: LaunchResolutionStatus;
   launchSessionId: string | null;
@@ -56,6 +57,7 @@ interface CanvasPaneRendererOptions {
   focusedPaneId: CanvasStoreSnapshot["layout"]["focusedPaneId"];
   framedPaneId: CanvasStoreSnapshot["framing"]["paneId"];
   framePane: CanvasStoreSnapshot["framePane"];
+  capturedRunsReady: boolean;
   launch: CanvasLaunchContext;
   launchSessionId: string | null;
   launchStatus: LaunchResolutionStatus;
@@ -128,6 +130,7 @@ function useCanvasPaneRenderer({
   focusedPaneId,
   framedPaneId,
   framePane,
+  capturedRunsReady,
   launch,
   launchSessionId,
   launchStatus,
@@ -149,19 +152,30 @@ function useCanvasPaneRenderer({
       const pane = panes[paneId];
       if (!pane) return null;
       const titleId = titleIdForPane(paneId);
-      const content = renderPaneContent({
-        pane,
-        actions: { closePane, focusPane, spawnOrFocusTranscript },
-        canvas: {
-          id: canvasId,
-          owner: "local",
-          workspaceHash,
-          focusedPaneId,
-          launch,
-          launchStatus,
-          launchSessionId,
-        },
-      });
+      const content =
+        pane.contentRef.kind === "captured-run" && !capturedRunsReady ? (
+          <div
+            aria-busy="true"
+            className="canvas-transcript canvas-transcript--center"
+            data-testid="captured-run-reconciliation-placeholder"
+          >
+            <p>Checking captured run state…</p>
+          </div>
+        ) : (
+          renderPaneContent({
+            pane,
+            actions: { closePane, focusPane, spawnOrFocusTranscript },
+            canvas: {
+              id: canvasId,
+              owner: "local",
+              workspaceHash,
+              focusedPaneId,
+              launch,
+              launchStatus,
+              launchSessionId,
+            },
+          })
+        );
       return (
         <PaneWindow
           expanded={expandedPaneId === paneId}
@@ -186,6 +200,7 @@ function useCanvasPaneRenderer({
       expandedPaneId,
       framePane,
       framedPaneId,
+      capturedRunsReady,
       focusPane,
       minimizePane,
       onHeaderActivate,
@@ -200,7 +215,12 @@ function useCanvasPaneRenderer({
   );
 }
 
-export function CanvasSurface({ launch, launchStatus, launchSessionId }: CanvasSurfaceProps) {
+export function CanvasSurface({
+  capturedRunsReady = true,
+  launch,
+  launchStatus,
+  launchSessionId,
+}: CanvasSurfaceProps) {
   const layout = useCanvasStore((state) => state.layout);
   const panes = useCanvasStore((state) => state.panes);
   const canvasId = useCanvasStore((state) => state.id);
@@ -301,6 +321,7 @@ export function CanvasSurface({ launch, launchStatus, launchSessionId }: CanvasS
     focusedPaneId,
     framedPaneId,
     framePane,
+    capturedRunsReady,
     launch,
     launchSessionId,
     launchStatus,

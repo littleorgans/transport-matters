@@ -17,6 +17,7 @@ from transport_matters.channel import (
     ChannelSpec,
     activate_channel,
     all_channel_specs,
+    resolve_channel_spec,
 )
 from transport_matters.config import (
     DATABASE_URL_GUIDANCE,
@@ -27,7 +28,9 @@ from transport_matters.config import (
 )
 from transport_matters.session.migrate import MigrationError, apply_migrations, migration_head
 from transport_matters.session.pool import connect
+from transport_matters.storage_roots import default_storage_root
 
+from .desktop_runtime import desktop_record_path, read_live_desktop_record, stop_desktop_record
 from .identity import CLI_COMMAND
 
 if TYPE_CHECKING:
@@ -38,7 +41,7 @@ _MAINTENANCE_DATABASE = "postgres"
 
 channel_app = typer.Typer(
     no_args_is_help=True,
-    help="List, prepare, and promote Transport Matters channels.",
+    help="List, prepare, stop, and promote Transport Matters channels.",
 )
 
 
@@ -92,6 +95,7 @@ def list_channels() -> None:
             "database",
             "proxy",
             "web",
+            "pid",
             "app",
             "badge",
         ),
@@ -102,6 +106,7 @@ def list_channels() -> None:
                 spec.database_name,
                 str(spec.proxy_port),
                 str(spec.web_port),
+                _desktop_pid(spec),
                 spec.electron_app_name,
                 spec.badge.text if spec.badge is not None else "none",
             )
@@ -111,6 +116,39 @@ def list_channels() -> None:
     widths = [max(len(row[index]) for row in rows) for index in range(len(rows[0]))]
     for row in rows:
         typer.echo("  ".join(value.ljust(widths[index]) for index, value in enumerate(row)))
+
+
+def _desktop_pid(spec: ChannelSpec) -> str:
+    record = read_live_desktop_record(
+        desktop_record_path(default_storage_root(spec.id).expanduser().resolve())
+    )
+    return "" if record is None else str(record.pid)
+
+
+@channel_app.command("stop")
+def stop(
+    channel: Annotated[
+        str | None,
+        typer.Argument(
+            help="Channel id to stop. Defaults to TRANSPORT_MATTERS_CHANNEL or stable.",
+        ),
+    ] = None,
+) -> None:
+    """Stop a live detached desktop backend for a channel."""
+    spec = _resolve_channel_or_exit(channel)
+    record_path = desktop_record_path(default_storage_root(spec.id).expanduser().resolve())
+    try:
+        result = stop_desktop_record(record_path)
+    except OSError as exc:
+        typer.secho(
+            f"error: could not stop {spec.id} desktop: {exc}", fg=typer.colors.RED, err=True
+        )
+        raise typer.Exit(1) from exc
+
+    if result.status == "nothing":
+        typer.echo(f"nothing running for {spec.id}")
+        return
+    typer.echo(f"stopped {spec.id} desktop pid {result.pid}")
 
 
 @channel_app.command("ensure-db")
@@ -175,10 +213,22 @@ def _activate_channel_or_exit(channel: str | None) -> ChannelSpec:
     try:
         return activate_channel(channel)
     except (KeyError, ValueError) as exc:
-        requested = channel if channel is not None else os.environ.get(env_keys.CHANNEL, "stable")
-        typer.secho(f"error: unknown channel {requested!r}.", fg=typer.colors.RED, err=True)
-        typer.echo(f"Run `{CLI_COMMAND} channel list` to see available channels.", err=True)
+        _print_unknown_channel(channel)
         raise typer.Exit(2) from exc
+
+
+def _resolve_channel_or_exit(channel: str | None) -> ChannelSpec:
+    try:
+        return resolve_channel_spec(channel)
+    except (KeyError, ValueError) as exc:
+        _print_unknown_channel(channel)
+        raise typer.Exit(2) from exc
+
+
+def _print_unknown_channel(channel: str | None) -> None:
+    requested = channel if channel is not None else os.environ.get(env_keys.CHANNEL, "stable")
+    typer.secho(f"error: unknown channel {requested!r}.", fg=typer.colors.RED, err=True)
+    typer.echo(f"Run `{CLI_COMMAND} channel list` to see available channels.", err=True)
 
 
 def _configured_database_url_or_exit(settings: Settings) -> str:

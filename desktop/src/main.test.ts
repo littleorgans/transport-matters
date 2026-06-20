@@ -2,7 +2,15 @@ import { EventEmitter } from "node:events";
 import { join } from "node:path";
 
 import type { BrowserWindow } from "electron";
-import { beforeEach, describe, expect, it, vi, type Mock } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+  type Mock,
+} from "vitest";
 import type { LaunchedBackendProcess } from "./backendProcess.js";
 import type { PreloadProbeWindow } from "./main.js";
 
@@ -71,6 +79,24 @@ async function flushMicrotasks(turns = 3): Promise<void> {
   }
 }
 
+async function flushPromiseQueue(turns = 3): Promise<void> {
+  for (let index = 0; index < turns; index += 1) {
+    await Promise.resolve();
+  }
+}
+
+function withProcessPlatform<T>(platform: NodeJS.Platform, run: () => T): T {
+  const descriptor = Object.getOwnPropertyDescriptor(process, "platform");
+  Object.defineProperty(process, "platform", { value: platform });
+  try {
+    return run();
+  } finally {
+    if (descriptor) {
+      Object.defineProperty(process, "platform", descriptor);
+    }
+  }
+}
+
 interface ProbeFixture {
   window: PreloadProbeWindow;
   handlers: Map<string, (...args: unknown[]) => void>;
@@ -93,6 +119,68 @@ function createProbeFixture(
   return { window, handlers, loadURL, executeJavaScript };
 }
 
+interface HostedWindowFixture {
+  close: Mock;
+  webContentsHandlers: Map<string, (...args: unknown[]) => void>;
+  window: BrowserWindow;
+  windowHandlers: Map<string, (...args: unknown[]) => void>;
+}
+
+function createHostedWindowFixture(): HostedWindowFixture {
+  const webContentsHandlers = new Map<string, (...args: unknown[]) => void>();
+  const windowHandlers = new Map<string, (...args: unknown[]) => void>();
+  const close = vi.fn();
+  const window = {
+    close,
+    loadURL: vi.fn(async () => undefined),
+    on: vi.fn((event: string, listener: (...args: unknown[]) => void) => {
+      windowHandlers.set(event, listener);
+    }),
+    once,
+    show,
+    webContents: {
+      on: vi.fn((event: string, listener: (...args: unknown[]) => void) => {
+        webContentsHandlers.set(event, listener);
+      }),
+      setWindowOpenHandler,
+    },
+  } as unknown as BrowserWindow;
+
+  return { close, webContentsHandlers, window, windowHandlers };
+}
+
+interface RegisteredHostedLifecycleFixture extends HostedWindowFixture {
+  appHandlers: Map<string, () => void>;
+  createWindow: Mock;
+  quit: Mock;
+  probeBackendHealth: Mock;
+}
+
+async function registerHostedLifecycleFixture(
+  probeBackendHealth: Mock = vi.fn(async () => true),
+): Promise<RegisteredHostedLifecycleFixture> {
+  const fixture = createHostedWindowFixture();
+  const appHandlers = new Map<string, () => void>();
+  const createWindow = vi.fn(() => fixture.window);
+  const quit = vi.fn();
+  const whenReady = vi.fn(async () => undefined);
+  const on = vi.fn((event: string, listener: () => void) => {
+    appHandlers.set(event, listener);
+  });
+
+  const { registerHostedDesktopLifecycle } = await import("./main.js");
+
+  registerHostedDesktopLifecycle({
+    appSource: { on, quit, whenReady },
+    createWindow,
+    probeBackendHealth,
+    routeUrl: "http://127.0.0.1:9901/canvas",
+  });
+  await flushPromiseQueue();
+
+  return { ...fixture, appHandlers, createWindow, probeBackendHealth, quit };
+}
+
 describe("desktop main process", () => {
   beforeEach(() => {
     browserWindowConstructor.mockClear();
@@ -106,6 +194,10 @@ describe("desktop main process", () => {
     setWindowOpenHandler.mockClear();
     show.mockClear();
     webContentsOn.mockClear();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it("creates a secure BrowserWindow for the hosted web app", async () => {
@@ -334,9 +426,8 @@ describe("desktop main process", () => {
   });
 
   it("opens a Python supplied hosted route without backend startup", async () => {
-    const createWindow = vi.fn(
-      () => ({ loadURL, once, show }) as unknown as BrowserWindow,
-    );
+    const fixture = createHostedWindowFixture();
+    const createWindow = vi.fn(() => fixture.window);
     const quit = vi.fn();
     const whenReady = vi.fn(async () => undefined);
     const on = vi.fn();
@@ -355,6 +446,109 @@ describe("desktop main process", () => {
     });
     expect(on).toHaveBeenCalledWith("activate", expect.any(Function));
     expect(on).toHaveBeenCalledWith("window-all-closed", expect.any(Function));
+  });
+
+  it("quits the hosted app when the only hosted window closes on darwin", async () => {
+    const fixture = await registerHostedLifecycleFixture();
+
+    withProcessPlatform("darwin", () => {
+      fixture.appHandlers.get("window-all-closed")?.();
+    });
+
+    expect(fixture.quit).toHaveBeenCalledOnce();
+  });
+
+  it("keeps the foreground window-all-closed default unchanged on darwin", async () => {
+    const appHandlers = new Map<string, () => void>();
+    const on = vi.fn((event: string, listener: () => void) => {
+      appHandlers.set(event, listener);
+    });
+    const quit = vi.fn();
+
+    const { bindHostedWindowLifecycle } = await import("./main.js");
+
+    bindHostedWindowLifecycle(
+      { on, quit, whenReady: vi.fn(async () => undefined) },
+      "http://127.0.0.1:9901/canvas",
+      vi.fn(),
+    );
+
+    withProcessPlatform("darwin", () => {
+      appHandlers.get("window-all-closed")?.();
+    });
+
+    expect(quit).not.toHaveBeenCalled();
+  });
+
+  it("does not poll hosted backend liveness before the first successful load", async () => {
+    vi.useFakeTimers();
+    const probeBackendHealth = vi.fn(async () => true);
+    const fixture = await registerHostedLifecycleFixture(probeBackendHealth);
+
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(probeBackendHealth).not.toHaveBeenCalled();
+
+    fixture.webContentsHandlers.get("did-finish-load")?.();
+    await flushPromiseQueue();
+
+    expect(probeBackendHealth).toHaveBeenCalledOnce();
+    expect(probeBackendHealth).toHaveBeenCalledWith(
+      "http://127.0.0.1:9901/health",
+    );
+    expect(fixture.close).not.toHaveBeenCalled();
+  });
+
+  it("keeps a hosted window open when transient liveness failures recover", async () => {
+    vi.useFakeTimers();
+    const probeBackendHealth = vi
+      .fn()
+      .mockResolvedValueOnce(false)
+      .mockResolvedValueOnce(false)
+      .mockResolvedValueOnce(true)
+      .mockResolvedValueOnce(false)
+      .mockResolvedValueOnce(false);
+    const fixture = await registerHostedLifecycleFixture(probeBackendHealth);
+
+    fixture.webContentsHandlers.get("did-finish-load")?.();
+    await flushPromiseQueue();
+    await vi.advanceTimersByTimeAsync(1_000);
+    await vi.advanceTimersByTimeAsync(1_000);
+    await vi.advanceTimersByTimeAsync(1_000);
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    expect(probeBackendHealth).toHaveBeenCalledTimes(5);
+    expect(fixture.close).not.toHaveBeenCalled();
+    expect(fixture.quit).not.toHaveBeenCalled();
+  });
+
+  it("quits the hosted app after three consecutive failed liveness probes", async () => {
+    vi.useFakeTimers();
+    const probeBackendHealth = vi.fn(async () => false);
+    const fixture = await registerHostedLifecycleFixture(probeBackendHealth);
+
+    fixture.webContentsHandlers.get("did-finish-load")?.();
+    await flushPromiseQueue();
+    await vi.advanceTimersByTimeAsync(1_000);
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    expect(probeBackendHealth).toHaveBeenCalledTimes(3);
+    expect(fixture.quit).toHaveBeenCalledOnce();
+    expect(fixture.close).not.toHaveBeenCalled();
+  });
+
+  it("clears the hosted liveness timeout when the window closes", async () => {
+    vi.useFakeTimers();
+    const probeBackendHealth = vi.fn(async () => false);
+    const fixture = await registerHostedLifecycleFixture(probeBackendHealth);
+
+    fixture.webContentsHandlers.get("did-finish-load")?.();
+    await flushPromiseQueue();
+    fixture.windowHandlers.get("closed")?.();
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    expect(probeBackendHealth).toHaveBeenCalledOnce();
+    expect(fixture.close).not.toHaveBeenCalled();
+    expect(fixture.quit).not.toHaveBeenCalled();
   });
 
   it("records package smoke readiness after the preload executes", async () => {

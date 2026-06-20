@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import TYPE_CHECKING
 
 from typer.testing import CliRunner
@@ -9,6 +10,12 @@ from typer.testing import CliRunner
 import transport_matters.cli.channel_cmd as channel_cmd
 from transport_matters import config, env_keys
 from transport_matters.cli import main
+from transport_matters.cli.desktop_runtime import (
+    DesktopRuntimeRecord,
+    StopDesktopResult,
+    desktop_record_path,
+    write_desktop_record,
+)
 from transport_matters.session import migrate
 from transport_matters.session.pool import connect
 
@@ -43,8 +50,123 @@ def test_channel_list_outputs_specs() -> None:
     assert "transport_matters_preview" in result.output
     assert "8787" in result.output
     assert "8798" in result.output
+    assert "pid" in result.output
     assert "Transport Matters Preview" in result.output
     assert "PREVIEW" in result.output
+
+
+def test_channel_list_renders_live_desktop_pid(
+    channel_spec_factory: Callable[[str], ChannelSpec],
+    patch_channel_specs: Callable[..., None],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    spec = replace(channel_spec_factory("tm_list"), home=tmp_path / "tm-home")
+    patch_channel_specs(spec)
+    monkeypatch.delenv(env_keys.HOME, raising=False)
+    write_desktop_record(
+        desktop_record_path(spec.home),
+        DesktopRuntimeRecord(
+            channel=spec.id,
+            pid=4321,
+            proxy_port=spec.proxy_port,
+            web_port=spec.web_port,
+            log_path=str(spec.home / "runtime" / "desktop.log"),
+        ),
+    )
+    monkeypatch.setattr(
+        "transport_matters.cli.desktop_runtime.is_pid_alive", lambda pid: pid == 4321
+    )
+
+    result = runner.invoke(main, ["channel", "list"])
+
+    assert result.exit_code == 0, result.output
+    assert "pid" in result.output
+    assert "4321" in result.output
+
+
+def test_channel_list_blanks_invalid_or_inaccessible_desktop_pid(
+    channel_spec_factory: Callable[[str], ChannelSpec],
+    patch_channel_specs: Callable[..., None],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    spec = replace(channel_spec_factory("tm_list"), home=tmp_path / "tm-home")
+    patch_channel_specs(spec)
+    monkeypatch.delenv(env_keys.HOME, raising=False)
+    write_desktop_record(
+        desktop_record_path(spec.home),
+        DesktopRuntimeRecord(
+            channel=spec.id,
+            pid=4321,
+            proxy_port=spec.proxy_port,
+            web_port=spec.web_port,
+            log_path=str(spec.home / "runtime" / "desktop.log"),
+        ),
+    )
+
+    def raise_permission(_pid: int) -> bool:
+        raise PermissionError
+
+    monkeypatch.setattr("transport_matters.cli.desktop_runtime.is_pid_alive", raise_permission)
+
+    result = runner.invoke(main, ["channel", "list"])
+
+    assert result.exit_code == 0, result.output
+    assert "pid" in result.output
+    assert "4321" not in result.output
+
+
+def test_channel_stop_no_running_backend(
+    channel_spec_factory: Callable[[str], ChannelSpec],
+    patch_channel_specs: Callable[..., None],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    spec = replace(channel_spec_factory("tm_stop"), home=tmp_path / "tm-home")
+    patch_channel_specs(spec)
+    monkeypatch.delenv(env_keys.HOME, raising=False)
+
+    result = runner.invoke(main, ["channel", "stop", "tmp"])
+
+    assert result.exit_code == 0, result.output
+    assert "nothing running for tmp" in result.output
+
+
+def test_channel_stop_outputs_stopped_pid(
+    channel_spec_factory: Callable[[str], ChannelSpec],
+    patch_channel_specs: Callable[..., None],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    spec = replace(channel_spec_factory("tm_stop"), home=tmp_path / "tm-home")
+    patch_channel_specs(spec)
+    monkeypatch.delenv(env_keys.HOME, raising=False)
+    calls: list[Path] = []
+
+    def fake_stop(record_path: Path) -> StopDesktopResult:
+        calls.append(record_path)
+        return StopDesktopResult(status="stopped", pid=4321)
+
+    monkeypatch.setattr(channel_cmd, "stop_desktop_record", fake_stop)
+
+    result = runner.invoke(main, ["channel", "stop", "tmp"])
+
+    assert result.exit_code == 0, result.output
+    assert calls == [desktop_record_path(spec.home.resolve())]
+    assert "stopped tmp desktop pid 4321" in result.output
+
+
+def test_channel_stop_unknown_channel_exits_2(
+    patch_channel_specs: Callable[..., None],
+) -> None:
+    patch_channel_specs()
+
+    result = runner.invoke(main, ["channel", "stop", "missing"])
+
+    assert result.exit_code == 2
+    assert "unknown channel 'missing'" in result.output
+    assert "channel list" in result.output
 
 
 def test_channel_ensure_db_creates_migrates_and_is_idempotent(
