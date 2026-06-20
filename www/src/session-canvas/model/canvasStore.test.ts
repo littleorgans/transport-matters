@@ -311,6 +311,22 @@ describe("canvasStore", () => {
     expect(useCanvasStore.getState().docked).toEqual([]);
   });
 
+  it("dropCapturedRunPane removes open and docked captured refs without terminating", () => {
+    resetCanvasStoreForTests();
+    useCanvasStore.getState().spawnPane(capturedRunRef("claude:open"));
+    useCanvasStore.getState().dockPane(capturedRunRef("claude:docked"));
+
+    useCanvasStore.getState().dropCapturedRunPane("claude:open");
+    useCanvasStore.getState().dropCapturedRunPane("claude:docked");
+
+    const state = useCanvasStore.getState();
+    expect(terminateRunMock).not.toHaveBeenCalled();
+    expect(state.panes["claude:open"]).toBeUndefined();
+    expect(state.layout.nodes["claude:open"]).toBeUndefined();
+    expect(state.layout.order).not.toContain("claude:open");
+    expect(state.docked).toEqual([]);
+  });
+
   it("restorePaneAtIndex restores the docked pane into the order slot the drop chose", () => {
     resetCanvasStoreForTests();
     const refA = { kind: "resource", owner: "local", source: "path", path: "/t/a.png" } as const;

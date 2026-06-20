@@ -244,6 +244,21 @@ describe("capturedRunStore", () => {
     expect(terminateRunMock).not.toHaveBeenCalled();
   });
 
+  it("dropRun forgets a stale run id without terminating it", () => {
+    useCapturedRunStore.setState({
+      runs: {
+        "claude:stale": { provider: "claude", runId: "run-stale" },
+        "claude:live": { provider: "claude", runId: "run-live" },
+      },
+    });
+
+    store().dropRun("claude:stale");
+
+    expect(terminateRunMock).not.toHaveBeenCalled();
+    expect(store().runs["claude:stale"]).toBeUndefined();
+    expect(store().runs["claude:live"]).toEqual({ provider: "claude", runId: "run-live" });
+  });
+
   it("setMinimized flags an established run, and clears it again, persisting the docked state", () => {
     useCapturedRunStore.setState({ runs: { "claude:k1": { provider: "claude", runId: "run-1" } } });
 

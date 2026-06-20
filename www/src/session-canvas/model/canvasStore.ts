@@ -6,6 +6,7 @@ import {
   focusNode,
   movePaneOrder,
   type PaneId,
+  removeNode,
   setViewport as setEngineViewport,
   updateNodeRect,
   type ViewportBounds,
@@ -64,6 +65,7 @@ interface CanvasStoreState extends CanvasStoreModel {
   addCapturedRun(provider: HarnessName, runtimeTemplate?: string): PaneId;
   closePane(paneId: PaneId): void;
   closeDockedPane(paneId: PaneId): void;
+  dropCapturedRunPane(runKey: string): void;
   expandPane(paneId: PaneId): void;
   focusPane(paneId: PaneId): void;
   framePane(paneId: PaneId): void;
@@ -125,6 +127,40 @@ export const useCanvasStore = create<CanvasStoreState>()(
         if (!entry || entry.closeDisabled) return;
         invokeDockedPaneCloseLifecycle(entry);
         set((state) => ({ ...state, docked: removeDockedPane(state.docked, paneId) }));
+      },
+
+      dropCapturedRunPane(runKey) {
+        set((state) => {
+          const openPaneIds = Object.values(state.panes)
+            .filter((pane) => isCapturedRunRef(pane.contentRef, runKey))
+            .map((pane) => pane.paneId);
+          const docked = state.docked.filter(
+            (entry) =>
+              !isCapturedRunRef(entry.ref, runKey) &&
+              !isCapturedRunRef(entry.record?.contentRef, runKey),
+          );
+          if (openPaneIds.length === 0 && docked.length === state.docked.length) return {};
+
+          let layout = state.layout;
+          const panes = { ...state.panes };
+          for (const paneId of openPaneIds) {
+            layout = removeNode(layout, paneId);
+            delete panes[paneId];
+          }
+          const expandedPaneId =
+            state.expandedPaneId !== null && openPaneIds.includes(state.expandedPaneId)
+              ? null
+              : state.expandedPaneId;
+          const framing =
+            state.framing.paneId !== null && openPaneIds.includes(state.framing.paneId)
+              ? emptyFraming()
+              : state.framing;
+          const nextState = { ...state, docked, expandedPaneId, framing, layout, panes };
+          return {
+            ...nextState,
+            layout: planCanvasLayout(nextState),
+          };
+        });
       },
 
       expandPane(paneId) {
@@ -348,6 +384,10 @@ function focusCanvasPane(state: CanvasStoreState, paneId: PaneId): Partial<Canva
 
 function canvasPaneRef(state: CanvasStoreState, paneId: PaneId): CanvasPaneRef | null {
   return state.panes[paneId]?.contentRef ?? null;
+}
+
+function isCapturedRunRef(ref: CanvasPaneRef | null | undefined, runKey: string): boolean {
+  return ref?.kind === "captured-run" && ref.runKey === runKey;
 }
 
 function applyCanvasPaneRemoval(
