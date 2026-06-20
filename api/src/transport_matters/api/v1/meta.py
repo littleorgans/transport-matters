@@ -19,6 +19,7 @@ from fastapi import APIRouter, Request
 from pydantic import BaseModel
 
 from transport_matters.api.v1.run_storage import resolve_run_storage_or_404, run_workspace_id
+from transport_matters.channel import ChannelBadge, resolve_channel_spec
 from transport_matters.config import get_settings
 from transport_matters.harnesses import (
     HarnessCapabilities,
@@ -65,10 +66,23 @@ class HarnessDescriptorResponse(BaseModel):
         )
 
 
+class ChannelBadgeResponse(BaseModel):
+    text: str
+    color: str
+    hex: str
+
+    @classmethod
+    def from_badge(cls, badge: ChannelBadge) -> ChannelBadgeResponse:
+        return cls(text=badge.text, color=badge.color, hex=badge.hex)
+
+
 class MetaResponse(BaseModel):
     cwd: str
     workspace_id: str
     run_id: str | None
+    channel: str
+    channel_label: str
+    channel_badge: ChannelBadgeResponse | None
     harnesses: tuple[HarnessDescriptorResponse, ...]
 
 
@@ -86,14 +100,10 @@ async def get_meta() -> MetaResponse:
     settings = get_settings()
     cwd = (settings.cwd or Path.cwd()).resolve()
     wid = _workspace_id(cwd)
-    return MetaResponse(
+    return _build_meta_response(
         cwd=str(cwd),
         workspace_id=f"{wid.slug}/{wid.hash}",
         run_id=settings.run_id,
-        harnesses=tuple(
-            HarnessDescriptorResponse.from_descriptor(descriptor)
-            for descriptor in list_harness_descriptors()
-        ),
     )
 
 
@@ -101,10 +111,26 @@ async def get_meta() -> MetaResponse:
 async def get_run_meta(run_id: str, request: Request) -> MetaResponse:
     """Return the resolved identity for a run scoped API caller."""
     context = await resolve_run_storage_or_404(request, run_id)
-    return MetaResponse(
+    return _build_meta_response(
         cwd=str(context.cwd),
         workspace_id=run_workspace_id(context),
         run_id=run_id,
+    )
+
+
+def _build_meta_response(*, cwd: str, workspace_id: str, run_id: str | None) -> MetaResponse:
+    channel_spec = resolve_channel_spec(get_settings().channel)
+    return MetaResponse(
+        cwd=cwd,
+        workspace_id=workspace_id,
+        run_id=run_id,
+        channel=channel_spec.id,
+        channel_label=channel_spec.label,
+        channel_badge=(
+            ChannelBadgeResponse.from_badge(channel_spec.badge)
+            if channel_spec.badge is not None
+            else None
+        ),
         harnesses=tuple(
             HarnessDescriptorResponse.from_descriptor(descriptor)
             for descriptor in list_harness_descriptors()

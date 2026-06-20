@@ -109,6 +109,24 @@ describe("desktop hosted window", () => {
     expect(loadURL).toHaveBeenCalledWith("http://127.0.0.1:8788/canvas");
   });
 
+  it("threads channel title and icon into the BrowserWindow options", async () => {
+    const { createHostedWindow } = await import("./window.js");
+
+    createHostedWindow({
+      icon: "/tmp/preview-amber.png",
+      preloadPath: "/tmp/transport-matters/preload.cjs",
+      rendererUrl: "http://127.0.0.1:8798/canvas",
+      title: "Transport Matters Preview",
+    });
+
+    expect(browserWindowConstructor).toHaveBeenCalledWith(
+      expect.objectContaining({
+        icon: "/tmp/preview-amber.png",
+        title: "Transport Matters Preview",
+      }),
+    );
+  });
+
   it("blocks top level navigation away from the health checked origin", async () => {
     const { createHostedWindow } = await import("./window.js");
 

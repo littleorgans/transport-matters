@@ -42,6 +42,9 @@ beforeEach(() => {
       if (url === "/api/meta") {
         return Promise.resolve(
           makeJsonResponse({
+            channel: "stable",
+            channel_badge: null,
+            channel_label: "Stable",
             cwd: "/tmp/project",
             workspace_id: "workspace-1",
             run_id: "run-current",
@@ -151,6 +154,9 @@ describe("App", () => {
         if (url === "/api/meta") {
           return Promise.resolve(
             makeJsonResponse({
+              channel: "stable",
+              channel_badge: null,
+              channel_label: "Stable",
               cwd: "/tmp/project",
               workspace_id: "workspace-1",
               run_id: "run-current",
@@ -248,6 +254,9 @@ describe("App", () => {
         if (url === "/api/meta") {
           return Promise.resolve(
             makeJsonResponse({
+              channel: "stable",
+              channel_badge: null,
+              channel_label: "Stable",
               cwd: "/tmp/project",
               workspace_id: "workspace-1",
               run_id: "run-current",

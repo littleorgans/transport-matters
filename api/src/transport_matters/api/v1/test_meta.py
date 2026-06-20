@@ -34,11 +34,37 @@ class TestMeta:
         response = await client.get("/api/meta")
         assert response.status_code == 200
         data = response.json()
-        assert set(data.keys()) == {"cwd", "workspace_id", "run_id", "harnesses"}
+        assert set(data.keys()) == {
+            "channel",
+            "channel_badge",
+            "channel_label",
+            "cwd",
+            "workspace_id",
+            "run_id",
+            "harnesses",
+        }
+        assert data["channel"] == "stable"
+        assert data["channel_label"] == "Stable"
+        assert data["channel_badge"] is None
         assert isinstance(data["cwd"], str)
         assert isinstance(data["workspace_id"], str)
         assert data["run_id"] is None
         assert isinstance(data["harnesses"], list)
+
+    async def test_preview_channel_meta_fields(
+        self, client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("TRANSPORT_MATTERS_CHANNEL", "preview")
+        config.get_settings.cache_clear()
+        response = await client.get("/api/meta")
+        data = response.json()
+        assert data["channel"] == "preview"
+        assert data["channel_label"] == "Preview"
+        assert data["channel_badge"] == {
+            "text": "PREVIEW",
+            "color": "amber",
+            "hex": "#f59e0b",
+        }
 
     async def test_cwd_falls_back_to_process_cwd_when_env_unset(
         self, client: AsyncClient, monkeypatch: pytest.MonkeyPatch

@@ -26,9 +26,9 @@ describe("desktop package smoke", () => {
     expect(packageJson.scripts.dev).toBe(
       "pnpm build && pnpm electron:install && electron .",
     );
-    expect(packageJson.scripts["package:smoke"]).toBe(
-      "pnpm build && pnpm electron:install && electron-packager . \"Transport Matters\" --out dist/package-smoke --overwrite --no-prune && node dist/packageSmoke.js",
-    );
+      expect(packageJson.scripts["package:smoke"]).toBe(
+        "pnpm build && pnpm electron:install && node scripts/package-smoke-build.mjs && node dist/packageSmoke.js",
+      );
     expect(justfile).toContain("dev:");
     expect(justfile).toContain("package-smoke:");
   });

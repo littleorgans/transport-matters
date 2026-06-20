@@ -9,11 +9,11 @@
     "node": ">=20.19.0"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json && node scripts/assert-preload-cjs.mjs",
+    "build": "tsc -p tsconfig.json && node scripts/copy-channel-specs.mjs && node scripts/assert-preload-cjs.mjs",
     "clean": "rimraf dist node_modules pnpm-lock.yaml",
     "dev": "pnpm build && pnpm electron:install && electron .",
     "electron:install": "node node_modules/electron/install.js",
-    "package:smoke": "pnpm build && pnpm electron:install && electron-packager . \"Transport Matters\" --out dist/package-smoke --overwrite --no-prune && node dist/packageSmoke.js",
+    "package:smoke": "pnpm build && pnpm electron:install && node scripts/package-smoke-build.mjs && node dist/packageSmoke.js",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json --noEmit"
   },

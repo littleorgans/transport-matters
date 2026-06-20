@@ -1,4 +1,5 @@
 import { EventEmitter } from "node:events";
+import { join } from "node:path";
 
 import type { BrowserWindow } from "electron";
 import { beforeEach, describe, expect, it, vi, type Mock } from "vitest";
@@ -9,6 +10,10 @@ const browserWindowConstructor = vi.fn();
 const dialogShowErrorBox = vi.fn();
 const loadURL = vi.fn();
 const once = vi.fn();
+const setAppUserModelId = vi.fn();
+const setDockIcon = vi.fn();
+const setName = vi.fn();
+const setPath = vi.fn();
 const setWindowOpenHandler = vi.fn();
 const show = vi.fn();
 const webContentsOn = vi.fn();
@@ -31,8 +36,14 @@ function createBackendFixture(): LaunchedBackendProcess {
 
 vi.mock("electron", () => ({
   app: {
+    dock: {
+      setIcon: setDockIcon,
+    },
     on: vi.fn(),
     quit: vi.fn(),
+    setAppUserModelId,
+    setName,
+    setPath,
     whenReady: vi.fn(() => new Promise(() => undefined)),
   },
   BrowserWindow: vi.fn(function BrowserWindow(
@@ -88,6 +99,10 @@ describe("desktop main process", () => {
     dialogShowErrorBox.mockClear();
     loadURL.mockClear();
     once.mockClear();
+    setAppUserModelId.mockClear();
+    setDockIcon.mockClear();
+    setName.mockClear();
+    setPath.mockClear();
     setWindowOpenHandler.mockClear();
     show.mockClear();
     webContentsOn.mockClear();
@@ -191,6 +206,7 @@ describe("desktop main process", () => {
       env: {
         CLAUDE_CONFIG_DIR: "/tmp/claude",
         PATH: "/usr/local/bin:/usr/bin",
+        TRANSPORT_MATTERS_CHANNEL: "stable",
         TRANSPORT_MATTERS_DESKTOP_CLIENT: "claude",
         TRANSPORT_MATTERS_PROXY_PORT: "9900",
         TRANSPORT_MATTERS_WEB_PORT: "9901",
@@ -210,11 +226,52 @@ describe("desktop main process", () => {
         "/tmp/workspace",
       ),
     ).toEqual({
-      env: { TRANSPORT_MATTERS_DESKTOP_CLIENT: "gemini" },
+      env: {
+        TRANSPORT_MATTERS_CHANNEL: "stable",
+        TRANSPORT_MATTERS_DESKTOP_CLIENT: "gemini",
+      },
       proxyPort: 8787,
       webPort: 8788,
       workspaceDir: "/tmp/workspace",
     });
+  });
+
+  it("applies preview channel identity before readiness", async () => {
+    const appSource = {
+      dock: { setIcon: setDockIcon },
+      setAppUserModelId,
+      setName,
+      setPath,
+    };
+    const { applyChannelIdentity } = await import("./main.js");
+
+    const identity = applyChannelIdentity(appSource, {
+      badge: { color: "amber", hex: "#f59e0b", text: "PREVIEW" },
+      databaseName: "transport_matters_preview",
+      home: "/tmp/transport-matters-preview",
+      id: "preview",
+      label: "Preview",
+      proxyPort: 8797,
+      webPort: 8798,
+      electron: {
+        appId: "io.helioy.transport-matters.preview",
+        appName: "Transport Matters Preview",
+        dockIcon: "preview-amber",
+        userDataDir: "electron-user-data",
+      },
+    });
+
+    expect(setName).toHaveBeenCalledWith("Transport Matters Preview");
+    expect(setAppUserModelId).toHaveBeenCalledWith(
+      "io.helioy.transport-matters.preview",
+    );
+    expect(setPath).toHaveBeenCalledWith(
+      "userData",
+      join("/tmp/transport-matters-preview", "electron-user-data"),
+    );
+    expect(identity.title).toBe("Transport Matters Preview");
+    expect(identity.icon).toMatch(/assets[/\\]preview-amber\.png$/);
+    expect(setDockIcon).toHaveBeenCalledWith(identity.icon);
   });
 
   it("shows a clear startup error when backend readiness fails", async () => {

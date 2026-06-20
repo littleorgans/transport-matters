@@ -5,6 +5,9 @@ import { downloadInspectHtml } from "../lib/exportInspect";
 import { ExchangeDetail } from "./ExchangeDetail";
 
 const mockMeta = {
+  channel: "stable",
+  channelBadge: null,
+  channelLabel: "Stable",
   cwd: "/Users/alphab/Dev/LLM/DEV/helioy/attention-matters",
   workspaceId: "helioy/attention-matters",
   runId: "run-123",
