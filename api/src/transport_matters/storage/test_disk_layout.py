@@ -1,20 +1,12 @@
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
 
-from transport_matters import env_keys
 from transport_matters.storage.disk_layout import DiskStorageLayout
-
-if TYPE_CHECKING:
-    import pytest
 
 
 def test_default_root_uses_transport_matters_storage_root(
-    monkeypatch: pytest.MonkeyPatch,
+    clear_channel_storage_env: None,
 ) -> None:
-    monkeypatch.delenv(env_keys.HOME, raising=False)
-    monkeypatch.delenv(env_keys.CHANNEL, raising=False)
-
     layout = DiskStorageLayout()
 
     assert layout.root == Path.home() / ".transport-matters"

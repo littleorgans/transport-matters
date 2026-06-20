@@ -101,7 +101,6 @@ artifacts = [
 [tool.hatch.build.targets.sdist]
 only-include = [
     "src/transport_matters",
-    "src/transport_matters/channel-specs.json",
     "migrations",
     "alembic.ini",
     "tests",

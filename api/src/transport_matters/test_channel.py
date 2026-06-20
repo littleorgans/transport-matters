@@ -96,9 +96,8 @@ def test_resolve_channel_spec_returns_preview() -> None:
 
 
 def test_activate_channel_sets_env_and_clears_settings_cache(
-    monkeypatch: pytest.MonkeyPatch,
+    clear_channel_storage_env: None,
 ) -> None:
-    monkeypatch.delenv(env_keys.CHANNEL, raising=False)
     assert get_settings().channel == "stable"
 
     spec = activate_channel("preview")
@@ -119,6 +118,42 @@ def test_resolve_database_url_substitutes_only_database_name() -> None:
     )
 
 
+def test_resolve_database_url_rewrites_hostless_libpq_url() -> None:
+    settings = Settings(
+        channel="preview",
+        database_url="postgresql:///transport_matters",
+    )
+
+    assert resolve_database_url(settings) == "postgresql:///transport_matters_preview"
+
+
+def test_resolve_database_url_rewrites_socket_query_url() -> None:
+    settings = Settings(
+        channel="preview",
+        database_url="postgresql:///transport_matters?host=/var/run/postgresql",
+    )
+
+    assert (
+        resolve_database_url(settings)
+        == "postgresql:///transport_matters_preview?host=/var/run/postgresql"
+    )
+
+
+def test_settings_channel_drives_storage_and_database_without_env(
+    clear_channel_storage_env: None,
+) -> None:
+    settings = Settings(
+        channel="preview",
+        database_url="postgresql://tm:tm@localhost:55432/transport_matters",
+    )
+
+    assert settings.storage_dir == Path.home() / ".transport-matters-preview"
+    assert (
+        resolve_database_url(settings)
+        == "postgresql://tm:tm@localhost:55432/transport_matters_preview"
+    )
+
+
 def test_resolve_database_url_still_requires_configured_server() -> None:
     settings = Settings(
         channel="preview",
@@ -131,9 +166,8 @@ def test_resolve_database_url_still_requires_configured_server() -> None:
 
 
 def test_disk_storage_layout_default_root_is_lazy(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, clear_channel_storage_env: None
 ) -> None:
-    monkeypatch.delenv(env_keys.HOME, raising=False)
     monkeypatch.setenv(env_keys.CHANNEL, "stable")
     assert DiskStorageLayout().root == Path.home() / ".transport-matters"
 

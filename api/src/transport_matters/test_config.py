@@ -80,22 +80,16 @@ def test_shipped_trusted_hosts_default_is_loopback_only(
 
 
 def test_settings_default_storage_root_uses_transport_matters(
-    monkeypatch: pytest.MonkeyPatch,
+    clear_channel_storage_env: None,
 ) -> None:
-    monkeypatch.delenv("TRANSPORT_MATTERS_STORAGE_DIR", raising=False)
-    monkeypatch.delenv("TRANSPORT_MATTERS_HOME", raising=False)
-    monkeypatch.delenv("TRANSPORT_MATTERS_CHANNEL", raising=False)
-
     settings = get_settings()
 
     assert settings.storage_dir == Path.home() / ".transport-matters"
 
 
 def test_settings_preview_channel_relocates_default_storage_root(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, clear_channel_storage_env: None
 ) -> None:
-    monkeypatch.delenv("TRANSPORT_MATTERS_STORAGE_DIR", raising=False)
-    monkeypatch.delenv("TRANSPORT_MATTERS_HOME", raising=False)
     monkeypatch.setenv("TRANSPORT_MATTERS_CHANNEL", "preview")
 
     settings = get_settings()

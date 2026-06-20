@@ -89,6 +89,17 @@ def test_runtime_template_roots_enumerate_design_specified_roots(tmp_path: Path)
     ]
 
 
+def test_runtime_template_roots_use_preview_channel_home(
+    tmp_path: Path, clear_channel_storage_env: None
+) -> None:
+    roots = runtime_template_roots(
+        env={"HOME": str(tmp_path / "home"), env_keys.CHANNEL: "preview"}
+    )
+
+    assert roots[1].source == "tm-fleet"
+    assert roots[1].path == Path.home() / ".transport-matters-preview" / "runtimes"
+
+
 def test_list_runtime_templates_reads_optional_and_effort_only_fields(tmp_path: Path) -> None:
     template = _template_dir(tmp_path, "codebase-mapper")
     _write_capabilities(

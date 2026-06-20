@@ -49,6 +49,10 @@ class TomlSettings(BaseModel):
     database: DatabaseSettings = Field(default_factory=DatabaseSettings)
 
 
+def _default_storage_dir(data: dict[str, Any]) -> Path:
+    return default_storage_root(str(data.get("channel", "stable")))
+
+
 class Settings(BaseSettings):
     """Runtime configuration.
 
@@ -75,7 +79,7 @@ class Settings(BaseSettings):
     web_runtime: Literal["embedded", "external"] = "embedded"
     default_client_passthrough: tuple[str, ...] = ()
     upstream_url: str | None = None
-    storage_dir: Path = Field(default_factory=default_storage_root)
+    storage_dir: Path = Field(default_factory=_default_storage_dir)
     # Per-launch session boundary created by ``transport-matters claude``.
     # This is Transport Matters run identity, distinct from any provider
     # metadata session id inside captured requests. ``None`` for direct-uvicorn
@@ -217,13 +221,18 @@ def get_settings() -> Settings:
 
 def _with_channel_database_name(database_url: str, database_name: str) -> str:
     parts = urlsplit(database_url)
-    if not parts.scheme or not parts.netloc:
+    if not parts.scheme:
         return database_url
+    quoted_database_name = quote(database_name)
+    if not parts.netloc and database_url.startswith(f"{parts.scheme}:///"):
+        query = f"?{parts.query}" if parts.query else ""
+        fragment = f"#{parts.fragment}" if parts.fragment else ""
+        return f"{parts.scheme}:///{quoted_database_name}{query}{fragment}"
     return urlunsplit(
         (
             parts.scheme,
             parts.netloc,
-            f"/{quote(database_name)}",
+            f"/{quoted_database_name}",
             parts.query,
             parts.fragment,
         )
