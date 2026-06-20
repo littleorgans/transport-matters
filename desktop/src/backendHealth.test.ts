@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   BackendHealthTimeoutError,
+  isBackendHealthy,
   waitForBackendHealth,
 } from "./backendHealth.js";
 
@@ -48,5 +49,50 @@ describe("backend health polling", () => {
     expect(error).toEqual(
       new BackendHealthTimeoutError("http://127.0.0.1:9901/health", 10),
     );
+  });
+
+  it("aborts a stalled health probe after its per-probe timeout", async () => {
+    vi.useFakeTimers();
+    let capturedSignal: AbortSignal | undefined;
+    const fetchHealth = vi.fn(
+      (_url: string, init: { signal: AbortSignal }) =>
+        new Promise<{ ok: boolean }>((resolve) => {
+          capturedSignal = init.signal;
+          init.signal.addEventListener("abort", () => {
+            resolve({ ok: false });
+          });
+        }),
+    );
+
+    const pending = isBackendHealthy("http://127.0.0.1:9901/health", {
+      fetchHealth,
+      timeoutMs: 25,
+    });
+
+    await vi.advanceTimersByTimeAsync(25);
+
+    await expect(pending).resolves.toBe(false);
+    expect(capturedSignal?.aborted).toBe(true);
+  });
+
+  it("clears the per-probe timeout when a health probe settles", async () => {
+    vi.useFakeTimers();
+    let capturedSignal: AbortSignal | undefined;
+    const fetchHealth = vi.fn(
+      async (_url: string, init: { signal: AbortSignal }) => {
+        capturedSignal = init.signal;
+        return { ok: true };
+      },
+    );
+
+    await expect(
+      isBackendHealthy("http://127.0.0.1:9901/health", {
+        fetchHealth,
+        timeoutMs: 25,
+      }),
+    ).resolves.toBe(true);
+    await vi.advanceTimersByTimeAsync(25);
+
+    expect(capturedSignal?.aborted).toBe(false);
   });
 });
