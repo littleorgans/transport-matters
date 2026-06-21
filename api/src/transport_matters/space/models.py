@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, Self
+from typing import TYPE_CHECKING, Any, ClassVar, Self
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -99,6 +99,13 @@ class _UuidId:
         return {"type": "string", "format": "uuid"}
 
 
+class _IdentityHashMixin:
+    _identity_field: ClassVar[str]
+
+    def __hash__(self) -> int:
+        return hash(getattr(self, self._identity_field))
+
+
 class SpaceId(_UuidId):
     pass
 
@@ -111,7 +118,8 @@ class CanvasId(_UuidId):
     pass
 
 
-class Space(BaseModel):
+class Space(_IdentityHashMixin, BaseModel):
+    _identity_field: ClassVar[str] = "space_id"
     model_config = ConfigDict(frozen=True)
 
     space_id: SpaceId
@@ -131,7 +139,8 @@ class SpaceGitIdentity(BaseModel):
     detected_at: datetime | None = None
 
 
-class Worktree(BaseModel):
+class Worktree(_IdentityHashMixin, BaseModel):
+    _identity_field: ClassVar[str] = "worktree_id"
     model_config = ConfigDict(frozen=True)
 
     worktree_id: WorktreeId
@@ -150,7 +159,8 @@ class Worktree(BaseModel):
     updated_at: datetime | None = None
 
 
-class Canvas(BaseModel):
+class Canvas(_IdentityHashMixin, BaseModel):
+    _identity_field: ClassVar[str] = "canvas_id"
     model_config = ConfigDict(frozen=True)
 
     canvas_id: CanvasId

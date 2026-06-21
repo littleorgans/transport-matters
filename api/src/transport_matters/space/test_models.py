@@ -116,6 +116,51 @@ def test_space_worktree_canvas_models_are_frozen_pydantic_rows() -> None:
     assert canvas.model_dump()["default_worktree_id"] == str(worktree_id)
 
 
+def test_space_worktree_canvas_hash_by_entity_id() -> None:
+    space_id = SpaceId.from_uuid(FIXED_UUID)
+    worktree_id = WorktreeId.from_uuid(UUID("aaaaaaaa-aaaa-4aaa-9aaa-aaaaaaaaaaaa"))
+    canvas_id = CanvasId.from_uuid(UUID("bbbbbbbb-bbbb-4bbb-9bbb-bbbbbbbbbbbb"))
+
+    space = Space(space_id=space_id, name="Transport Matters")
+    renamed_space = Space(space_id=space_id, name="Renamed")
+    assert hash(space) == hash(space_id)
+    assert hash(renamed_space) == hash(space)
+
+    worktree = Worktree(
+        worktree_id=worktree_id,
+        space_id=space_id,
+        path="/repo/main",
+        workspace_slug="transport-matters",
+        workspace_hash="hash-main",
+    )
+    moved_worktree = Worktree(
+        worktree_id=worktree_id,
+        space_id=space_id,
+        path="/repo/worktree",
+        workspace_slug="transport-matters-worktree",
+        workspace_hash="hash-worktree",
+    )
+    assert hash(worktree) == hash(worktree_id)
+    assert hash(moved_worktree) == hash(worktree)
+
+    canvas = Canvas(
+        canvas_id=canvas_id,
+        space_id=space_id,
+        name="Main canvas",
+        default_worktree_id=worktree_id,
+        layout={"panes": []},
+    )
+    renamed_canvas = Canvas(
+        canvas_id=canvas_id,
+        space_id=space_id,
+        name="Renamed canvas",
+        default_worktree_id=worktree_id,
+        layout={"panes": [{"pane_id": "one"}]},
+    )
+    assert hash(canvas) == hash(canvas_id)
+    assert hash(renamed_canvas) == hash(canvas)
+
+
 def test_resolved_worktree_freezes_run_handoff_contract() -> None:
     resolved = ResolvedWorktree(
         space_id=SpaceId.from_uuid(FIXED_UUID),

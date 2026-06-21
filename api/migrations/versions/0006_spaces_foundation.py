@@ -1,10 +1,3 @@
-"""spaces foundation
-
-Revision ID: 0006_spaces_foundation
-Revises: 0005_session_template_provenance
-Create Date: 2026-06-21 06:30:00.000000
-"""
-
 from __future__ import annotations
 
 from alembic import op
