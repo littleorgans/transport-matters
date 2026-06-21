@@ -68,7 +68,6 @@ def detect_space(cwd: Path | str, *, timeout_s: float = GIT_TIMEOUT_S) -> Detect
             "--is-inside-work-tree",
             "--show-toplevel",
             "--git-common-dir",
-            "--git-dir",
         ),
         timeout_s=timeout_s,
         allow_failure=True,
@@ -77,12 +76,11 @@ def detect_space(cwd: Path | str, *, timeout_s: float = GIT_TIMEOUT_S) -> Detect
         return _plain_space(resolved_target)
 
     lines = probe.stdout.splitlines()
-    if len(lines) < 4 or lines[0].strip() != "true":
+    if len(lines) < 3 or lines[0].strip() != "true":
         return _plain_space(resolved_target)
 
     toplevel = _resolve_git_path(lines[1], base=resolved_target)
     common_dir = _resolve_git_path(lines[2], base=resolved_target)
-    _resolve_git_path(lines[3], base=resolved_target)
     worktrees = _detect_git_worktrees(toplevel, common_dir=common_dir, timeout_s=timeout_s)
     primary_path = _primary_path_from_worktrees(worktrees) or toplevel
     return DetectedSpace(

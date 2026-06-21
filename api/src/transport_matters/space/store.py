@@ -64,26 +64,27 @@ class SpaceStore:
         *,
         owner: str = "local",
     ) -> SpaceSnapshot:
-        space = await self._lookup_space_for_detection(detection, owner=owner)
-        if space is None:
-            space = await self._insert_space(owner=owner, name=detection.name)
-        if detection.repo_instance_key is not None and detection.git_common_dir is not None:
-            await self._upsert_git_identity(space.space_id, detection)
+        async with self._conn.transaction():
+            if detection.repo_instance_key is not None and detection.git_common_dir is not None:
+                space = await self._claim_git_space(detection, owner=owner)
+            else:
+                existing_space = await self._lookup_space_for_detection(detection, owner=owner)
+                space = existing_space or await self._insert_space(owner=owner, name=detection.name)
 
-        seen_paths: list[str] = []
-        for detected in detection.worktrees:
-            seen_paths.append(str(detected.path))
-            await self._upsert_worktree(space.space_id, detected, owner=owner)
-        if detection.repo_instance_key is not None:
-            await self._mark_missing_worktrees(
-                space.space_id,
-                owner=owner,
-                active_paths=seen_paths,
-            )
+            seen_paths: list[str] = []
+            for detected in detection.worktrees:
+                seen_paths.append(str(detected.path))
+                await self._upsert_worktree(space.space_id, detected, owner=owner)
+            if detection.repo_instance_key is not None:
+                await self._mark_missing_worktrees(
+                    space.space_id,
+                    owner=owner,
+                    active_paths=seen_paths,
+                )
 
-        snapshot = await self.get_space_snapshot(space.space_id, owner=owner)
-        if snapshot is None:
-            raise RuntimeError("space disappeared after upsert")
+            snapshot = await self.get_space_snapshot(space.space_id, owner=owner)
+            if snapshot is None:
+                raise RuntimeError("space disappeared after upsert")
         self._write_cache(snapshot)
         return snapshot
 
@@ -355,21 +356,68 @@ class SpaceStore:
         assert row is not None
         return _space_from_row(row)
 
-    async def _upsert_git_identity(self, space_id: SpaceId, detection: DetectedSpace) -> None:
-        await self._conn.execute(
+    async def _claim_git_space(self, detection: DetectedSpace, *, owner: str) -> Space:
+        repo_instance_key = detection.repo_instance_key
+        git_common_dir = detection.git_common_dir
+        if repo_instance_key is None or git_common_dir is None:
+            raise ValueError("git detection requires repo_instance_key and git_common_dir")
+
+        space = await self._lookup_space_for_detection(detection, owner=owner)
+        if space is not None:
+            await self._touch_git_identity(space.space_id, detection)
+            return space
+
+        candidate = await self._insert_space(owner=owner, name=detection.name)
+        cursor = await self._conn.execute(
             """
             INSERT INTO space_git_identity (space_id, repo_instance_key, git_common_dir)
             VALUES (%(space_id)s, %(repo_instance_key)s, %(git_common_dir)s)
-            ON CONFLICT (repo_instance_key) DO UPDATE SET
-                space_id = EXCLUDED.space_id,
-                git_common_dir = EXCLUDED.git_common_dir,
-                detected_at = now()
+            ON CONFLICT (repo_instance_key) DO NOTHING
+            RETURNING space_id
+            """,
+            {
+                "space_id": candidate.space_id.into_uuid(),
+                "repo_instance_key": repo_instance_key,
+                "git_common_dir": str(git_common_dir),
+            },
+        )
+        claimed = await cursor.fetchone()
+        if claimed is not None:
+            return candidate
+
+        await self._delete_space(candidate.space_id, owner=owner)
+        space = await self._lookup_space_for_detection(detection, owner=owner)
+        if space is None:
+            raise RuntimeError("space identity claim lost but no existing space found")
+        await self._touch_git_identity(space.space_id, detection)
+        return space
+
+    async def _touch_git_identity(self, space_id: SpaceId, detection: DetectedSpace) -> None:
+        repo_instance_key = detection.repo_instance_key
+        git_common_dir = detection.git_common_dir
+        if repo_instance_key is None or git_common_dir is None:
+            raise ValueError("git detection requires repo_instance_key and git_common_dir")
+
+        await self._conn.execute(
+            """
+            UPDATE space_git_identity
+            SET git_common_dir = %(git_common_dir)s, detected_at = now()
+            WHERE space_id = %(space_id)s AND repo_instance_key = %(repo_instance_key)s
             """,
             {
                 "space_id": space_id.into_uuid(),
-                "repo_instance_key": detection.repo_instance_key,
-                "git_common_dir": str(detection.git_common_dir),
+                "repo_instance_key": repo_instance_key,
+                "git_common_dir": str(git_common_dir),
             },
+        )
+
+    async def _delete_space(self, space_id: SpaceId, *, owner: str) -> None:
+        await self._conn.execute(
+            """
+            DELETE FROM space
+            WHERE space_id = %(space_id)s AND owner = %(owner)s
+            """,
+            {"space_id": space_id.into_uuid(), "owner": owner},
         )
 
     async def _upsert_worktree(

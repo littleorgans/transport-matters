@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from typing import TYPE_CHECKING
 
@@ -12,6 +13,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from transport_matters.session.testing import TestDb
+    from transport_matters.space.models import Space
 
 
 def _detected_worktree(
@@ -46,6 +48,29 @@ def _git_detection(root: Path, *worktrees: Path) -> DetectedSpace:
         git_common_dir=common_dir.resolve(strict=False),
         worktrees=tuple(detected_worktrees),
     )
+
+
+class _AsyncBarrier:
+    def __init__(self, parties: int) -> None:
+        self._parties = parties
+        self._waiting = 0
+        self._event = asyncio.Event()
+
+    async def wait(self) -> None:
+        self._waiting += 1
+        if self._waiting == self._parties:
+            self._event.set()
+        await asyncio.wait_for(self._event.wait(), timeout=5)
+
+
+class _BarrierSpaceStore(SpaceStore):
+    barrier: _AsyncBarrier | None = None
+
+    async def _insert_space(self, *, owner: str, name: str) -> Space:
+        space = await super()._insert_space(owner=owner, name=name)
+        assert self.barrier is not None
+        await self.barrier.wait()
+        return space
 
 
 async def test_store_mints_git_space_reuses_identity_reconciles_and_writes_cache(
@@ -96,6 +121,53 @@ async def test_store_mints_git_space_reuses_identity_reconciles_and_writes_cache
     assert [item for item in cached_worktrees if item["is_primary"]] == [
         next(item for item in cached_worktrees if item["path"] == str(repo.resolve()))
     ]
+
+
+async def test_concurrent_git_first_detection_mints_one_space_without_orphans(
+    test_db: TestDb,
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    detection = _git_detection(repo)
+    barrier = _AsyncBarrier(2)
+
+    async with create_async_pool(test_db.database_url, min_size=2, max_size=2) as pool:
+
+        async def upsert_once(index: int) -> None:
+            async with pool.connection() as conn:
+                store = _BarrierSpaceStore(conn, storage_dir=tmp_path / f"storage-{index}")
+                store.barrier = barrier
+                await store.upsert_detection(detection)
+
+        await asyncio.gather(upsert_once(1), upsert_once(2))
+
+        async with pool.connection() as conn:
+            cursor = await conn.execute(
+                """
+                SELECT
+                    (SELECT count(*) FROM space) AS space_count,
+                    (SELECT count(*) FROM space_git_identity) AS identity_count,
+                    (
+                        SELECT count(*)
+                        FROM space AS s
+                        LEFT JOIN space_git_identity AS gi ON gi.space_id = s.space_id
+                        WHERE gi.space_id IS NULL
+                    ) AS orphan_space_count,
+                    (SELECT array_agg(space_id ORDER BY space_id) FROM space) AS space_ids,
+                    (
+                        SELECT array_agg(space_id ORDER BY space_id)
+                        FROM space_git_identity
+                    ) AS identity_space_ids
+                """
+            )
+            counts = await cursor.fetchone()
+
+    assert counts is not None
+    assert counts["space_count"] == 1
+    assert counts["identity_count"] == 1
+    assert counts["orphan_space_count"] == 0
+    assert counts["identity_space_ids"] == counts["space_ids"]
 
 
 async def test_plain_directory_uses_no_git_identity_row(test_db: TestDb, tmp_path: Path) -> None:
