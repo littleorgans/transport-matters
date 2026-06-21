@@ -276,45 +276,36 @@ def _decode_cursor(cursor: str, *, filters: dict[str, str | None]) -> int:
     return offset
 
 
-def _parse_worktree_id(value: str | None) -> WorktreeId:
+def _parse_uuid_id[IdT: (SpaceId, WorktreeId)](
+    value: str | None,
+    id_type: type[IdT],
+    field_name: str,
+    invalid_code: str,
+    required_code: str | None = None,
+) -> IdT | None:
     if value is None or value == "":
+        if required_code is None:
+            return None
         _raise_api_error(
-            http_status.HTTP_400_BAD_REQUEST, "worktree_required", "worktreeId is required"
+            http_status.HTTP_400_BAD_REQUEST, required_code, f"{field_name} is required"
         )
     try:
-        return WorktreeId.parse(value)
+        return id_type.parse(value)
     except ValueError:
         _raise_api_error(
-            http_status.HTTP_400_BAD_REQUEST, "invalid_worktree_id", "worktreeId must be a UUID"
-        )
-
-
-def _parse_optional_space_id(value: str | None) -> SpaceId | None:
-    if value is None or value == "":
-        return None
-    try:
-        return SpaceId.parse(value)
-    except ValueError:
-        _raise_api_error(
-            http_status.HTTP_400_BAD_REQUEST, "invalid_space_id", "spaceId must be a UUID"
-        )
-
-
-def _parse_optional_worktree_id(value: str | None) -> WorktreeId | None:
-    if value is None or value == "":
-        return None
-    try:
-        return WorktreeId.parse(value)
-    except ValueError:
-        _raise_api_error(
-            http_status.HTTP_400_BAD_REQUEST, "invalid_worktree_id", "worktreeId must be a UUID"
+            http_status.HTTP_400_BAD_REQUEST,
+            invalid_code,
+            f"{field_name} must be a UUID",
         )
 
 
 async def _resolved_worktree(
     body: CreateRunRequest, *, request: Request, owner: str
 ) -> ResolvedWorktree:
-    worktree_id = _parse_worktree_id(body.worktree_id)
+    worktree_id = _parse_uuid_id(
+        body.worktree_id, WorktreeId, "worktreeId", "invalid_worktree_id", "worktree_required"
+    )
+    assert worktree_id is not None
     pool = optional_session_pool(request)
     if pool is None:
         _raise_api_error(
@@ -500,8 +491,8 @@ async def list_runs(
     cursor_filters = _cursor_filter_key(state, space_id, worktree_id)
     offset = _decode_cursor(cursor, filters=cursor_filters) if cursor is not None else 0
     filters = RunFilters(
-        space_id=_parse_optional_space_id(space_id),
-        worktree_id=_parse_optional_worktree_id(worktree_id),
+        space_id=_parse_uuid_id(space_id, SpaceId, "spaceId", "invalid_space_id"),
+        worktree_id=_parse_uuid_id(worktree_id, WorktreeId, "worktreeId", "invalid_worktree_id"),
         states=_public_state_filter(state) if state is not None else None,
     )
     manager = _run_manager(request)

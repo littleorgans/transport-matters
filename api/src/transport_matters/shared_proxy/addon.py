@@ -299,6 +299,8 @@ def _runtime_binding_from_payload(payload: SharedProxyBindingPayload) -> ProxyRu
         agent_home_dir=_optional_path(payload.agent_home_dir),
         owned_native_session_id=payload.owned_native_session_id,
         owned_source_descriptor=payload.owned_source_descriptor,
+        space_id=payload.space_id,
+        worktree_id=payload.worktree_id,
         launch_fields=MappingProxyType(dict(payload.launch_fields)),
         default_client_passthrough=tuple(payload.default_client_passthrough),
         breakpoint_skip_models=tuple(payload.breakpoint_skip_models),
