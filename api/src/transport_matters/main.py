@@ -22,6 +22,8 @@ from transport_matters.api.v1 import (
 )
 from transport_matters.api.v1.router import api_router
 from transport_matters.config import MissingDatabaseConfigError, get_settings, resolve_database_url
+from transport_matters.session.async_dao import AsyncSessionDao
+from transport_matters.session.backfill import backfill_session_spaces
 from transport_matters.session.listen import SessionEventHub, SessionEventListener
 from transport_matters.session.migrate import MigrationError, apply_migrations
 from transport_matters.session.pool import create_async_pool
@@ -154,6 +156,29 @@ async def _resolve_current_space(pool: AsyncConnectionPool[AsyncConnection[DictR
         logger.exception("Failed to resolve current Space for %s", cwd)
 
 
+async def _backfill_session_spaces(
+    pool: AsyncConnectionPool[AsyncConnection[DictRow]],
+) -> None:
+    try:
+        async with pool.connection() as conn:
+            result = await backfill_session_spaces(
+                session_dao=AsyncSessionDao(conn),
+                space_store=SpaceStore(conn),
+                owner="local",
+            )
+        logger.info(
+            "session space backfill complete",
+            extra={
+                "scanned": result.scanned,
+                "resolved": result.resolved,
+                "missing": result.missing,
+                "legacy_unassigned": result.legacy_unassigned,
+            },
+        )
+    except Exception:
+        logger.exception("Failed to backfill session Space identity")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     logger.info("Starting %s", app.title)
@@ -179,6 +204,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             session_listener = app.state.session_event_listener
             if session_pool is not None:
                 await _resolve_current_space(session_pool)
+                await _backfill_session_spaces(session_pool)
                 try:
                     await pending_shared_proxy_manager.start()
                 except Exception as exc:
