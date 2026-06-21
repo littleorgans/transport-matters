@@ -15,7 +15,7 @@ import {
 import { type LayoutParams, seedParams } from "../../engine/layout";
 import type { HarnessName } from "../../types";
 import { canvasCacheKey, importLegacyCanvasCache } from "../persistence/canvasCacheStorage";
-import { type CanvasLaunchContext, defaultCanvasId } from "../route";
+import { type CanvasLaunchContext, defaultCanvasId, parseCanvasLaunchContext } from "../route";
 import { PICKER_PANE_ID, paneIdForRef, titleForRef } from "../viewers/registry";
 import { createCanvasStorePersistOptions } from "./canvasStore.persistence";
 import { planExpandLayout } from "./expandLayout";
@@ -109,7 +109,24 @@ const INITIAL_LAUNCH_CONTEXT: CanvasLaunchContext = Object.freeze({
 // namespacing, kept in sync wherever the canvas is (re)keyed. A module variable
 // avoids a circular type reference to `useCanvasStore` inside its own persist
 // options (which would collapse the store's inferred type to `any`).
-let activeCanvasId = defaultCanvasId(INITIAL_LAUNCH_CONTEXT);
+//
+// Seeded from the URL-resolved launch canvasId (not the frozen INITIAL) so the
+// one-time legacy import below targets the SAME key the persist middleware first
+// rehydrates from. Doing the import at module load — before `create()` — is what
+// makes it reliable: the in-action import in `initializeCanvas` runs after the
+// store has already auto-persisted its empty default to the namespaced key, so
+// the no-overwrite guard would skip the legacy blob and a pre-Spaces canvas would
+// be silently lost. Resolving the launch id here keeps the worktree/Space cases
+// correct too (the bare key folds into the launched canvas, not always direct-local).
+function resolveLaunchCanvasId(): string {
+  if (typeof window === "undefined") return defaultCanvasId(INITIAL_LAUNCH_CONTEXT);
+  return defaultCanvasId(parseCanvasLaunchContext(window.location.search));
+}
+
+let activeCanvasId = resolveLaunchCanvasId();
+if (typeof window !== "undefined" && globalThis.localStorage) {
+  importLegacyCanvasCache(activeCanvasId, globalThis.localStorage);
+}
 
 export const useCanvasStore = create<CanvasStoreState>()(
   persist(

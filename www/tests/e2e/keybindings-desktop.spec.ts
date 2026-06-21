@@ -104,7 +104,10 @@ async function seedCanvasExchangePane(page: Page) {
       );
     },
     {
-      storageKey: FRONTEND_STORAGE_KEYS.canvasStore,
+      // Slice 6 namespaces the canvas cache by canvasId; /canvas with no launch
+      // params resolves to the "direct-local" canvas, so seed THAT key directly
+      // (the bare legacy key is only the one-time import source).
+      storageKey: `${FRONTEND_STORAGE_KEYS.canvasStore}:direct-local`,
       runId: mockVisualRunId,
       exchangeId: mockExchanges[0].id,
     },

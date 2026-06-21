@@ -398,11 +398,13 @@ export async function fetchCapabilities(): Promise<CapabilitiesResponse> {
 
 /** List detected Spaces with their worktrees inlined via `GET /v1/spaces`. */
 export async function fetchSpaces(): Promise<SpaceSummary[]> {
-  const response = await requestApiJson<{ items: SpaceSummary[] }>(
+  const response = await requestApiJson<{ items?: SpaceSummary[] }>(
     "/v1/spaces",
     "Failed to load spaces",
   );
-  return response.items;
+  // Never resolve to undefined: react-query rejects an undefined query result,
+  // and a payload without `items` degrades to "no spaces", not an error.
+  return response.items ?? [];
 }
 
 /**
@@ -411,11 +413,11 @@ export async function fetchSpaces(): Promise<SpaceSummary[]> {
  */
 export async function fetchWorktrees(spaceId: string, refresh = false): Promise<WorktreeSummary[]> {
   const query = refresh ? "?refresh=1" : "";
-  const response = await requestApiJson<{ items: WorktreeSummary[] }>(
+  const response = await requestApiJson<{ items?: WorktreeSummary[] }>(
     `/v1/spaces/${encodeURIComponent(spaceId)}/worktrees${query}`,
     "Failed to load worktrees",
   );
-  return response.items;
+  return response.items ?? [];
 }
 
 // ── Managed captured run endpoints ────────────────────────────────
