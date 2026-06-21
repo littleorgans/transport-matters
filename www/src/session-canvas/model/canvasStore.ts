@@ -221,25 +221,38 @@ export const useCanvasStore = create<CanvasStoreState>()(
 
       initializeCanvas(launch) {
         const canvasId = defaultCanvasId(launch);
+        const switchingCanvas = get().canvasId !== canvasId;
         activeCanvasId = canvasId;
         // One-time: fold the pre-Spaces single canvas into this Space's default
         // Canvas. Runs BEFORE the canvasId set so the no-overwrite guard correctly
         // skips a Space that already has its own cached canvas.
         importLegacyCanvasCache(canvasId, globalThis.localStorage);
         // Capture the per-canvas blob (legacy-imported or pre-existing) before the
-        // canvasId set: the persist middleware writes the current store state to the
-        // new namespaced key on that set, which would otherwise clobber the cache we
-        // are about to rehydrate from. Restore it, then rehydrate (mirrors reload).
+        // set: the persist middleware writes the store state to the new namespaced
+        // key on that set, which would otherwise clobber the cache we rehydrate from
+        // below. Restore it, then rehydrate (mirrors the page-reload path).
         const cacheKey = canvasCacheKey(canvasId);
         const cached = globalThis.localStorage.getItem(cacheKey);
-        set((state) => ({
-          ...state,
-          canvasId,
-          spaceId: launch.spaceId,
-          defaultWorktreeId: launch.worktreeId,
-          launch,
-          workspaceHash: launch.workspaceHash,
-        }));
+        if (switchingCanvas) {
+          // Switching to a DIFFERENT canvas: reset to a fresh model for the new id so
+          // the previous canvas's panes/layout never leak into the new per-canvas key
+          // via the persist-on-set. Without this, a switch to a canvas with no cache
+          // would persist the old panes under the new key and rehydrate would clone
+          // the previous canvas instead of starting an isolated one. The cached blob,
+          // if any, is restored + rehydrated below so an existing canvas still loads.
+          set(createInitialCanvasModel(launch));
+        } else {
+          // Same canvas (initial mount / re-init): keep the already-hydrated panes and
+          // only refresh the launch-derived identity fields.
+          set((state) => ({
+            ...state,
+            canvasId,
+            spaceId: launch.spaceId,
+            defaultWorktreeId: launch.worktreeId,
+            launch,
+            workspaceHash: launch.workspaceHash,
+          }));
+        }
         if (cached !== null) globalThis.localStorage.setItem(cacheKey, cached);
         // canvasId changed → re-read the namespaced cache for the new canvas.
         void useCanvasStore.persist.rehydrate();

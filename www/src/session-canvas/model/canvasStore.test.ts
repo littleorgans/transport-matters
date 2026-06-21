@@ -506,6 +506,46 @@ describe("canvasStore", () => {
       expect(state.spaceId).toBeNull();
       expect(state.defaultWorktreeId).toBeNull();
     });
+
+    it("switching to a new canvas starts isolated, not a clone of the previous canvas", () => {
+      localStorage.clear();
+      resetCanvasStoreForTests();
+      // Arrange canvas A with a captured-run pane on top of the picker.
+      useCanvasStore.getState().initializeCanvas({
+        owner: "local",
+        workspaceHash: null,
+        spaceId: "space-a",
+        worktreeId: "wt-a",
+        canvasId: null,
+        harness: null,
+        runId: null,
+      });
+      useCanvasStore.getState().addCapturedRun("claude");
+      expect(
+        Object.values(useCanvasStore.getState().panes).some(
+          (pane) => pane.contentRef.kind === "captured-run",
+        ),
+      ).toBe(true);
+
+      // Switch to a brand-new canvas B with no cached blob.
+      useCanvasStore.getState().initializeCanvas({
+        owner: "local",
+        workspaceHash: null,
+        spaceId: "space-b",
+        worktreeId: "wt-b",
+        canvasId: null,
+        harness: null,
+        runId: null,
+      });
+
+      const stateB = useCanvasStore.getState();
+      expect(stateB.canvasId).toBe("space:space-b");
+      expect(stateB.defaultWorktreeId).toBe("wt-b");
+      // Isolated: B does NOT inherit canvas A's captured-run pane (no clone leak).
+      expect(
+        Object.values(stateB.panes).some((pane) => pane.contentRef.kind === "captured-run"),
+      ).toBe(false);
+    });
   });
 
   describe("addCapturedRun roots on defaultWorktreeId (Slice 6)", () => {
