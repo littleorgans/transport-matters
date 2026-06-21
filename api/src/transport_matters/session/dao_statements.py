@@ -8,6 +8,8 @@ SESSION_COLUMN_NAMES = (
     "cwd",
     "workspace_slug",
     "workspace_hash",
+    "space_id",
+    "worktree_id",
     "native_session_id",
     "minted",
     "source_descriptor",
@@ -56,14 +58,15 @@ ARTIFACT_COLUMNS = "hash, media_type, size_bytes, bytes, created_at"
 UPSERT_SESSION_SQL = f"""
 INSERT INTO "session" (
     session_id, provider, harness, run_id, cwd, workspace_slug, workspace_hash,
-    native_session_id, minted, source_descriptor, home_dir, template_provenance, owner, session_purpose,
-    session_visibility, status, title, parent_session_id, forked_at_seq, started_at
+    space_id, worktree_id, native_session_id, minted, source_descriptor, home_dir,
+    template_provenance, owner, session_purpose, session_visibility, status, title,
+    parent_session_id, forked_at_seq, started_at
 ) VALUES (
     %(session_id)s, %(provider)s, %(harness)s, %(run_id)s, %(cwd)s, %(workspace_slug)s,
-    %(workspace_hash)s, %(native_session_id)s, %(minted)s, %(source_descriptor)s,
-    %(home_dir)s, %(template_provenance)s, %(owner)s, %(session_purpose)s,
-    %(session_visibility)s, %(status)s, %(title)s, %(parent_session_id)s,
-    %(forked_at_seq)s, %(started_at)s
+    %(workspace_hash)s, %(space_id)s, %(worktree_id)s, %(native_session_id)s, %(minted)s,
+    %(source_descriptor)s, %(home_dir)s, %(template_provenance)s, %(owner)s,
+    %(session_purpose)s, %(session_visibility)s, %(status)s, %(title)s,
+    %(parent_session_id)s, %(forked_at_seq)s, %(started_at)s
 )
 ON CONFLICT (session_id) DO UPDATE SET
     provider = EXCLUDED.provider,
@@ -72,6 +75,8 @@ ON CONFLICT (session_id) DO UPDATE SET
     cwd = COALESCE(NULLIF("session".cwd, ''), EXCLUDED.cwd),
     workspace_slug = EXCLUDED.workspace_slug,
     workspace_hash = EXCLUDED.workspace_hash,
+    space_id = COALESCE(EXCLUDED.space_id, "session".space_id),
+    worktree_id = COALESCE(EXCLUDED.worktree_id, "session".worktree_id),
     native_session_id = COALESCE("session".native_session_id, EXCLUDED.native_session_id),
     minted = "session".minted OR EXCLUDED.minted,
     source_descriptor = COALESCE("session".source_descriptor, EXCLUDED.source_descriptor),

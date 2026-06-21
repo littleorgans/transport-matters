@@ -419,6 +419,8 @@ class RunManager:
             default_client_passthrough=request.default_client_passthrough,
             runtime_template=request.runtime_template,
             launch_fields=request.launch_fields,
+            space_id=validated.space_id,
+            worktree_id=validated.worktree_id,
             defer_session_ownership=request.defer_session_ownership,
             bypass_permissions=request.bypass_permissions,
         )

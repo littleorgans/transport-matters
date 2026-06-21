@@ -17,6 +17,7 @@ from typing import Annotated, Any, ClassVar, Literal  # Any: native records are 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 
 from transport_matters.ir import ContentBlock
+from transport_matters.space.models import SpaceId, WorktreeId
 
 RawRecord = dict[str, Any]  # Any: one parsed native transcript record (jsonl line / db-row JSON)
 
@@ -32,6 +33,8 @@ class SessionBinding(BaseModel):
     cwd: str
     workspace_slug: str
     workspace_hash: str
+    space_id: SpaceId | None = None
+    worktree_id: WorktreeId | None = None
     started_at: str  # ISO-8601
     harness: str | None = (
         None  # harness: claude | codex | ...; nullable until the launcher plumbs it

@@ -5,6 +5,7 @@ import base64
 import json
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
+from uuid import UUID
 
 import psycopg
 
@@ -37,6 +38,7 @@ from transport_matters.session.models import (
 from transport_matters.session.pool import async_connect, create_async_pool
 from transport_matters.session.quarantine import DEAD_LETTER_RAW_MAX_BYTES
 from transport_matters.session.writer import CommitResult, SessionWriter
+from transport_matters.space.models import SpaceId, WorktreeId
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -143,6 +145,25 @@ def _event_writes() -> tuple[SessionBinding, list[EventWrite]]:
     meta_ctx = ctx.model_copy(update={"seq": 1, "source_line": 1, "model": "claude-opus"})
     meta_write = build_event(_meta_record(), None, meta_ctx)
     return binding, [turn_write, meta_write]
+
+
+def test_build_session_threads_space_identity_from_binding() -> None:
+    binding = SessionBinding(
+        session_id="s1",
+        provider="anthropic",
+        run_id="run1",
+        cwd="/workspace",
+        workspace_slug="workspace",
+        workspace_hash="hash1",
+        started_at="2026-06-06T00:00:00+00:00",
+        space_id=SpaceId.from_uuid(UUID("11111111-1111-4111-8111-111111111111")),
+        worktree_id=WorktreeId.from_uuid(UUID("22222222-2222-4222-8222-222222222222")),
+    )
+
+    session = ingest.build_session(binding)
+
+    assert session.space_id == binding.space_id
+    assert session.worktree_id == binding.worktree_id
 
 
 async def test_session_writer_commits_raw_ir_meta_artifacts_and_reingest(

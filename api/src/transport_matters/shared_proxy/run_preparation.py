@@ -175,6 +175,8 @@ def _binding_from_context(ctx: CapturedRunContext, *, proxy_port: int) -> ProxyR
         owned_source_descriptor=(
             ctx.managed_session.source_descriptor if ctx.managed_session is not None else None
         ),
+        space_id=ctx.request.space_id,
+        worktree_id=ctx.request.worktree_id,
         launch_fields=MappingProxyType(_launch_fields(ctx)),
         default_client_passthrough=tuple(ctx.request.default_client_passthrough),
     )

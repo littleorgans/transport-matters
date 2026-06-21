@@ -10,6 +10,7 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
     from pathlib import Path
 
+    from transport_matters.space.models import SpaceId, WorktreeId
     from transport_matters.storage.base import StorageBackend
 
 
@@ -40,6 +41,8 @@ class ProxyRunBinding:
     agent_home_dir: Path | None
     owned_native_session_id: str | None
     owned_source_descriptor: str | None
+    space_id: SpaceId | None = None
+    worktree_id: WorktreeId | None = None
     launch_fields: Mapping[str, Any] = field(default_factory=lambda: MappingProxyType({}))
     # Forward-carry for Slice 5 (shared-proxy mode_spec/routing); unused in Slice 1.
     default_client_passthrough: tuple[str, ...] = ()

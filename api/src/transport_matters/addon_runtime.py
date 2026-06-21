@@ -113,6 +113,8 @@ def _make_exchange_cursor_sink(
             cwd=str(binding.working_dir),
             workspace_slug=workspace.slug,
             workspace_hash=workspace.hash,
+            space_id=binding.space_id,
+            worktree_id=binding.worktree_id,
             started_at=entry.ts.isoformat(),
             harness=harness,
             native_session_id=native_session_id,
@@ -209,6 +211,8 @@ async def register_owned_cursor(
             **binding.launch_fields,
             "minted": adapter.provider in _DIRECT_MINT_PROVIDERS,
             "source_descriptor": binding.owned_source_descriptor,
+            "space_id": binding.space_id,
+            "worktree_id": binding.worktree_id,
         }
     )
     if on_session_bound is not None:

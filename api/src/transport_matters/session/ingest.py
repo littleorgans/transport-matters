@@ -81,6 +81,8 @@ def build_session(
         cwd=binding.cwd,
         workspace_slug=binding.workspace_slug,
         workspace_hash=binding.workspace_hash,
+        space_id=binding.space_id,
+        worktree_id=binding.worktree_id,
         native_session_id=binding.native_session_id,
         minted=binding.minted,
         source_descriptor=_descriptor_json(binding.source_descriptor),
