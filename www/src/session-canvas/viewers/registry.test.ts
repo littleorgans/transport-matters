@@ -107,7 +107,7 @@ describe("registry pane ids", () => {
   });
 
   it("routes the local terminal surface to the terminal viewer", () => {
-    const ref: CanvasPaneRef = { kind: "terminal", owner: "local" };
+    const ref: CanvasPaneRef = { kind: "terminal", owner: "local", worktreeId: "wt-1" };
     expect(viewerIdForRef(ref)).toBe("terminal");
     expect(titleForRef(ref)).toBe("Terminal");
     expect(paneIdForRef(ref)).toBe("terminal");
@@ -119,12 +119,14 @@ describe("registry pane ids", () => {
       owner: "local",
       provider: "claude",
       runKey: "claude:k1",
+      worktreeId: "wt-1",
     };
     const codex: CanvasPaneRef = {
       kind: "captured-run",
       owner: "local",
       provider: "codex",
       runKey: "codex:k1",
+      worktreeId: "wt-1",
     };
     expect(viewerIdForRef(claude)).toBe("captured-run");
     expect(viewerIdForRef(codex)).toBe("captured-run");
@@ -141,12 +143,14 @@ describe("registry pane ids", () => {
       owner: "local",
       provider: "claude",
       runKey: "claude:k1",
+      worktreeId: "wt-1",
     };
     const second: CanvasPaneRef = {
       kind: "captured-run",
       owner: "local",
       provider: "claude",
       runKey: "claude:k2",
+      worktreeId: "wt-1",
     };
     // Distinct run keys => distinct pane ids => two independent runs, never collapsed onto one.
     expect(paneIdForRef(first)).toBe("claude:k1");

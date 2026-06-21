@@ -9,6 +9,7 @@ describe("paneLifecycle", () => {
       owner: "local",
       provider: "claude",
       runKey: "claude:k1",
+      worktreeId: "wt-1",
     });
 
     expect(policy.onClose).toBe(capturedRunLifecyclePolicy.onClose);

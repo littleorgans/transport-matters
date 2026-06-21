@@ -23,6 +23,7 @@ const terminalRef = {
   kind: "terminal",
   owner: "local",
   label: "Terminal-1",
+  worktreeId: "wt-1",
 } satisfies PaneContentRef;
 
 const capturedRef = {
@@ -31,6 +32,7 @@ const capturedRef = {
   provider: "claude",
   runKey: "claude:k1",
   label: "Claude-1",
+  worktreeId: "wt-1",
 } satisfies PaneContentRef;
 
 function isTerminalRef(value: unknown): value is Extract<PaneContentRef, { kind: "terminal" }> {

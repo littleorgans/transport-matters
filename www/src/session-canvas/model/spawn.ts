@@ -30,6 +30,7 @@ export function titleForSession(session: SpawnSessionDescriptor): string {
 
 export function createCapturedRunRef(
   provider: HarnessName,
+  worktreeId: string,
   label?: string,
   runtimeTemplate?: string,
 ): CapturedRunRef {
@@ -38,6 +39,7 @@ export function createCapturedRunRef(
     owner: "local",
     provider,
     runKey: createCapturedRunKey(provider),
+    worktreeId,
     ...(label === undefined ? {} : { label }),
     ...(runtimeTemplate === undefined ? {} : { runtimeTemplate }),
   };

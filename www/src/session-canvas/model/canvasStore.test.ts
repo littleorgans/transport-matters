@@ -19,6 +19,18 @@ vi.mock("../../api", () => ({
   terminateRun: terminateRunMock,
 }));
 
+// A launch context with a rooted worktree, for tests that spawn captured runs
+// (addCapturedRun now requires Canvas.defaultWorktreeId, Slice 6 R3).
+const ROOTED_LAUNCH = {
+  owner: "local" as const,
+  workspaceHash: null,
+  spaceId: null,
+  worktreeId: "wt-1",
+  canvasId: null,
+  harness: null,
+  runId: null,
+};
+
 type CanvasStoreSnapshot = ReturnType<typeof useCanvasStore.getState>;
 
 // Store rects are the strategy plan quantized at the planLayout chokepoint,
@@ -144,7 +156,7 @@ describe("canvasStore", () => {
   });
 
   it("addCapturedRun inserts one pane keyed by the run key", () => {
-    resetCanvasStoreForTests();
+    resetCanvasStoreForTests(ROOTED_LAUNCH);
 
     const paneId = useCanvasStore.getState().addCapturedRun("claude");
 
@@ -163,7 +175,7 @@ describe("canvasStore", () => {
   });
 
   it("addCapturedRun keeps two same-provider calls as two panes", () => {
-    resetCanvasStoreForTests();
+    resetCanvasStoreForTests(ROOTED_LAUNCH);
 
     const firstPaneId = useCanvasStore.getState().addCapturedRun("claude");
     const secondPaneId = useCanvasStore.getState().addCapturedRun("claude");
@@ -253,7 +265,7 @@ describe("canvasStore", () => {
   it("addCapturedRun then closePane stops the run through the real spawn path", () => {
     vi.useFakeTimers();
     try {
-      resetCanvasStoreForTests();
+      resetCanvasStoreForTests(ROOTED_LAUNCH);
       const paneId = useCanvasStore.getState().addCapturedRun("claude");
       rememberCapturedRun(paneId);
 
@@ -493,6 +505,30 @@ describe("canvasStore", () => {
       expect(state.canvasId).toBe("direct-local");
       expect(state.spaceId).toBeNull();
       expect(state.defaultWorktreeId).toBeNull();
+    });
+  });
+
+  describe("addCapturedRun roots on defaultWorktreeId (Slice 6)", () => {
+    it("stamps the canvas defaultWorktreeId onto the captured-run ref", () => {
+      resetCanvasStoreForTests();
+      useCanvasStore.getState().initializeCanvas({
+        owner: "local",
+        workspaceHash: null,
+        spaceId: "space-1",
+        worktreeId: "wt-7",
+        canvasId: null,
+        harness: null,
+        runId: null,
+      });
+
+      const paneId = useCanvasStore.getState().addCapturedRun("claude");
+      const ref = useCanvasStore.getState().panes[paneId]?.contentRef;
+      expect(ref).toMatchObject({ kind: "captured-run", provider: "claude", worktreeId: "wt-7" });
+    });
+
+    it("throws when no worktree root is available", () => {
+      resetCanvasStoreForTests();
+      expect(() => useCanvasStore.getState().addCapturedRun("claude")).toThrow(/worktree/i);
     });
   });
 });

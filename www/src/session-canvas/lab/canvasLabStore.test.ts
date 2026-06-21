@@ -23,7 +23,7 @@ const store = useCanvasLabStore.getState;
 describe("canvasLabStore terminals", () => {
   // Each spawned terminal gets a monotonic per-type label (Terminal-1, Terminal-2, ...).
   const terminalRef = (n: number) =>
-    ({ kind: "terminal", owner: "local", label: `Terminal-${n}` }) as const;
+    ({ kind: "terminal", owner: "local", label: `Terminal-${n}`, worktreeId: "lab" }) as const;
 
   it("spawns a pane that carries a terminal content ref", () => {
     resetCanvasLabStoreForTests();
@@ -235,6 +235,7 @@ describe("canvasLabStore captured runs", () => {
         provider: "claude",
         runKey: paneId,
         label: "Claude-1",
+        worktreeId: "lab",
       });
     } finally {
       vi.useRealTimers();
@@ -302,6 +303,7 @@ describe("canvasLabStore captured runs", () => {
         provider: "claude",
         runKey: paneId,
         label: "Claude-1",
+        worktreeId: "lab",
       });
       expect(store().layout.nodes[paneId]).toBeDefined();
       expect(store().docked).toEqual([]);

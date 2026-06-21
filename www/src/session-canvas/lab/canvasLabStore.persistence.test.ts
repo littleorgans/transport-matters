@@ -165,6 +165,7 @@ describe("canvasLabStore persistence adapter", () => {
       kind: "terminal",
       owner: "local",
       label: "Terminal-1",
+      worktreeId: "lab",
     });
     expect(store().docked.map((entry) => entry.paneId)).toEqual(["lab-2"]);
   });
@@ -248,7 +249,9 @@ describe("canvasLabStore persistence adapter", () => {
       JSON.stringify({
         version: CANVAS_LAB_STORAGE_VERSION,
         state: {
-          contentRefs: { "lab-1": { kind: "terminal", owner: "local", label: "Terminal-1" } },
+          contentRefs: {
+            "lab-1": { kind: "terminal", owner: "local", label: "Terminal-1", worktreeId: "lab" },
+          },
           paneRects: {
             "lab-1": { x: 0, y: 0, width: 360, height: 280 },
             "lab-2": { x: 400, y: 0, width: 360, height: 280 },
@@ -267,6 +270,7 @@ describe("canvasLabStore persistence adapter", () => {
       kind: "terminal",
       owner: "local",
       label: "Terminal-1",
+      worktreeId: "lab",
     });
     expect(store().contentRefs["lab-2"]).toBeUndefined();
     expect(store().nextPaneIndex).toBe(2);

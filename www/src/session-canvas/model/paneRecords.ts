@@ -86,7 +86,7 @@ export type PaneContentRef =
     }
   | { kind: "resource"; owner: "local"; sessionId: string; resourceId: string }
   | { kind: "resource"; owner: "local"; source: "path"; path: string }
-  | { kind: "resource"; owner: "local"; source: "url"; url: string }
+  | { kind: "resource"; owner: "local"; source: "url"; url: string; worktreeId?: string }
   | {
       kind: "provider-exchange";
       owner: "local";
@@ -95,7 +95,7 @@ export type PaneContentRef =
       exchangeId: string;
       initialView?: string;
     }
-  | { kind: "terminal"; owner: "local"; label?: string }
+  | { kind: "terminal"; owner: "local"; label?: string; worktreeId: string }
   | {
       kind: "captured-run";
       owner: "local";
@@ -105,6 +105,13 @@ export type PaneContentRef =
       // Named runtime template this run launched under. Absent → NATIVE launch.
       // Persisted on the ref so a detach/restore re-attaches under the same template.
       runtimeTemplate?: string;
+      // Worktree root this run is captured under (R3). Required: a captured run
+      // must resolve a cwd, so it can never be worktree-less.
+      worktreeId: string;
+      // Durable pane→session-lineage anchor for native resume (--resume / resume)
+      // and internal continuation (parent_session_id). Persisted now so canvases
+      // carry it; populated on session-bind in Slice 7. Legacy panes: undefined.
+      sessionId?: string;
     };
 
 /**
@@ -145,7 +152,9 @@ export function isPaneContentRef(value: unknown): value is PaneContentRef {
       if ("source" in value) {
         return (
           (value.source === "path" && typeof value.path === "string") ||
-          (value.source === "url" && typeof value.url === "string")
+          (value.source === "url" &&
+            typeof value.url === "string" &&
+            isOptionalString(value.worktreeId))
         );
       }
       return typeof value.sessionId === "string" && typeof value.resourceId === "string";
@@ -157,13 +166,15 @@ export function isPaneContentRef(value: unknown): value is PaneContentRef {
         isOptionalString(value.initialView)
       );
     case "terminal":
-      return isOptionalString(value.label);
+      return isOptionalString(value.label) && typeof value.worktreeId === "string";
     case "captured-run":
       return (
         isHarnessName(value.provider) &&
         typeof value.runKey === "string" &&
         isOptionalString(value.label) &&
-        isOptionalString(value.runtimeTemplate)
+        isOptionalString(value.runtimeTemplate) &&
+        typeof value.worktreeId === "string" &&
+        isOptionalString(value.sessionId)
       );
     default:
       return false;

@@ -4,19 +4,20 @@ import { createCapturedRunRef, normalizeRef } from "./spawn";
 
 describe("createCapturedRunRef", () => {
   it("builds a captured run ref with a fresh provider-scoped run key", () => {
-    const ref = createCapturedRunRef("claude", "Claude-1");
+    const ref = createCapturedRunRef("claude", "wt-1", "Claude-1");
 
     expect(ref).toMatchObject({
       kind: "captured-run",
       owner: "local",
       provider: "claude",
+      worktreeId: "wt-1",
       label: "Claude-1",
     });
     expect(ref.runKey.startsWith("claude:")).toBe(true);
   });
 
   it("omits the label when no label is provided", () => {
-    const ref = createCapturedRunRef("codex");
+    const ref = createCapturedRunRef("codex", "wt-1");
 
     expect(ref).toMatchObject({
       kind: "captured-run",

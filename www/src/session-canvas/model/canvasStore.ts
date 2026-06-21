@@ -110,7 +110,16 @@ export const useCanvasStore = create<CanvasStoreState>()(
       ...createInitialCanvasModel(INITIAL_LAUNCH_CONTEXT),
 
       addCapturedRun(provider, runtimeTemplate) {
-        const ref = createCapturedRunRef(provider, harnessLabel(provider), runtimeTemplate);
+        const worktreeId = get().defaultWorktreeId;
+        if (worktreeId === null) {
+          throw new Error("Cannot spawn a captured run without a rooted worktree");
+        }
+        const ref = createCapturedRunRef(
+          provider,
+          worktreeId,
+          harnessLabel(provider),
+          runtimeTemplate,
+        );
         return get().spawnPane(ref, { focus: true });
       },
 

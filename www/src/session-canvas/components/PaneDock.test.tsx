@@ -8,9 +8,15 @@ import { PaneDock } from "./PaneDock";
 const DOCKED: DockedPane[] = [
   {
     paneId: "claude:k1",
-    ref: { kind: "captured-run", owner: "local", provider: "claude", runKey: "claude:k1" },
+    ref: {
+      kind: "captured-run",
+      owner: "local",
+      provider: "claude",
+      runKey: "claude:k1",
+      worktreeId: "wt-1",
+    },
   },
-  { paneId: "lab-1", ref: { kind: "terminal", owner: "local" } },
+  { paneId: "lab-1", ref: { kind: "terminal", owner: "local", worktreeId: "wt-1" } },
   { paneId: "lab-2", ref: null }, // demo card/ruler stub: no viewer ref, title falls back to paneId
 ];
 
