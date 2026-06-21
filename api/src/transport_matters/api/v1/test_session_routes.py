@@ -11,6 +11,7 @@ from transport_matters.api.v1.session_test_support import session_client as _cli
 from transport_matters.config import get_settings
 from transport_matters.main import create_app, lifespan
 from transport_matters.session.async_dao import AsyncSessionDao
+from transport_matters.session.backfill import SessionSpaceBackfillResult
 from transport_matters.session.listen import (
     SessionEventHub,
     SessionEventListener,
@@ -469,6 +470,55 @@ async def test_app_lifespan_releases_session_listener_connection(
         assert await _wait_for_backend_gone(test_db.database_url, listener_pid)
     finally:
         get_settings.cache_clear()
+
+
+async def test_lifespan_runs_session_space_backfill_when_database_enabled(
+    test_db: TestDb,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[str] = []
+
+    async def fake_backfill(
+        *, session_dao: object, space_store: object, owner: str = "local"
+    ) -> SessionSpaceBackfillResult:
+        assert session_dao.__class__.__name__ == "AsyncSessionDao"
+        assert space_store.__class__.__name__ == "SpaceStore"
+        calls.append(owner)
+        return SessionSpaceBackfillResult(scanned=1, resolved=1)
+
+    monkeypatch.setenv("TRANSPORT_MATTERS_DATABASE_URL", test_db.database_url)
+    monkeypatch.setattr("transport_matters.main.backfill_session_spaces", fake_backfill)
+    get_settings.cache_clear()
+    app = create_app()
+    try:
+        async with lifespan(app):
+            pass
+    finally:
+        get_settings.cache_clear()
+
+    assert calls == ["local"]
+
+
+async def test_lifespan_skips_session_space_backfill_without_database(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[str] = []
+
+    async def fake_backfill(*args: object, **kwargs: object) -> SessionSpaceBackfillResult:
+        calls.append("called")
+        return SessionSpaceBackfillResult()
+
+    monkeypatch.delenv("TRANSPORT_MATTERS_DATABASE_URL", raising=False)
+    monkeypatch.setattr("transport_matters.main.backfill_session_spaces", fake_backfill)
+    get_settings.cache_clear()
+    app = create_app()
+    try:
+        async with lifespan(app):
+            pass
+    finally:
+        get_settings.cache_clear()
+
+    assert calls == []
 
 
 async def test_lifespan_listener_start_failure_keeps_routes_unavailable(

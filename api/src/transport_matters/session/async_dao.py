@@ -39,8 +39,10 @@ from transport_matters.session.dao_statements import (
     LINK_ARTIFACT_SQL,
     LIST_CHILD_SESSIONS_FOR_OWNER_SQL,
     LIST_SESSION_VIEWS_SQL,
+    LIST_SESSIONS_MISSING_SPACE_IDENTITY_SQL,
     LIST_SESSIONS_SQL,
     TEXT_SEARCH_SQL,
+    UPDATE_SESSION_SPACE_IDENTITY_SQL,
     UPSERT_ARTIFACT_SQL,
     UPSERT_SESSION_SQL,
 )
@@ -53,15 +55,18 @@ from transport_matters.session.models import (
     EventRow,
     SessionListRow,
     SessionRow,
+    SessionSpaceBackfillCandidate,
 )
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
+    from uuid import UUID
 
     from psycopg import AsyncConnection
     from psycopg.rows import DictRow
 
     from transport_matters.session.models import DeadLetterWrite
+    from transport_matters.space.models import SpaceId, WorktreeId
 
 
 class AsyncSessionDao:
@@ -102,6 +107,8 @@ class AsyncSessionDao:
         *,
         owner: str,
         workspace_id: str | None = None,
+        space_id: UUID | None = None,
+        worktree_id: UUID | None = None,
         purpose: str | None = None,
         visibility: str | None = None,
         include_internal: bool = False,
@@ -113,6 +120,8 @@ class AsyncSessionDao:
             {
                 "owner": owner,
                 "workspace_id": workspace_id,
+                "space_id": space_id,
+                "worktree_id": worktree_id,
                 "purpose": purpose,
                 "visibility": visibility,
                 "include_internal": include_internal,
@@ -123,6 +132,34 @@ class AsyncSessionDao:
         )
         rows = await cursor.fetchall()
         return [SessionListRow.model_validate(dict(row)) for row in rows]
+
+    async def list_sessions_missing_space_identity(
+        self, *, owner: str, limit: int
+    ) -> list[SessionSpaceBackfillCandidate]:
+        cursor = await self._conn.execute(
+            LIST_SESSIONS_MISSING_SPACE_IDENTITY_SQL,
+            {"owner": owner, "limit": limit},
+        )
+        rows = await cursor.fetchall()
+        return [SessionSpaceBackfillCandidate.model_validate(dict(row)) for row in rows]
+
+    async def update_session_space_identity(
+        self,
+        *,
+        owner: str,
+        session_id: str,
+        space_id: SpaceId,
+        worktree_id: WorktreeId,
+    ) -> None:
+        await self._conn.execute(
+            UPDATE_SESSION_SPACE_IDENTITY_SQL,
+            {
+                "owner": owner,
+                "session_id": session_id,
+                "space_id": space_id.into_uuid(),
+                "worktree_id": worktree_id.into_uuid(),
+            },
+        )
 
     async def list_sessions(
         self,

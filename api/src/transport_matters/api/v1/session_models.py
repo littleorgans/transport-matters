@@ -56,6 +56,9 @@ class SessionLineage(PublicSessionModel):
 class SessionView(PublicSessionModel):
     session_id: str
     workspace_id: str
+    space_id: str | None
+    worktree_id: str | None
+    legacy_group: Literal["unassigned"] | None = None
     title: str | None
     status: str
     provider: str
@@ -157,6 +160,9 @@ def session_view_from_row(row: SessionListRow) -> SessionView:
     return SessionView(
         session_id=row.session_id,
         workspace_id=workspace_id_from_row(row),
+        space_id=str(row.space_id) if row.space_id is not None else None,
+        worktree_id=str(row.worktree_id) if row.worktree_id is not None else None,
+        legacy_group=_legacy_group_for_session(row),
         title=row.title,
         status=str(row.status),
         provider=row.provider,
@@ -178,6 +184,12 @@ def session_view_from_row(row: SessionListRow) -> SessionView:
 
 def workspace_id_from_row(row: SessionListRow) -> str:
     return f"{row.workspace_slug}/{row.workspace_hash}"
+
+
+def _legacy_group_for_session(row: SessionListRow) -> Literal["unassigned"] | None:
+    if row.cwd == "" and row.space_id is None and row.worktree_id is None:
+        return "unassigned"
+    return None
 
 
 def transcript_event_views(

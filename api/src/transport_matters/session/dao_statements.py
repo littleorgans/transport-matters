@@ -148,6 +148,31 @@ WHERE s.session_id = %(session_id)s
   AND s.owner = %(owner)s
 """
 
+LIST_SESSIONS_MISSING_SPACE_IDENTITY_SQL = """
+SELECT
+    s.session_id,
+    s.owner,
+    s.workspace_slug || '/' || s.workspace_hash AS workspace_id,
+    s.cwd
+FROM "session" AS s
+WHERE s.owner = %(owner)s
+  AND (s.space_id IS NULL OR s.worktree_id IS NULL)
+ORDER BY
+    CASE WHEN NULLIF(btrim(s.cwd), '') IS NULL THEN 1 ELSE 0 END,
+    s.updated_at NULLS LAST,
+    s.session_id
+LIMIT %(limit)s
+"""
+
+UPDATE_SESSION_SPACE_IDENTITY_SQL = """
+UPDATE "session"
+SET space_id = %(space_id)s::uuid,
+    worktree_id = %(worktree_id)s::uuid,
+    updated_at = now()
+WHERE owner = %(owner)s
+  AND session_id = %(session_id)s
+"""
+
 LIST_SESSIONS_SQL = f"""
 SELECT {SESSION_COLUMNS}
 FROM "session"
@@ -165,6 +190,8 @@ LIST_SESSION_VIEWS_SQL = f"""
 {SESSION_VIEW_SELECT_SQL}
 WHERE s.owner = %(owner)s
   AND (%(workspace_id)s::text IS NULL OR s.workspace_slug || '/' || s.workspace_hash = %(workspace_id)s OR s.workspace_hash = %(workspace_id)s)
+  AND (%(space_id)s::uuid IS NULL OR s.space_id = %(space_id)s::uuid)
+  AND (%(worktree_id)s::uuid IS NULL OR s.worktree_id = %(worktree_id)s::uuid)
   AND (%(purpose)s::text IS NULL OR s.session_purpose = %(purpose)s)
   AND (%(visibility)s::text IS NULL OR s.session_visibility = %(visibility)s)
   AND (

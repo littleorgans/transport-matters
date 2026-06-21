@@ -8,6 +8,7 @@ import binascii
 import json
 import logging
 from typing import TYPE_CHECKING, Annotated, Any, NoReturn, cast
+from uuid import UUID  # noqa: TC003 - FastAPI resolves query annotation types at runtime.
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi import status as http_status
@@ -106,6 +107,8 @@ def _cursor_filter_key(
     *,
     owner: str,
     workspace_id: str | None,
+    space_id: UUID | None,
+    worktree_id: UUID | None,
     purpose: str | None,
     visibility: str | None,
     include_internal: bool,
@@ -113,6 +116,8 @@ def _cursor_filter_key(
     return {
         "owner": owner,
         "workspaceId": workspace_id,
+        "spaceId": str(space_id) if space_id is not None else None,
+        "worktreeId": str(worktree_id) if worktree_id is not None else None,
         "purpose": purpose,
         "visibility": visibility,
         "includeInternal": include_internal,
@@ -149,6 +154,8 @@ async def list_sessions(
     pool: Any = Depends(_session_pool),
     owner: Annotated[str, Query(min_length=1)] = DEFAULT_OWNER,
     workspace_id: Annotated[str | None, Query(alias="workspaceId")] = None,
+    space_id: Annotated[UUID | None, Query(alias="spaceId")] = None,
+    worktree_id: Annotated[UUID | None, Query(alias="worktreeId")] = None,
     purpose: Annotated[str | None, Query()] = None,
     visibility: Annotated[str | None, Query()] = None,
     include_internal: Annotated[bool, Query(alias="includeInternal")] = False,
@@ -163,6 +170,8 @@ async def list_sessions(
     filters = _cursor_filter_key(
         owner=owner,
         workspace_id=workspace_id,
+        space_id=space_id,
+        worktree_id=worktree_id,
         purpose=validated_purpose,
         visibility=validated_visibility,
         include_internal=include_internal,
@@ -173,6 +182,8 @@ async def list_sessions(
         rows = await dao.list_session_views(
             owner=owner,
             workspace_id=workspace_id,
+            space_id=space_id,
+            worktree_id=worktree_id,
             purpose=validated_purpose,
             visibility=validated_visibility,
             include_internal=include_internal,

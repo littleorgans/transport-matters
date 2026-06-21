@@ -95,6 +95,15 @@ class SessionListRow(SessionRow):
     last_message_preview: str | None = None
 
 
+class SessionSpaceBackfillCandidate(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    session_id: str
+    owner: str
+    workspace_id: str | None = None
+    cwd: str = ""
+
+
 class ChildSessionRow(SessionRow):
     model_config = ConfigDict(frozen=True, use_enum_values=True)
 

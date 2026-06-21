@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Protocol
 
 from transport_matters.index.adapters import get_adapter
 from transport_matters.index.adapters.base import (
@@ -27,10 +27,106 @@ from transport_matters.storage.disk_layout import DiskStorageLayout
 from transport_matters.storage.session_facts import OwnedSessionFacts, read_run_session_facts
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Iterator, Sequence
+
+    from transport_matters.space.models import ResolvedWorktree, SpaceId, WorktreeId
 
 ReplayRecord = tuple[SessionBinding, RawRecord, int, FileTailSource, RecordProvenance | None]
 _RUN_INDEX_GLOB = "*/*/*/index.jsonl"
+BACKFILL_BATCH_SIZE = 100
+
+
+class SessionSpaceBackfillDao(Protocol):
+    async def list_sessions_missing_space_identity(
+        self, *, owner: str, limit: int
+    ) -> Sequence[Any]: ...
+
+    async def update_session_space_identity(
+        self,
+        *,
+        owner: str,
+        session_id: str,
+        space_id: SpaceId,
+        worktree_id: WorktreeId,
+    ) -> None: ...
+
+
+class SessionCwdResolver(Protocol):
+    async def resolve_session_cwd(self, cwd: str, *, owner: str) -> ResolvedWorktree: ...
+
+
+@dataclass(frozen=True, slots=True)
+class SessionSpaceBackfillResult:
+    scanned: int = 0
+    resolved: int = 0
+    missing: int = 0
+    legacy_unassigned: int = 0
+
+
+async def backfill_session_spaces(
+    *,
+    session_dao: SessionSpaceBackfillDao,
+    space_store: SessionCwdResolver,
+    owner: str = "local",
+    batch_size: int = BACKFILL_BATCH_SIZE,
+) -> SessionSpaceBackfillResult:
+    """Resolve stored session cwd values to Space identity without using process cwd.
+
+    Present-cwd rows call ``SpaceStore.resolve_session_cwd()``, which can run git
+    detection for each unresolved session. The DAO supplies bounded batches so
+    large histories are not loaded into memory during startup.
+    """
+
+    scanned = 0
+    resolved_count = 0
+    missing_count = 0
+    legacy_unassigned = 0
+    seen_unresolved: set[str] = set()
+
+    while True:
+        rows = await session_dao.list_sessions_missing_space_identity(
+            owner=owner,
+            limit=batch_size,
+        )
+        if not rows:
+            break
+
+        resolved_in_batch = 0
+        repeated_unresolved = 0
+        for row in rows:
+            session_id = row.session_id
+            if session_id in seen_unresolved:
+                repeated_unresolved += 1
+                continue
+
+            scanned += 1
+            cwd = row.cwd.strip()
+            if not cwd:
+                legacy_unassigned += 1
+                seen_unresolved.add(session_id)
+                continue
+
+            resolved = await space_store.resolve_session_cwd(cwd, owner=owner)
+            await session_dao.update_session_space_identity(
+                owner=owner,
+                session_id=session_id,
+                space_id=resolved.space_id,
+                worktree_id=resolved.worktree_id,
+            )
+            resolved_count += 1
+            resolved_in_batch += 1
+            if resolved.missing:
+                missing_count += 1
+
+        if resolved_in_batch == 0 or repeated_unresolved == len(rows):
+            break
+
+    return SessionSpaceBackfillResult(
+        scanned=scanned,
+        resolved=resolved_count,
+        missing=missing_count,
+        legacy_unassigned=legacy_unassigned,
+    )
 
 
 @dataclass(frozen=True)

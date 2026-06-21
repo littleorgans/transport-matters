@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 from dataclasses import dataclass
@@ -18,6 +19,7 @@ from transport_matters.space.models import (
     Worktree,
     WorktreeId,
 )
+from transport_matters.workspace import workspace_id
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
@@ -57,6 +59,18 @@ class SpaceStore:
         if create:
             return await self.upsert_detection(detection, owner=owner)
         return await self._find_detection(detection, owner=owner)
+
+    async def resolve_session_cwd(self, cwd: str, *, owner: str = "local") -> ResolvedWorktree:
+        target, exists = await asyncio.to_thread(_resolve_session_cwd_target, cwd)
+        if exists:
+            snapshot = await self.resolve_cwd(target, owner=owner, create=True)
+            if snapshot is None:
+                raise RuntimeError(f"failed to resolve session cwd: {target}")
+            worktree = _containing_worktree(snapshot.worktrees, target)
+            if worktree is None:
+                return await self._ensure_missing_session_worktree(target, owner=owner)
+            return ResolvedWorktree.from_worktree(worktree, fallback_cwd=str(target))
+        return await self._ensure_missing_session_worktree(target, owner=owner)
 
     async def upsert_detection(
         self,
@@ -206,15 +220,7 @@ class SpaceStore:
         worktree = await self.get_worktree(worktree_id, owner=owner)
         if worktree is None or worktree.path is None:
             return None
-        return ResolvedWorktree(
-            space_id=worktree.space_id,
-            worktree_id=worktree.worktree_id,
-            cwd=worktree.path,
-            workspace_slug=worktree.workspace_slug,
-            workspace_hash=worktree.workspace_hash,
-            missing=worktree.missing,
-            archived=worktree.archived,
-        )
+        return ResolvedWorktree.from_worktree(worktree, fallback_cwd=worktree.path)
 
     async def list_canvases(self, space_id: SpaceId, *, owner: str = "local") -> list[Canvas]:
         cursor = await self._conn.execute(
@@ -487,6 +493,35 @@ class SpaceStore:
             {"space_id": space_id.into_uuid(), "owner": owner, "active_paths": list(active_paths)},
         )
 
+    async def _ensure_missing_session_worktree(
+        self, target: Path, *, owner: str
+    ) -> ResolvedWorktree:
+        workspace = workspace_id(target)
+        detection = DetectedSpace(
+            name=target.name or workspace.slug,
+            primary_path=target,
+            repo_instance_key=None,
+            git_common_dir=None,
+            worktrees=(
+                DetectedWorktree(
+                    path=target,
+                    workspace_slug=workspace.slug,
+                    workspace_hash=workspace.hash,
+                    branch_name=None,
+                    head_oid=None,
+                    is_primary=False,
+                    missing=True,
+                ),
+            ),
+        )
+        async with self._conn.transaction():
+            existing_space = await self._lookup_space_for_detection(detection, owner=owner)
+            space = existing_space or await self._insert_space(owner=owner, name=detection.name)
+            worktree = await self._upsert_worktree(
+                space.space_id, detection.worktrees[0], owner=owner
+            )
+        return ResolvedWorktree.from_worktree(worktree, fallback_cwd=str(target))
+
     def _write_cache(self, snapshot: SpaceSnapshot) -> None:
         root = self._storage_dir / "spaces" / str(snapshot.space.space_id)
         _atomic_json(root / "space.json", _space_cache_payload(snapshot))
@@ -534,6 +569,24 @@ def _worktree_from_row(row: Mapping[str, Any]) -> Worktree:
         created_at=row.get("created_at"),
         updated_at=row.get("updated_at"),
     )
+
+
+def _containing_worktree(worktrees: Sequence[Worktree], target: Path) -> Worktree | None:
+    containing: list[tuple[int, Worktree]] = []
+    for worktree in worktrees:
+        if worktree.path is None:
+            continue
+        root = Path(worktree.path)
+        if target == root or target.is_relative_to(root):
+            containing.append((len(root.parts), worktree))
+    if not containing:
+        return None
+    return max(containing, key=lambda item: item[0])[1]
+
+
+def _resolve_session_cwd_target(cwd: str) -> tuple[Path, bool]:
+    target = Path(cwd).expanduser().resolve(strict=False)
+    return target, target.exists()
 
 
 def _canvas_from_row(row: Mapping[str, Any]) -> Canvas:
