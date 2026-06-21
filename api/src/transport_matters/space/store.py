@@ -66,19 +66,10 @@ class SpaceStore:
             snapshot = await self.resolve_cwd(target, owner=owner, create=True)
             if snapshot is None:
                 raise RuntimeError(f"failed to resolve session cwd: {target}")
-            worktree = next(
-                (item for item in snapshot.worktrees if item.path == str(target)),
-                snapshot.worktrees[0],
-            )
-            return ResolvedWorktree(
-                space_id=snapshot.space.space_id,
-                worktree_id=worktree.worktree_id,
-                cwd=worktree.path or str(target),
-                workspace_slug=worktree.workspace_slug,
-                workspace_hash=worktree.workspace_hash,
-                missing=worktree.missing,
-                archived=worktree.archived,
-            )
+            worktree = _containing_worktree(snapshot.worktrees, target)
+            if worktree is None:
+                return await self._ensure_missing_session_worktree(target, owner=owner)
+            return ResolvedWorktree.from_worktree(worktree, fallback_cwd=str(target))
         return await self._ensure_missing_session_worktree(target, owner=owner)
 
     async def upsert_detection(
@@ -229,15 +220,7 @@ class SpaceStore:
         worktree = await self.get_worktree(worktree_id, owner=owner)
         if worktree is None or worktree.path is None:
             return None
-        return ResolvedWorktree(
-            space_id=worktree.space_id,
-            worktree_id=worktree.worktree_id,
-            cwd=worktree.path,
-            workspace_slug=worktree.workspace_slug,
-            workspace_hash=worktree.workspace_hash,
-            missing=worktree.missing,
-            archived=worktree.archived,
-        )
+        return ResolvedWorktree.from_worktree(worktree, fallback_cwd=worktree.path)
 
     async def list_canvases(self, space_id: SpaceId, *, owner: str = "local") -> list[Canvas]:
         cursor = await self._conn.execute(
@@ -537,15 +520,7 @@ class SpaceStore:
             worktree = await self._upsert_worktree(
                 space.space_id, detection.worktrees[0], owner=owner
             )
-        return ResolvedWorktree(
-            space_id=space.space_id,
-            worktree_id=worktree.worktree_id,
-            cwd=worktree.path or str(target),
-            workspace_slug=worktree.workspace_slug,
-            workspace_hash=worktree.workspace_hash,
-            missing=worktree.missing,
-            archived=worktree.archived,
-        )
+        return ResolvedWorktree.from_worktree(worktree, fallback_cwd=str(target))
 
     def _write_cache(self, snapshot: SpaceSnapshot) -> None:
         root = self._storage_dir / "spaces" / str(snapshot.space.space_id)
@@ -594,6 +569,19 @@ def _worktree_from_row(row: Mapping[str, Any]) -> Worktree:
         created_at=row.get("created_at"),
         updated_at=row.get("updated_at"),
     )
+
+
+def _containing_worktree(worktrees: Sequence[Worktree], target: Path) -> Worktree | None:
+    containing: list[tuple[int, Worktree]] = []
+    for worktree in worktrees:
+        if worktree.path is None:
+            continue
+        root = Path(worktree.path)
+        if target == root or target.is_relative_to(root):
+            containing.append((len(root.parts), worktree))
+    if not containing:
+        return None
+    return max(containing, key=lambda item: item[0])[1]
 
 
 def _resolve_session_cwd_target(cwd: str) -> tuple[Path, bool]:

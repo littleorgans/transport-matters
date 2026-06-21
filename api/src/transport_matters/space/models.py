@@ -185,3 +185,15 @@ class ResolvedWorktree(BaseModel):
     workspace_hash: str
     missing: bool
     archived: bool
+
+    @classmethod
+    def from_worktree(cls, worktree: Worktree, *, fallback_cwd: str) -> Self:
+        return cls(
+            space_id=worktree.space_id,
+            worktree_id=worktree.worktree_id,
+            cwd=worktree.path or fallback_cwd,
+            workspace_slug=worktree.workspace_slug,
+            workspace_hash=worktree.workspace_hash,
+            missing=worktree.missing,
+            archived=worktree.archived,
+        )

@@ -36,11 +36,6 @@ _RUN_INDEX_GLOB = "*/*/*/index.jsonl"
 BACKFILL_BATCH_SIZE = 100
 
 
-class SessionSpaceBackfillRow(Protocol):
-    session_id: str
-    cwd: str
-
-
 class SessionSpaceBackfillDao(Protocol):
     async def list_sessions_missing_space_identity(
         self, *, owner: str, limit: int
