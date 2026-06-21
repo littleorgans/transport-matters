@@ -29,8 +29,8 @@ from transport_matters.run_manager import (
     RunState,
     SpawnRun,
 )
-from transport_matters.space.models import ResolvedWorktree, SpaceId, WorktreeId
 from transport_matters.run_terminal import PtyChunk
+from transport_matters.space.models import ResolvedWorktree, SpaceId, WorktreeId
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
@@ -253,7 +253,11 @@ def patch_pty_teardown(monkeypatch: pytest.MonkeyPatch, pty: PtyHarness) -> None
 
 async def spawn_run(manager: RunManager, tmp_path: Path) -> ManagedRun:
     return await manager.spawn(
-        SpawnRun(harness="claude", resolved_worktree=resolved_worktree(tmp_path), web_runtime=WEB_RUNTIME_EMBEDDED)
+        SpawnRun(
+            harness="claude",
+            resolved_worktree=resolved_worktree(tmp_path),
+            web_runtime=WEB_RUNTIME_EMBEDDED,
+        )
     )
 
 
@@ -364,7 +368,11 @@ async def test_post_prepare_spawn_failure_closes_lease(tmp_path: Path) -> None:
 
     with pytest.raises(RunManagerError, match="pty spawn failed"):
         await manager.spawn(
-            SpawnRun(harness="claude", resolved_worktree=resolved_worktree(tmp_path), web_runtime=WEB_RUNTIME_EMBEDDED)
+            SpawnRun(
+                harness="claude",
+                resolved_worktree=resolved_worktree(tmp_path),
+                web_runtime=WEB_RUNTIME_EMBEDDED,
+            )
         )
 
     assert prepared.leases[0].close_count == 1
@@ -474,7 +482,13 @@ async def test_close_during_in_flight_spawn_rolls_back_prepared_run(
     manager = make_manager(tmp_path, pty, prepared)
 
     spawn_task = asyncio.create_task(
-        manager.spawn(SpawnRun(harness="claude", resolved_worktree=resolved_worktree(tmp_path), web_runtime=WEB_RUNTIME_EMBEDDED))
+        manager.spawn(
+            SpawnRun(
+                harness="claude",
+                resolved_worktree=resolved_worktree(tmp_path),
+                web_runtime=WEB_RUNTIME_EMBEDDED,
+            )
+        )
     )
     assert await asyncio.to_thread(prepared.entered.wait, 1.0)
 

@@ -1,14 +1,22 @@
 from __future__ import annotations
 
-from pathlib import Path
+from typing import TYPE_CHECKING
 from uuid import UUID
 
 import pytest
 
-from transport_matters.captured_run import CLAUDE_HARNESS_NAME, WEB_RUNTIME_EMBEDDED
+from transport_matters.captured_run import WEB_RUNTIME_EMBEDDED
 from transport_matters.run_manager import RunFilters, SpawnRun
 from transport_matters.space.models import ResolvedWorktree, SpaceId, WorktreeId
-from transport_matters.test_run_manager import PreparedRunHarness, PtyHarness, make_manager, patch_pty_teardown
+from transport_matters.test_run_manager import (
+    PreparedRunHarness,
+    PtyHarness,
+    make_manager,
+    patch_pty_teardown,
+)
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 def _resolved(tmp_path: Path) -> ResolvedWorktree:
@@ -36,7 +44,7 @@ async def test_run_manager_threads_resolved_worktree_into_run_view(
 
     run = await manager.spawn(
         SpawnRun(
-            harness=CLAUDE_HARNESS_NAME,
+            harness="claude",
             resolved_worktree=resolved,
             web_runtime=WEB_RUNTIME_EMBEDDED,
             start_on_attach=False,
@@ -44,12 +52,12 @@ async def test_run_manager_threads_resolved_worktree_into_run_view(
     )
     view = run.view()
 
-    assert run.cwd == tmp_path.resolve()
+    assert run.cwd == tmp_path
     assert run.space_id == resolved.space_id
     assert run.worktree_id == resolved.worktree_id
     assert view.space_id == resolved.space_id
     assert view.worktree_id == resolved.worktree_id
-    assert view.cwd == tmp_path.resolve()
+    assert view.cwd == tmp_path
 
 
 @pytest.mark.asyncio
@@ -68,14 +76,14 @@ async def test_run_manager_filters_by_space_and_worktree(
 
     first = await manager.spawn(
         SpawnRun(
-            harness=CLAUDE_HARNESS_NAME,
+            harness="claude",
             resolved_worktree=resolved,
             web_runtime=WEB_RUNTIME_EMBEDDED,
         )
     )
     await manager.spawn(
         SpawnRun(
-            harness=CLAUDE_HARNESS_NAME,
+            harness="claude",
             resolved_worktree=other,
             web_runtime=WEB_RUNTIME_EMBEDDED,
         )

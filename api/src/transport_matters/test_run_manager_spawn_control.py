@@ -95,7 +95,11 @@ async def test_spawn_admission_control_bounds_keyless_prepare_work(tmp_path: Pat
     tasks = [
         asyncio.create_task(
             manager.spawn(
-                SpawnRun(harness=CLAUDE_HARNESS, resolved_worktree=resolved_worktree(tmp_path), web_runtime=WEB_RUNTIME_EMBEDDED)
+                SpawnRun(
+                    harness=CLAUDE_HARNESS,
+                    resolved_worktree=resolved_worktree(tmp_path),
+                    web_runtime=WEB_RUNTIME_EMBEDDED,
+                )
             )
         )
         for _ in range(8)
@@ -133,7 +137,11 @@ async def test_session_store_preflight_runs_off_loop_and_caches_success(
     results = await asyncio.gather(
         *[
             manager.spawn(
-                SpawnRun(harness=CLAUDE_HARNESS, resolved_worktree=resolved_worktree(tmp_path), web_runtime=WEB_RUNTIME_EMBEDDED)
+                SpawnRun(
+                    harness=CLAUDE_HARNESS,
+                    resolved_worktree=resolved_worktree(tmp_path),
+                    web_runtime=WEB_RUNTIME_EMBEDDED,
+                )
             )
             for _ in range(6)
         ],
@@ -165,11 +173,19 @@ async def test_session_store_preflight_does_not_cache_failures(tmp_path: Path) -
 
     with pytest.raises(RunManagerError) as first:
         await manager.spawn(
-            SpawnRun(harness=CLAUDE_HARNESS, resolved_worktree=resolved_worktree(tmp_path), web_runtime=WEB_RUNTIME_EMBEDDED)
+            SpawnRun(
+                harness=CLAUDE_HARNESS,
+                resolved_worktree=resolved_worktree(tmp_path),
+                web_runtime=WEB_RUNTIME_EMBEDDED,
+            )
         )
     with pytest.raises(RunManagerError) as second:
         await manager.spawn(
-            SpawnRun(harness=CLAUDE_HARNESS, resolved_worktree=resolved_worktree(tmp_path), web_runtime=WEB_RUNTIME_EMBEDDED)
+            SpawnRun(
+                harness=CLAUDE_HARNESS,
+                resolved_worktree=resolved_worktree(tmp_path),
+                web_runtime=WEB_RUNTIME_EMBEDDED,
+            )
         )
 
     assert first.value.code == "session_store_unavailable"
@@ -202,14 +218,22 @@ async def test_unsupported_harness_rejects_before_preflight_and_admission(tmp_pa
         spawn_concurrency=1,
     )
     invalid_task = asyncio.create_task(
-        manager.spawn(SpawnRun(harness=cast("Any", "not-a-harness"), resolved_worktree=resolved_worktree(tmp_path)))
+        manager.spawn(
+            SpawnRun(
+                harness=cast("Any", "not-a-harness"), resolved_worktree=resolved_worktree(tmp_path)
+            )
+        )
     )
     await asyncio.sleep(0.05)
     invalid_preflight_calls = calls
     invalid_phase = False
     valid_task = asyncio.create_task(
         manager.spawn(
-            SpawnRun(harness=CLAUDE_HARNESS, resolved_worktree=resolved_worktree(tmp_path), web_runtime=WEB_RUNTIME_EMBEDDED)
+            SpawnRun(
+                harness=CLAUDE_HARNESS,
+                resolved_worktree=resolved_worktree(tmp_path),
+                web_runtime=WEB_RUNTIME_EMBEDDED,
+            )
         )
     )
 
@@ -241,7 +265,11 @@ async def test_invalid_cwd_rejects_before_session_store_preflight(tmp_path: Path
     manager = RunManager(dependencies=_dependencies(check_session_store))
 
     with pytest.raises(RunManagerError) as exc:
-        await manager.spawn(SpawnRun(harness=CLAUDE_HARNESS, resolved_worktree=resolved_worktree(tmp_path / "missing")))
+        await manager.spawn(
+            SpawnRun(
+                harness=CLAUDE_HARNESS, resolved_worktree=resolved_worktree(tmp_path / "missing")
+            )
+        )
 
     assert exc.value.code == "invalid_cwd"
     assert calls == 0

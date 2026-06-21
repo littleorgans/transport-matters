@@ -8,8 +8,12 @@ from uuid import UUID
 import pytest
 
 from transport_matters.api.v1 import run_routes
-from transport_matters.api.v1.test_run_routes import BACKEND_ORIGIN, ManagedRunHarness, _client, _http_headers
-from transport_matters.captured_run import CLAUDE_HARNESS_NAME
+from transport_matters.api.v1.test_run_routes import (
+    BACKEND_ORIGIN,
+    ManagedRunHarness,
+    _client,
+    _http_headers,
+)
 from transport_matters.run_manager import ManagedRunView, RunFilters, RunState, SpawnRun
 from transport_matters.space.models import ResolvedWorktree, SpaceId, WorktreeId
 
@@ -77,7 +81,7 @@ def test_list_runs_filters_by_space_and_worktree(
     first = asyncio.run(
         harness.manager.spawn(
             SpawnRun(
-                harness=CLAUDE_HARNESS_NAME,
+                harness="claude",
                 resolved_worktree=_resolved(
                     tmp_path, space_id=first_space, worktree_id=first_worktree
                 ),
@@ -87,7 +91,7 @@ def test_list_runs_filters_by_space_and_worktree(
     asyncio.run(
         harness.manager.spawn(
             SpawnRun(
-                harness=CLAUDE_HARNESS_NAME,
+                harness="claude",
                 resolved_worktree=_resolved(
                     tmp_path, space_id=second_space, worktree_id=second_worktree
                 ),

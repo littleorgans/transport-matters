@@ -60,7 +60,11 @@ async def test_run_manager_routes_external_runs_to_shared_preparation(
 
     spec, lease = await manager._prepare_request(
         manager._validate_spawn_request(
-            SpawnRun(harness="claude", resolved_worktree=resolved_worktree(tmp_path), web_runtime=WEB_RUNTIME_EXTERNAL)
+            SpawnRun(
+                harness="claude",
+                resolved_worktree=resolved_worktree(tmp_path),
+                web_runtime=WEB_RUNTIME_EXTERNAL,
+            )
         )
     )
 
@@ -90,7 +94,11 @@ async def test_run_manager_keeps_embedded_runs_on_per_run_preparation(tmp_path: 
 
     spec, lease = await manager._prepare_request(
         manager._validate_spawn_request(
-            SpawnRun(harness="claude", resolved_worktree=resolved_worktree(tmp_path), web_runtime=WEB_RUNTIME_EMBEDDED)
+            SpawnRun(
+                harness="claude",
+                resolved_worktree=resolved_worktree(tmp_path),
+                web_runtime=WEB_RUNTIME_EMBEDDED,
+            )
         )
     )
 
@@ -122,7 +130,11 @@ async def test_run_manager_fails_external_when_shared_proxy_unavailable(
     with pytest.raises(RunManagerError) as exc_info:
         await manager._prepare_request(
             manager._validate_spawn_request(
-                SpawnRun(harness="claude", resolved_worktree=resolved_worktree(tmp_path), web_runtime=WEB_RUNTIME_EXTERNAL)
+                SpawnRun(
+                    harness="claude",
+                    resolved_worktree=resolved_worktree(tmp_path),
+                    web_runtime=WEB_RUNTIME_EXTERNAL,
+                )
             )
         )
 
@@ -153,7 +165,11 @@ async def test_run_manager_never_falls_back_to_per_run_for_external_runs(
     with pytest.raises(RunManagerError) as exc_info:
         await manager._prepare_request(
             manager._validate_spawn_request(
-                SpawnRun(harness="claude", resolved_worktree=resolved_worktree(tmp_path), web_runtime=WEB_RUNTIME_EXTERNAL)
+                SpawnRun(
+                    harness="claude",
+                    resolved_worktree=resolved_worktree(tmp_path),
+                    web_runtime=WEB_RUNTIME_EXTERNAL,
+                )
             )
         )
 

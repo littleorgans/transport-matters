@@ -10,7 +10,6 @@ from transport_matters.pty_session import (
     DEFAULT_TERMINAL_COLS,
     DEFAULT_TERMINAL_ROWS,
 )
-from transport_matters.space.models import ResolvedWorktree, SpaceId, WorktreeId
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -28,6 +27,7 @@ if TYPE_CHECKING:
     from transport_matters.pty_session import TerminalPty
     from transport_matters.run_terminal import ScrollbackRing, TerminalAttachment, TerminalFanout
     from transport_matters.runtime_templates import RuntimeTemplateRef
+    from transport_matters.space.models import ResolvedWorktree, SpaceId, WorktreeId
 
 TerminateReason = Literal["explicit", "shutdown", "idle-timeout", "deploy-restart"]
 RunEndReason = TerminateReason | Literal["natural-exit", "failed"]

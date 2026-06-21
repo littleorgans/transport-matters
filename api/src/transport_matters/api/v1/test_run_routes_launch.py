@@ -13,6 +13,7 @@ from transport_matters.api.v1.test_run_routes import (
     BACKEND_ORIGIN,
     _client,
     _http_headers,
+    _install_space_store,
     _websocket_headers,
 )
 from transport_matters.api.v1.test_terminal import _receive_until_disconnect, _wait_until
@@ -27,9 +28,15 @@ from transport_matters.captured_run import (
 )
 from transport_matters.pty_session import TerminalPty, spawn_pty_process
 from transport_matters.run_manager import RunManager, RunState
+from transport_matters.test_run_manager import resolved_worktree
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
+
+
+def _run_body(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> dict[str, object]:
+    resolved = _install_space_store(monkeypatch, resolved_worktree(tmp_path))
+    return {"harness": "claude", "worktreeId": str(resolved.worktree_id)}
 
 
 def test_websocket_binary_input_reaches_child(
@@ -50,7 +57,7 @@ def test_websocket_binary_input_reaches_child(
     with client:
         run_id = client.post(
             "/v1/runs",
-            json={"harness": "claude", "cwd": str(tmp_path)},
+            json=_run_body(monkeypatch, tmp_path),
             headers=_http_headers(BACKEND_ORIGIN),
         ).json()["run"]["runId"]
         assert _lease.sessions == []
@@ -93,7 +100,7 @@ def test_post_launch_failure_returns_machine_error(
     with client:
         response = client.post(
             "/v1/runs",
-            json={"harness": "claude", "cwd": str(tmp_path)},
+            json=_run_body(monkeypatch, tmp_path),
             headers=_http_headers(BACKEND_ORIGIN),
         )
 
@@ -143,7 +150,7 @@ def test_post_launch_typed_prepare_errors_return_machine_status(
     with client:
         response = client.post(
             "/v1/runs",
-            json={"harness": "claude", "cwd": str(tmp_path)},
+            json=_run_body(monkeypatch, tmp_path),
             headers=_http_headers(BACKEND_ORIGIN),
         )
 

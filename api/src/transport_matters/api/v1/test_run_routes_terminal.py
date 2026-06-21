@@ -43,13 +43,13 @@ def test_websocket_unknown_run_sends_error_and_closes(
 def test_websocket_terminated_run_sends_typed_error(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    ManagedRunHarness(tmp_path, monkeypatch)
+    harness = ManagedRunHarness(tmp_path, monkeypatch)
     client = _client(monkeypatch, tmp_path)
 
     with client:
         run_id = client.post(
             "/v1/runs",
-            json={"harness": "claude", "cwd": str(tmp_path)},
+            json=harness.body(),
             headers=_http_headers(BACKEND_ORIGIN),
         ).json()["run"]["runId"]
         client.post(f"/v1/runs/{run_id}/terminate", headers=_http_headers(BACKEND_ORIGIN))
@@ -69,7 +69,7 @@ def test_websocket_stale_run_sends_typed_error(
     with client:
         run_id = client.post(
             "/v1/runs",
-            json={"harness": "claude", "cwd": str(tmp_path)},
+            json=harness.body(),
             headers=_http_headers(BACKEND_ORIGIN),
         ).json()["run"]["runId"]
         attached = asyncio.run(harness.manager.attach(run_id, cols=80, rows=24))
@@ -99,7 +99,7 @@ def test_websocket_escape_interrupt_byte_reaches_child_without_terminating_run(
     with client:
         run_id = client.post(
             "/v1/runs",
-            json={"harness": "claude", "cwd": str(tmp_path)},
+            json=harness.body(),
             headers=_http_headers(BACKEND_ORIGIN),
         ).json()["run"]["runId"]
         with client.websocket_connect(

@@ -54,12 +54,12 @@ from transport_matters.run_terminal import (
     TerminalFanout,
 )
 from transport_matters.shared_proxy.run_preparation import prepare_shared_captured_run
-from transport_matters.space.models import SpaceId, WorktreeId
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
     from transport_matters.shared_proxy.manager import SharedProxyManager
+    from transport_matters.space.models import SpaceId, WorktreeId
 
 logger = logging.getLogger(__name__)
 

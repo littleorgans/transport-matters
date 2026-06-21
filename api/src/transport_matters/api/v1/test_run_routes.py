@@ -9,6 +9,9 @@ from fastapi.testclient import TestClient
 
 from transport_matters import config, env_keys
 from transport_matters.api.v1 import run_routes
+from transport_matters.api.v1.session_store import (
+    optional_session_pool as _ORIGINAL_OPTIONAL_SESSION_POOL,
+)
 from transport_matters.api.v1.test_terminal import _wait_until
 from transport_matters.captured_run import (
     CLAUDE_HARNESS_NAME,
@@ -34,10 +37,11 @@ from transport_matters.test_run_manager import (
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from fastapi import Request
+
     from transport_matters.session.testing import TestDb
 
 BACKEND_ORIGIN = "http://localhost:8788"
-_ORIGINAL_OPTIONAL_SESSION_POOL = run_routes.optional_session_pool
 
 
 class _FakePoolConnection:
@@ -69,7 +73,7 @@ def _install_space_store(
                 return None
             return resolved
 
-    def optional_session_pool(request: object) -> object:
+    def optional_session_pool(request: Request) -> object:
         return _ORIGINAL_OPTIONAL_SESSION_POOL(request) or _FakePool()
 
     monkeypatch.setattr(run_routes, "SpaceStore", Store, raising=False)
@@ -122,7 +126,15 @@ def test_post_get_attach_detach_and_terminate(
         )
         assert create_response.status_code == 201
         run = create_response.json()["run"]
-        assert set(run) == {"runId", "spaceId", "worktreeId", "sessionId", "harness", "state", "createdAt"}
+        assert set(run) == {
+            "runId",
+            "spaceId",
+            "worktreeId",
+            "sessionId",
+            "harness",
+            "state",
+            "createdAt",
+        }
         assert run["spaceId"] == str(harness.space_id)
         assert run["worktreeId"] == str(harness.worktree_id)
         assert run["state"] == "RUNNING"
@@ -207,7 +219,15 @@ def test_run_views_hide_internal_fields(monkeypatch: pytest.MonkeyPatch, tmp_pat
         single_run = single.json()["run"]
 
     assert listed_run == single_run
-    assert set(single_run) == {"runId", "spaceId", "worktreeId", "sessionId", "harness", "state", "createdAt"}
+    assert set(single_run) == {
+        "runId",
+        "spaceId",
+        "worktreeId",
+        "sessionId",
+        "harness",
+        "state",
+        "createdAt",
+    }
     assert single_run["spaceId"] == str(harness.space_id)
     assert single_run["worktreeId"] == str(harness.worktree_id)
     assert "workspaceId" not in single_run
@@ -247,7 +267,15 @@ def test_post_run_resolves_worktree_id_and_serializes_space_identity(
 
     assert response.status_code == 201
     run = response.json()["run"]
-    assert set(run) == {"runId", "spaceId", "worktreeId", "sessionId", "harness", "state", "createdAt"}
+    assert set(run) == {
+        "runId",
+        "spaceId",
+        "worktreeId",
+        "sessionId",
+        "harness",
+        "state",
+        "createdAt",
+    }
     assert run["spaceId"] == str(space_id)
     assert run["worktreeId"] == str(worktree_id)
     assert "workspaceId" not in run
@@ -647,7 +675,9 @@ def test_spawn_request_is_nested_capture_only(tmp_path: Path) -> None:
     settings = Settings(cwd=tmp_path)
 
     request = run_routes._spawn_request(
-        run_routes.CreateRunRequest(harness=CLAUDE_HARNESS_NAME, worktreeId=str(resolved.worktree_id)),
+        run_routes.CreateRunRequest(
+            harness=CLAUDE_HARNESS_NAME, worktreeId=str(resolved.worktree_id)
+        ),
         settings,
         resolved_worktree=resolved,
     )
