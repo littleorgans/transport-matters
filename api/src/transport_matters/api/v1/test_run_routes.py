@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from typing import TYPE_CHECKING, get_args
+from uuid import UUID
 
 import pytest
 from fastapi.testclient import TestClient
@@ -21,11 +22,13 @@ from transport_matters.run_manager import RunManagerError, RunManagerErrorCode, 
 from transport_matters.session.async_dao import AsyncSessionDao
 from transport_matters.session.pool import create_async_pool
 from transport_matters.session.test_foundation import event, root_session
+from transport_matters.space.models import ResolvedWorktree, SpaceId, WorktreeId
 from transport_matters.test_run_manager import (
     PreparedRunHarness,
     PtyHarness,
     make_manager,
     patch_pty_teardown,
+    resolved_worktree,
 )
 
 if TYPE_CHECKING:
@@ -34,6 +37,44 @@ if TYPE_CHECKING:
     from transport_matters.session.testing import TestDb
 
 BACKEND_ORIGIN = "http://localhost:8788"
+_ORIGINAL_OPTIONAL_SESSION_POOL = run_routes.optional_session_pool
+
+
+class _FakePoolConnection:
+    async def __aenter__(self) -> object:
+        return object()
+
+    async def __aexit__(self, *_args: object) -> None:
+        return None
+
+
+class _FakePool:
+    def connection(self) -> _FakePoolConnection:
+        return _FakePoolConnection()
+
+
+def _install_space_store(
+    monkeypatch: pytest.MonkeyPatch,
+    resolved: ResolvedWorktree,
+) -> ResolvedWorktree:
+    class Store:
+        def __init__(self, *_args: object, **_kwargs: object) -> None:
+            pass
+
+        async def resolve_worktree(
+            self, requested: WorktreeId, *, owner: str = "local"
+        ) -> ResolvedWorktree | None:
+            assert owner == "local"
+            if requested != resolved.worktree_id:
+                return None
+            return resolved
+
+    def optional_session_pool(request: object) -> object:
+        return _ORIGINAL_OPTIONAL_SESSION_POOL(request) or _FakePool()
+
+    monkeypatch.setattr(run_routes, "SpaceStore", Store, raising=False)
+    monkeypatch.setattr(run_routes, "optional_session_pool", optional_session_pool)
+    return resolved
 
 
 class ManagedRunHarness:
@@ -41,6 +82,9 @@ class ManagedRunHarness:
         self.pty = PtyHarness()
         patch_pty_teardown(monkeypatch, self.pty)
         self.prepared = PreparedRunHarness(tmp_path)
+        self.resolved = _install_space_store(monkeypatch, resolved_worktree(tmp_path))
+        self.space_id = self.resolved.space_id
+        self.worktree_id = self.resolved.worktree_id
 
         async def prepare_shared(
             request: CapturedRunRequest,
@@ -60,6 +104,9 @@ class ManagedRunHarness:
         )
         monkeypatch.setattr(run_routes, "create_run_manager", lambda **_: self.manager)
 
+    def body(self, harness: str = "claude", **extra: object) -> dict[str, object]:
+        return {"harness": harness, "worktreeId": str(self.worktree_id), **extra}
+
 
 def test_post_get_attach_detach_and_terminate(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
@@ -70,12 +117,14 @@ def test_post_get_attach_detach_and_terminate(
     with client:
         create_response = client.post(
             "/v1/runs",
-            json={"harness": "claude", "cwd": str(tmp_path)},
+            json=harness.body(),
             headers=_http_headers(BACKEND_ORIGIN),
         )
         assert create_response.status_code == 201
         run = create_response.json()["run"]
-        assert set(run) == {"runId", "workspaceId", "sessionId", "harness", "state", "createdAt"}
+        assert set(run) == {"runId", "spaceId", "worktreeId", "sessionId", "harness", "state", "createdAt"}
+        assert run["spaceId"] == str(harness.space_id)
+        assert run["worktreeId"] == str(harness.worktree_id)
         assert run["state"] == "RUNNING"
         run_id = run["runId"]
 
@@ -94,7 +143,8 @@ def test_post_get_attach_detach_and_terminate(
             assert ready["type"] == "run.terminal.ready"
             assert set(ready["run"]) == {
                 "runId",
-                "workspaceId",
+                "spaceId",
+                "worktreeId",
                 "sessionId",
                 "harness",
                 "state",
@@ -136,13 +186,13 @@ def test_post_get_attach_detach_and_terminate(
 
 
 def test_run_views_hide_internal_fields(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    ManagedRunHarness(tmp_path, monkeypatch)
+    harness = ManagedRunHarness(tmp_path, monkeypatch)
     client = _client(monkeypatch, tmp_path)
 
     with client:
         create_response = client.post(
             "/v1/runs",
-            json={"harness": "claude", "cwd": str(tmp_path)},
+            json=harness.body(),
             headers=_http_headers(BACKEND_ORIGIN),
         )
         assert create_response.status_code == 201
@@ -157,13 +207,53 @@ def test_run_views_hide_internal_fields(monkeypatch: pytest.MonkeyPatch, tmp_pat
         single_run = single.json()["run"]
 
     assert listed_run == single_run
-    assert set(single_run) == {"runId", "workspaceId", "sessionId", "harness", "state", "createdAt"}
+    assert set(single_run) == {"runId", "spaceId", "worktreeId", "sessionId", "harness", "state", "createdAt"}
+    assert single_run["spaceId"] == str(harness.space_id)
+    assert single_run["worktreeId"] == str(harness.worktree_id)
+    assert "workspaceId" not in single_run
     assert "nativeSessionId" not in single_run
     assert "proxyPort" not in single_run
     assert "webPort" not in single_run
     assert "storageDir" not in single_run
     assert "scrollbackBytes" not in single_run
     assert "viewerlessSince" not in single_run
+
+
+def test_post_run_resolves_worktree_id_and_serializes_space_identity(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    harness = ManagedRunHarness(tmp_path, monkeypatch)
+    space_id = SpaceId.from_uuid(UUID("11111111-1111-4111-8111-111111111111"))
+    worktree_id = WorktreeId.from_uuid(UUID("22222222-2222-4222-8222-222222222222"))
+    resolved = ResolvedWorktree(
+        space_id=space_id,
+        worktree_id=worktree_id,
+        cwd=str(tmp_path),
+        workspace_slug="workspace",
+        workspace_hash="hash1",
+        missing=False,
+        archived=False,
+    )
+    _install_space_store(monkeypatch, resolved)
+    client = _client(monkeypatch, tmp_path)
+
+    with client:
+        response = client.post(
+            "/v1/runs",
+            json={"harness": "claude", "worktreeId": str(worktree_id)},
+            headers=_http_headers(BACKEND_ORIGIN),
+        )
+
+    assert response.status_code == 201
+    run = response.json()["run"]
+    assert set(run) == {"runId", "spaceId", "worktreeId", "sessionId", "harness", "state", "createdAt"}
+    assert run["spaceId"] == str(space_id)
+    assert run["worktreeId"] == str(worktree_id)
+    assert "workspaceId" not in run
+    spawned = harness.manager.get(run["runId"])
+    assert spawned.space_id == space_id
+    assert spawned.worktree_id == worktree_id
 
 
 def test_legacy_api_runs_path_is_removed(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -179,18 +269,18 @@ def test_legacy_api_runs_path_is_removed(monkeypatch: pytest.MonkeyPatch, tmp_pa
 def test_list_runs_uses_items_envelope_and_cursor(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    ManagedRunHarness(tmp_path, monkeypatch)
+    harness = ManagedRunHarness(tmp_path, monkeypatch)
     client = _client(monkeypatch, tmp_path)
 
     with client:
         first_id = client.post(
             "/v1/runs",
-            json={"harness": "claude", "cwd": str(tmp_path)},
+            json=harness.body(),
             headers=_http_headers(BACKEND_ORIGIN),
         ).json()["run"]["runId"]
         second_id = client.post(
             "/v1/runs",
-            json={"harness": "claude", "cwd": str(tmp_path)},
+            json=harness.body(),
             headers=_http_headers(BACKEND_ORIGIN),
         ).json()["run"]["runId"]
 
@@ -214,14 +304,14 @@ def test_list_runs_uses_items_envelope_and_cursor(
 def test_list_runs_rejects_cursor_for_different_filters(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    ManagedRunHarness(tmp_path, monkeypatch)
+    harness = ManagedRunHarness(tmp_path, monkeypatch)
     client = _client(monkeypatch, tmp_path)
 
     with client:
         for _ in range(2):
             client.post(
                 "/v1/runs",
-                json={"harness": "claude", "cwd": str(tmp_path)},
+                json=harness.body(),
                 headers=_http_headers(BACKEND_ORIGIN),
             )
         first_page = client.get("/v1/runs?limit=1", headers=_http_headers(BACKEND_ORIGIN))
@@ -241,7 +331,7 @@ def test_terminate_run_is_idempotent(monkeypatch: pytest.MonkeyPatch, tmp_path: 
     with client:
         run_id = client.post(
             "/v1/runs",
-            json={"harness": "claude", "cwd": str(tmp_path)},
+            json=harness.body(),
             headers=_http_headers(BACKEND_ORIGIN),
         ).json()["run"]["runId"]
 
@@ -267,7 +357,7 @@ def test_post_rejects_origin_before_spawn(monkeypatch: pytest.MonkeyPatch, tmp_p
     with client:
         response = client.post(
             "/v1/runs",
-            json={"harness": "claude", "cwd": str(tmp_path)},
+            json=harness.body(),
             headers=_http_headers("http://evil.test"),
         )
 
@@ -276,7 +366,7 @@ def test_post_rejects_origin_before_spawn(monkeypatch: pytest.MonkeyPatch, tmp_p
     assert harness.manager.list() == []
 
 
-def test_post_rejects_invalid_cwd_before_spawn(
+def test_post_rejects_missing_worktree_id_before_spawn(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     harness = ManagedRunHarness(tmp_path, monkeypatch)
@@ -285,12 +375,12 @@ def test_post_rejects_invalid_cwd_before_spawn(
     with client:
         response = client.post(
             "/v1/runs",
-            json={"harness": "claude", "cwd": "relative/path"},
+            json={"harness": "claude"},
             headers=_http_headers(BACKEND_ORIGIN),
         )
 
     assert response.status_code == 400
-    assert response.json()["detail"]["code"] == "invalid_cwd"
+    assert response.json()["detail"]["code"] == "worktree_required"
     assert harness.manager.list() == []
 
 
@@ -303,7 +393,7 @@ def test_post_rejects_unsupported_harness_before_spawn(
     with client:
         response = client.post(
             "/v1/runs",
-            json={"harness": "unknown", "cwd": str(tmp_path)},
+            json=harness.body("unknown"),
             headers=_http_headers(BACKEND_ORIGIN),
         )
 
@@ -325,7 +415,7 @@ def test_post_continuation_threads_lineage_context_and_idempotency(
     client = _client(monkeypatch, tmp_path)
     body = {
         "harness": "claude",
-        "cwd": str(tmp_path),
+        "worktreeId": str(harness.worktree_id),
         "continueFromSessionId": "parent-session",
         "idempotencyKey": "resume-click-1",
     }
@@ -365,7 +455,7 @@ def test_post_continuation_returns_not_found_for_foreign_parent(
             "/v1/runs",
             json={
                 "harness": "claude",
-                "cwd": str(tmp_path),
+                "worktreeId": str(harness.worktree_id),
                 "continueFromSessionId": "parent-session",
                 "idempotencyKey": "resume-click-1",
             },
@@ -389,7 +479,7 @@ def test_post_continuation_requires_idempotency_key(
             "/v1/runs",
             json={
                 "harness": "claude",
-                "cwd": str(tmp_path),
+                "worktreeId": str(harness.worktree_id),
                 "continueFromSessionId": "parent-session",
             },
             headers=_http_headers(BACKEND_ORIGIN),
@@ -417,7 +507,7 @@ def test_post_runtime_template_resolves_and_sets_spawn_request(
             "/v1/runs",
             json={
                 "harness": "codex",
-                "cwd": str(tmp_path),
+                "worktreeId": str(harness.worktree_id),
                 "runtimeTemplate": "codex-base",
             },
             headers=_http_headers(BACKEND_ORIGIN),
@@ -448,7 +538,7 @@ def test_post_bypass_permissions_sets_spawn_request(
             "/v1/runs",
             json={
                 "harness": "claude",
-                "cwd": str(tmp_path),
+                "worktreeId": str(harness.worktree_id),
                 "bypassPermissions": True,
             },
             headers=_http_headers(BACKEND_ORIGIN),
@@ -469,7 +559,7 @@ def test_post_empty_runtime_template_preserves_native_launch(
     with client:
         response = client.post(
             "/v1/runs",
-            json={"harness": "claude", "cwd": str(tmp_path), "runtimeTemplate": "  "},
+            json=harness.body(runtimeTemplate="  "),
             headers=_http_headers(BACKEND_ORIGIN),
         )
 
@@ -488,7 +578,7 @@ def test_post_missing_runtime_template_returns_machine_error(
     with client:
         response = client.post(
             "/v1/runs",
-            json={"harness": "codex", "cwd": str(tmp_path), "runtimeTemplate": "missing"},
+            json=harness.body("codex", runtimeTemplate="missing"),
             headers=_http_headers(BACKEND_ORIGIN),
         )
 
@@ -532,26 +622,34 @@ def _websocket_headers(origin: str, *, host: str = "localhost:8788") -> dict[str
 def test_spawn_request_ignores_settings_default_passthrough(
     harness_name: str, tmp_path: Path
 ) -> None:
+    resolved = resolved_worktree(tmp_path)
     settings = Settings(
         cwd=tmp_path,
         default_client_passthrough=("--dangerously-skip-permissions", "--model", "sonnet"),
     )
 
-    request = run_routes._spawn_request(run_routes.CreateRunRequest(harness=harness_name), settings)
+    request = run_routes._spawn_request(
+        run_routes.CreateRunRequest(harness=harness_name, worktreeId=str(resolved.worktree_id)),
+        settings,
+        resolved_worktree=resolved,
+    )
 
     assert request.harness == harness_name
     assert request.passthrough == ()
-    assert request.cwd == tmp_path
+    assert request.resolved_worktree == resolved
 
 
 def test_spawn_request_is_nested_capture_only(tmp_path: Path) -> None:
     # A captured run never allocates a nested web port: it is capture-only, the harness
     # web co-process stays external. Pane launch passthrough stays explicit and empty,
     # so a managed run can never leak stale desktop passthrough or a bound web port.
+    resolved = resolved_worktree(tmp_path)
     settings = Settings(cwd=tmp_path)
 
     request = run_routes._spawn_request(
-        run_routes.CreateRunRequest(harness=CLAUDE_HARNESS_NAME, cwd=str(tmp_path)), settings
+        run_routes.CreateRunRequest(harness=CLAUDE_HARNESS_NAME, worktreeId=str(resolved.worktree_id)),
+        settings,
+        resolved_worktree=resolved,
     )
 
     assert request.web_port is None
@@ -569,7 +667,7 @@ def test_post_after_manager_close_returns_machine_error(
     with client:
         response = client.post(
             "/v1/runs",
-            json={"harness": "claude", "cwd": str(tmp_path)},
+            json=harness.body(),
             headers=_http_headers(BACKEND_ORIGIN),
         )
 
@@ -580,6 +678,8 @@ def test_post_after_manager_close_returns_machine_error(
 def test_post_proxy_unavailable_returns_machine_error(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
+    resolved = _install_space_store(monkeypatch, resolved_worktree(tmp_path))
+
     class UnavailableManager:
         async def spawn(self, _request: object) -> object:
             raise RunManagerError(
@@ -593,7 +693,7 @@ def test_post_proxy_unavailable_returns_machine_error(
     with client:
         response = client.post(
             "/v1/runs",
-            json={"harness": "claude", "cwd": str(tmp_path)},
+            json={"harness": "claude", "worktreeId": str(resolved.worktree_id)},
             headers=_http_headers(BACKEND_ORIGIN),
         )
 

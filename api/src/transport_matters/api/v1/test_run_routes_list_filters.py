@@ -1,12 +1,17 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, cast
+from uuid import UUID
 
 import pytest
 
 from transport_matters.api.v1 import run_routes
-from transport_matters.run_manager import ManagedRunView, RunFilters, RunState
+from transport_matters.api.v1.test_run_routes import BACKEND_ORIGIN, ManagedRunHarness, _client, _http_headers
+from transport_matters.captured_run import CLAUDE_HARNESS_NAME
+from transport_matters.run_manager import ManagedRunView, RunFilters, RunState, SpawnRun
+from transport_matters.space.models import ResolvedWorktree, SpaceId, WorktreeId
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -36,7 +41,12 @@ async def test_list_runs_running_filter_includes_starting_runs(
     monkeypatch.setattr(run_routes, "_run_manager", lambda _: manager)
 
     running = await run_routes.list_runs(
-        cast("Request", object()), state="RUNNING", limit=50, cursor=None
+        cast("Request", object()),
+        state="RUNNING",
+        space_id=None,
+        worktree_id=None,
+        limit=50,
+        cursor=None,
     )
     running_items = cast("list[dict[str, object]]", running["items"])
     assert [item["runId"] for item in running_items] == ["run-1"]
@@ -44,11 +54,74 @@ async def test_list_runs_running_filter_includes_starting_runs(
     assert manager.calls[0] == RunFilters(states=frozenset({RunState.STARTING, RunState.RUNNING}))
 
     terminating = await run_routes.list_runs(
-        cast("Request", object()), state="TERMINATING", limit=50, cursor=None
+        cast("Request", object()),
+        state="TERMINATING",
+        space_id=None,
+        worktree_id=None,
+        limit=50,
+        cursor=None,
     )
     terminating_items = cast("list[dict[str, object]]", terminating["items"])
     assert terminating_items == []
     assert manager.calls[1] == RunFilters(states=frozenset({RunState.TERMINATING}))
+
+
+def test_list_runs_filters_by_space_and_worktree(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    harness = ManagedRunHarness(tmp_path, monkeypatch)
+    first_space = SpaceId.from_uuid(UUID("11111111-1111-4111-8111-111111111111"))
+    second_space = SpaceId.from_uuid(UUID("33333333-3333-4333-8333-333333333333"))
+    first_worktree = WorktreeId.from_uuid(UUID("22222222-2222-4222-8222-222222222222"))
+    second_worktree = WorktreeId.from_uuid(UUID("44444444-4444-4444-8444-444444444444"))
+    first = asyncio.run(
+        harness.manager.spawn(
+            SpawnRun(
+                harness=CLAUDE_HARNESS_NAME,
+                resolved_worktree=_resolved(
+                    tmp_path, space_id=first_space, worktree_id=first_worktree
+                ),
+            )
+        )
+    )
+    asyncio.run(
+        harness.manager.spawn(
+            SpawnRun(
+                harness=CLAUDE_HARNESS_NAME,
+                resolved_worktree=_resolved(
+                    tmp_path, space_id=second_space, worktree_id=second_worktree
+                ),
+            )
+        )
+    )
+    client = _client(monkeypatch, tmp_path)
+
+    with client:
+        by_space = client.get(
+            "/v1/runs",
+            params={"spaceId": str(first_space)},
+            headers=_http_headers(BACKEND_ORIGIN),
+        ).json()
+        by_worktree = client.get(
+            "/v1/runs",
+            params={"worktreeId": str(first_worktree)},
+            headers=_http_headers(BACKEND_ORIGIN),
+        ).json()
+
+    assert [item["runId"] for item in by_space["items"]] == [first.run_id]
+    assert [item["runId"] for item in by_worktree["items"]] == [first.run_id]
+
+
+def _resolved(tmp_path: Path, *, space_id: SpaceId, worktree_id: WorktreeId) -> ResolvedWorktree:
+    return ResolvedWorktree(
+        space_id=space_id,
+        worktree_id=worktree_id,
+        cwd=str(tmp_path),
+        workspace_slug="workspace",
+        workspace_hash="hash1",
+        missing=False,
+        archived=False,
+    )
 
 
 def _run_view(tmp_path: Path, *, state: RunState) -> ManagedRunView:
@@ -57,6 +130,8 @@ def _run_view(tmp_path: Path, *, state: RunState) -> ManagedRunView:
         run_id="run-1",
         harness="codex",
         cwd=tmp_path,
+        space_id=SpaceId.from_uuid(UUID("11111111-1111-4111-8111-111111111111")),
+        worktree_id=WorktreeId.from_uuid(UUID("22222222-2222-4222-8222-222222222222")),
         storage_dir=tmp_path / "run-1",
         proxy_port=19001,
         web_port=None,
