@@ -8,6 +8,7 @@ import {
   useState,
 } from "react";
 import type { CanvasGestureModifier } from "../../keybindings/gestureModifier";
+import type { SpaceSummary } from "../../types";
 import {
   type CommandRow,
   createRootNavFrame,
@@ -37,6 +38,10 @@ export interface UseCommandCenterArgs {
   canvasGestureModifier: CanvasGestureModifier;
   /** Current persisted bypass-permissions flag, shown on the Settings toggle. */
   bypassPermissions: boolean;
+  /** Detected Spaces for the Workdir scope (sourced from useSpaces). */
+  spaces: SpaceSummary[];
+  /** The canvas's rooted worktree, marked "Current" in the Space/Worktree rows. */
+  activeWorktreeId: string | null;
 }
 
 function assertNever(value: never): never {
@@ -47,18 +52,19 @@ interface LauncherActionInterpreterArgs {
   onCommand: (command: LauncherCommand) => void;
   retry: () => void;
   close: () => void;
-  descend: (scope: LauncherScope, originValue: string) => void;
+  descend: (scope: LauncherScope, originValue: string, param?: string) => void;
 }
 
 interface NavFrameController {
   scope: LauncherScope;
   query: string;
+  param: string | undefined;
   highlighted: string | undefined;
   canBack: boolean;
   resetStack: () => void;
   setQuery: (query: string) => void;
   setHighlighted: (next: SetStateAction<string | undefined>) => void;
-  descend: (scope: LauncherScope, originValue: string) => void;
+  descend: (scope: LauncherScope, originValue: string, param?: string) => void;
   back: () => void;
   openScopeStack: (scope: LauncherScope) => void;
 }
@@ -97,7 +103,7 @@ function useLauncherActionInterpreter({
       switch (lifecycle) {
         case "descend":
           if (action.kind === "enter") {
-            descend(action.scope, row.value);
+            descend(action.scope, row.value, action.param);
           }
           return;
         case "run-close":
@@ -148,8 +154,8 @@ function useNavFrameStack(): NavFrameController {
   }, []);
 
   const descend = useCallback(
-    (target: LauncherScope, originValue: string) =>
-      setStack((current) => pushFrame(current, target, originValue)),
+    (target: LauncherScope, originValue: string, param?: string) =>
+      setStack((current) => pushFrame(current, target, originValue, param)),
     [],
   );
 
@@ -163,6 +169,7 @@ function useNavFrameStack(): NavFrameController {
   return {
     scope: frame.scope,
     query: frame.query,
+    param: frame.param,
     highlighted: frame.highlightedValue,
     canBack: stack.length > 1,
     resetStack,
@@ -187,11 +194,14 @@ export function useCommandCenter({
   themeName,
   canvasGestureModifier,
   bypassPermissions,
+  spaces,
+  activeWorktreeId,
 }: UseCommandCenterArgs) {
   const [open, setOpen] = useState(false);
   const {
     scope,
     query,
+    param,
     highlighted,
     canBack,
     resetStack,
@@ -251,11 +261,14 @@ export function useCommandCenter({
   const { collection, grouped, rowByValue, fleetStatus } = useLauncherRows({
     scope,
     query,
+    param,
     templates,
     status,
     themeName,
     canvasGestureModifier,
     bypassPermissions,
+    spaces,
+    activeWorktreeId,
     setHighlighted,
   });
 

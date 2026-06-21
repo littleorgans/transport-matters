@@ -3,9 +3,11 @@ import { Portal } from "@ark-ui/react/portal";
 import { useEffect, useRef } from "react";
 import type { CanvasGestureModifier } from "../../keybindings/gestureModifier";
 import { agentRailStyle } from "../../lib/agentPalette";
+import { useCanvasStore } from "../model/canvasStore";
 import { type CommandRow, LAUNCHER_DOMAIN_COUNT, type LauncherCommand } from "./commandModel";
 import { FirstRunHint } from "./FirstRunHint";
 import { useCommandCenter } from "./useCommandCenter";
+import { useSpaces } from "./useSpaces";
 import "./launcher.css";
 
 export interface CommandCenterProps {
@@ -33,11 +35,15 @@ export function CommandCenter({
   canvasGestureModifier,
   bypassPermissions,
 }: CommandCenterProps) {
+  const spaces = useSpaces();
+  const activeWorktreeId = useCanvasStore((state) => state.defaultWorktreeId);
   const center = useCommandCenter({
     onCommand,
     themeName,
     canvasGestureModifier,
     bypassPermissions,
+    spaces,
+    activeWorktreeId,
   });
   const panelRef = useRef<HTMLDivElement>(null);
   // Keep the highlighted row scrolled into the bounded results list as the arrow

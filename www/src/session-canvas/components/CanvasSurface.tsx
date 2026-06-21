@@ -13,7 +13,7 @@ import type { LauncherCommand } from "../launcher/commandModel";
 import { useCanvasStore } from "../model/canvasStore";
 import { useCapturedRunStore } from "../model/capturedRunStore";
 import { openPaneIds } from "../model/layoutPlanning";
-import type { CanvasLaunchContext } from "../route";
+import { type CanvasLaunchContext, parseCanvasLaunchContext } from "../route";
 import { bodyDragForRef, PICKER_PANE_ID, renderPaneContent } from "../viewers/registry";
 import { AmbientBackdrop } from "./AmbientBackdrop";
 import { CanvasDropHint } from "./CanvasDropHint";
@@ -108,6 +108,14 @@ function useCanvasCommandHandler({
         case "set-canvas-gesture-modifier":
           setCanvasGestureModifier(command.modifier);
           return;
+        case "select-worktree": {
+          const params = new URLSearchParams(window.location.search);
+          params.set("space_id", command.spaceId);
+          params.set("worktree_id", command.worktreeId);
+          navigateToRoute(`${window.location.pathname}?${params.toString()}`);
+          useCanvasStore.getState().initializeCanvas(parseCanvasLaunchContext(params));
+          return;
+        }
       }
     },
     [
