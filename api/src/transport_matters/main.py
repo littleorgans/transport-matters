@@ -2,6 +2,7 @@ import asyncio
 import logging
 import logging.config
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from fastapi import FastAPI
@@ -16,6 +17,7 @@ from transport_matters.api.v1 import (
     run_routes,
     runtime_template_routes,
     session_routes,
+    space_routes,
     stream,
 )
 from transport_matters.api.v1.router import api_router
@@ -24,6 +26,7 @@ from transport_matters.session.listen import SessionEventHub, SessionEventListen
 from transport_matters.session.migrate import MigrationError, apply_migrations
 from transport_matters.session.pool import create_async_pool
 from transport_matters.shared_proxy.manager import SharedProxyManager
+from transport_matters.space.store import SpaceStore
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Awaitable, Callable
@@ -141,6 +144,16 @@ async def _start_session_store(
     return pool
 
 
+async def _resolve_current_space(pool: AsyncConnectionPool[AsyncConnection[DictRow]]) -> None:
+    settings = get_settings()
+    cwd = settings.cwd or Path.cwd()
+    try:
+        async with pool.connection() as conn:
+            await SpaceStore(conn).resolve_cwd(cwd, owner="local", create=True)
+    except Exception:
+        logger.exception("Failed to resolve current Space for %s", cwd)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     logger.info("Starting %s", app.title)
@@ -165,6 +178,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             session_pool = await _start_session_store(app, database_url)
             session_listener = app.state.session_event_listener
             if session_pool is not None:
+                await _resolve_current_space(session_pool)
                 try:
                     await pending_shared_proxy_manager.start()
                 except Exception as exc:
@@ -246,13 +260,12 @@ def create_app() -> FastAPI:
     app.include_router(meta.run_router, prefix="/v1/runs/{run_id}/meta", tags=["meta"])
     app.include_router(stream.router, prefix="/v1", tags=["stream"])
     app.include_router(session_routes.router, prefix="/v1", tags=["sessions"])
+    app.include_router(space_routes.router, prefix="/v1", tags=["spaces"])
     app.include_router(
         runtime_template_routes.router,
         prefix="/v1",
         tags=["runtime-templates"],
     )
-
-    from pathlib import Path
 
     www_dir = Path(__file__).parent / "www"
     if www_dir.exists():
