@@ -1,16 +1,23 @@
+from __future__ import annotations
+
 import os
+from typing import TYPE_CHECKING
 
 # Set test environment before any app imports trigger Settings validation.
 os.environ.setdefault("DEBUG", "true")
 
-from collections.abc import AsyncGenerator  # noqa: E402
+import pytest
+from httpx import ASGITransport, AsyncClient
 
-import pytest  # noqa: E402
-from httpx import ASGITransport, AsyncClient  # noqa: E402
+from transport_matters import env_keys
+from transport_matters.config import get_settings
+from transport_matters.main import create_app
+from transport_matters.session.pool import create_async_pool
+from transport_matters.session.testing import TestDb
+from transport_matters.space.store import SpaceStore
 
-from transport_matters import env_keys  # noqa: E402
-from transport_matters.config import get_settings  # noqa: E402
-from transport_matters.main import create_app  # noqa: E402
+if TYPE_CHECKING:
+    from collections.abc import AsyncGenerator, Iterator
 
 # Non-prefixed process-env vars a *live* Transport Matters session exports into every
 # shell it spawns (proxy wiring + the managed agent homes). These have no ``env_prefix``
@@ -89,6 +96,15 @@ def clear_channel_storage_env(monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv(key, raising=False)
 
 
+@pytest.fixture
+def test_db() -> Iterator[TestDb]:
+    db = TestDb.create()
+    try:
+        yield db
+    finally:
+        db.drop()
+
+
 @pytest.fixture(autouse=True)
 def _trusted_test_hosts(
     _scrub_inherited_session_env: None, monkeypatch: pytest.MonkeyPatch
@@ -103,9 +119,18 @@ def _trusted_test_hosts(
 
 
 @pytest.fixture
-async def client() -> AsyncGenerator[AsyncClient, None]:
+async def client() -> AsyncGenerator[AsyncClient]:
     app = create_app()
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         yield ac
+
+
+@pytest.fixture
+async def space_store(test_db: TestDb) -> AsyncGenerator[SpaceStore]:
+    async with (
+        create_async_pool(test_db.database_url, min_size=1, max_size=1) as pool,
+        pool.connection() as conn,
+    ):
+        yield SpaceStore(conn)
