@@ -177,6 +177,8 @@ def _decode_cursor(cursor: str) -> int:
         payload = json.loads(base64.urlsafe_b64decode(cursor.encode("ascii")))
     except binascii.Error, json.JSONDecodeError, UnicodeDecodeError:
         _raise_api_error(http_status.HTTP_400_BAD_REQUEST, "invalid_cursor", "invalid cursor")
+    if not isinstance(payload, dict):
+        _raise_api_error(http_status.HTTP_400_BAD_REQUEST, "invalid_cursor", "invalid cursor")
     offset = payload.get("offset")
     if not isinstance(offset, int) or offset < 0:
         _raise_api_error(http_status.HTTP_400_BAD_REQUEST, "invalid_cursor", "invalid cursor")
@@ -302,6 +304,23 @@ async def _require_snapshot(store: SpaceStore, space_id: SpaceId, *, owner: str)
     if snapshot is None:
         _raise_api_error(http_status.HTTP_404_NOT_FOUND, "space_not_found", "space not found")
     return snapshot
+
+
+async def _require_canvas_space_id(
+    conn: AsyncConnection[DictRow], canvas_id: CanvasId, *, owner: str
+) -> SpaceId:
+    cursor = await conn.execute(
+        """
+        SELECT space_id
+        FROM canvas
+        WHERE canvas_id = %(canvas_id)s AND owner = %(owner)s
+        """,
+        {"canvas_id": canvas_id.into_uuid(), "owner": owner},
+    )
+    row = await cursor.fetchone()
+    if row is None:
+        _raise_api_error(http_status.HTTP_404_NOT_FOUND, "canvas_not_found", "canvas not found")
+    return SpaceId.from_uuid(row["space_id"])
 
 
 @router.get("/spaces")
@@ -466,15 +485,9 @@ async def patch_canvas(
     default_worktree_id = _parse_worktree_id(body.default_worktree_id)
     async with pool.connection() as conn:
         store = SpaceStore(conn)
-        if (
-            default_worktree_id is not None
-            and await store.resolve_worktree(default_worktree_id, owner=owner) is None
-        ):
-            _raise_api_error(
-                http_status.HTTP_400_BAD_REQUEST,
-                "invalid_worktree_id",
-                "defaultWorktreeId does not resolve",
-            )
+        canvas_space_id = await _require_canvas_space_id(conn, parsed, owner=owner)
+        snapshot = await _require_snapshot(store, canvas_space_id, owner=owner)
+        _require_worktree_in_space(snapshot, default_worktree_id)
         canvas = await store.update_canvas(
             parsed,
             owner=owner,

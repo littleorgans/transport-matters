@@ -188,6 +188,104 @@ async def test_resolve_plain_space_derives_plain_kind_and_create_false_is_lookup
         assert hidden.json()["detail"]["code"] == "space_not_found"
 
 
+async def test_list_spaces_rejects_non_dict_cursor(test_db: TestDb) -> None:
+    async with _client(test_db) as client:
+        response = await client.get("/v1/spaces", params={"cursor": "NDI="})
+
+    assert response.status_code == 400
+    assert response.json()["detail"]["code"] == "invalid_cursor"
+
+
+async def test_patch_canvas_rejects_cross_space_default_worktree(
+    test_db: TestDb,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo_a = tmp_path / "repo-a"
+    linked_a = tmp_path / "linked-a"
+    repo_b = tmp_path / "repo-b"
+    repo_a.mkdir()
+    linked_a.mkdir()
+    repo_b.mkdir()
+
+    def detect_space_for_cwd(cwd: Path) -> DetectedSpace:
+        resolved = cwd.resolve(strict=False)
+        if resolved in {repo_a.resolve(), linked_a.resolve()}:
+            return _git_detection(repo_a, linked_a)
+        if resolved == repo_b.resolve():
+            return _git_detection(repo_b)
+        raise AssertionError(f"unexpected cwd: {cwd}")
+
+    monkeypatch.setattr("transport_matters.space.store.detect_space", detect_space_for_cwd)
+
+    async with _client(test_db) as client:
+        space_a_response = await client.post(
+            "/v1/spaces/resolve",
+            json={"cwd": str(repo_a)},
+            headers=_headers(),
+        )
+        assert space_a_response.status_code == 200
+        space_a = space_a_response.json()["space"]
+        space_a_id = space_a["spaceId"]
+        primary_worktree_id = next(
+            item["worktreeId"]
+            for item in space_a["worktrees"]
+            if item["path"] == str(repo_a.resolve())
+        )
+        linked_worktree_id = next(
+            item["worktreeId"]
+            for item in space_a["worktrees"]
+            if item["path"] == str(linked_a.resolve())
+        )
+
+        space_b_response = await client.post(
+            "/v1/spaces/resolve",
+            json={"cwd": str(repo_b)},
+            headers=_headers(),
+        )
+        assert space_b_response.status_code == 200
+        foreign_worktree_id = space_b_response.json()["worktree"]["worktreeId"]
+
+        canvas_response = await client.post(
+            f"/v1/spaces/{space_a_id}/canvases",
+            json={"label": "Main canvas", "defaultWorktreeId": primary_worktree_id},
+            headers=_headers(),
+        )
+        assert canvas_response.status_code == 201
+        canvas_id = canvas_response.json()["canvas"]["canvasId"]
+
+        cross_space_create = await client.post(
+            f"/v1/spaces/{space_a_id}/canvases",
+            json={"label": "Bad canvas", "defaultWorktreeId": foreign_worktree_id},
+            headers=_headers(),
+        )
+        assert cross_space_create.status_code == 400
+        assert cross_space_create.json()["detail"]["code"] == "invalid_worktree_id"
+
+        cross_space_patch = await client.patch(
+            f"/v1/canvases/{canvas_id}",
+            json={"defaultWorktreeId": foreign_worktree_id},
+            headers=_headers(),
+        )
+        assert cross_space_patch.status_code == cross_space_create.status_code
+        assert (
+            cross_space_patch.json()["detail"]["code"]
+            == cross_space_create.json()["detail"]["code"]
+        )
+
+        canvases_after_reject = await client.get(f"/v1/spaces/{space_a_id}/canvases")
+        assert canvases_after_reject.status_code == 200
+        assert canvases_after_reject.json()["items"][0]["defaultWorktreeId"] == primary_worktree_id
+
+        same_space_patch = await client.patch(
+            f"/v1/canvases/{canvas_id}",
+            json={"defaultWorktreeId": linked_worktree_id},
+            headers=_headers(),
+        )
+        assert same_space_patch.status_code == 200
+        assert same_space_patch.json()["canvas"]["defaultWorktreeId"] == linked_worktree_id
+
+
 async def test_lifespan_resolves_api_cwd_into_current_space(
     test_db: TestDb,
     tmp_path: Path,
