@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+import json
 import threading
 import time
 from typing import TYPE_CHECKING, Any, cast
@@ -7,17 +9,33 @@ from typing import TYPE_CHECKING, Any, cast
 import pytest
 
 from transport_matters.addon_runtime import CaptureRuntime
-from transport_matters.index.adapters.base import FileTailSource, SessionBinding
+from transport_matters.index.adapters.base import (
+    FileTailSource,
+    SessionBinding,
+    encode_source_descriptor,
+)
 from transport_matters.index.tailer import TailCursor, TranscriptTailer
+from transport_matters.session.async_dao import AsyncSessionDao
+from transport_matters.session.ingest import EventWrite, build_event, build_event_batch
+from transport_matters.session.pool import async_connect, create_async_pool
+from transport_matters.session.writer import SessionWriter
+from transport_matters.shared_proxy.addon import _runtime_binding_from_payload
 from transport_matters.shared_proxy.binding import ProxyRunBinding
 from transport_matters.shared_proxy.control import SharedProxyControlError
 from transport_matters.shared_proxy.core import SharedProxyCore, SharedTranscriptSnapshotWriter
+from transport_matters.shared_proxy.models import (
+    SharedProxyBindingPayload,
+    binding_payload_from_binding,
+)
+from transport_matters.space.models import SpaceId, WorktreeId
 from transport_matters.storage.disk import DiskStorageBackend
 from transport_matters.storage.disk_layout import DiskStorageLayout
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
     from pathlib import Path
+
+    from transport_matters.session.testing import TestDb
 
 
 class FakeTailer:
@@ -84,6 +102,86 @@ def _capture_runtime(index_tailer: object | None) -> CaptureRuntime:
         token_counter=cast("Any", None),
         index_tailer=cast("Any", index_tailer),
     )
+
+
+@pytest.mark.asyncio
+async def test_shared_proxy_payload_round_trip_persists_space_identity(
+    tmp_path: Path, test_db: TestDb
+) -> None:
+    native_session_id = "11111111-1111-4111-8111-111111111111"
+    space_id = SpaceId.parse("22222222-2222-4222-8222-222222222222")
+    worktree_id = WorktreeId.parse("33333333-3333-4333-8333-333333333333")
+    transcript_path = tmp_path / "owned-claude.jsonl"
+    transcript_path.write_text(
+        json.dumps(
+            {
+                "type": "assistant",
+                "uuid": "turn-1",
+                "parentUuid": None,
+                "sessionId": native_session_id,
+                "isSidechain": False,
+                "timestamp": "2026-06-21T00:00:00Z",
+                "message": {
+                    "role": "assistant",
+                    "content": [{"type": "text", "text": "identity survived"}],
+                },
+            },
+            separators=(",", ":"),
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    descriptor = encode_source_descriptor(
+        FileTailSource(path=str(transcript_path), format="claude_jsonl")
+    )
+    binding = ProxyRunBinding(
+        run_id="run-identity",
+        harness="claude",
+        working_dir=tmp_path,
+        storage=DiskStorageBackend(tmp_path / "run-identity"),
+        listen_port=19001,
+        upstream="https://api.anthropic.com",
+        agent_home_dir=tmp_path / "home",
+        owned_native_session_id=native_session_id,
+        owned_source_descriptor=descriptor,
+        space_id=space_id,
+        worktree_id=worktree_id,
+    )
+
+    payload = binding_payload_from_binding(binding)
+    round_tripped = SharedProxyBindingPayload.model_validate_json(
+        payload.model_dump_json(by_alias=True)
+    )
+    runtime_binding = _runtime_binding_from_payload(round_tripped)
+
+    assert runtime_binding.space_id == space_id
+    assert runtime_binding.worktree_id == worktree_id
+
+    loop = asyncio.get_running_loop()
+    writer = SessionWriter(
+        create_async_pool(test_db.database_url, min_size=1, max_size=1), loop=loop
+    )
+
+    def submit_batch(batch_binding: SessionBinding, events: list[EventWrite]) -> None:
+        writer.submit_blocking(build_event_batch(batch_binding, events))
+
+    tailer = TranscriptTailer(build_record=build_event, submit_batch=submit_batch)
+    core = SharedProxyCore(
+        capture=_capture_runtime(tailer),
+        snapshots=SharedTranscriptSnapshotWriter(),
+    )
+    try:
+        await core.register_binding(runtime_binding)
+        await loop.run_in_executor(None, tailer.poll)
+
+        async with await async_connect(test_db.database_url, autocommit=True) as conn:
+            dao = AsyncSessionDao(conn)
+            session = await dao.get_session(native_session_id)
+            assert session is not None
+            assert session.space_id == space_id
+            assert session.worktree_id == worktree_id
+    finally:
+        await writer.aclose()
 
 
 @pytest.mark.asyncio

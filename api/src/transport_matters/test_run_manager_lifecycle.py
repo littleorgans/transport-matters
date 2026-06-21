@@ -21,6 +21,7 @@ from transport_matters.test_run_manager import (
     make_manager,
     patch_pty_teardown,
     require_terminal,
+    resolved_worktree,
     spawn_run,
     wait_until,
 )
@@ -281,7 +282,7 @@ async def test_disabled_osc_color_replies_stay_silent(
     run = await manager.spawn(
         SpawnRun(
             harness="claude",
-            cwd=tmp_path,
+            resolved_worktree=resolved_worktree(tmp_path),
             web_runtime=WEB_RUNTIME_EMBEDDED,
             osc_color_replies=False,
         )

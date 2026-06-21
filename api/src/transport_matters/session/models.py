@@ -6,6 +6,8 @@ from typing import Any, Final, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from transport_matters.space.models import SpaceId, WorktreeId
+
 
 class SessionStatus(StrEnum):
     ACTIVE = "active"
@@ -65,6 +67,8 @@ class SessionRow(BaseModel):
     cwd: str = ""
     workspace_slug: str
     workspace_hash: str
+    space_id: SpaceId | None = None
+    worktree_id: WorktreeId | None = None
     native_session_id: str | None = None
     minted: bool = False
     source_descriptor: JsonObject | None = None

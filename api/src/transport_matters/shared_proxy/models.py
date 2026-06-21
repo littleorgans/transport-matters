@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 
 from transport_matters.overrides import Override
 from transport_matters.shared_proxy.binding import ProxyRunBinding, require_run_id
+from transport_matters.space.models import SpaceId, WorktreeId
 
 # Any: launch fields are persisted dynamic harness metadata with provider-specific keys.
 type LaunchFields = dict[str, Any]
@@ -30,6 +31,8 @@ class SharedProxyBindingPayload(BaseModel):
     agent_home_dir: str | None = Field(default=None, alias="agentHomeDir")
     owned_native_session_id: str | None = Field(default=None, alias="ownedNativeSessionId")
     owned_source_descriptor: str | None = Field(default=None, alias="ownedSourceDescriptor")
+    space_id: SpaceId | None = Field(default=None, alias="spaceId")
+    worktree_id: WorktreeId | None = Field(default=None, alias="worktreeId")
     launch_fields: LaunchFields = Field(default_factory=dict, alias="launchFields")
     default_client_passthrough: tuple[str, ...] = Field(
         default_factory=tuple,
@@ -159,6 +162,8 @@ def binding_payload_from_binding(binding: ProxyRunBinding) -> SharedProxyBinding
         agent_home_dir=_string_path(binding.agent_home_dir),
         owned_native_session_id=binding.owned_native_session_id,
         owned_source_descriptor=binding.owned_source_descriptor,
+        space_id=binding.space_id,
+        worktree_id=binding.worktree_id,
         launch_fields=dict(binding.launch_fields),
         default_client_passthrough=tuple(binding.default_client_passthrough),
         breakpoint_skip_models=tuple(binding.breakpoint_skip_models),

@@ -134,11 +134,12 @@ def test_launched_backend_reads_db_from_home_not_per_run_storage(
     # Force resolution through HOME/settings.toml (the bug-#3 path), not an env override.
     env.pop("TRANSPORT_MATTERS_DATABASE_URL", None)
 
+    log_file = (tmp_path / "backend.log").open("w", encoding="utf-8")
     proc = subprocess.Popen(
         [sys.executable, "-m", "uvicorn", "transport_matters.main:app", "--host", "127.0.0.1",
          "--port", str(port)],
         env=env,
-        stdout=subprocess.PIPE,
+        stdout=log_file,
         stderr=subprocess.STDOUT,
         text=True,
     )
@@ -155,6 +156,7 @@ def test_launched_backend_reads_db_from_home_not_per_run_storage(
         except subprocess.TimeoutExpired:
             proc.kill()
             proc.wait(timeout=10)
+        log_file.close()
 
 
 def test_launch_preflight_blocks_when_session_store_unreachable(tmp_path: Path) -> None:

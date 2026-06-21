@@ -59,6 +59,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from transport_matters.shared_proxy.manager import SharedProxyManager
+    from transport_matters.space.models import SpaceId, WorktreeId
 
 logger = logging.getLogger(__name__)
 
@@ -91,6 +92,8 @@ class _ValidatedSpawnRun:
     request: SpawnRun
     cwd: Path
     upstream: str
+    space_id: SpaceId
+    worktree_id: WorktreeId
 
 
 class RunManager:
@@ -169,6 +172,8 @@ class RunManager:
                 run_id=spawn_spec.run_id,
                 harness=request.harness,
                 cwd=spawn_spec.working_dir,
+                space_id=validated.space_id,
+                worktree_id=validated.worktree_id,
                 state=RunState.STARTING,
                 spawn_spec=spawn_spec,
                 lease=lease,
@@ -216,6 +221,10 @@ class RunManager:
                 runs = tuple(run for run in runs if run.harness == filters.harness)
             if filters.cwd is not None:
                 runs = tuple(run for run in runs if run.cwd == filters.cwd)
+            if filters.space_id is not None:
+                runs = tuple(run for run in runs if run.space_id == filters.space_id)
+            if filters.worktree_id is not None:
+                runs = tuple(run for run in runs if run.worktree_id == filters.worktree_id)
             if filters.states is not None:
                 runs = tuple(run for run in runs if run.state in filters.states)
         return [run.view() for run in runs]
@@ -376,11 +385,20 @@ class RunManager:
             raise RunManagerError(
                 "unsupported_harness", f"unsupported captured run harness: {request.harness}"
             )
-        cwd = self._resolve_cwd(request.cwd)
+        cwd = self._resolve_cwd(request)
+        resolved = request.resolved_worktree
+        space_id = resolved.space_id
+        worktree_id = resolved.worktree_id
         upstream = request.upstream
         if upstream is None:
             upstream = CLAUDE_UPSTREAM_DEFAULT if request.harness == CLAUDE_HARNESS_NAME else ""
-        return _ValidatedSpawnRun(request=request, cwd=cwd, upstream=upstream)
+        return _ValidatedSpawnRun(
+            request=request,
+            cwd=cwd,
+            upstream=upstream,
+            space_id=space_id,
+            worktree_id=worktree_id,
+        )
 
     def _captured_request(self, validated: _ValidatedSpawnRun) -> CapturedRunRequest:
         request = validated.request
@@ -401,6 +419,8 @@ class RunManager:
             default_client_passthrough=request.default_client_passthrough,
             runtime_template=request.runtime_template,
             launch_fields=request.launch_fields,
+            space_id=validated.space_id,
+            worktree_id=validated.worktree_id,
             defer_session_ownership=request.defer_session_ownership,
             bypass_permissions=request.bypass_permissions,
         )
@@ -422,8 +442,8 @@ class RunManager:
         ok_until = self._session_store_preflight_ok_until
         return ok_until is not None and self._clock() < ok_until
 
-    def _resolve_cwd(self, cwd: Path | None) -> Path:
-        working_dir = Path.cwd() if cwd is None else cwd.expanduser()
+    def _resolve_cwd(self, request: SpawnRun) -> Path:
+        working_dir = Path(request.resolved_worktree.cwd).expanduser()
         if not working_dir.is_absolute():
             raise RunManagerError("invalid_cwd", "cwd must be an absolute path")
         if not working_dir.exists():

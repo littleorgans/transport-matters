@@ -27,6 +27,7 @@ if TYPE_CHECKING:
     from transport_matters.pty_session import TerminalPty
     from transport_matters.run_terminal import ScrollbackRing, TerminalAttachment, TerminalFanout
     from transport_matters.runtime_templates import RuntimeTemplateRef
+    from transport_matters.space.models import ResolvedWorktree, SpaceId, WorktreeId
 
 TerminateReason = Literal["explicit", "shutdown", "idle-timeout", "deploy-restart"]
 RunEndReason = TerminateReason | Literal["natural-exit", "failed"]
@@ -87,7 +88,7 @@ class RunNotFoundError(KeyError):
 @dataclass(frozen=True, slots=True)
 class SpawnRun:
     harness: CapturedRunHarness
-    cwd: Path | None = None
+    resolved_worktree: ResolvedWorktree
     cols: int = DEFAULT_TERMINAL_COLS
     rows: int = DEFAULT_TERMINAL_ROWS
     passthrough: tuple[str, ...] = ()
@@ -116,6 +117,8 @@ class SpawnRun:
 class RunFilters:
     harness: CapturedRunHarness | None = None
     cwd: Path | None = None
+    space_id: SpaceId | None = None
+    worktree_id: WorktreeId | None = None
     states: frozenset[RunState] | None = None
 
 
@@ -124,6 +127,8 @@ class ManagedRunView:
     run_id: str
     harness: CapturedRunHarness
     cwd: Path
+    space_id: SpaceId
+    worktree_id: WorktreeId
     storage_dir: Path
     proxy_port: int
     web_port: int | None
@@ -146,6 +151,8 @@ class ManagedRun:
     run_id: str
     harness: CapturedRunHarness
     cwd: Path
+    space_id: SpaceId
+    worktree_id: WorktreeId
     state: RunState
     spawn_spec: CapturedRunSpawnSpec
     lease: CapturedRunLeaseHandle
@@ -176,6 +183,8 @@ class ManagedRun:
             run_id=self.run_id,
             harness=self.harness,
             cwd=self.cwd,
+            space_id=self.space_id,
+            worktree_id=self.worktree_id,
             storage_dir=self.spawn_spec.storage_dir,
             proxy_port=self.spawn_spec.proxy_port,
             web_port=self.spawn_spec.web_port,

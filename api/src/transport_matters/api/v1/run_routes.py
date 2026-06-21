@@ -8,8 +8,6 @@ import binascii
 import contextlib
 import json
 import os
-from dataclasses import replace
-from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, NoReturn, cast
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, WebSocket, WebSocketException
@@ -45,7 +43,8 @@ from transport_matters.run_terminal import (
     PtyChunk,
 )
 from transport_matters.runtime_registry import resolve_runtime_template
-from transport_matters.workspace import workspace_id
+from transport_matters.space.models import ResolvedWorktree, SpaceId, WorktreeId
+from transport_matters.space.store import SpaceStore
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -97,7 +96,7 @@ class CreateRunRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     harness: str
-    cwd: str | None = None
+    worktree_id: str | None = Field(default=None, alias="worktreeId")
     terminal: TerminalSizeModel | None = None
     # Bridge answers the harness OSC 10/11 color queries (see osc_color_responder).
     osc_color_replies: bool = Field(default=True, alias="oscColorReplies")
@@ -111,7 +110,8 @@ class RunViewModel(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     run_id: str = Field(serialization_alias="runId")
-    workspace_id: str = Field(serialization_alias="workspaceId")
+    space_id: str = Field(serialization_alias="spaceId")
+    worktree_id: str = Field(serialization_alias="worktreeId")
     session_id: str = Field(serialization_alias="sessionId")
     harness: CapturedRunHarness
     state: PublicRunState
@@ -245,8 +245,10 @@ def _public_state_filter(state: str) -> frozenset[RunState]:
     return frozenset({parsed, *aliased})
 
 
-def _cursor_filter_key(state: str | None) -> dict[str, str | None]:
-    return {"state": state}
+def _cursor_filter_key(
+    state: str | None, space_id: str | None, worktree_id: str | None
+) -> dict[str, str | None]:
+    return {"state": state, "spaceId": space_id, "worktreeId": worktree_id}
 
 
 def _encode_cursor(offset: int, *, filters: dict[str, str | None]) -> str:
@@ -274,31 +276,54 @@ def _decode_cursor(cursor: str, *, filters: dict[str, str | None]) -> int:
     return offset
 
 
-def _validated_existing_dir(cwd: str) -> Path:
-    working_dir = Path(cwd).expanduser()
-    if not working_dir.is_absolute():
-        _raise_api_error(http_status.HTTP_400_BAD_REQUEST, "invalid_cwd", "cwd must be absolute")
-    if not working_dir.exists():
+def _parse_uuid_id[IdT: (SpaceId, WorktreeId)](
+    value: str | None,
+    id_type: type[IdT],
+    field_name: str,
+    invalid_code: str,
+    required_code: str | None = None,
+) -> IdT | None:
+    if value is None or value == "":
+        if required_code is None:
+            return None
+        _raise_api_error(
+            http_status.HTTP_400_BAD_REQUEST, required_code, f"{field_name} is required"
+        )
+    try:
+        return id_type.parse(value)
+    except ValueError:
         _raise_api_error(
             http_status.HTTP_400_BAD_REQUEST,
-            "invalid_cwd",
-            f"cwd does not exist: {working_dir}",
+            invalid_code,
+            f"{field_name} must be a UUID",
         )
-    if not working_dir.is_dir():
+
+
+async def _resolved_worktree(
+    body: CreateRunRequest, *, request: Request, owner: str
+) -> ResolvedWorktree:
+    worktree_id = _parse_uuid_id(
+        body.worktree_id, WorktreeId, "worktreeId", "invalid_worktree_id", "worktree_required"
+    )
+    assert worktree_id is not None
+    pool = optional_session_pool(request)
+    if pool is None:
         _raise_api_error(
-            http_status.HTTP_400_BAD_REQUEST,
-            "invalid_cwd",
-            f"cwd is not a directory: {working_dir}",
+            http_status.HTTP_503_SERVICE_UNAVAILABLE,
+            "session_store_unavailable",
+            "session store unavailable",
         )
-    return working_dir.resolve()
-
-
-def _request_cwd(cwd: str | None, settings: Settings) -> Path | None:
-    if cwd is not None:
-        return _validated_existing_dir(cwd)
-    if settings.cwd is None:
-        return None
-    return _validated_existing_dir(str(settings.cwd))
+    async with pool.connection() as conn:
+        resolved = await SpaceStore(conn).resolve_worktree(worktree_id, owner=owner)
+    if resolved is None:
+        _raise_api_error(http_status.HTTP_404_NOT_FOUND, "worktree_not_found", "worktree not found")
+    if resolved.missing or resolved.archived:
+        _raise_api_error(
+            http_status.HTTP_409_CONFLICT,
+            "worktree_unavailable",
+            "worktree is missing or archived",
+        )
+    return resolved
 
 
 def _required_non_empty(value: str | None, *, field_name: str) -> str:
@@ -357,6 +382,7 @@ def _spawn_request(
     body: CreateRunRequest,
     settings: Settings,
     *,
+    resolved_worktree: ResolvedWorktree,
     launch_fields: dict[str, object] | None = None,
     runtime_template: RuntimeTemplateRef | None = None,
 ) -> SpawnRun:
@@ -364,7 +390,7 @@ def _spawn_request(
     harness = _validated_harness(body.harness)
     return SpawnRun(
         harness=harness,
-        cwd=_request_cwd(body.cwd, settings),
+        resolved_worktree=resolved_worktree,
         cols=terminal.cols,
         rows=terminal.rows,
         passthrough=(),
@@ -378,11 +404,6 @@ def _spawn_request(
         defer_session_ownership=harness == CODEX_HARNESS_NAME,
         bypass_permissions=body.bypass_permissions,
     )
-
-
-def _workspace_id_for_view(view: ManagedRunView) -> str:
-    wid = workspace_id(view.cwd)
-    return f"{wid.slug}/{wid.hash}"
 
 
 def _session_id_for_view(view: ManagedRunView) -> str:
@@ -404,7 +425,8 @@ def run_view_model(view: ManagedRunView) -> RunViewModel:
     end_reason = view.end_reason if view.end_reason in _END_REASONS else None
     return RunViewModel(
         run_id=view.run_id,
-        workspace_id=_workspace_id_for_view(view),
+        space_id=str(view.space_id),
+        worktree_id=str(view.worktree_id),
         session_id=_session_id_for_view(view),
         harness=view.harness,
         state=_curated_state(view.state),
@@ -442,14 +464,15 @@ async def create_run(
     try:
         harness = _validated_harness(body.harness)
         runtime_template = _runtime_template_ref(body, harness)
+        resolved = await _resolved_worktree(body, request=request, owner=owner)
+        launch_fields = await _launch_fields(body, request=request, owner=owner)
         spawn_request = _spawn_request(
             body,
             get_settings(),
+            resolved_worktree=resolved,
+            launch_fields=launch_fields,
             runtime_template=runtime_template,
         )
-        launch_fields = await _launch_fields(body, request=request, owner=owner)
-        if launch_fields:
-            spawn_request = replace(spawn_request, launch_fields=launch_fields)
         run = await manager.spawn(spawn_request)
     except RunManagerError as exc:
         _http_error_from_manager(exc)
@@ -460,12 +483,16 @@ async def create_run(
 async def list_runs(
     request: Request,
     state: str | None = Query(default=None),
+    space_id: str | None = Query(default=None, alias="spaceId"),
+    worktree_id: str | None = Query(default=None, alias="worktreeId"),
     limit: int = Query(default=DEFAULT_RUNS_LIMIT, ge=1, le=MAX_RUNS_LIMIT),
     cursor: str | None = Query(default=None),
 ) -> dict[str, object]:
-    cursor_filters = _cursor_filter_key(state)
+    cursor_filters = _cursor_filter_key(state, space_id, worktree_id)
     offset = _decode_cursor(cursor, filters=cursor_filters) if cursor is not None else 0
     filters = RunFilters(
+        space_id=_parse_uuid_id(space_id, SpaceId, "spaceId", "invalid_space_id"),
+        worktree_id=_parse_uuid_id(worktree_id, WorktreeId, "worktreeId", "invalid_worktree_id"),
         states=_public_state_filter(state) if state is not None else None,
     )
     manager = _run_manager(request)

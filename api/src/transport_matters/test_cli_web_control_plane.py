@@ -28,6 +28,7 @@ from transport_matters.test_run_manager import (
     PtyHarness,
     make_manager,
     patch_pty_teardown,
+    resolved_worktree,
 )
 
 if TYPE_CHECKING:
@@ -127,7 +128,11 @@ async def test_embedded_run_breakpoint_pause_release_uses_per_run_path_after_cut
         shared_proxy_unavailable_reason="shared proxy unavailable in test",
     )
     managed = await manager.spawn(
-        SpawnRun(harness="claude", cwd=tmp_path, web_runtime=WEB_RUNTIME_EMBEDDED)
+        SpawnRun(
+            harness="claude",
+            resolved_worktree=resolved_worktree(tmp_path),
+            web_runtime=WEB_RUNTIME_EMBEDDED,
+        )
     )
     assert [request.web_runtime for request in prepared.requests] == [WEB_RUNTIME_EMBEDDED]
 

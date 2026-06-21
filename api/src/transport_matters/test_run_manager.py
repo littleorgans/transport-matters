@@ -30,6 +30,7 @@ from transport_matters.run_manager import (
     SpawnRun,
 )
 from transport_matters.run_terminal import PtyChunk
+from transport_matters.space.models import ResolvedWorktree, SpaceId, WorktreeId
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
@@ -181,6 +182,25 @@ class RecordingRunManager(RunManager):
         super()._remove_reader(fd)
 
 
+def resolved_worktree(
+    tmp_path: Path,
+    *,
+    space_id: SpaceId | None = None,
+    worktree_id: WorktreeId | None = None,
+    missing: bool = False,
+    archived: bool = False,
+) -> ResolvedWorktree:
+    return ResolvedWorktree(
+        space_id=space_id or SpaceId.from_uuid(uuid4()),
+        worktree_id=worktree_id or WorktreeId.from_uuid(uuid4()),
+        cwd=str(tmp_path),
+        workspace_slug="workspace",
+        workspace_hash="hash1",
+        missing=missing,
+        archived=archived,
+    )
+
+
 def fake_dependencies() -> CapturedRunDependencies:
     return CapturedRunDependencies(
         require_addon=lambda: Path("addon.py"),
@@ -233,7 +253,11 @@ def patch_pty_teardown(monkeypatch: pytest.MonkeyPatch, pty: PtyHarness) -> None
 
 async def spawn_run(manager: RunManager, tmp_path: Path) -> ManagedRun:
     return await manager.spawn(
-        SpawnRun(harness="claude", cwd=tmp_path, web_runtime=WEB_RUNTIME_EMBEDDED)
+        SpawnRun(
+            harness="claude",
+            resolved_worktree=resolved_worktree(tmp_path),
+            web_runtime=WEB_RUNTIME_EMBEDDED,
+        )
     )
 
 
@@ -311,7 +335,7 @@ async def test_start_on_attach_registers_viewer_before_pty_start(
     run = await manager.spawn(
         SpawnRun(
             harness="claude",
-            cwd=tmp_path,
+            resolved_worktree=resolved_worktree(tmp_path),
             web_runtime=WEB_RUNTIME_EMBEDDED,
             start_on_attach=True,
         )
@@ -344,7 +368,11 @@ async def test_post_prepare_spawn_failure_closes_lease(tmp_path: Path) -> None:
 
     with pytest.raises(RunManagerError, match="pty spawn failed"):
         await manager.spawn(
-            SpawnRun(harness="claude", cwd=tmp_path, web_runtime=WEB_RUNTIME_EMBEDDED)
+            SpawnRun(
+                harness="claude",
+                resolved_worktree=resolved_worktree(tmp_path),
+                web_runtime=WEB_RUNTIME_EMBEDDED,
+            )
         )
 
     assert prepared.leases[0].close_count == 1
@@ -358,7 +386,7 @@ async def test_idempotency_key_returns_existing_run_without_reprepare(tmp_path: 
     first = await manager.spawn(
         SpawnRun(
             harness="claude",
-            cwd=tmp_path,
+            resolved_worktree=resolved_worktree(tmp_path),
             web_runtime=WEB_RUNTIME_EMBEDDED,
             idempotency_key="retry-1",
         )
@@ -366,7 +394,7 @@ async def test_idempotency_key_returns_existing_run_without_reprepare(tmp_path: 
     second = await manager.spawn(
         SpawnRun(
             harness="claude",
-            cwd=tmp_path,
+            resolved_worktree=resolved_worktree(tmp_path),
             web_runtime=WEB_RUNTIME_EMBEDDED,
             idempotency_key="retry-1",
         )
@@ -385,7 +413,7 @@ async def test_different_idempotency_keys_spawn_distinct_runs(tmp_path: Path) ->
     first = await manager.spawn(
         SpawnRun(
             harness="claude",
-            cwd=tmp_path,
+            resolved_worktree=resolved_worktree(tmp_path),
             web_runtime=WEB_RUNTIME_EMBEDDED,
             idempotency_key="fork-a",
         )
@@ -393,7 +421,7 @@ async def test_different_idempotency_keys_spawn_distinct_runs(tmp_path: Path) ->
     second = await manager.spawn(
         SpawnRun(
             harness="claude",
-            cwd=tmp_path,
+            resolved_worktree=resolved_worktree(tmp_path),
             web_runtime=WEB_RUNTIME_EMBEDDED,
             idempotency_key="fork-b",
         )
@@ -417,7 +445,7 @@ async def test_spawn_passes_runtime_template_to_captured_request(tmp_path: Path)
     await manager.spawn(
         SpawnRun(
             harness="codex",
-            cwd=tmp_path,
+            resolved_worktree=resolved_worktree(tmp_path),
             web_runtime=WEB_RUNTIME_EMBEDDED,
             runtime_template=runtime_template,
         )
@@ -435,7 +463,7 @@ async def test_spawn_passes_bypass_permissions_to_captured_request(tmp_path: Pat
     await manager.spawn(
         SpawnRun(
             harness="claude",
-            cwd=tmp_path,
+            resolved_worktree=resolved_worktree(tmp_path),
             web_runtime=WEB_RUNTIME_EMBEDDED,
             bypass_permissions=True,
         )
@@ -454,7 +482,13 @@ async def test_close_during_in_flight_spawn_rolls_back_prepared_run(
     manager = make_manager(tmp_path, pty, prepared)
 
     spawn_task = asyncio.create_task(
-        manager.spawn(SpawnRun(harness="claude", cwd=tmp_path, web_runtime=WEB_RUNTIME_EMBEDDED))
+        manager.spawn(
+            SpawnRun(
+                harness="claude",
+                resolved_worktree=resolved_worktree(tmp_path),
+                web_runtime=WEB_RUNTIME_EMBEDDED,
+            )
+        )
     )
     assert await asyncio.to_thread(prepared.entered.wait, 1.0)
 

@@ -23,6 +23,7 @@ if TYPE_CHECKING:
     from transport_matters.cli.runner import ManagedClient
     from transport_matters.lock import WorkspaceLock
     from transport_matters.runtime_templates import RuntimeTemplateRef
+    from transport_matters.space.models import SpaceId, WorktreeId
 
 __all__ = [
     "CLAUDE_HARNESS_NAME",
@@ -66,6 +67,8 @@ class CapturedRunRequest:
     default_client_passthrough: tuple[str, ...] = ()
     runtime_template: RuntimeTemplateRef | None = None
     launch_fields: Mapping[str, object] = field(default_factory=dict)
+    space_id: SpaceId | None = None
+    worktree_id: WorktreeId | None = None
     defer_session_ownership: bool = False
     bypass_permissions: bool = False
 

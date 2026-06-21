@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
+from uuid import UUID
 
 import pytest
 from psycopg.errors import CheckViolation, ForeignKeyViolation, UniqueViolation
@@ -23,6 +24,7 @@ from transport_matters.session.pool import (
     create_pool,
     transaction,
 )
+from transport_matters.space.models import SpaceId, WorktreeId
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -183,6 +185,24 @@ def test_session_upsert_persists_template_provenance(dao: SessionDao) -> None:
     assert inserted.template_provenance == template_provenance
     assert persisted is not None
     assert persisted.template_provenance == template_provenance
+
+
+def test_session_upsert_persists_space_and_worktree_ids(dao: SessionDao) -> None:
+    space_id = SpaceId.from_uuid(UUID("11111111-1111-4111-8111-111111111111"))
+    worktree_id = WorktreeId.from_uuid(UUID("22222222-2222-4222-8222-222222222222"))
+    row = dao.upsert_session(
+        root_session("space-session").model_copy(
+            update={"space_id": space_id, "worktree_id": worktree_id}
+        )
+    )
+
+    fetched = dao.get_session("space-session")
+
+    assert row.space_id == space_id
+    assert row.worktree_id == worktree_id
+    assert fetched is not None
+    assert fetched.space_id == space_id
+    assert fetched.worktree_id == worktree_id
 
 
 def test_event_insert_strips_decoded_nuls_from_payload_boundaries(
