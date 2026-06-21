@@ -11,7 +11,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
 MIN_SHORT_PREFIX_LEN = 7
-JsonObject = dict[str, Any]
+JsonObject = dict[str, Any]  # Any is necessary for arbitrary jsonb layout payloads.
 
 
 def shortest_unambiguous_prefix(full_id: str, is_unique: Callable[[str], bool]) -> str:
@@ -70,8 +70,8 @@ class _UuidId:
     @classmethod
     def __get_pydantic_core_schema__(
         cls,
-        _source: type[Any],
-        _handler: Any,
+        _source: type[Any],  # Any is necessary for pydantic-core hook signatures.
+        _handler: Any,  # Any is necessary for pydantic-core hook signatures.
     ) -> core_schema.CoreSchema:
         def validate(value: object) -> _UuidId:
             if isinstance(value, cls):
@@ -94,8 +94,8 @@ class _UuidId:
     def __get_pydantic_json_schema__(
         cls,
         _schema: core_schema.CoreSchema,
-        _handler: Any,
-    ) -> dict[str, Any]:
+        _handler: Any,  # Any is necessary for pydantic-core hook signatures.
+    ) -> dict[str, Any]:  # Any is necessary for pydantic-core JSON schema maps.
         return {"type": "string", "format": "uuid"}
 
 

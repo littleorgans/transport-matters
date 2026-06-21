@@ -60,6 +60,7 @@ _SPACE_CASCADE_FKS = frozenset(
         "canvas_space_fk",
     }
 )
+_SPACE_SET_NULL_FKS = frozenset({"canvas_default_worktree_fk"})
 
 
 def _reset_to_unmigrated(database_url: str) -> None:
@@ -211,6 +212,8 @@ def _assert_spaces_foundation_present(database_url: str) -> None:
     fks = _foreign_key_delete_actions(database_url)
     for fk_name in _SPACE_CASCADE_FKS:
         assert fks[fk_name] == "c"
+    for fk_name in _SPACE_SET_NULL_FKS:
+        assert fks[fk_name] == "n"
 
 
 def _assert_spaces_foundation_absent(database_url: str) -> None:

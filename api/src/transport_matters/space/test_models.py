@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from pydantic import BaseModel
+import pytest
+from pydantic import BaseModel, ValidationError
 
 from transport_matters.space.models import (
     Canvas,
@@ -58,6 +59,23 @@ def test_ids_validate_from_uuid_instances_and_uuid_strings() -> None:
     assert envelope.space_id == SpaceId.from_uuid(FIXED_UUID)
     assert envelope.worktree_id == WorktreeId.from_uuid(FIXED_UUID)
     assert envelope.canvas_id == CanvasId.from_uuid(FIXED_UUID)
+
+
+def test_id_values_remain_type_separated() -> None:
+    space_id = SpaceId.from_uuid(FIXED_UUID)
+    worktree_id = WorktreeId.from_uuid(FIXED_UUID)
+
+    assert space_id != worktree_id
+    assert hash(space_id) != hash(worktree_id)
+
+
+def test_id_validation_rejects_non_uuid_values() -> None:
+    with pytest.raises(ValidationError):
+        IdEnvelope(
+            space_id=7,
+            worktree_id=FIXED_UUID,
+            canvas_id=FIXED_UUID,
+        )
 
 
 def test_short_prefix_helper_matches_littleorgans_floor() -> None:
