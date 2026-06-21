@@ -47,6 +47,9 @@ export function useLauncherRows({
       themeName,
       canvasGestureModifier,
       bypassPermissions,
+      // Placeholders until Task F threads real Spaces + the active worktree in.
+      spaces: [],
+      activeWorktreeId: null,
     }),
     [templates, status, themeName, canvasGestureModifier, bypassPermissions],
   );

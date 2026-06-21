@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
-import type { RuntimeTemplateSummary } from "../../types";
+import type { RuntimeTemplateSummary, SpaceSummary } from "../../types";
 import {
   buildAgentRows,
   buildScopeRows,
   createRootNavFrame,
+  createScopeNavFrame,
   domainRowValue,
   filterRows,
   firstSelectableValue,
@@ -68,6 +69,8 @@ const baseInputs = (overrides: Partial<ScopeRowInputs> = {}): ScopeRowInputs => 
   themeName: "NONE",
   canvasGestureModifier: "Shift",
   bypassPermissions: false,
+  spaces: [],
+  activeWorktreeId: null,
   ...overrides,
 });
 
@@ -368,5 +371,124 @@ describe("row helpers", () => {
   it("firstSelectableValue skips disabled rows", () => {
     const rows = buildAgentRows([], "loading");
     expect(firstSelectableValue(rows)).toBe("agent:native:claude");
+  });
+});
+
+const repoSpace: SpaceSummary = {
+  spaceId: "space-repo",
+  label: "transport-matters",
+  kind: "repo",
+  worktrees: [
+    {
+      worktreeId: "wt-main",
+      spaceId: "space-repo",
+      path: "/p/tm",
+      branch: "main",
+      isPrimary: true,
+      missing: false,
+    },
+    {
+      worktreeId: "wt-feat",
+      spaceId: "space-repo",
+      path: "/p/tm-feat",
+      branch: "feat/x",
+      isPrimary: false,
+      missing: false,
+    },
+  ],
+};
+
+const plainSpace: SpaceSummary = {
+  spaceId: "space-dir",
+  label: "scratch",
+  kind: "plain",
+  worktrees: [
+    {
+      worktreeId: "wt-only",
+      spaceId: "space-dir",
+      path: "/p/scratch",
+      branch: null,
+      isPrimary: true,
+      missing: false,
+    },
+  ],
+};
+
+describe("Workdir scope — Space rows (R7)", () => {
+  it("lists one row per Space, never titled the bare word 'Space'", () => {
+    const rows = buildScopeRows("workdir", baseInputs({ spaces: [repoSpace, plainSpace] }), "");
+    expect(rows.map((row) => row.value)).toEqual(["space:space-repo", "space:space-dir"]);
+    expect(rows.map((row) => row.title)).toEqual(["transport-matters", "scratch"]);
+    // R7: no Space row collides with the settings "Canvas gesture modifier: Space" row.
+    expect(rows.some((row) => row.title.includes("gesture modifier"))).toBe(false);
+    expect(rows.every((row) => row.group === "Workdir")).toBe(true);
+  });
+
+  it("a multi-worktree Space descends into the worktree sub-scope", () => {
+    const rows = buildScopeRows("workdir", baseInputs({ spaces: [repoSpace] }), "");
+    expect(rows[0]?.action).toEqual({ kind: "enter", scope: "worktree", param: "space-repo" });
+    expect(rows[0]?.subtitle).toBe("2 worktrees");
+  });
+
+  it("a single-worktree Space selects directly (skips the sub-step)", () => {
+    const rows = buildScopeRows("workdir", baseInputs({ spaces: [plainSpace] }), "");
+    expect(rows[0]?.action).toEqual({
+      kind: "command",
+      command: { kind: "select-worktree", spaceId: "space-dir", worktreeId: "wt-only" },
+    });
+  });
+
+  it("shows a quiet placeholder when no spaces are detected", () => {
+    const rows = buildScopeRows("workdir", baseInputs({ spaces: [] }), "");
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.disabled).toBe(true);
+    expect(rows[0]?.value).toBe("status:workdir-empty");
+  });
+});
+
+describe("Worktree sub-scope rows", () => {
+  it("lists the worktrees of the Space named by the nav param", () => {
+    const rows = buildScopeRows(
+      "worktree",
+      baseInputs({ spaces: [repoSpace], activeWorktreeId: "wt-main" }),
+      "",
+      "space-repo",
+    );
+    expect(rows.map((row) => row.value)).toEqual(["worktree:wt-main", "worktree:wt-feat"]);
+    expect(rows[0]?.trailing).toBe("Current");
+    expect(rows[1]?.action).toEqual({
+      kind: "command",
+      command: { kind: "select-worktree", spaceId: "space-repo", worktreeId: "wt-feat" },
+    });
+  });
+
+  it("disables a missing worktree and surfaces a fallback for an unknown space", () => {
+    const missing: SpaceSummary = {
+      ...repoSpace,
+      worktrees: [{ ...repoSpace.worktrees[0]!, missing: true }],
+    };
+    const rows = buildScopeRows("worktree", baseInputs({ spaces: [missing] }), "", "space-repo");
+    expect(rows[0]?.disabled).toBe(true);
+    expect(rows[0]?.action).toBeUndefined();
+
+    const unknown = buildScopeRows("worktree", baseInputs({ spaces: [] }), "", "nope");
+    expect(unknown[0]?.value).toBe("status:worktree-missing");
+  });
+});
+
+describe("nav param threading", () => {
+  it("pushFrame stamps the new frame with the param", () => {
+    const stack = pushFrame(
+      [createScopeNavFrame("workdir")],
+      "worktree",
+      "space:space-repo",
+      "space-repo",
+    );
+    expect(topFrame(stack)).toEqual({
+      scope: "worktree",
+      query: "",
+      highlightedValue: undefined,
+      param: "space-repo",
+    });
   });
 });
