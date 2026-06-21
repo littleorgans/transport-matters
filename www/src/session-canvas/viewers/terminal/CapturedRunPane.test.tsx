@@ -90,17 +90,17 @@ describe("CapturedRunPane", () => {
   it("spawns a run via POST then attaches its terminal socket", async () => {
     createCapturedRunMock.mockResolvedValue("run-abc123");
 
-    render(<CapturedRunPane runKey="claude:k1" provider="claude" />);
+    render(<CapturedRunPane runKey="claude:k1" provider="claude" worktreeId="wt-1" />);
 
     await waitFor(() => expect(sockets).toHaveLength(1));
-    expect(createCapturedRunMock).toHaveBeenCalledWith("claude", undefined, true, undefined, false);
+    expect(createCapturedRunMock).toHaveBeenCalledWith("claude", "wt-1", true, undefined, false);
     expect(only(sockets).url).toMatch(/\/v1\/runs\/run-abc123\/terminal\?cols=80&rows=24$/);
   });
 
   it("shows an initializing indicator until first terminal output", async () => {
     createCapturedRunMock.mockResolvedValue("run-abc123");
 
-    render(<CapturedRunPane runKey="claude:k1" provider="claude" />);
+    render(<CapturedRunPane runKey="claude:k1" provider="claude" worktreeId="wt-1" />);
 
     await waitFor(() => expect(sockets).toHaveLength(1));
     expect(screen.getByRole("status")).toHaveTextContent(/Starting Claude/);
@@ -112,16 +112,10 @@ describe("CapturedRunPane", () => {
     createCapturedRunMock.mockResolvedValue("run-abc123");
     useCapturedRunStore.getState().setOscColorReplies(false);
 
-    render(<CapturedRunPane runKey="claude:k1" provider="claude" />);
+    render(<CapturedRunPane runKey="claude:k1" provider="claude" worktreeId="wt-1" />);
 
     await waitFor(() => expect(sockets).toHaveLength(1));
-    expect(createCapturedRunMock).toHaveBeenCalledWith(
-      "claude",
-      undefined,
-      false,
-      undefined,
-      false,
-    );
+    expect(createCapturedRunMock).toHaveBeenCalledWith("claude", "wt-1", false, undefined, false);
   });
 
   it("re-attaches a persisted run id without spawning a new run", async () => {
@@ -129,7 +123,7 @@ describe("CapturedRunPane", () => {
       runs: { "codex:k1": { provider: "codex", runId: "run-persisted" } },
     });
 
-    render(<CapturedRunPane runKey="codex:k1" provider="codex" />);
+    render(<CapturedRunPane runKey="codex:k1" provider="codex" worktreeId="wt-1" />);
 
     await waitFor(() => expect(sockets).toHaveLength(1));
     expect(createCapturedRunMock).not.toHaveBeenCalled();
@@ -138,7 +132,9 @@ describe("CapturedRunPane", () => {
 
   it("registers a paste handle for its pane id and deregisters on unmount", async () => {
     createCapturedRunMock.mockResolvedValue("run-abc123");
-    const { unmount } = render(<CapturedRunPane runKey="claude:k1" provider="claude" />);
+    const { unmount } = render(
+      <CapturedRunPane runKey="claude:k1" provider="claude" worktreeId="wt-1" />,
+    );
 
     await waitFor(() => expect(sockets).toHaveLength(1));
     const terminal = only(terminals);
@@ -152,7 +148,7 @@ describe("CapturedRunPane", () => {
 
   it("turns a run.error frame into an alert banner", async () => {
     createCapturedRunMock.mockResolvedValue("run-abc123");
-    render(<CapturedRunPane runKey="claude:k1" provider="claude" />);
+    render(<CapturedRunPane runKey="claude:k1" provider="claude" worktreeId="wt-1" />);
     await waitFor(() => expect(sockets).toHaveLength(1));
 
     act(() =>
@@ -168,7 +164,7 @@ describe("CapturedRunPane", () => {
 
   it("surfaces a refused state naming the provider when the socket is rejected (close 1008)", async () => {
     createCapturedRunMock.mockResolvedValue("run-abc123");
-    render(<CapturedRunPane runKey="codex:k1" provider="codex" />);
+    render(<CapturedRunPane runKey="codex:k1" provider="codex" worktreeId="wt-1" />);
     await waitFor(() => expect(sockets).toHaveLength(1));
 
     act(() => {
@@ -183,7 +179,7 @@ describe("CapturedRunPane", () => {
   it("shows a spawn-failure banner when POST /v1/runs fails", async () => {
     createCapturedRunMock.mockRejectedValue(new Error("no claude on PATH"));
 
-    render(<CapturedRunPane runKey="claude:k1" provider="claude" />);
+    render(<CapturedRunPane runKey="claude:k1" provider="claude" worktreeId="wt-1" />);
 
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent(/Claude/);
@@ -193,7 +189,9 @@ describe("CapturedRunPane", () => {
 
   it("closes the socket and disposes the terminal on unmount", async () => {
     createCapturedRunMock.mockResolvedValue("run-abc123");
-    const { unmount } = render(<CapturedRunPane runKey="claude:k1" provider="claude" />);
+    const { unmount } = render(
+      <CapturedRunPane runKey="claude:k1" provider="claude" worktreeId="wt-1" />,
+    );
     await waitFor(() => expect(sockets).toHaveLength(1));
 
     const terminal = only(terminals);

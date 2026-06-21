@@ -125,6 +125,7 @@ const registry: ViewerRegistration[] = [
         <CapturedRunPane
           runKey={props.pane.contentRef.runKey}
           provider={props.pane.contentRef.provider}
+          worktreeId={props.pane.contentRef.worktreeId}
           runtimeTemplate={props.pane.contentRef.runtimeTemplate}
         />
       </Suspense>

@@ -95,7 +95,7 @@ export interface CapturedRunState {
   ensureRun(
     runKey: CapturedRunKey,
     provider: HarnessName,
-    cwd?: string,
+    worktreeId?: string,
     /** Bridge answers the harness OSC color queries (default true; spawn-time only). */
     oscColorReplies?: boolean,
     /** Named runtime template to launch under (spawn-time only; absent → NATIVE). */
@@ -143,7 +143,13 @@ export const useCapturedRunStore = create<CapturedRunState>()(
       oscColorReplies: true,
       bypassPermissions: false,
 
-      ensureRun(runKey, provider, cwd, oscColorReplies = get().oscColorReplies, runtimeTemplate) {
+      ensureRun(
+        runKey,
+        provider,
+        worktreeId,
+        oscColorReplies = get().oscColorReplies,
+        runtimeTemplate,
+      ) {
         const existing = get().runs[runKey]?.runId;
         if (existing !== undefined) return Promise.resolve(existing);
         const inFlight = pendingSpawns.get(runKey);
@@ -155,7 +161,7 @@ export const useCapturedRunStore = create<CapturedRunState>()(
         const spawn = withCapturedRunSpawnSlot(() =>
           createCapturedRun(
             provider,
-            cwd,
+            worktreeId,
             oscColorReplies,
             runtimeTemplate,
             get().bypassPermissions,
