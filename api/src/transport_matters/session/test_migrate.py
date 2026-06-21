@@ -27,10 +27,47 @@ _DEAD_LETTER_INDEXES = frozenset({"event_dead_letter_run_ix", "event_dead_letter
 _REDUNDANT_SESSION_SEQ_INDEX = "event_session_seq_ix"
 _SESSION_CLASSIFICATION_COLUMNS = frozenset({"session_purpose", "session_visibility"})
 _SESSION_TEMPLATE_PROVENANCE_COLUMNS = frozenset({"template_provenance"})
+_SPACES_TABLES = frozenset({"space", "space_git_identity", "space_worktree", "canvas"})
+_SPACES_SESSION_COLUMNS = frozenset({"space_id", "worktree_id"})
+_SPACES_SESSION_INDEXES = frozenset({"session_space_ix", "session_worktree_ix"})
+_SPACES_UUID_COLUMNS = frozenset(
+    {
+        ("space", "space_id"),
+        ("space_git_identity", "space_id"),
+        ("space_worktree", "space_id"),
+        ("space_worktree", "worktree_id"),
+        ("canvas", "canvas_id"),
+        ("canvas", "space_id"),
+        ("canvas", "default_worktree_id"),
+        ("session", "space_id"),
+        ("session", "worktree_id"),
+    }
+)
+_SPACES_TEXT_COLUMNS = frozenset(
+    {
+        ("session", "session_id"),
+        ("session", "run_id"),
+        ("session", "workspace_slug"),
+        ("session", "workspace_hash"),
+        ("space_worktree", "workspace_slug"),
+        ("space_worktree", "workspace_hash"),
+    }
+)
+_SPACE_CASCADE_FKS = frozenset(
+    {
+        "space_git_identity_space_fk",
+        "space_worktree_space_fk",
+        "canvas_space_fk",
+    }
+)
 
 
 def _reset_to_unmigrated(database_url: str) -> None:
     with connect(database_url, autocommit=True) as conn:
+        conn.execute("DROP TABLE IF EXISTS canvas CASCADE")
+        conn.execute("DROP TABLE IF EXISTS space_worktree CASCADE")
+        conn.execute("DROP TABLE IF EXISTS space_git_identity CASCADE")
+        conn.execute("DROP TABLE IF EXISTS space CASCADE")
         conn.execute("DROP TABLE IF EXISTS event_dead_letter CASCADE")
         conn.execute("DROP TABLE IF EXISTS event_artifact CASCADE")
         conn.execute("DROP TABLE IF EXISTS event CASCADE")
@@ -88,6 +125,99 @@ def _session_columns(database_url: str) -> frozenset[str]:
             """
         ).fetchall()
     return frozenset(row["column_name"] for row in rows)
+
+
+def _tables(database_url: str) -> frozenset[str]:
+    with connect(database_url, autocommit=True) as conn:
+        rows = conn.execute(
+            """
+            SELECT table_name
+            FROM information_schema.tables
+            WHERE table_schema = 'public'
+              AND table_type = 'BASE TABLE'
+            """
+        ).fetchall()
+    return frozenset(row["table_name"] for row in rows)
+
+
+def _table_columns(database_url: str, table_name: str) -> dict[str, dict[str, str | None]]:
+    with connect(database_url, autocommit=True) as conn:
+        rows = conn.execute(
+            """
+            SELECT column_name, data_type, column_default, is_nullable
+            FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND table_name = %s
+            """,
+            (table_name,),
+        ).fetchall()
+    return {
+        row["column_name"]: {
+            "data_type": row["data_type"],
+            "column_default": row["column_default"],
+            "is_nullable": row["is_nullable"],
+        }
+        for row in rows
+    }
+
+
+def _indexes(database_url: str, table_name: str) -> dict[str, str]:
+    with connect(database_url, autocommit=True) as conn:
+        rows = conn.execute(
+            """
+            SELECT indexname, indexdef
+            FROM pg_indexes
+            WHERE schemaname = 'public'
+              AND tablename = %s
+            """,
+            (table_name,),
+        ).fetchall()
+    return {row["indexname"]: row["indexdef"] for row in rows}
+
+
+def _foreign_key_delete_actions(database_url: str) -> dict[str, str]:
+    with connect(database_url, autocommit=True) as conn:
+        rows = conn.execute(
+            """
+            SELECT conname, confdeltype
+            FROM pg_constraint
+            WHERE contype = 'f'
+              AND connamespace = 'public'::regnamespace
+            """
+        ).fetchall()
+    return {row["conname"]: row["confdeltype"] for row in rows}
+
+
+def _assert_spaces_foundation_present(database_url: str) -> None:
+    assert _tables(database_url) >= _SPACES_TABLES
+
+    session_columns = _table_columns(database_url, "session")
+    assert set(session_columns) >= _SPACES_SESSION_COLUMNS
+
+    for table_name, column_name in _SPACES_UUID_COLUMNS:
+        column = _table_columns(database_url, table_name)[column_name]
+        assert column["data_type"] == "uuid"
+        if column_name in {"space_id", "worktree_id", "canvas_id"}:
+            assert column["column_default"] is None
+
+    for table_name, column_name in _SPACES_TEXT_COLUMNS:
+        assert _table_columns(database_url, table_name)[column_name]["data_type"] == "text"
+
+    session_indexes = _indexes(database_url, "session")
+    assert set(session_indexes) >= _SPACES_SESSION_INDEXES
+    assert "WHERE (space_id IS NOT NULL)" in session_indexes["session_space_ix"]
+    assert "WHERE (worktree_id IS NOT NULL)" in session_indexes["session_worktree_ix"]
+
+    fks = _foreign_key_delete_actions(database_url)
+    for fk_name in _SPACE_CASCADE_FKS:
+        assert fks[fk_name] == "c"
+
+
+def _assert_spaces_foundation_absent(database_url: str) -> None:
+    assert _tables(database_url).isdisjoint(_SPACES_TABLES)
+    assert _session_columns(database_url).isdisjoint(_SPACES_SESSION_COLUMNS)
+    session_indexes = _indexes(database_url, "session")
+    assert set(session_indexes).isdisjoint(_SPACES_SESSION_INDEXES)
 
 
 def _assert_dead_letter_present(database_url: str) -> None:
@@ -161,10 +291,21 @@ def test_alembic_upgrade_and_downgrade_smoke(test_db: TestDb) -> None:
     migrate.apply_migrations(test_db.database_url)
 
     assert migrate.current_revision(test_db.database_url) == migrate.migration_head()
+    assert migrate.current_revision(test_db.database_url) == "0006_spaces_foundation"
+    _assert_spaces_foundation_present(test_db.database_url)
     _assert_tier1_indexes_present(test_db.database_url)
     _assert_dead_letter_present(test_db.database_url)
     _assert_session_classification_present(test_db.database_url)
     _assert_session_template_provenance_present(test_db.database_url)
+
+    command.downgrade(migrate.alembic_config(test_db.database_url), "-1")
+
+    assert migrate.current_revision(test_db.database_url) == "0005_session_template_provenance"
+    _assert_spaces_foundation_absent(test_db.database_url)
+    _assert_session_template_provenance_present(test_db.database_url)
+    _assert_session_classification_present(test_db.database_url)
+    _assert_dead_letter_present(test_db.database_url)
+    _assert_tier1_indexes_present(test_db.database_url)
 
     command.downgrade(migrate.alembic_config(test_db.database_url), "-1")
 
@@ -190,6 +331,8 @@ def test_alembic_upgrade_and_downgrade_smoke(test_db: TestDb) -> None:
     migrate.apply_migrations(test_db.database_url)
 
     assert migrate.current_revision(test_db.database_url) == migrate.migration_head()
+    assert migrate.current_revision(test_db.database_url) == "0006_spaces_foundation"
+    _assert_spaces_foundation_present(test_db.database_url)
     _assert_tier1_indexes_present(test_db.database_url)
     _assert_dead_letter_present(test_db.database_url)
     _assert_session_classification_present(test_db.database_url)
@@ -227,6 +370,13 @@ def test_session_classification_migration_backfills_checks_and_downgrades(
             conn.execute(
                 "UPDATE \"session\" SET session_visibility = 'bogus' WHERE session_id = 'legacy-session'"
             )
+
+    command.downgrade(cfg, "-1")
+
+    assert migrate.current_revision(test_db.database_url) == "0005_session_template_provenance"
+    _assert_spaces_foundation_absent(test_db.database_url)
+    _assert_session_template_provenance_present(test_db.database_url)
+    _assert_session_classification_present(test_db.database_url)
 
     command.downgrade(cfg, "-1")
 
