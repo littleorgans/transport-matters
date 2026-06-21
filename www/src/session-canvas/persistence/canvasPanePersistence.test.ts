@@ -213,6 +213,54 @@ describe("canvas pane persistence", () => {
     expect(rebuilt.contentRefs["claude:k1"]).toEqual(capturedRef);
   });
 
+  it("drops only the invalid legacy ref and preserves valid sibling panes (Slice 6 hardening)", () => {
+    // A pre-Slice-6 captured-run ref persisted before worktreeId became required:
+    // it now fails the guard and must be dropped WITHOUT wiping its valid siblings.
+    // Built as a raw object (not `satisfies PaneContentRef`) because, post-Task-B, a
+    // captured-run literal without worktreeId no longer type-checks.
+    const legacyCapturedRef = {
+      kind: "captured-run",
+      owner: "local",
+      provider: "claude",
+      runKey: "claude:legacy",
+      label: "Legacy",
+    };
+    const sessionRef = {
+      kind: "session-timeline",
+      owner: "local",
+      sessionId: "sess-1",
+    } satisfies PaneContentRef;
+    const resourceRef = {
+      kind: "resource",
+      owner: "local",
+      source: "url",
+      url: "https://example.test",
+    } satisfies PaneContentRef;
+    const persisted: unknown = {
+      contentRefs: {
+        "claude:legacy": legacyCapturedRef,
+        "session-1": sessionRef,
+        "resource-1": resourceRef,
+      },
+      paneRects: {
+        "claude:legacy": { x: 0, y: 0, width: 360, height: 280 },
+        "session-1": { x: 400, y: 0, width: 360, height: 280 },
+        "resource-1": { x: 800, y: 0, width: 360, height: 280 },
+      },
+      docked: [],
+    };
+
+    const rebuilt = rebuildPersistedPanes(persisted, emptySeedState());
+
+    // NOT a full reset: the two valid panes survive with their refs and rects.
+    expect(Object.keys(rebuilt.layout.nodes).sort()).toEqual(["resource-1", "session-1"]);
+    expect(rebuilt.contentRefs["session-1"]).toEqual(sessionRef);
+    expect(rebuilt.contentRefs["resource-1"]).toEqual(resourceRef);
+    // The invalid legacy captured-run ref is dropped — ref AND rect (no ghost node).
+    expect(rebuilt.contentRefs["claude:legacy"]).toBeUndefined();
+    expect(rebuilt.layout.nodes["claude:legacy"]).toBeUndefined();
+  });
+
   it("restores docked records without reopening them on the canvas", () => {
     const docked = [
       { paneId: "demo-2", ref: null },

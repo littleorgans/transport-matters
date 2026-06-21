@@ -156,7 +156,30 @@ function readPersistedPanes<TRef extends CanvasPaneRef = PaneContentRef>(
   const order = readPaneOrder(persisted.order);
   const docked = readDockedPanes(persisted.docked, isContentRef);
   if (!contentRefs || !paneRects || !docked) return null;
-  return { contentRefs, paneRects, order, docked };
+  return {
+    contentRefs,
+    paneRects: dropOrphanedRects(persisted.contentRefs, contentRefs, paneRects),
+    order,
+    docked,
+  };
+}
+
+// A rect whose paneId carried a contentRef that FAILED the guard is now orphaned
+// (its content was dropped as invalid). Drop the rect too, so the invalid pane
+// fully disappears instead of resurrecting as a contentless ghost node. Rects with
+// no persisted contentRef entry at all (demo/placeholder panes) are preserved.
+function dropOrphanedRects(
+  rawContentRefs: unknown,
+  validContentRefs: Record<PaneId, unknown>,
+  paneRects: Record<PaneId, WorldRect>,
+): Record<PaneId, WorldRect> {
+  if (!isRecord(rawContentRefs)) return paneRects;
+  const pruned: Record<PaneId, WorldRect> = {};
+  for (const [paneId, rect] of Object.entries(paneRects)) {
+    if (paneId in rawContentRefs && !(paneId in validContentRefs)) continue;
+    pruned[paneId] = rect;
+  }
+  return pruned;
 }
 
 function hasPersistedPanePayload(value: Record<string, unknown>): boolean {
@@ -171,8 +194,11 @@ function readContentRefs<TRef extends CanvasPaneRef = PaneContentRef>(
   if (!isRecord(value)) return null;
   const contentRefs: Record<PaneId, TRef> = {};
   for (const [paneId, ref] of Object.entries(value)) {
-    if (!isContentRef(ref)) return null;
-    contentRefs[paneId] = ref;
+    // Drop only the invalid ref (e.g. a pre-Slice-6 captured-run ref lacking
+    // worktreeId); keep every valid sibling so one malformed/legacy entry never
+    // nulls the whole map and resets the canvas. The now-orphaned rect is pruned
+    // by dropOrphanedRects so the dropped pane fully disappears (no ghost node).
+    if (isContentRef(ref)) contentRefs[paneId] = ref;
   }
   return contentRefs;
 }
@@ -201,8 +227,9 @@ function readDockedPanes<TRef extends CanvasPaneRef = PaneContentRef>(
   if (!Array.isArray(value)) return null;
   const docked: DockedPane[] = [];
   for (const entry of value) {
-    if (!isPersistedDockedPane(entry, isContentRef)) return null;
-    docked.push(entry);
+    // Drop only the invalid docked entry; keep every valid docked pane so one bad
+    // entry never nulls the whole dock.
+    if (isPersistedDockedPane(entry, isContentRef)) docked.push(entry);
   }
   return docked;
 }
