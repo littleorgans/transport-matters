@@ -1,5 +1,5 @@
 import type { EngineLayoutState, PaneId } from "../../engine";
-import type { HarnessName } from "../../types";
+import type { HarnessName, SpaceId, WorktreeId } from "../../types";
 import type { CanvasLaunchContext } from "../route";
 
 /** Display label for a managed harness / captured-run provider (window title, banners). */
@@ -48,9 +48,15 @@ export type ViewerId =
 export type PaneChromeState = "default" | "loading" | "error" | "empty";
 
 export interface CanvasModel {
-  id: CanvasId;
+  canvasId: CanvasId;
   owner: "local";
+  spaceId: SpaceId | null;
   workspaceHash: string | null;
+  /**
+   * Promoted into the model (R3): the fallback worktree root for spawnable panes
+   * (terminal / captured-run) that carry no explicit worktree of their own.
+   */
+  defaultWorktreeId: WorktreeId | null;
   cwd: string | null;
   launch: CanvasLaunchContext;
   layout: EngineLayoutState;

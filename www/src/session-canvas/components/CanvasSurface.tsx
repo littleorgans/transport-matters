@@ -49,7 +49,7 @@ interface CanvasCommandHandlerOptions {
 }
 
 interface CanvasPaneRendererOptions {
-  canvasId: CanvasStoreSnapshot["id"];
+  canvasId: CanvasStoreSnapshot["canvasId"];
   closePane: CanvasStoreSnapshot["closePane"];
   expandedPaneId: CanvasStoreSnapshot["expandedPaneId"];
   expandPane: CanvasStoreSnapshot["expandPane"];
@@ -223,7 +223,7 @@ export function CanvasSurface({
 }: CanvasSurfaceProps) {
   const layout = useCanvasStore((state) => state.layout);
   const panes = useCanvasStore((state) => state.panes);
-  const canvasId = useCanvasStore((state) => state.id);
+  const canvasId = useCanvasStore((state) => state.canvasId);
   const workspaceHash = useCanvasStore((state) => state.workspaceHash);
   const focusPane = useCanvasStore((state) => state.focusPane);
   const closePane = useCanvasStore((state) => state.closePane);

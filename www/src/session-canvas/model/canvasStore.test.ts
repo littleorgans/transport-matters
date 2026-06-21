@@ -466,4 +466,33 @@ describe("canvasStore", () => {
     expect(useCanvasStore.getState().layout.viewport).toEqual(overview);
     expect(rectsFor(useCanvasStore.getState())).toEqual(rectsBefore);
   });
+
+  describe("canvas identity (Slice 6)", () => {
+    it("mints a default canvasId per space and promotes defaultWorktreeId", () => {
+      resetCanvasStoreForTests();
+      useCanvasStore.getState().initializeCanvas({
+        owner: "local",
+        workspaceHash: "hash-1",
+        spaceId: "space-1",
+        worktreeId: "wt-1",
+        canvasId: null,
+        harness: null,
+        runId: null,
+      });
+
+      const state = useCanvasStore.getState();
+      expect(state.canvasId).toBe("space:space-1");
+      expect(state.spaceId).toBe("space-1");
+      expect(state.defaultWorktreeId).toBe("wt-1");
+      expect(state.workspaceHash).toBe("hash-1");
+    });
+
+    it("falls back to direct-local with no space and no worktree root", () => {
+      resetCanvasStoreForTests();
+      const state = useCanvasStore.getState();
+      expect(state.canvasId).toBe("direct-local");
+      expect(state.spaceId).toBeNull();
+      expect(state.defaultWorktreeId).toBeNull();
+    });
+  });
 });

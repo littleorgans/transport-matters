@@ -11,6 +11,9 @@ describe("resolveLaunchSession", () => {
       resolveLaunchSession([otherCli, exact], {
         owner: "local",
         workspaceHash: "hash-1",
+        spaceId: null,
+        worktreeId: null,
+        canvasId: null,
         harness: "claude",
         runId: "run-target",
       }),
@@ -25,6 +28,9 @@ describe("resolveLaunchSession", () => {
       resolveLaunchSession([completed, active], {
         owner: "local",
         workspaceHash: "hash-1",
+        spaceId: null,
+        worktreeId: null,
+        canvasId: null,
         harness: "claude",
         runId: null,
       }),
@@ -36,6 +42,9 @@ describe("resolveLaunchSession", () => {
       resolveLaunchSession([], {
         owner: "local",
         workspaceHash: "hash-1",
+        spaceId: null,
+        worktreeId: null,
+        canvasId: null,
         harness: "claude",
         runId: "run-late",
       }),
@@ -44,7 +53,15 @@ describe("resolveLaunchSession", () => {
 
   it("is unavailable for direct browser development without launch fields", () => {
     expect(
-      resolveLaunchSession([], { owner: "local", workspaceHash: null, harness: null, runId: null }),
+      resolveLaunchSession([], {
+        owner: "local",
+        workspaceHash: null,
+        spaceId: null,
+        worktreeId: null,
+        canvasId: null,
+        harness: null,
+        runId: null,
+      }),
     ).toEqual({ status: "unavailable" });
   });
 });

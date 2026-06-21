@@ -14,7 +14,7 @@ import {
 } from "../../engine";
 import { type LayoutParams, seedParams } from "../../engine/layout";
 import type { HarnessName } from "../../types";
-import type { CanvasLaunchContext } from "../route";
+import { type CanvasLaunchContext, defaultCanvasId } from "../route";
 import { PICKER_PANE_ID, paneIdForRef, titleForRef } from "../viewers/registry";
 import { createCanvasStorePersistOptions } from "./canvasStore.persistence";
 import { planExpandLayout } from "./expandLayout";
@@ -97,6 +97,9 @@ interface SpawnPaneOptions {
 const INITIAL_LAUNCH_CONTEXT: CanvasLaunchContext = Object.freeze({
   owner: "local",
   workspaceHash: null,
+  spaceId: null,
+  worktreeId: null,
+  canvasId: null,
   harness: null,
   runId: null,
 });
@@ -186,7 +189,9 @@ export const useCanvasStore = create<CanvasStoreState>()(
       initializeCanvas(launch) {
         set((state) => ({
           ...state,
-          id: launch.workspaceHash ?? "direct-local",
+          canvasId: defaultCanvasId(launch),
+          spaceId: launch.spaceId,
+          defaultWorktreeId: launch.worktreeId,
           launch,
           workspaceHash: launch.workspaceHash,
         }));
@@ -332,9 +337,11 @@ function createInitialCanvasModel(launch: CanvasLaunchContext): CanvasStoreModel
   const activeStrategyId = INITIAL_STRATEGY_ID;
   const params = seedParams(activeStrategyId);
   const model: CanvasStoreModel = {
-    id: launch.workspaceHash ?? "direct-local",
+    canvasId: defaultCanvasId(launch),
     owner: "local",
+    spaceId: launch.spaceId,
     workspaceHash: launch.workspaceHash,
+    defaultWorktreeId: launch.worktreeId,
     cwd: null,
     launch,
     layout,

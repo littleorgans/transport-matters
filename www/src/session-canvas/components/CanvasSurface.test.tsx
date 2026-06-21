@@ -19,6 +19,9 @@ vi.mock("../../ambient/createAmbientBackground");
 const launch = {
   owner: "local",
   workspaceHash: "hash-1",
+  spaceId: null,
+  worktreeId: null,
+  canvasId: null,
   harness: null,
   runId: null,
 } satisfies CanvasLaunchContext;

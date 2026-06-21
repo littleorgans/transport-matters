@@ -3,6 +3,9 @@ export type RootRoute = "canvas" | "canvas-lab" | "legacy";
 export interface CanvasLaunchContext {
   owner: "local";
   workspaceHash: string | null;
+  spaceId: string | null;
+  worktreeId: string | null;
+  canvasId: string | null;
   harness: string | null;
   runId: string | null;
 }
@@ -18,9 +21,24 @@ export function parseCanvasLaunchContext(search: string | URLSearchParams): Canv
   return {
     owner: "local",
     workspaceHash: valueOrNull(params.get("workspace_hash")),
+    spaceId: valueOrNull(params.get("space_id")),
+    worktreeId: valueOrNull(params.get("worktree_id")),
+    canvasId: valueOrNull(params.get("canvas_id")),
     harness: valueOrNull(params.get("harness")),
     runId: valueOrNull(params.get("run_id")),
   };
+}
+
+/**
+ * The localStorage cache key id for this launch. A Space's default Canvas is
+ * `space:<spaceId>` (one default Canvas per Space); an explicit `canvas_id`
+ * overrides; a worktree-less / pre-Spaces launch keeps the legacy `workspaceHash`
+ * (or `direct-local`) so existing single-canvas behaviour is preserved.
+ */
+export function defaultCanvasId(launch: CanvasLaunchContext): string {
+  if (launch.canvasId) return launch.canvasId;
+  if (launch.spaceId) return `space:${launch.spaceId}`;
+  return launch.workspaceHash ?? "direct-local";
 }
 
 export function isStressCanvas(search: string | URLSearchParams): boolean {
