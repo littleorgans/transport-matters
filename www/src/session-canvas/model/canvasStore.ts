@@ -14,6 +14,7 @@ import {
 } from "../../engine";
 import { type LayoutParams, seedParams } from "../../engine/layout";
 import type { HarnessName } from "../../types";
+import { canvasCacheKey, importLegacyCanvasCache } from "../persistence/canvasCacheStorage";
 import { type CanvasLaunchContext, defaultCanvasId } from "../route";
 import { PICKER_PANE_ID, paneIdForRef, titleForRef } from "../viewers/registry";
 import { createCanvasStorePersistOptions } from "./canvasStore.persistence";
@@ -103,6 +104,12 @@ const INITIAL_LAUNCH_CONTEXT: CanvasLaunchContext = Object.freeze({
   harness: null,
   runId: null,
 });
+
+// Mirrors the live store's canvasId for the persist storage's per-canvas
+// namespacing, kept in sync wherever the canvas is (re)keyed. A module variable
+// avoids a circular type reference to `useCanvasStore` inside its own persist
+// options (which would collapse the store's inferred type to `any`).
+let activeCanvasId = defaultCanvasId(INITIAL_LAUNCH_CONTEXT);
 
 export const useCanvasStore = create<CanvasStoreState>()(
   persist(
@@ -196,14 +203,29 @@ export const useCanvasStore = create<CanvasStoreState>()(
       },
 
       initializeCanvas(launch) {
+        const canvasId = defaultCanvasId(launch);
+        activeCanvasId = canvasId;
+        // One-time: fold the pre-Spaces single canvas into this Space's default
+        // Canvas. Runs BEFORE the canvasId set so the no-overwrite guard correctly
+        // skips a Space that already has its own cached canvas.
+        importLegacyCanvasCache(canvasId, globalThis.localStorage);
+        // Capture the per-canvas blob (legacy-imported or pre-existing) before the
+        // canvasId set: the persist middleware writes the current store state to the
+        // new namespaced key on that set, which would otherwise clobber the cache we
+        // are about to rehydrate from. Restore it, then rehydrate (mirrors reload).
+        const cacheKey = canvasCacheKey(canvasId);
+        const cached = globalThis.localStorage.getItem(cacheKey);
         set((state) => ({
           ...state,
-          canvasId: defaultCanvasId(launch),
+          canvasId,
           spaceId: launch.spaceId,
           defaultWorktreeId: launch.worktreeId,
           launch,
           workspaceHash: launch.workspaceHash,
         }));
+        if (cached !== null) globalThis.localStorage.setItem(cacheKey, cached);
+        // canvasId changed → re-read the namespaced cache for the new canvas.
+        void useCanvasStore.persist.rehydrate();
       },
 
       movePane(paneId, rect) {
@@ -335,7 +357,10 @@ export const useCanvasStore = create<CanvasStoreState>()(
         set(stripPaneFlyIntent(transition));
       },
     }),
-    createCanvasStorePersistOptions<CanvasStoreState>(),
+    // The persist options are the 2nd arg to persist(), outside the (set, get)
+    // creator closure; the module-level activeCanvasId mirror gives the live
+    // canvasId without a self-reference to the store being defined.
+    createCanvasStorePersistOptions<CanvasStoreState>(() => activeCanvasId),
   ),
 );
 
@@ -345,8 +370,10 @@ function createInitialCanvasModel(launch: CanvasLaunchContext): CanvasStoreModel
   const pane = createPaneRecord(ref, "Session picker", new Date().toISOString());
   const activeStrategyId = INITIAL_STRATEGY_ID;
   const params = seedParams(activeStrategyId);
+  const canvasId = defaultCanvasId(launch);
+  activeCanvasId = canvasId;
   const model: CanvasStoreModel = {
-    canvasId: defaultCanvasId(launch),
+    canvasId,
     owner: "local",
     spaceId: launch.spaceId,
     workspaceHash: launch.workspaceHash,
