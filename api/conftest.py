@@ -1,13 +1,15 @@
 from __future__ import annotations
 
+import logging
 import os
 from contextlib import contextmanager
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable
 
 # Set test environment before any app imports trigger Settings validation.
 os.environ.setdefault("DEBUG", "true")
 
 import pytest
+import psycopg
 from fastapi.testclient import TestClient
 from httpx import ASGITransport, AsyncClient
 
@@ -18,8 +20,10 @@ from transport_matters.session.pool import create_async_pool
 from transport_matters.session.testing import TestDb
 from transport_matters.space.store import SpaceStore
 
+logger = logging.getLogger(__name__)
+
 if TYPE_CHECKING:
-    from collections.abc import AsyncGenerator, Callable, Iterator
+    from collections.abc import AsyncGenerator, Iterator
     from contextlib import AbstractContextManager
 
 # Non-prefixed process-env vars a *live* Transport Matters session exports into every
@@ -51,6 +55,15 @@ _PRESERVED_PREFIX_KEYS = frozenset(
 )
 
 
+def _scrub_inherited_session_env_with(delete_env: Callable[[str], None]) -> None:
+    for key in [k for k in os.environ if k.startswith(env_keys.ENV_PREFIX)]:
+        if key in _PRESERVED_PREFIX_KEYS:
+            continue
+        delete_env(key)
+    for key in _INHERITED_LEAK_KEYS:
+        delete_env(key)
+
+
 @pytest.fixture(autouse=True)
 def _scrub_inherited_session_env(monkeypatch: pytest.MonkeyPatch) -> None:
     """Make the suite hermetic regardless of where it is launched.
@@ -63,12 +76,7 @@ def _scrub_inherited_session_env(monkeypatch: pytest.MonkeyPatch) -> None:
     ``_PRESERVED_PREFIX_KEYS``) and the known non-prefixed leak vars before each test;
     fixtures and tests that need specific values re-set them via their own monkeypatch.
     Ordered first so the env-setting fixtures below re-establish cleanly."""
-    for key in [k for k in os.environ if k.startswith(env_keys.ENV_PREFIX)]:
-        if key in _PRESERVED_PREFIX_KEYS:
-            continue
-        monkeypatch.delenv(key, raising=False)
-    for key in _INHERITED_LEAK_KEYS:
-        monkeypatch.delenv(key, raising=False)
+    _scrub_inherited_session_env_with(lambda key: monkeypatch.delenv(key, raising=False))
 
 
 @pytest.fixture(autouse=True)
@@ -109,8 +117,16 @@ def test_db() -> Iterator[TestDb]:
 
 @pytest.fixture(scope="session", autouse=True)
 def _drop_test_db_templates() -> Iterator[None]:
-    yield
-    TestDb.drop_templates()
+    _scrub_inherited_session_env_with(lambda key: os.environ.pop(key, None))
+    if admin_url := os.environ.get(env_keys.TEST_DATABASE_URL):
+        try:
+            TestDb.drop_stale_templates(admin_url)
+        except (psycopg.Error, ValueError) as exc:
+            logger.warning("Skipping stale test template sweep: %s", exc)
+    try:
+        yield
+    finally:
+        TestDb.drop_templates()
 
 
 @pytest.fixture
