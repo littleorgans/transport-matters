@@ -290,14 +290,11 @@ async def test_lifespan_resolves_api_cwd_into_current_space(
     test_db: TestDb,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    isolated_runtime_database_url: str,
 ) -> None:
     cwd = tmp_path / "api-cwd"
     cwd.mkdir()
-    monkeypatch.setenv("TRANSPORT_MATTERS_DATABASE_URL", test_db.database_url)
     monkeypatch.setenv("TRANSPORT_MATTERS_CWD", str(cwd))
-    monkeypatch.setattr(
-        "transport_matters.main.resolve_database_url", lambda _settings: test_db.database_url
-    )
     monkeypatch.setattr(
         "transport_matters.space.store.detect_space",
         lambda detected_cwd: DetectedSpace(

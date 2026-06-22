@@ -53,7 +53,10 @@ async def test_lifespan_degrades_when_shared_proxy_start_fails(
         app.state.session_event_listener = None
         return pool
 
-    monkeypatch.setenv("TRANSPORT_MATTERS_DATABASE_URL", "postgresql://example")
+    monkeypatch.setattr(
+        "transport_matters.main.resolve_database_url",
+        lambda _settings: "postgresql://example/tm_test_shared_proxy",
+    )
     monkeypatch.setattr("transport_matters.main._start_session_store", start_session_store)
     monkeypatch.setattr(
         "transport_matters.main.SharedProxyManager.create",
@@ -92,7 +95,10 @@ async def test_lifespan_shutdown_closes_later_resources_after_close_failure(
     async def close_run_manager(_app: FastAPI) -> None:
         raise RuntimeError("run manager close failed")
 
-    monkeypatch.setenv("TRANSPORT_MATTERS_DATABASE_URL", "postgresql://example")
+    monkeypatch.setattr(
+        "transport_matters.main.resolve_database_url",
+        lambda _settings: "postgresql://example/tm_test_shared_proxy",
+    )
     monkeypatch.setattr("transport_matters.main._start_session_store", start_session_store)
     monkeypatch.setattr(
         "transport_matters.main.SharedProxyManager.create",

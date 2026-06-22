@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from typing import TYPE_CHECKING
+from urllib.parse import unquote, urlsplit, urlunsplit
 
 # Set test environment before any app imports trigger Settings validation.
 os.environ.setdefault("DEBUG", "true")
@@ -9,6 +10,7 @@ os.environ.setdefault("DEBUG", "true")
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+import transport_matters.main as main_module
 from transport_matters import env_keys
 from transport_matters.config import get_settings
 from transport_matters.main import create_app
@@ -36,17 +38,39 @@ _INHERITED_LEAK_KEYS = (
 
 # ``TRANSPORT_MATTERS_*`` keys that are legitimate *test-infra* config, not per-run
 # contamination: the session-store suite resolves its Postgres URL from these (commonly
-# exported by direnv). Scrubbing them would turn every ``session/`` test into a
-# ``MissingDatabaseConfigError``. ``HOME`` is preserved too, though the isolate fixture
-# below repoints it regardless.
+# exported by direnv). Preserve only the test DB admin URL: preserving the runtime
+# DATABASE_URL lets app lifespan tests resolve the operator DB. ``HOME`` is preserved
+# too, though the isolate fixture below repoints it regardless.
 _PRESERVED_PREFIX_KEYS = frozenset(
     {
         env_keys.HOME,
-        env_keys.DATABASE_URL,
         env_keys.TEST_DATABASE_URL,
         env_keys.DOCKER_PG_PORT,
     }
 )
+
+
+def _runtime_database_name(database_url: str) -> str:
+    return unquote(urlsplit(database_url).path).lstrip("/").split("/", 1)[0]
+
+
+def _safe_database_url(database_url: str) -> str:
+    parts = urlsplit(database_url)
+    netloc = parts.hostname or ""
+    if parts.port is not None:
+        netloc = f"{netloc}:{parts.port}"
+    return urlunsplit((parts.scheme, netloc, parts.path, "", ""))
+
+
+def _assert_isolated_runtime_database_url(database_url: str) -> None:
+    database_name = _runtime_database_name(database_url)
+    if database_name.startswith("tm_test_"):
+        return
+    raise AssertionError(
+        "pytest attempted to start the runtime session store against a non-isolated "
+        f"database URL ({_safe_database_url(database_url)}). Use the "
+        "isolated_runtime_database_url fixture for app lifespan tests."
+    )
 
 
 @pytest.fixture(autouse=True)
@@ -103,6 +127,31 @@ def test_db() -> Iterator[TestDb]:
         yield db
     finally:
         db.drop()
+
+
+@pytest.fixture
+def isolated_runtime_database_url(
+    monkeypatch: pytest.MonkeyPatch, test_db: TestDb
+) -> Iterator[str]:
+    """Route app lifespan database resolution to this test's isolated database."""
+    monkeypatch.setattr(main_module, "resolve_database_url", lambda _settings: test_db.database_url)
+    get_settings.cache_clear()
+    try:
+        yield test_db.database_url
+    finally:
+        get_settings.cache_clear()
+
+
+@pytest.fixture(autouse=True)
+def _guard_runtime_session_store_database(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Fail before any pytest app lifespan can connect to the operator database."""
+    original_start_session_store = main_module._start_session_store
+
+    async def guarded_start_session_store(app: object, database_url: str) -> object:
+        _assert_isolated_runtime_database_url(database_url)
+        return await original_start_session_store(app, database_url)
+
+    monkeypatch.setattr(main_module, "_start_session_store", guarded_start_session_store)
 
 
 @pytest.fixture(autouse=True)

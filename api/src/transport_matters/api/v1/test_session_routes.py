@@ -26,6 +26,7 @@ from .session_routes import _event_stream, _timeline_stream
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+    from pathlib import Path
 
     from psycopg import AsyncConnection
     from psycopg.rows import DictRow
@@ -457,9 +458,10 @@ async def test_session_timeline_stream_is_owner_scoped(test_db: TestDb) -> None:
 
 
 async def test_app_lifespan_releases_session_listener_connection(
-    test_db: TestDb, monkeypatch: pytest.MonkeyPatch
+    test_db: TestDb,
+    monkeypatch: pytest.MonkeyPatch,
+    isolated_runtime_database_url: str,
 ) -> None:
-    monkeypatch.setenv("TRANSPORT_MATTERS_DATABASE_URL", test_db.database_url)
     get_settings.cache_clear()
     app = create_app()
     async with lifespan(app):
@@ -475,6 +477,7 @@ async def test_app_lifespan_releases_session_listener_connection(
 async def test_lifespan_runs_session_space_backfill_when_database_enabled(
     test_db: TestDb,
     monkeypatch: pytest.MonkeyPatch,
+    isolated_runtime_database_url: str,
 ) -> None:
     calls: list[str] = []
 
@@ -486,7 +489,6 @@ async def test_lifespan_runs_session_space_backfill_when_database_enabled(
         calls.append(owner)
         return SessionSpaceBackfillResult(scanned=1, resolved=1)
 
-    monkeypatch.setenv("TRANSPORT_MATTERS_DATABASE_URL", test_db.database_url)
     monkeypatch.setattr("transport_matters.main.backfill_session_spaces", fake_backfill)
     get_settings.cache_clear()
     app = create_app()
@@ -521,8 +523,25 @@ async def test_lifespan_skips_session_space_backfill_without_database(
     assert calls == []
 
 
+async def test_lifespan_rejects_channel_database_rewrite_under_pytest(
+    test_db: TestDb, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("TRANSPORT_MATTERS_DATABASE_URL", test_db.database_url)
+    monkeypatch.setenv("TRANSPORT_MATTERS_CWD", str(tmp_path))
+    get_settings.cache_clear()
+    app = create_app()
+    try:
+        with pytest.raises(AssertionError, match="non-isolated database URL"):
+            async with lifespan(app):
+                pass
+    finally:
+        get_settings.cache_clear()
+
+
 async def test_lifespan_listener_start_failure_keeps_routes_unavailable(
-    test_db: TestDb, monkeypatch: pytest.MonkeyPatch
+    test_db: TestDb,
+    monkeypatch: pytest.MonkeyPatch,
+    isolated_runtime_database_url: str,
 ) -> None:
     class FailingListener:
         def __init__(self, *_args: object, **_kwargs: object) -> None:
@@ -534,7 +553,6 @@ async def test_lifespan_listener_start_failure_keeps_routes_unavailable(
         async def aclose(self) -> None:
             self.closed = True
 
-    monkeypatch.setenv("TRANSPORT_MATTERS_DATABASE_URL", test_db.database_url)
     monkeypatch.setattr("transport_matters.main.SessionEventListener", FailingListener)
     get_settings.cache_clear()
     app = create_app()
@@ -555,7 +573,10 @@ async def test_lifespan_degrades_when_database_unreachable(
     # A configured-but-unreachable store must DEGRADE (503), not crash backend startup.
     # The launch-path preflight hard-blocks unreachable stores; this is the hosted/server
     # layer where the contract is degrade-not-crash.
-    monkeypatch.setenv("TRANSPORT_MATTERS_DATABASE_URL", "postgresql://u:p@127.0.0.1:1/none")
+    monkeypatch.setattr(
+        "transport_matters.main.resolve_database_url",
+        lambda _settings: "postgresql://u:p@127.0.0.1:1/tm_test_unreachable",
+    )
     get_settings.cache_clear()
     app = create_app()
     try:
@@ -584,7 +605,9 @@ def test_main_app_is_built_lazily_not_at_import() -> None:
 
 
 async def test_lifespan_fails_fast_on_migration_failure(
-    test_db: TestDb, monkeypatch: pytest.MonkeyPatch
+    test_db: TestDb,
+    monkeypatch: pytest.MonkeyPatch,
+    isolated_runtime_database_url: str,
 ) -> None:
     # A CONFIRMED migration failure on a reachable DB must fail-fast (not degrade).
     from transport_matters.session.migrate import MigrationError
@@ -592,7 +615,6 @@ async def test_lifespan_fails_fast_on_migration_failure(
     def _broken_migration(_database_url: str) -> None:
         raise MigrationError("schema upgrade failed")
 
-    monkeypatch.setenv("TRANSPORT_MATTERS_DATABASE_URL", test_db.database_url)
     monkeypatch.setattr("transport_matters.main.apply_migrations", _broken_migration)
     get_settings.cache_clear()
     app = create_app()

@@ -7,7 +7,7 @@ from uuid import UUID
 import pytest
 from fastapi.testclient import TestClient
 
-from transport_matters import config, env_keys
+from transport_matters import config
 from transport_matters.api.v1 import run_routes
 from transport_matters.api.v1.session_store import (
     optional_session_pool as _ORIGINAL_OPTIONAL_SESSION_POOL,
@@ -431,15 +431,13 @@ def test_post_rejects_unsupported_harness_before_spawn(
 
 
 def test_post_continuation_threads_lineage_context_and_idempotency(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, test_db: TestDb
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    test_db: TestDb,
+    isolated_runtime_database_url: str,
 ) -> None:
     asyncio.run(_seed_continuation_parent(test_db.database_url))
     harness = ManagedRunHarness(tmp_path, monkeypatch)
-    monkeypatch.setenv(env_keys.DATABASE_URL, test_db.database_url)
-    monkeypatch.setattr(
-        "transport_matters.main.resolve_database_url",
-        lambda _settings: test_db.database_url,
-    )
     client = _client(monkeypatch, tmp_path)
     body = {
         "harness": "claude",
@@ -471,11 +469,13 @@ def test_post_continuation_threads_lineage_context_and_idempotency(
 
 
 def test_post_continuation_returns_not_found_for_foreign_parent(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, test_db: TestDb
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    test_db: TestDb,
+    isolated_runtime_database_url: str,
 ) -> None:
     asyncio.run(_seed_continuation_parent(test_db.database_url, owner="other"))
     harness = ManagedRunHarness(tmp_path, monkeypatch)
-    monkeypatch.setenv(env_keys.DATABASE_URL, test_db.database_url)
     client = _client(monkeypatch, tmp_path)
 
     with client:
