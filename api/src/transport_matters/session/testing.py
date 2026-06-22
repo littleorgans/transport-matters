@@ -63,7 +63,7 @@ class TestDb:
             return cls._template_names[key][1]
 
         digest = sha256(f"{admin_url}|{worker}|{os.getpid()}".encode()).hexdigest()[:12]
-        database_name = f"{TEST_DB_PREFIX}template_{worker}_{digest}"
+        database_name = f"{TEMPLATE_DB_PREFIX}{worker}_{digest}"
         database_url = database_url_for(admin_url, database_name)
         _create_database(admin_url, database_name)
         template_db = cls(admin_url, database_url, database_name)
@@ -230,9 +230,13 @@ def _template_created_at(metadata: dict[str, object]) -> datetime | None:
         created_at = datetime.fromisoformat(raw_created_at)
     except ValueError:
         return None
-    if created_at.tzinfo is None:
-        return created_at.replace(tzinfo=UTC)
-    return created_at.astimezone(UTC)
+    return _as_utc(created_at)
+
+
+def _as_utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
 
 
 def _database_created_at(conn: Connection[DictRow], oid: object) -> datetime | None:
@@ -247,9 +251,7 @@ def _database_created_at(conn: Connection[DictRow], oid: object) -> datetime | N
     created_at = row["created_at"] if row else None
     if not isinstance(created_at, datetime):
         return None
-    if created_at.tzinfo is None:
-        return created_at.replace(tzinfo=UTC)
-    return created_at.astimezone(UTC)
+    return _as_utc(created_at)
 
 
 def _template_owner_is_alive(metadata: dict[str, object]) -> bool:
