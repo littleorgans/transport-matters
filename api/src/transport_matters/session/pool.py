@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from contextlib import asynccontextmanager, contextmanager
 from typing import TYPE_CHECKING
 
@@ -7,7 +8,13 @@ from psycopg import AsyncConnection, Connection
 from psycopg.rows import DictRow, dict_row
 from psycopg_pool import AsyncConnectionPool, ConnectionPool
 
-from transport_matters.config import Settings, get_settings, resolve_database_url
+from transport_matters.config import (
+    TEST_DB_PREFIX,
+    Settings,
+    database_name_from_url,
+    get_settings,
+    resolve_database_url,
+)
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Iterator
@@ -64,8 +71,10 @@ def create_async_pool(
     max_size: int | None = None,
 ) -> AsyncConnectionPool[AsyncConnection[DictRow]]:
     settings = get_settings()
+    resolved_url = _resolved_url(database_url, settings)
+    _guard_pytest_session_store_url(resolved_url)
     return AsyncConnectionPool(
-        _resolved_url(database_url, settings),
+        resolved_url,
         min_size=min_size if min_size is not None else settings.session_pool_min_size,
         max_size=max_size if max_size is not None else settings.session_pool_max_size,
         kwargs={"row_factory": dict_row},
@@ -91,3 +100,16 @@ def _resolved_url(database_url: str | None, settings: Settings | None = None) ->
     if database_url is not None:
         return database_url
     return resolve_database_url(settings if settings is not None else get_settings())
+
+
+def _guard_pytest_session_store_url(database_url: str) -> None:
+    if not os.environ.get("PYTEST_CURRENT_TEST"):
+        return
+    database_name = database_name_from_url(database_url)
+    if database_name.startswith(TEST_DB_PREFIX):
+        return
+    raise RuntimeError(
+        "refusing to open non-test session store "
+        f"{database_name!r} under pytest; expected database name prefix "
+        f"{TEST_DB_PREFIX!r}"
+    )

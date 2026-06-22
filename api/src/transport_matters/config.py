@@ -5,7 +5,7 @@ from functools import lru_cache
 from importlib.resources import files
 from pathlib import Path
 from typing import Any, Literal
-from urllib.parse import quote, urlsplit, urlunsplit
+from urllib.parse import quote, unquote, urlsplit, urlunsplit
 
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, ValidationError
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -249,16 +249,24 @@ def database_url_with_database_name(database_url: str, database_name: str) -> st
     )
 
 
+def database_name_from_url(database_url: str) -> str:
+    """Return the database path component from a PostgreSQL URL."""
+    return unquote(urlsplit(database_url).path.lstrip("/"))
+
+
 __all__ = [
     "DATABASE_URL_GUIDANCE",
     "SETTINGS_EXAMPLE_FILENAME",
     "SETTINGS_FILENAME",
     "TEST_DATABASE_URL_GUIDANCE",
+    "TEST_DB_PREFIX",
     "DatabaseSettings",
     "MissingDatabaseConfigError",
     "Settings",
     "SettingsFileError",
     "TomlSettings",
+    "database_name_from_url",
+    "database_url_with_database_name",
     "ensure_settings_scaffold",
     "get_settings",
     "load_toml_settings",
