@@ -8,18 +8,11 @@ from httpx import ASGITransport, AsyncClient
 from transport_matters.main import create_app
 from transport_matters.session.listen import SessionEventHub
 from transport_matters.session.pool import create_async_pool
-from transport_matters.session.testing import TestDb
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Iterator
+    from collections.abc import AsyncIterator
 
-
-def create_test_db() -> Iterator[TestDb]:
-    db = TestDb.create()
-    try:
-        yield db
-    finally:
-        db.drop()
+    from transport_matters.session.testing import TestDb
 
 
 @asynccontextmanager

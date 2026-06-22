@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any, Literal
 from urllib.parse import quote, urlsplit, urlunsplit
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, ValidationError
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from transport_matters.channel import resolve_channel_spec
@@ -20,12 +20,13 @@ DATABASE_URL_GUIDANCE = (
     "settings.example.toml on first launch"
 )
 TEST_DATABASE_URL_GUIDANCE = (
-    "set TRANSPORT_MATTERS_TEST_DATABASE_URL or TRANSPORT_MATTERS_DATABASE_URL, or add "
-    "[database] test_url or [database] url to settings.toml under $TRANSPORT_MATTERS_HOME "
+    "set TRANSPORT_MATTERS_TEST_DATABASE_URL, or add [database] test_url or "
+    "[database] url to settings.toml under $TRANSPORT_MATTERS_HOME "
     "(default ~/.transport-matters; copy settings.example.toml)"
 )
 SETTINGS_FILENAME = "settings.toml"
 SETTINGS_EXAMPLE_FILENAME = "settings.example.toml"
+TEST_DB_PREFIX = "tm_test_"
 
 
 class SettingsFileError(ValueError):
@@ -67,6 +68,7 @@ class Settings(BaseSettings):
         env_prefix=ENV_PREFIX,
         extra="ignore",
     )
+    _session_store_url: str | None = PrivateAttr(default=None)
 
     app_name: str = "Transport Matters"
     debug: bool = False
@@ -155,6 +157,13 @@ class Settings(BaseSettings):
         base_settings = env_settings if env_settings is not None else cls()
         toml_settings = load_toml_settings(path)
         return base_settings.model_copy(update={"database": toml_settings.database})
+
+    @property
+    def session_store_url(self) -> str | None:
+        return self._session_store_url
+
+    def with_session_store_url(self, session_store_url: str) -> Settings:
+        return self.model_copy(update={"_session_store_url": session_store_url})
 
 
 def settings_path(storage_dir: Path | None = None) -> Path:

@@ -1,9 +1,11 @@
 import asyncio
 import logging
 import logging.config
+import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
+from urllib.parse import urlsplit
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -21,7 +23,13 @@ from transport_matters.api.v1 import (
     stream,
 )
 from transport_matters.api.v1.router import api_router
-from transport_matters.config import MissingDatabaseConfigError, get_settings, resolve_database_url
+from transport_matters.config import (
+    TEST_DB_PREFIX,
+    MissingDatabaseConfigError,
+    Settings,
+    get_settings,
+    resolve_database_url,
+)
 from transport_matters.session.async_dao import AsyncSessionDao
 from transport_matters.session.backfill import backfill_session_spaces
 from transport_matters.session.listen import SessionEventHub, SessionEventListener
@@ -69,6 +77,23 @@ LOG_CONFIG: dict[str, Any] = {
 logger = logging.getLogger(__name__)
 
 
+def _database_name_from_url(database_url: str) -> str:
+    return urlsplit(database_url).path.lstrip("/")
+
+
+def _guard_pytest_session_store_url(database_url: str) -> None:
+    if not os.environ.get("PYTEST_CURRENT_TEST"):
+        return
+    database_name = _database_name_from_url(database_url)
+    if database_name.startswith(TEST_DB_PREFIX):
+        return
+    raise RuntimeError(
+        "refusing to open non-test session store "
+        f"{database_name!r} under pytest; expected database name prefix "
+        f"{TEST_DB_PREFIX!r}"
+    )
+
+
 class SpaStaticFiles(StaticFiles):
     async def get_response(self, path: str, scope: Scope) -> Response:
         try:
@@ -108,6 +133,7 @@ async def _start_session_store(
     that is merely unreachable must degrade (not crash), matching the launch-path
     preflight which already hard-blocks unreachable stores before the backend starts.
     """
+    _guard_pytest_session_store_url(database_url)
     pool = create_async_pool(database_url)
     try:
         await pool.open()
@@ -146,8 +172,9 @@ async def _start_session_store(
     return pool
 
 
-async def _resolve_current_space(pool: AsyncConnectionPool[AsyncConnection[DictRow]]) -> None:
-    settings = get_settings()
+async def _resolve_current_space(
+    pool: AsyncConnectionPool[AsyncConnection[DictRow]], settings: Settings
+) -> None:
     cwd = settings.cwd or Path.cwd()
     try:
         async with pool.connection() as conn:
@@ -182,6 +209,7 @@ async def _backfill_session_spaces(
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     logger.info("Starting %s", app.title)
+    settings = getattr(app.state, "settings", None) or get_settings()
     session_pool = None
     session_listener = None
     shared_proxy_manager = None
@@ -191,19 +219,19 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.session_event_listener = None
     app.state.shared_proxy_manager = None
     pending_shared_proxy_manager = SharedProxyManager.create(
-        runtime_dir=get_settings().storage_dir / "runtime" / "shared-proxy",
+        runtime_dir=settings.storage_dir / "runtime" / "shared-proxy",
     )
     pending_shared_proxy_manager_closed = False
     try:
         try:
-            database_url = resolve_database_url(get_settings())
+            database_url = settings.session_store_url or resolve_database_url(settings)
         except MissingDatabaseConfigError as exc:
             logger.info("Session store disabled: %s", exc)
         else:
             session_pool = await _start_session_store(app, database_url)
             session_listener = app.state.session_event_listener
             if session_pool is not None:
-                await _resolve_current_space(session_pool)
+                await _resolve_current_space(session_pool, settings)
                 await _backfill_session_spaces(session_pool)
                 try:
                     await pending_shared_proxy_manager.start()
@@ -237,8 +265,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         logger.info("Shutting down %s", app.title)
 
 
-def create_app() -> FastAPI:
-    settings = get_settings()
+def create_app(settings: Settings | None = None) -> FastAPI:
+    settings = settings or get_settings()
 
     import copy
 
@@ -258,6 +286,7 @@ def create_app() -> FastAPI:
         debug=settings.debug,
         lifespan=lifespan,
     )
+    app.state.settings = settings
 
     app.add_middleware(
         CORSMiddleware,

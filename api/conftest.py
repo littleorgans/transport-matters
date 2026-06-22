@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import os
+from contextlib import contextmanager
 from typing import TYPE_CHECKING
 
 # Set test environment before any app imports trigger Settings validation.
 os.environ.setdefault("DEBUG", "true")
 
 import pytest
+from fastapi.testclient import TestClient
 from httpx import ASGITransport, AsyncClient
 
 from transport_matters import env_keys
@@ -17,7 +19,8 @@ from transport_matters.session.testing import TestDb
 from transport_matters.space.store import SpaceStore
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncGenerator, Iterator
+    from collections.abc import AsyncGenerator, Callable, Iterator
+    from contextlib import AbstractContextManager
 
 # Non-prefixed process-env vars a *live* Transport Matters session exports into every
 # shell it spawns (proxy wiring + the managed agent homes). These have no ``env_prefix``
@@ -42,7 +45,6 @@ _INHERITED_LEAK_KEYS = (
 _PRESERVED_PREFIX_KEYS = frozenset(
     {
         env_keys.HOME,
-        env_keys.DATABASE_URL,
         env_keys.TEST_DATABASE_URL,
         env_keys.DOCKER_PG_PORT,
     }
@@ -103,6 +105,23 @@ def test_db() -> Iterator[TestDb]:
         yield db
     finally:
         db.drop()
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _drop_test_db_templates() -> Iterator[None]:
+    yield
+    TestDb.drop_templates()
+
+
+@pytest.fixture
+def lifespan_client(test_db: TestDb) -> Callable[[], AbstractContextManager[TestClient]]:
+    @contextmanager
+    def open_client() -> Iterator[TestClient]:
+        settings = get_settings().with_session_store_url(test_db.database_url)
+        with TestClient(create_app(settings=settings)) as client:
+            yield client
+
+    return open_client
 
 
 @pytest.fixture(autouse=True)
