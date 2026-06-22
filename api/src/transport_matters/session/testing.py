@@ -9,7 +9,7 @@ from uuid import uuid4
 
 from psycopg import sql
 
-from transport_matters.config import Settings, TEST_DB_PREFIX, resolve_test_database_url
+from transport_matters.config import TEST_DB_PREFIX, Settings, resolve_test_database_url
 from transport_matters.session.migrate import upgrade_to_head
 from transport_matters.session.pool import connect
 
@@ -17,7 +17,7 @@ from transport_matters.session.pool import connect
 @dataclass(frozen=True)
 class TestDb:
     __test__ = False
-    _template_names: ClassVar[dict[str, str]] = {}
+    _template_names: ClassVar[dict[str, tuple[str, str]]] = {}
 
     admin_url: str
     database_url: str
@@ -43,7 +43,7 @@ class TestDb:
         worker = _worker_name()
         key = f"{admin_url}|{worker}"
         if key in cls._template_names:
-            return cls._template_names[key]
+            return cls._template_names[key][1]
 
         digest = sha256(f"{admin_url}|{worker}|{os.getpid()}".encode()).hexdigest()[:12]
         database_name = f"{TEST_DB_PREFIX}template_{worker}_{digest}"
@@ -56,8 +56,15 @@ class TestDb:
         except Exception:
             template_db.drop()
             raise
-        cls._template_names[key] = database_name
+        cls._template_names[key] = (admin_url, database_name)
         return database_name
+
+    @classmethod
+    def drop_templates(cls) -> None:
+        for key, (admin_url, database_name) in list(cls._template_names.items()):
+            template_db = cls(admin_url, database_url_for(admin_url, database_name), database_name)
+            template_db.drop()
+            cls._template_names.pop(key, None)
 
     def migrate(self) -> None:
         upgrade_to_head(self.database_url)

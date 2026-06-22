@@ -539,8 +539,8 @@ async def test_lifespan_degrades_when_database_unreachable(
     # A configured-but-unreachable store must DEGRADE (503), not crash backend startup.
     # The launch-path preflight hard-blocks unreachable stores; this is the hosted/server
     # layer where the contract is degrade-not-crash.
-    settings = get_settings().model_copy(
-        update={"session_store_url": "postgresql://u:p@127.0.0.1:1/tm_test_unreachable"}
+    settings = get_settings().with_session_store_url(
+        "postgresql://u:p@127.0.0.1:1/tm_test_unreachable"
     )
     app = create_app(settings=settings)
     async with lifespan(app):
@@ -576,9 +576,8 @@ async def test_lifespan_fails_fast_on_migration_failure(
         raise MigrationError("schema upgrade failed")
 
     monkeypatch.setattr("transport_matters.main.apply_migrations", _broken_migration)
-    with pytest.raises(MigrationError):
-        with lifespan_client():
-            pass
+    with pytest.raises(MigrationError), lifespan_client():
+        pass
 
 
 async def _seed_sessions(conn: AsyncConnection[DictRow]) -> None:

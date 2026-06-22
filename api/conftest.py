@@ -107,13 +107,17 @@ def test_db() -> Iterator[TestDb]:
         db.drop()
 
 
+@pytest.fixture(scope="session", autouse=True)
+def _drop_test_db_templates() -> Iterator[None]:
+    yield
+    TestDb.drop_templates()
+
+
 @pytest.fixture
 def lifespan_client(test_db: TestDb) -> Callable[[], AbstractContextManager[TestClient]]:
     @contextmanager
     def open_client() -> Iterator[TestClient]:
-        settings = get_settings().model_copy(
-            update={"session_store_url": test_db.database_url}
-        )
+        settings = get_settings().with_session_store_url(test_db.database_url)
         with TestClient(create_app(settings=settings)) as client:
             yield client
 

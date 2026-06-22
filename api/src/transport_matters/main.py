@@ -24,9 +24,9 @@ from transport_matters.api.v1 import (
 )
 from transport_matters.api.v1.router import api_router
 from transport_matters.config import (
+    TEST_DB_PREFIX,
     MissingDatabaseConfigError,
     Settings,
-    TEST_DB_PREFIX,
     get_settings,
     resolve_database_url,
 )
@@ -172,8 +172,9 @@ async def _start_session_store(
     return pool
 
 
-async def _resolve_current_space(pool: AsyncConnectionPool[AsyncConnection[DictRow]]) -> None:
-    settings = get_settings()
+async def _resolve_current_space(
+    pool: AsyncConnectionPool[AsyncConnection[DictRow]], settings: Settings
+) -> None:
     cwd = settings.cwd or Path.cwd()
     try:
         async with pool.connection() as conn:
@@ -230,7 +231,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             session_pool = await _start_session_store(app, database_url)
             session_listener = app.state.session_event_listener
             if session_pool is not None:
-                await _resolve_current_space(session_pool)
+                await _resolve_current_space(session_pool, settings)
                 await _backfill_session_spaces(session_pool)
                 try:
                     await pending_shared_proxy_manager.start()
