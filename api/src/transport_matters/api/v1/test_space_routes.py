@@ -13,8 +13,8 @@ if TYPE_CHECKING:
     from contextlib import AbstractContextManager
     from pathlib import Path
 
-    from fastapi.testclient import TestClient
     import pytest
+    from fastapi.testclient import TestClient
 
     from transport_matters.session.testing import TestDb
 
