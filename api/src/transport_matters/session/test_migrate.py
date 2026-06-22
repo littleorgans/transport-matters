@@ -63,20 +63,6 @@ _SPACE_CASCADE_FKS = frozenset(
 _SPACE_SET_NULL_FKS = frozenset({"canvas_default_worktree_fk"})
 
 
-def _reset_to_unmigrated(database_url: str) -> None:
-    with connect(database_url, autocommit=True) as conn:
-        conn.execute("DROP TABLE IF EXISTS canvas CASCADE")
-        conn.execute("DROP TABLE IF EXISTS space_worktree CASCADE")
-        conn.execute("DROP TABLE IF EXISTS space_git_identity CASCADE")
-        conn.execute("DROP TABLE IF EXISTS space CASCADE")
-        conn.execute("DROP TABLE IF EXISTS event_dead_letter CASCADE")
-        conn.execute("DROP TABLE IF EXISTS event_artifact CASCADE")
-        conn.execute("DROP TABLE IF EXISTS event CASCADE")
-        conn.execute("DROP TABLE IF EXISTS artifact CASCADE")
-        conn.execute("DROP TABLE IF EXISTS session CASCADE")
-        conn.execute("DROP TABLE IF EXISTS alembic_version")
-
-
 def _event_indexes(database_url: str) -> dict[str, str]:
     with connect(database_url, autocommit=True) as conn:
         rows = conn.execute(
@@ -269,12 +255,12 @@ def test_migration_head_is_defined() -> None:
 
 def test_current_revision_none_on_unmigrated_db(test_db: TestDb) -> None:
     # A freshly created test db is at head; reset it to simulate an unmigrated store.
-    _reset_to_unmigrated(test_db.database_url)
+    test_db.reset_to_unmigrated()
     assert migrate.current_revision(test_db.database_url) is None
 
 
 def test_apply_migrations_brings_unmigrated_db_to_head(test_db: TestDb) -> None:
-    _reset_to_unmigrated(test_db.database_url)
+    test_db.reset_to_unmigrated()
     assert migrate.current_revision(test_db.database_url) is None
 
     migrate.apply_migrations(test_db.database_url)
@@ -289,7 +275,7 @@ def test_apply_migrations_noop_when_at_head(test_db: TestDb) -> None:
 
 
 def test_alembic_upgrade_and_downgrade_smoke(test_db: TestDb) -> None:
-    _reset_to_unmigrated(test_db.database_url)
+    test_db.reset_to_unmigrated()
 
     migrate.apply_migrations(test_db.database_url)
 
@@ -345,7 +331,7 @@ def test_alembic_upgrade_and_downgrade_smoke(test_db: TestDb) -> None:
 def test_session_classification_migration_backfills_checks_and_downgrades(
     test_db: TestDb,
 ) -> None:
-    _reset_to_unmigrated(test_db.database_url)
+    test_db.reset_to_unmigrated()
     cfg = migrate.alembic_config(test_db.database_url)
     command.upgrade(cfg, "0003_event_dead_letter")
     _insert_legacy_session(test_db.database_url)

@@ -11,6 +11,19 @@ from transport_matters.config import Settings, resolve_test_database_url
 from transport_matters.session.migrate import upgrade_to_head
 from transport_matters.session.pool import connect
 
+_MIGRATED_TABLES = (
+    "canvas",
+    "space_worktree",
+    "space_git_identity",
+    "space",
+    "event_dead_letter",
+    "event_artifact",
+    "event",
+    "artifact",
+    "session",
+    "alembic_version",
+)
+
 
 @dataclass(frozen=True)
 class TestDb:
@@ -37,6 +50,13 @@ class TestDb:
 
     def migrate(self) -> None:
         upgrade_to_head(self.database_url)
+
+    def reset_to_unmigrated(self) -> None:
+        with connect(self.database_url, autocommit=True) as conn:
+            for table_name in _MIGRATED_TABLES:
+                conn.execute(
+                    sql.SQL("DROP TABLE IF EXISTS {} CASCADE").format(sql.Identifier(table_name))
+                )
 
     def drop(self) -> None:
         with connect(self.admin_url, autocommit=True) as conn:

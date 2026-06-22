@@ -133,8 +133,14 @@ def test_db() -> Iterator[TestDb]:
 def isolated_runtime_database_url(
     monkeypatch: pytest.MonkeyPatch, test_db: TestDb
 ) -> Iterator[str]:
-    """Route app lifespan database resolution to this test's isolated database."""
-    monkeypatch.setattr(main_module, "resolve_database_url", lambda _settings: test_db.database_url)
+    """Route runtime database resolution to this test's isolated database."""
+    from transport_matters.cli import db_cmd as db_cmd_module
+
+    def resolve_test_database_url(_settings: object) -> str:
+        return test_db.database_url
+
+    monkeypatch.setattr(main_module, "resolve_database_url", resolve_test_database_url)
+    monkeypatch.setattr(db_cmd_module, "resolve_database_url", resolve_test_database_url)
     get_settings.cache_clear()
     try:
         yield test_db.database_url
