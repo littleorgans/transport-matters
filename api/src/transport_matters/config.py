@@ -20,8 +20,9 @@ DATABASE_URL_GUIDANCE = (
     "settings.example.toml on first launch"
 )
 TEST_DATABASE_URL_GUIDANCE = (
-    "set TRANSPORT_MATTERS_TEST_DATABASE_URL, or add [database] test_url or "
-    "[database] url to settings.toml under $TRANSPORT_MATTERS_HOME "
+    "set TRANSPORT_MATTERS_TEST_DATABASE_URL, set TRANSPORT_MATTERS_DATABASE_URL, "
+    "or add [database] test_url or [database] url to settings.toml under "
+    "$TRANSPORT_MATTERS_HOME "
     "(default ~/.transport-matters; copy settings.example.toml)"
 )
 SETTINGS_FILENAME = "settings.toml"
