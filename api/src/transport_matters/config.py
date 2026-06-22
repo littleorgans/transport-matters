@@ -26,6 +26,7 @@ TEST_DATABASE_URL_GUIDANCE = (
 )
 SETTINGS_FILENAME = "settings.toml"
 SETTINGS_EXAMPLE_FILENAME = "settings.example.toml"
+TEST_DB_PREFIX = "tm_test_"
 
 
 class SettingsFileError(ValueError):

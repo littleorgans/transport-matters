@@ -1,9 +1,11 @@
 import asyncio
 import logging
 import logging.config
+import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
+from urllib.parse import urlsplit
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -21,7 +23,12 @@ from transport_matters.api.v1 import (
     stream,
 )
 from transport_matters.api.v1.router import api_router
-from transport_matters.config import MissingDatabaseConfigError, get_settings, resolve_database_url
+from transport_matters.config import (
+    MissingDatabaseConfigError,
+    TEST_DB_PREFIX,
+    get_settings,
+    resolve_database_url,
+)
 from transport_matters.session.async_dao import AsyncSessionDao
 from transport_matters.session.backfill import backfill_session_spaces
 from transport_matters.session.listen import SessionEventHub, SessionEventListener
@@ -69,6 +76,23 @@ LOG_CONFIG: dict[str, Any] = {
 logger = logging.getLogger(__name__)
 
 
+def _database_name_from_url(database_url: str) -> str:
+    return urlsplit(database_url).path.lstrip("/")
+
+
+def _guard_pytest_session_store_url(database_url: str) -> None:
+    if not os.environ.get("PYTEST_CURRENT_TEST"):
+        return
+    database_name = _database_name_from_url(database_url)
+    if database_name.startswith(TEST_DB_PREFIX):
+        return
+    raise RuntimeError(
+        "refusing to open non-test session store "
+        f"{database_name!r} under pytest; expected database name prefix "
+        f"{TEST_DB_PREFIX!r}"
+    )
+
+
 class SpaStaticFiles(StaticFiles):
     async def get_response(self, path: str, scope: Scope) -> Response:
         try:
@@ -108,6 +132,7 @@ async def _start_session_store(
     that is merely unreachable must degrade (not crash), matching the launch-path
     preflight which already hard-blocks unreachable stores before the backend starts.
     """
+    _guard_pytest_session_store_url(database_url)
     pool = create_async_pool(database_url)
     try:
         await pool.open()
