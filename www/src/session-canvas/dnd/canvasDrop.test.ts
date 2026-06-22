@@ -59,7 +59,7 @@ describe("locatorForPaneRef", () => {
   it("maps everything else to null, the guard living in the one predicate", () => {
     expect(locatorForPaneRef(null)).toBeNull();
     expect(locatorForPaneRef(undefined)).toBeNull();
-    expect(locatorForPaneRef({ kind: "terminal", owner: "local" })).toBeNull();
+    expect(locatorForPaneRef({ kind: "terminal", owner: "local", worktreeId: "wt-1" })).toBeNull();
     expect(
       locatorForPaneRef({ kind: "resource", owner: "local", sessionId: "s", resourceId: "r" }),
     ).toBeNull();

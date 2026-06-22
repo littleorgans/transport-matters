@@ -153,7 +153,7 @@ function paneFixture() {
     paneId: "terminal:test-pane",
     viewerId: "terminal",
     title: "Terminal",
-    contentRef: { kind: "terminal", owner: "local" },
+    contentRef: { kind: "terminal", owner: "local", worktreeId: "wt-1" },
     chromeState: "default",
     createdAt: "2026-06-11T00:00:00Z",
     lastFocusedAt: null,

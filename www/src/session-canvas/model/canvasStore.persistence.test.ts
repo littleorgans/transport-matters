@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { PaneId, WorldRect } from "../../engine";
 import { resolveLayout } from "../../engine/layout";
-import { FRONTEND_STORAGE_KEYS } from "../../stores/persistence";
+import { canvasCacheKey, LEGACY_CANVAS_CACHE_KEY } from "../persistence/canvasCacheStorage";
 import { makeSessionSummary } from "../testUtils";
 import { resetCanvasStoreForTests, useCanvasStore } from "./canvasStore";
 import { CANVAS_STORE_STORAGE_VERSION } from "./canvasStore.persistence";
@@ -10,6 +10,9 @@ type CanvasStoreSnapshot = ReturnType<typeof useCanvasStore.getState>;
 
 const store = useCanvasStore.getState;
 
+// The reset store's default canvasId, which keys its namespaced localStorage cache.
+const DIRECT_LOCAL_KEY = canvasCacheKey("direct-local");
+
 function openPaneIds(state: CanvasStoreSnapshot): PaneId[] {
   return Object.values(state.layout.nodes)
     .filter((node) => node.lifecycle === "open")
@@ -17,16 +20,16 @@ function openPaneIds(state: CanvasStoreSnapshot): PaneId[] {
 }
 
 async function reloadCanvas(): Promise<void> {
-  const canvasRaw = localStorage.getItem(FRONTEND_STORAGE_KEYS.canvasStore);
+  const canvasRaw = localStorage.getItem(DIRECT_LOCAL_KEY);
   resetCanvasStoreForTests();
-  localStorage.removeItem(FRONTEND_STORAGE_KEYS.canvasStore);
-  if (canvasRaw !== null) localStorage.setItem(FRONTEND_STORAGE_KEYS.canvasStore, canvasRaw);
+  localStorage.removeItem(DIRECT_LOCAL_KEY);
+  if (canvasRaw !== null) localStorage.setItem(DIRECT_LOCAL_KEY, canvasRaw);
   await useCanvasStore.persist.rehydrate();
 }
 
 function writeCanvasStorage(state: unknown, version = CANVAS_STORE_STORAGE_VERSION): void {
   localStorage.setItem(
-    FRONTEND_STORAGE_KEYS.canvasStore,
+    DIRECT_LOCAL_KEY,
     JSON.stringify({
       version,
       state,
@@ -133,7 +136,7 @@ describe("canvasStore persistence adapter", () => {
   });
 
   it("leaves a fresh profile untouched when no persisted payload exists", async () => {
-    localStorage.removeItem(FRONTEND_STORAGE_KEYS.canvasStore);
+    localStorage.removeItem(DIRECT_LOCAL_KEY);
 
     await useCanvasStore.persist.rehydrate();
 
@@ -164,5 +167,23 @@ describe("canvasStore persistence adapter", () => {
     expect(store().layout.nodes).toEqual({});
     expect(store().layout.focusedPaneId).toBeNull();
     expect(store().docked).toEqual([]);
+  });
+
+  it("imports the legacy canvas blob into the initialized Space's default canvas (Slice 6)", () => {
+    localStorage.clear();
+    localStorage.setItem(LEGACY_CANVAS_CACHE_KEY, '{"state":{},"version":1}');
+
+    useCanvasStore.getState().initializeCanvas({
+      owner: "local",
+      workspaceHash: null,
+      spaceId: "space-1",
+      worktreeId: "wt-1",
+      canvasId: null,
+      harness: null,
+      runId: null,
+    });
+
+    expect(localStorage.getItem(canvasCacheKey("space:space-1"))).toBe('{"state":{},"version":1}');
+    expect(localStorage.getItem(LEGACY_CANVAS_CACHE_KEY)).toBeNull();
   });
 });

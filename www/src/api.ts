@@ -12,7 +12,9 @@ import type {
   PausedFlow,
   RuntimeTemplateSummary,
   RuntimeTemplatesResponse,
+  SpaceSummary,
   TurnContent,
+  WorktreeSummary,
 } from "./types";
 
 export const MAX_ENTRIES = 500;
@@ -392,6 +394,32 @@ export async function fetchCapabilities(): Promise<CapabilitiesResponse> {
   );
 }
 
+// ── Space / Worktree endpoints (detect-only) ──────────────────────
+
+/** List detected Spaces with their worktrees inlined via `GET /v1/spaces`. */
+export async function fetchSpaces(): Promise<SpaceSummary[]> {
+  const response = await requestApiJson<{ items?: SpaceSummary[] }>(
+    "/v1/spaces",
+    "Failed to load spaces",
+  );
+  // Never resolve to undefined: react-query rejects an undefined query result,
+  // and a payload without `items` degrades to "no spaces", not an error.
+  return response.items ?? [];
+}
+
+/**
+ * List a Space's worktrees via `GET /v1/spaces/{id}/worktrees`. `refresh=1`
+ * reconciles against `git worktree list` server-side before returning.
+ */
+export async function fetchWorktrees(spaceId: string, refresh = false): Promise<WorktreeSummary[]> {
+  const query = refresh ? "?refresh=1" : "";
+  const response = await requestApiJson<{ items?: WorktreeSummary[] }>(
+    `/v1/spaces/${encodeURIComponent(spaceId)}/worktrees${query}`,
+    "Failed to load worktrees",
+  );
+  return response.items ?? [];
+}
+
 // ── Managed captured run endpoints ────────────────────────────────
 
 /**
@@ -403,7 +431,10 @@ export async function fetchCapabilities(): Promise<CapabilitiesResponse> {
  */
 export async function createCapturedRun(
   harness: HarnessName,
-  cwd?: string,
+  // Worktree root the run is captured under (Slice 4 contract: POST /v1/runs takes
+  // worktreeId; the CLI resolves the cwd internally). Omitted → backend resolves
+  // its launch worktree.
+  worktreeId?: string,
   // When false the bridge stays silent on the harness OSC color queries
   // (api: osc_color_responder); true is the terminal-faithful default.
   oscColorReplies = true,
@@ -418,7 +449,7 @@ export async function createCapturedRun(
 ): Promise<string> {
   const body = {
     harness,
-    ...(cwd === undefined ? {} : { cwd }),
+    ...(worktreeId === undefined ? {} : { worktreeId }),
     oscColorReplies,
     ...(runtimeTemplate === undefined ? {} : { runtimeTemplate }),
     bypassPermissions,
@@ -469,7 +500,8 @@ export type RunEndReason = "explicit" | "idle-timeout" | "shutdown" | "deploy-re
  */
 export interface RunView {
   runId: string;
-  workspaceId: string;
+  spaceId: string;
+  worktreeId: string;
   sessionId: string;
   harness: HarnessName;
   state: RunState;
@@ -481,6 +513,8 @@ export interface RunView {
 /** Optional server-side filters for `listRuns` (`GET /v1/runs?state`). */
 export interface RunFilters {
   state?: RunState;
+  spaceId?: string;
+  worktreeId?: string;
 }
 
 export interface RunLookupOptions {
@@ -495,6 +529,10 @@ export interface RunLookupOptions {
 export async function listRuns(filters?: RunFilters): Promise<RunView[]> {
   const query = new URLSearchParams();
   if (filters?.state !== undefined) query.set("state", filters.state);
+  // camelCase to match the backend Query aliases (run_routes.py list_runs:
+  // alias="spaceId"/"worktreeId"); snake_case keys are silently ignored.
+  if (filters?.spaceId !== undefined) query.set("spaceId", filters.spaceId);
+  if (filters?.worktreeId !== undefined) query.set("worktreeId", filters.worktreeId);
   const suffix = query.toString();
   const response = await requestJson<{ items: RunView[]; nextCursor: string | null }>(
     suffix ? `/v1/runs?${suffix}` : "/v1/runs",

@@ -80,6 +80,9 @@ function pickerProps(
       launch: {
         owner: "local",
         workspaceHash: "hash-1",
+        spaceId: null,
+        worktreeId: null,
+        canvasId: null,
         harness: patch.launch?.harness ?? "claude",
         runId: null,
       },

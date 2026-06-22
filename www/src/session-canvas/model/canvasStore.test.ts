@@ -19,6 +19,18 @@ vi.mock("../../api", () => ({
   terminateRun: terminateRunMock,
 }));
 
+// A launch context with a rooted worktree, for tests that spawn captured runs
+// (addCapturedRun now requires Canvas.defaultWorktreeId, Slice 6 R3).
+const ROOTED_LAUNCH = {
+  owner: "local" as const,
+  workspaceHash: null,
+  spaceId: null,
+  worktreeId: "wt-1",
+  canvasId: null,
+  harness: null,
+  runId: null,
+};
+
 type CanvasStoreSnapshot = ReturnType<typeof useCanvasStore.getState>;
 
 // Store rects are the strategy plan quantized at the planLayout chokepoint,
@@ -144,7 +156,7 @@ describe("canvasStore", () => {
   });
 
   it("addCapturedRun inserts one pane keyed by the run key", () => {
-    resetCanvasStoreForTests();
+    resetCanvasStoreForTests(ROOTED_LAUNCH);
 
     const paneId = useCanvasStore.getState().addCapturedRun("claude");
 
@@ -163,7 +175,7 @@ describe("canvasStore", () => {
   });
 
   it("addCapturedRun keeps two same-provider calls as two panes", () => {
-    resetCanvasStoreForTests();
+    resetCanvasStoreForTests(ROOTED_LAUNCH);
 
     const firstPaneId = useCanvasStore.getState().addCapturedRun("claude");
     const secondPaneId = useCanvasStore.getState().addCapturedRun("claude");
@@ -253,7 +265,7 @@ describe("canvasStore", () => {
   it("addCapturedRun then closePane stops the run through the real spawn path", () => {
     vi.useFakeTimers();
     try {
-      resetCanvasStoreForTests();
+      resetCanvasStoreForTests(ROOTED_LAUNCH);
       const paneId = useCanvasStore.getState().addCapturedRun("claude");
       rememberCapturedRun(paneId);
 
@@ -465,5 +477,98 @@ describe("canvasStore", () => {
     expectNoFlyIntent(useCanvasStore.getState());
     expect(useCanvasStore.getState().layout.viewport).toEqual(overview);
     expect(rectsFor(useCanvasStore.getState())).toEqual(rectsBefore);
+  });
+
+  describe("canvas identity (Slice 6)", () => {
+    it("mints a default canvasId per space and promotes defaultWorktreeId", () => {
+      resetCanvasStoreForTests();
+      useCanvasStore.getState().initializeCanvas({
+        owner: "local",
+        workspaceHash: "hash-1",
+        spaceId: "space-1",
+        worktreeId: "wt-1",
+        canvasId: null,
+        harness: null,
+        runId: null,
+      });
+
+      const state = useCanvasStore.getState();
+      expect(state.canvasId).toBe("space:space-1");
+      expect(state.spaceId).toBe("space-1");
+      expect(state.defaultWorktreeId).toBe("wt-1");
+      expect(state.workspaceHash).toBe("hash-1");
+    });
+
+    it("falls back to direct-local with no space and no worktree root", () => {
+      resetCanvasStoreForTests();
+      const state = useCanvasStore.getState();
+      expect(state.canvasId).toBe("direct-local");
+      expect(state.spaceId).toBeNull();
+      expect(state.defaultWorktreeId).toBeNull();
+    });
+
+    it("switching to a new canvas starts isolated, not a clone of the previous canvas", () => {
+      localStorage.clear();
+      resetCanvasStoreForTests();
+      // Arrange canvas A with a captured-run pane on top of the picker.
+      useCanvasStore.getState().initializeCanvas({
+        owner: "local",
+        workspaceHash: null,
+        spaceId: "space-a",
+        worktreeId: "wt-a",
+        canvasId: null,
+        harness: null,
+        runId: null,
+      });
+      useCanvasStore.getState().addCapturedRun("claude");
+      expect(
+        Object.values(useCanvasStore.getState().panes).some(
+          (pane) => pane.contentRef.kind === "captured-run",
+        ),
+      ).toBe(true);
+
+      // Switch to a brand-new canvas B with no cached blob.
+      useCanvasStore.getState().initializeCanvas({
+        owner: "local",
+        workspaceHash: null,
+        spaceId: "space-b",
+        worktreeId: "wt-b",
+        canvasId: null,
+        harness: null,
+        runId: null,
+      });
+
+      const stateB = useCanvasStore.getState();
+      expect(stateB.canvasId).toBe("space:space-b");
+      expect(stateB.defaultWorktreeId).toBe("wt-b");
+      // Isolated: B does NOT inherit canvas A's captured-run pane (no clone leak).
+      expect(
+        Object.values(stateB.panes).some((pane) => pane.contentRef.kind === "captured-run"),
+      ).toBe(false);
+    });
+  });
+
+  describe("addCapturedRun roots on defaultWorktreeId (Slice 6)", () => {
+    it("stamps the canvas defaultWorktreeId onto the captured-run ref", () => {
+      resetCanvasStoreForTests();
+      useCanvasStore.getState().initializeCanvas({
+        owner: "local",
+        workspaceHash: null,
+        spaceId: "space-1",
+        worktreeId: "wt-7",
+        canvasId: null,
+        harness: null,
+        runId: null,
+      });
+
+      const paneId = useCanvasStore.getState().addCapturedRun("claude");
+      const ref = useCanvasStore.getState().panes[paneId]?.contentRef;
+      expect(ref).toMatchObject({ kind: "captured-run", provider: "claude", worktreeId: "wt-7" });
+    });
+
+    it("throws when no worktree root is available", () => {
+      resetCanvasStoreForTests();
+      expect(() => useCanvasStore.getState().addCapturedRun("claude")).toThrow(/worktree/i);
+    });
   });
 });

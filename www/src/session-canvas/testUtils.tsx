@@ -38,8 +38,9 @@ export function jsonResponse(data: unknown, status = 200): Response {
 export function makeCapturedRunRef(
   runKey: CapturedRunKey = "claude:k1",
   provider: HarnessName = "claude",
+  worktreeId = "wt-test",
 ): Extract<PaneContentRef, { kind: "captured-run" }> {
-  return { kind: "captured-run", owner: "local", provider, runKey };
+  return { kind: "captured-run", owner: "local", provider, runKey, worktreeId };
 }
 
 export function rememberCapturedRun(

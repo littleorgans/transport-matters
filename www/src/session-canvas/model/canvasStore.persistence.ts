@@ -1,5 +1,6 @@
 import { normalizeLayoutOrder, type PaneId } from "../../engine";
 import { FRONTEND_STORAGE_KEYS } from "../../stores/persistence";
+import { createCanvasCacheStorage } from "../persistence/canvasCacheStorage";
 import type { RebuiltCanvasState } from "../persistence/canvasPanePersistence";
 import {
   createCanvasPersistOptions,
@@ -15,10 +16,15 @@ interface CanvasStorePersistableState extends PersistableCanvasState {
   panes: Record<PaneId, PaneRecord>;
 }
 
-export function createCanvasStorePersistOptions<State extends CanvasStorePersistableState>() {
+export function createCanvasStorePersistOptions<State extends CanvasStorePersistableState>(
+  getCanvasId: () => string,
+) {
   return createCanvasPersistOptions<State, CanvasPaneRef>({
     name: FRONTEND_STORAGE_KEYS.canvasStore,
     version: CANVAS_STORE_STORAGE_VERSION,
+    storage: createCanvasCacheStorage<unknown>(getCanvasId) as ReturnType<
+      typeof createCanvasPersistOptions<State, CanvasPaneRef>
+    >["storage"],
     isContentRef: isCanvasPaneRef,
     getContentRefs: paneRefsForOpenRecords,
     mergeCanvasState: mergeCanvasStoreState,

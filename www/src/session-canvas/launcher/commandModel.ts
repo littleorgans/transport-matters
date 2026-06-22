@@ -11,14 +11,17 @@ import type {
   RuntimeTemplateHarness,
   RuntimeTemplateSummary,
   RuntimeTemplateVendor,
+  SpaceSummary,
+  WorktreeSummary,
 } from "../../types";
-import { CAPTURED_RUN_PROVIDERS, harnessLabel } from "../model/paneRecords";
+import { CAPTURED_RUN_PROVIDERS, harnessLabel, locatorTail } from "../model/paneRecords";
 
 export const LAUNCHER_SCOPES = [
   "root",
   "agents",
   "canvas",
   "workdir",
+  "worktree",
   "settings",
   "sessions",
 ] as const;
@@ -29,6 +32,8 @@ export interface NavFrame {
   scope: LauncherScope;
   query: string;
   highlightedValue?: string;
+  /** Opaque scope argument (e.g. the spaceId a worktree sub-scope filters by). */
+  param?: string;
 }
 
 export function topFrame(stack: NavFrame[]): NavFrame {
@@ -37,8 +42,8 @@ export function topFrame(stack: NavFrame[]): NavFrame {
   return frame;
 }
 
-export function createScopeNavFrame(scope: LauncherScope): NavFrame {
-  return { scope, query: "", highlightedValue: undefined };
+export function createScopeNavFrame(scope: LauncherScope, param?: string): NavFrame {
+  return { scope, query: "", highlightedValue: undefined, param };
 }
 
 export function createRootNavFrame(): NavFrame {
@@ -53,9 +58,10 @@ export function pushFrame(
   stack: NavFrame[],
   target: LauncherScope,
   originValue: string,
+  param?: string,
 ): NavFrame[] {
   const parent = { ...topFrame(stack), highlightedValue: originValue };
-  return [...stack.slice(0, -1), parent, createScopeNavFrame(target)];
+  return [...stack.slice(0, -1), parent, createScopeNavFrame(target, param)];
 }
 
 export function popFrame(stack: NavFrame[]): NavFrame[] {
@@ -77,14 +83,15 @@ export type LauncherCommand =
   | { kind: "goto"; path: string }
   | { kind: "cycle-theme" }
   | { kind: "toggle-bypass-permissions" }
-  | { kind: "set-canvas-gesture-modifier"; modifier: CanvasGestureModifier };
+  | { kind: "set-canvas-gesture-modifier"; modifier: CanvasGestureModifier }
+  | { kind: "select-worktree"; spaceId: string; worktreeId: string };
 
 /** Command-center-local effects handled inside the launcher hook. */
 export type LauncherEffect = "retry-agents";
 
 /** What a row does on `↵`: enter a sub-scope, fire a command, or run a local effect. */
 export type RowAction =
-  | { kind: "enter"; scope: LauncherScope }
+  | { kind: "enter"; scope: LauncherScope; param?: string }
   | { kind: "command"; command: LauncherCommand }
   | { kind: "effect"; effect: LauncherEffect };
 
@@ -139,6 +146,7 @@ const GROUP_DOMAINS = "Domains";
 const GROUP_AGENTS = "Agents";
 const GROUP_CANVAS = "Canvas";
 const GROUP_SETTINGS = "Settings";
+const GROUP_WORKDIR = "Workdir";
 
 const VENDOR_LABELS: Record<RuntimeTemplateVendor, string> = {
   anthropic: "Anthropic",
@@ -329,6 +337,105 @@ export function buildSettingsRows(
   ];
 }
 
+/** Subtitle for a worktree row: its root path. */
+function worktreeSubtitle(worktree: WorktreeSummary): string {
+  return worktree.path;
+}
+
+/** Title for a worktree row: the branch, else "main worktree", else the path tail. */
+function worktreeTitle(worktree: WorktreeSummary): string {
+  if (worktree.branch) return worktree.branch;
+  return worktree.isPrimary ? "main worktree" : locatorTail(worktree.path);
+}
+
+/**
+ * Workdir scope: one row per detected Space (R7). Rows are titled by the project
+ * label (never the bare word "Space"), so they never read like the Settings
+ * "Canvas gesture modifier: Space" row. A single-worktree Space selects its lone
+ * worktree directly; a multi-worktree Space descends into the worktree sub-scope.
+ */
+export function buildSpaceRows(
+  spaces: SpaceSummary[],
+  activeWorktreeId: string | null,
+): CommandRow[] {
+  if (spaces.length === 0) {
+    return [
+      {
+        value: "status:workdir-empty",
+        title: "No spaces detected yet",
+        subtitle: "Open a project directory to capture a Space",
+        group: GROUP_WORKDIR,
+        disabled: true,
+      },
+    ];
+  }
+  return spaces.map((space): CommandRow => {
+    const single = space.worktrees.length === 1 ? space.worktrees[0] : undefined;
+    const rooted = single && single.worktreeId === activeWorktreeId;
+    return {
+      value: `space:${space.spaceId}`,
+      title: space.label,
+      subtitle: single ? worktreeSubtitle(single) : `${space.worktrees.length} worktrees`,
+      group: GROUP_WORKDIR,
+      trailing: rooted ? "Current" : space.kind === "repo" ? "repo" : "dir",
+      action: single
+        ? {
+            kind: "command",
+            command: {
+              kind: "select-worktree",
+              spaceId: space.spaceId,
+              worktreeId: single.worktreeId,
+            },
+          }
+        : { kind: "enter", scope: "worktree", param: space.spaceId },
+    };
+  });
+}
+
+/** Worktree sub-scope: one row per worktree of the Space named by `spaceId` (the nav param). */
+export function buildWorktreeRows(
+  spaces: SpaceSummary[],
+  spaceId: string | undefined,
+  activeWorktreeId: string | null,
+): CommandRow[] {
+  const space = spaces.find((candidate) => candidate.spaceId === spaceId);
+  if (!space) {
+    return [
+      {
+        value: "status:worktree-missing",
+        title: "Space no longer available",
+        group: GROUP_WORKDIR,
+        disabled: true,
+      },
+    ];
+  }
+  return space.worktrees.map(
+    (worktree): CommandRow => ({
+      value: `worktree:${worktree.worktreeId}`,
+      title: worktreeTitle(worktree),
+      subtitle: worktreeSubtitle(worktree),
+      group: GROUP_WORKDIR,
+      trailing:
+        worktree.worktreeId === activeWorktreeId
+          ? "Current"
+          : worktree.missing
+            ? "Missing"
+            : undefined,
+      disabled: worktree.missing,
+      action: worktree.missing
+        ? undefined
+        : {
+            kind: "command",
+            command: {
+              kind: "select-worktree",
+              spaceId: space.spaceId,
+              worktreeId: worktree.worktreeId,
+            },
+          },
+    }),
+  );
+}
+
 /** The five root domains. Each ↵ ENTERS its scope; accelerators jump from anywhere. */
 const DOMAINS: {
   scope: LauncherScope;
@@ -390,6 +497,8 @@ export interface ScopeRowInputs {
   themeName: string;
   canvasGestureModifier: CanvasGestureModifier;
   bypassPermissions: boolean;
+  spaces: SpaceSummary[];
+  activeWorktreeId: string | null;
 }
 
 /**
@@ -401,6 +510,7 @@ export function buildScopeRows(
   scope: LauncherScope,
   inputs: ScopeRowInputs,
   query: string,
+  param?: string,
 ): CommandRow[] {
   const { templates, agentsStatus, themeName, canvasGestureModifier, bypassPermissions } = inputs;
   switch (scope) {
@@ -413,7 +523,9 @@ export function buildScopeRows(
     case "settings":
       return buildSettingsRows(themeName, canvasGestureModifier, bypassPermissions);
     case "workdir":
-      return buildDeferredRows("Workdir");
+      return buildSpaceRows(inputs.spaces, inputs.activeWorktreeId);
+    case "worktree":
+      return buildWorktreeRows(inputs.spaces, param, inputs.activeWorktreeId);
     case "sessions":
       return buildDeferredRows("Sessions");
   }

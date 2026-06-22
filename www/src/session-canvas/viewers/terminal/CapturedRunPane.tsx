@@ -12,8 +12,8 @@ export interface CapturedRunPaneProps {
   runKey: string;
   /** Managed harness to launch as a captured run; selects the terminal and harness label. */
   provider: HarnessName;
-  /** Absolute working directory; omitted lets the backend resolve its workspace. */
-  cwd?: string;
+  /** Worktree root this run is captured under (R3); the CLI resolves the cwd from it. */
+  worktreeId: string;
   /** Named runtime template to launch under; absent → NATIVE launch. Spawn-time only. */
   runtimeTemplate?: string;
 }
@@ -33,7 +33,7 @@ export interface CapturedRunPaneProps {
 export function CapturedRunPane({
   runKey,
   provider,
-  cwd,
+  worktreeId,
   runtimeTemplate,
 }: CapturedRunPaneProps): ReactElement {
   const ensureRun = useCapturedRunStore((state) => state.ensureRun);
@@ -46,7 +46,7 @@ export function CapturedRunPane({
 
   useEffect(() => {
     let cancelled = false;
-    ensureRun(runKey, provider, cwd, oscColorReplies, runtimeTemplate).then(
+    ensureRun(runKey, provider, worktreeId, oscColorReplies, runtimeTemplate).then(
       (id) => {
         if (!cancelled) setRunId(id);
       },
@@ -57,7 +57,7 @@ export function CapturedRunPane({
     return () => {
       cancelled = true;
     };
-  }, [ensureRun, runKey, provider, cwd, oscColorReplies, runtimeTemplate]);
+  }, [ensureRun, runKey, provider, worktreeId, oscColorReplies, runtimeTemplate]);
 
   if (spawnError !== null) {
     return (

@@ -30,6 +30,7 @@ export interface CanvasPersistOptionsConfig<
 > {
   name: string;
   version: number;
+  storage?: PersistOptions<State, PersistedCanvasSnapshot<TRef>>["storage"];
   isContentRef(value: unknown): value is TRef;
   getContentRefs(state: State): Record<PaneId, TRef>;
   mergeCanvasState(current: State, canvas: RebuiltCanvasState<TRef>): Partial<State>;
@@ -45,7 +46,7 @@ export function createCanvasPersistOptions<
 ): PersistOptions<State, PersistedCanvasSnapshot<TRef>> {
   return {
     name: config.name,
-    storage: createFrontendPersistStorage<PersistedCanvasSnapshot<TRef>>(),
+    storage: config.storage ?? createFrontendPersistStorage<PersistedCanvasSnapshot<TRef>>(),
     version: config.version,
     partialize: (state): PersistedCanvasSnapshot<TRef> => ({
       ...partializeCanvasState(state, config.getContentRefs),

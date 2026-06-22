@@ -1,7 +1,7 @@
 import { createListCollection } from "@ark-ui/react/combobox";
 import { type Dispatch, type SetStateAction, useEffect, useMemo } from "react";
 import type { CanvasGestureModifier } from "../../keybindings/gestureModifier";
-import type { RuntimeTemplateSummary } from "../../types";
+import type { RuntimeTemplateSummary, SpaceSummary } from "../../types";
 import {
   type AgentsStatus,
   buildScopeRows,
@@ -15,11 +15,14 @@ import {
 export interface LauncherRowsArgs {
   scope: LauncherScope;
   query: string;
+  param: string | undefined;
   templates: RuntimeTemplateSummary[];
   status: AgentsStatus;
   themeName: string;
   canvasGestureModifier: CanvasGestureModifier;
   bypassPermissions: boolean;
+  spaces: SpaceSummary[];
+  activeWorktreeId: string | null;
   setHighlighted: Dispatch<SetStateAction<string | undefined>>;
 }
 
@@ -33,11 +36,14 @@ export interface LauncherRowsArgs {
 export function useLauncherRows({
   scope,
   query,
+  param,
   templates,
   status,
   themeName,
   canvasGestureModifier,
   bypassPermissions,
+  spaces,
+  activeWorktreeId,
   setHighlighted,
 }: LauncherRowsArgs) {
   const inputs = useMemo<ScopeRowInputs>(
@@ -47,12 +53,22 @@ export function useLauncherRows({
       themeName,
       canvasGestureModifier,
       bypassPermissions,
+      spaces,
+      activeWorktreeId,
     }),
-    [templates, status, themeName, canvasGestureModifier, bypassPermissions],
+    [
+      templates,
+      status,
+      themeName,
+      canvasGestureModifier,
+      bypassPermissions,
+      spaces,
+      activeWorktreeId,
+    ],
   );
   const visibleRows = useMemo(
-    () => filterRows(buildScopeRows(scope, inputs, query), query),
-    [scope, inputs, query],
+    () => filterRows(buildScopeRows(scope, inputs, query, param), query),
+    [scope, inputs, query, param],
   );
   const rowByValue = useMemo(
     () => new Map(visibleRows.map((row) => [row.value, row])),

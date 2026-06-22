@@ -4,7 +4,9 @@ import {
   createCapturedRun,
   fetchMeta,
   fetchRuntimeTemplates,
+  fetchSpaces,
   fetchTurnContent,
+  fetchWorktrees,
   getRun,
   listRuns,
   resetApiTransport,
@@ -144,17 +146,17 @@ describe("createCapturedRun", () => {
     });
   });
 
-  it("forwards an absolute cwd when supplied", async () => {
+  it("forwards a worktreeId when supplied", async () => {
     const fetchMock = stubFetch({ run: { runId: "run-xyz" } }, 201);
 
-    await expect(createCapturedRun("codex", "/work/proj")).resolves.toBe("run-xyz");
+    await expect(createCapturedRun("codex", "wt-7")).resolves.toBe("run-xyz");
 
     expect(fetchMock).toHaveBeenCalledWith("/v1/runs", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         harness: "codex",
-        cwd: "/work/proj",
+        worktreeId: "wt-7",
         oscColorReplies: true,
         bypassPermissions: false,
       }),
@@ -196,6 +198,43 @@ describe("createCapturedRun", () => {
     stubFetch({ detail: { code: "unsupported_harness", message: "no" } }, 400);
 
     await expect(createCapturedRun("claude")).rejects.toThrow("Failed to spawn captured run: 400");
+  });
+});
+
+describe("fetchSpaces", () => {
+  afterEach(() => {
+    resetApiTransport();
+    vi.unstubAllGlobals();
+  });
+
+  it("returns the items from GET /v1/spaces", async () => {
+    const items = [{ spaceId: "space-1", label: "tm", kind: "repo", worktrees: [] }];
+    const fetchMock = stubFetch({ items });
+    await expect(fetchSpaces()).resolves.toEqual(items);
+    expect(fetchMock).toHaveBeenCalledWith("/v1/spaces");
+  });
+});
+
+describe("fetchWorktrees", () => {
+  afterEach(() => {
+    resetApiTransport();
+    vi.unstubAllGlobals();
+  });
+
+  it("returns the worktrees of a space, optionally refreshing", async () => {
+    const items = [
+      {
+        worktreeId: "wt-1",
+        spaceId: "space-1",
+        path: "/p",
+        branch: "main",
+        isPrimary: true,
+        missing: false,
+      },
+    ];
+    const fetchMock = stubFetch({ items });
+    await expect(fetchWorktrees("space-1", true)).resolves.toEqual(items);
+    expect(fetchMock).toHaveBeenCalledWith("/v1/spaces/space-1/worktrees?refresh=1");
   });
 });
 
@@ -272,6 +311,14 @@ describe("listRuns", () => {
     await listRuns({ state: "RUNNING" });
 
     expect(fetchMock).toHaveBeenCalledWith("/v1/runs?state=RUNNING");
+  });
+
+  it("forwards space/worktree filters as camelCase query params (backend Query aliases)", async () => {
+    const fetchMock = stubFetch({ items: [], nextCursor: null });
+
+    await listRuns({ spaceId: "space-1", worktreeId: "wt-1" });
+
+    expect(fetchMock).toHaveBeenCalledWith("/v1/runs?spaceId=space-1&worktreeId=wt-1");
   });
 
   it("throws on a non-OK list response", async () => {

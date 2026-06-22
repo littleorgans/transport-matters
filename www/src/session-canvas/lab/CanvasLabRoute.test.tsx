@@ -36,7 +36,14 @@ function seedCapabilities(installed: Record<HarnessName, boolean>): void {
 const SEED_RECT = { x: 48, y: 48, width: 360, height: 280 } as const;
 
 function capturedRef(runKey: string, label: string) {
-  return { kind: "captured-run", owner: "local", provider: "claude", runKey, label } as const;
+  return {
+    kind: "captured-run",
+    owner: "local",
+    provider: "claude",
+    runKey,
+    label,
+    worktreeId: "lab",
+  } as const;
 }
 
 // Seed both persisted payloads for a reload: the lab store's own record set plus the captured-run
@@ -149,7 +156,10 @@ describe("CanvasLabRoute captured-run spawn buttons", () => {
         contentRefs: {},
         paneRects: {},
         docked: [
-          { paneId: "lab-1", ref: { kind: "terminal", owner: "local", label: "Terminal-1" } },
+          {
+            paneId: "lab-1",
+            ref: { kind: "terminal", owner: "local", label: "Terminal-1", worktreeId: "lab" },
+          },
           { paneId: "lab-2", ref: null },
           { paneId: "claude:k1", ref: capturedRef("claude:k1", "Claude-1") },
         ],
@@ -209,7 +219,9 @@ describe("CanvasLabRoute captured-run spawn buttons", () => {
     // Park a pane in the dock (its only source) directly, skipping the close-delay timer.
     act(() => {
       useCanvasLabStore.setState({
-        docked: [{ paneId: "lab-1", ref: { kind: "terminal", owner: "local" } }],
+        docked: [
+          { paneId: "lab-1", ref: { kind: "terminal", owner: "local", worktreeId: "wt-1" } },
+        ],
       });
     });
 

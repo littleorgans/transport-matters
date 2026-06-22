@@ -9,6 +9,11 @@ interface PersistedPaneRect {
 
 type PersistedPaneRects = Record<string, PersistedPaneRect>;
 
+// Slice 6 namespaces the canvas cache by canvasId. The product /canvas route (no
+// space/worktree/hash params) resolves to the "direct-local" canvas, so its
+// persisted state lives under this namespaced key, not the bare legacy key.
+const CANVAS_STORE_KEY = "transport-matters-canvas:direct-local";
+
 const sessions = [
   sessionSummary("alpha-session", "Alpha session"),
   sessionSummary("beta-session", "Beta session"),
@@ -24,7 +29,11 @@ test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
     const resetFlag = "transport-matters.canvas-persistence-e2e-reset";
     if (sessionStorage.getItem(resetFlag)) return;
-    localStorage.removeItem("transport-matters-canvas");
+    // Clear both the bare legacy key and any per-canvasId namespaced keys so each
+    // test starts clean (but not on the in-test reload — the flag guards that).
+    for (const key of Object.keys(localStorage)) {
+      if (key.startsWith("transport-matters-canvas")) localStorage.removeItem(key);
+    }
     sessionStorage.setItem(resetFlag, "true");
   });
 });
@@ -85,7 +94,7 @@ function paneByTitle(page: Page, title: string) {
 const dockChip = (page: Page) => page.getByRole("button", { name: /Minimized panes/ });
 
 async function storedPaneRects(page: Page): Promise<PersistedPaneRects> {
-  const stored = await page.evaluate(() => localStorage.getItem("transport-matters-canvas"));
+  const stored = await page.evaluate((key) => localStorage.getItem(key), CANVAS_STORE_KEY);
   if (!stored) throw new Error("expected persisted canvas storage to exist");
 
   const parsed = JSON.parse(stored) as { state?: { paneRects?: PersistedPaneRects } };
@@ -159,4 +168,55 @@ test("product canvas persists arranged panes and dock state across reload", asyn
   await page.keyboard.press("Enter");
   await expect(page.getByRole("menu", { name: "Minimized panes" })).toBeVisible();
   await expect(page.getByRole("menuitem", { name: "Beta session", exact: true })).toBeVisible();
+});
+
+test("imports a pre-Spaces legacy canvas (bare key) into the default canvas on first load", async ({
+  page,
+}) => {
+  await mockSessionApi(page);
+  await page.setViewportSize(VIEWPORT);
+  // Seed the PRE-Slice-6 single-canvas blob under the bare legacy key. The store's
+  // module-load import must fold it into the namespaced default canvas BEFORE the
+  // persist middleware writes an empty default — otherwise the no-overwrite guard
+  // skips the legacy blob on the in-action import and the canvas is silently lost.
+  await page.addInitScript(() => {
+    localStorage.setItem(
+      "transport-matters-canvas",
+      JSON.stringify({
+        version: 1,
+        state: {
+          contentRefs: {
+            "session-picker": { kind: "session-picker", owner: "local" },
+            "transcript:alpha-session": {
+              kind: "session-timeline",
+              owner: "local",
+              sessionId: "alpha-session",
+              title: "Alpha session",
+            },
+          },
+          paneRects: {
+            "session-picker": { x: 32, y: 32, width: 380, height: 520 },
+            "transcript:alpha-session": { x: 444, y: 32, width: 600, height: 520 },
+          },
+          order: ["session-picker", "transcript:alpha-session"],
+          docked: [],
+          fitToContent: true,
+          expandedPaneId: null,
+        },
+      }),
+    );
+  });
+
+  await page.goto("/canvas");
+  await expect(page.locator(".canvas-route-shell")).toBeVisible();
+
+  // The legacy transcript pane rehydrated onto the canvas → the import ran.
+  await expect(paneByTitle(page, "Alpha session")).toBeVisible();
+  // The bare legacy key is consumed exactly once; the data now lives namespaced.
+  await expect
+    .poll(() => page.evaluate(() => localStorage.getItem("transport-matters-canvas")))
+    .toBeNull();
+  await expect
+    .poll(() => page.evaluate((key) => localStorage.getItem(key), CANVAS_STORE_KEY))
+    .not.toBeNull();
 });

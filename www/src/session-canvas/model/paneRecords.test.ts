@@ -55,3 +55,74 @@ describe("locator resource refs", () => {
     expect(titleForRef(urlRef)).toBe("cat.png");
   });
 });
+
+describe("isPaneContentRef — worktree-rooting (R3)", () => {
+  it("requires worktreeId on a terminal ref", () => {
+    expect(isPaneContentRef({ kind: "terminal", owner: "local", worktreeId: "wt-1" })).toBe(true);
+    expect(isPaneContentRef({ kind: "terminal", owner: "local", label: "T" })).toBe(false);
+  });
+
+  it("requires worktreeId on a captured-run ref", () => {
+    expect(
+      isPaneContentRef({
+        kind: "captured-run",
+        owner: "local",
+        provider: "claude",
+        runKey: "claude:1",
+        worktreeId: "wt-1",
+      }),
+    ).toBe(true);
+    expect(
+      isPaneContentRef({
+        kind: "captured-run",
+        owner: "local",
+        provider: "claude",
+        runKey: "claude:1",
+      }),
+    ).toBe(false);
+  });
+
+  it("treats worktreeId as optional on a resource(url) ref", () => {
+    expect(
+      isPaneContentRef({ kind: "resource", owner: "local", source: "url", url: "https://x" }),
+    ).toBe(true);
+    expect(
+      isPaneContentRef({
+        kind: "resource",
+        owner: "local",
+        source: "url",
+        url: "https://x",
+        worktreeId: "wt-1",
+      }),
+    ).toBe(true);
+    expect(
+      isPaneContentRef({
+        kind: "resource",
+        owner: "local",
+        source: "url",
+        url: "https://x",
+        worktreeId: 7,
+      }),
+    ).toBe(false);
+  });
+
+  it("round-trips a captured-run ref with and without sessionId (Slice 6 resume anchor)", () => {
+    const base = {
+      kind: "captured-run" as const,
+      owner: "local" as const,
+      provider: "claude" as const,
+      runKey: "claude:1",
+      worktreeId: "wt-1",
+    };
+    // Legacy pane: no sessionId. Round-trips clean and stays undefined.
+    const legacy = JSON.parse(JSON.stringify(base));
+    expect(isPaneContentRef(legacy)).toBe(true);
+    expect(legacy.sessionId).toBeUndefined();
+    // Bound pane: sessionId persists through serialize and passes the guard.
+    const bound = JSON.parse(JSON.stringify({ ...base, sessionId: "sess-7" }));
+    expect(isPaneContentRef(bound)).toBe(true);
+    expect(bound.sessionId).toBe("sess-7");
+    // A non-string sessionId is rejected.
+    expect(isPaneContentRef({ ...base, sessionId: 7 })).toBe(false);
+  });
+});

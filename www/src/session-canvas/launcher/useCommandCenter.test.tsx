@@ -42,6 +42,7 @@ function renderCenter({ onCommand = vi.fn<OnCommand>(), themeName = "NONE" } = {
         themeName,
         canvasGestureModifier: "Shift",
         bypassPermissions: false,
+        activeWorktreeId: null,
       }),
     { wrapper: createWrapper() },
   );

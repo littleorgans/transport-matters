@@ -19,6 +19,9 @@ vi.mock("../../ambient/createAmbientBackground");
 const launch = {
   owner: "local",
   workspaceHash: "hash-1",
+  spaceId: null,
+  worktreeId: null,
+  canvasId: null,
   harness: null,
   runId: null,
 } satisfies CanvasLaunchContext;
@@ -80,5 +83,31 @@ describe("CanvasSurface", () => {
     fireEvent.keyDown(input, { key: "Escape" });
 
     await waitFor(() => expect(screen.queryByRole("combobox")).not.toBeInTheDocument());
+  });
+
+  it("surfaces a captured-run spawn failure as a non-fatal error instead of crashing the surface", async () => {
+    resetCanvasStoreForTests(launch);
+    installMockTransport(() => jsonResponse({ items: [] }));
+    // Mirrors canvasStore.addCapturedRun's throw on a rootless canvas
+    // (defaultWorktreeId === null). The spawn handler must CATCH it so this event
+    // dispatch does not bubble an uncaught error out of the React handler (UI crash).
+    const addCapturedRun = vi.fn((): PaneId => {
+      throw new Error("Cannot spawn a captured run without a rooted worktree");
+    });
+    useCanvasStore.setState({ addCapturedRun });
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    renderWithQuery(
+      <KeybindingEngineProvider platform={testPlatform}>
+        <CanvasSurface launch={launch} launchSessionId={null} launchStatus="resolved" />
+      </KeybindingEngineProvider>,
+    );
+
+    fireEvent.keyDown(window, { key: "a", code: "KeyA", metaKey: true });
+    // Without the handler's try/catch this fireEvent throws (uncaught handler error).
+    fireEvent.keyDown(await screen.findByRole("combobox"), { key: "Enter" });
+
+    await waitFor(() => expect(addCapturedRun).toHaveBeenCalled());
+    expect(errorSpy).toHaveBeenCalled();
   });
 });

@@ -43,6 +43,8 @@ import type { CanvasLabState } from "./canvasLabTypes";
 
 const FRAME_MS = 320;
 const INITIAL_DEMO_PANE_COUNT = 4;
+/** Demo worktree root for the lab's terminal panes (R3: terminal refs are worktree-rooted). */
+const LAB_WORKTREE_ID = "lab";
 
 export { framedPaneId, UNFRAME_FLY_PANE_LIMIT } from "../model/paneAffordances";
 
@@ -144,7 +146,12 @@ export const useCanvasLabStore = create<CanvasLabState>()(
           return {
             nextPaneIndex: index,
             paneCounters: counters,
-            ...spawnPaneLayout(state, `lab-${index}`, { kind: "terminal", owner: "local", label }),
+            ...spawnPaneLayout(state, `lab-${index}`, {
+              kind: "terminal",
+              owner: "local",
+              label,
+              worktreeId: LAB_WORKTREE_ID,
+            }),
           };
         });
       },
@@ -152,7 +159,7 @@ export const useCanvasLabStore = create<CanvasLabState>()(
       addCapturedRun(provider) {
         const { label, counters } = labelFor(get().paneCounters, harnessLabel(provider));
         set({ paneCounters: counters });
-        get().spawnPane(createCapturedRunRef(provider, label), { focus: true });
+        get().spawnPane(createCapturedRunRef(provider, LAB_WORKTREE_ID, label), { focus: true });
       },
 
       dockPane(ref) {

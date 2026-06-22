@@ -13,7 +13,7 @@ import type { LauncherCommand } from "../launcher/commandModel";
 import { useCanvasStore } from "../model/canvasStore";
 import { useCapturedRunStore } from "../model/capturedRunStore";
 import { openPaneIds } from "../model/layoutPlanning";
-import type { CanvasLaunchContext } from "../route";
+import { type CanvasLaunchContext, parseCanvasLaunchContext, worktreeSwitchUrl } from "../route";
 import { bodyDragForRef, PICKER_PANE_ID, renderPaneContent } from "../viewers/registry";
 import { AmbientBackdrop } from "./AmbientBackdrop";
 import { CanvasDropHint } from "./CanvasDropHint";
@@ -49,7 +49,7 @@ interface CanvasCommandHandlerOptions {
 }
 
 interface CanvasPaneRendererOptions {
-  canvasId: CanvasStoreSnapshot["id"];
+  canvasId: CanvasStoreSnapshot["canvasId"];
   closePane: CanvasStoreSnapshot["closePane"];
   expandedPaneId: CanvasStoreSnapshot["expandedPaneId"];
   expandPane: CanvasStoreSnapshot["expandPane"];
@@ -88,7 +88,15 @@ function useCanvasCommandHandler({
     (command: LauncherCommand) => {
       switch (command.kind) {
         case "spawn":
-          addCapturedRun(command.harness, command.runtimeTemplate);
+          try {
+            // addCapturedRun throws on a canvas with no rooted worktree
+            // (plain/legacy /canvas, defaultWorktreeId === null): a captured run
+            // can't resolve a cwd. Surface it as a non-fatal error instead of
+            // letting it bubble out of the event handler and crash the surface.
+            addCapturedRun(command.harness, command.runtimeTemplate);
+          } catch (error) {
+            console.error("Failed to spawn captured run:", error);
+          }
           return;
         case "reset-view":
           resetViewport();
@@ -108,6 +116,25 @@ function useCanvasCommandHandler({
         case "set-canvas-gesture-modifier":
           setCanvasGestureModifier(command.modifier);
           return;
+        case "select-worktree": {
+          // Set the query EXACTLY once via replaceState (passing a query-bearing path
+          // to navigateToRoute would re-append window.location.search → a double-"?"
+          // URL that corrupts worktree_id on reload), then re-root the canvas in place.
+          window.history.replaceState(
+            {},
+            "",
+            worktreeSwitchUrl(
+              window.location.pathname,
+              window.location.search,
+              command.spaceId,
+              command.worktreeId,
+            ),
+          );
+          useCanvasStore
+            .getState()
+            .initializeCanvas(parseCanvasLaunchContext(window.location.search));
+          return;
+        }
       }
     },
     [
@@ -223,7 +250,7 @@ export function CanvasSurface({
 }: CanvasSurfaceProps) {
   const layout = useCanvasStore((state) => state.layout);
   const panes = useCanvasStore((state) => state.panes);
-  const canvasId = useCanvasStore((state) => state.id);
+  const canvasId = useCanvasStore((state) => state.canvasId);
   const workspaceHash = useCanvasStore((state) => state.workspaceHash);
   const focusPane = useCanvasStore((state) => state.focusPane);
   const closePane = useCanvasStore((state) => state.closePane);
