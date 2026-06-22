@@ -28,6 +28,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from contextlib import AbstractContextManager
 
+    from fastapi import FastAPI
     from fastapi.testclient import TestClient
     from psycopg import AsyncConnection
     from psycopg.rows import DictRow
@@ -463,7 +464,8 @@ async def test_app_lifespan_releases_session_listener_connection(
     lifespan_client: Callable[[], AbstractContextManager[TestClient]],
 ) -> None:
     with lifespan_client() as client:
-        listener = client.app.state.session_event_listener
+        app = cast("FastAPI", client.app)
+        listener = app.state.session_event_listener
         assert isinstance(listener, SessionEventListener)
         listener_pid = await _wait_for_pid(lambda: listener.connection_pid)
     assert await _wait_for_backend_gone(test_db.database_url, listener_pid)
@@ -528,7 +530,8 @@ async def test_lifespan_listener_start_failure_keeps_routes_unavailable(
 
     monkeypatch.setattr("transport_matters.main.SessionEventListener", FailingListener)
     with lifespan_client() as client:
-        assert client.app.state.session_pool is None
+        app = cast("FastAPI", client.app)
+        assert app.state.session_pool is None
         response = client.get("/v1/sessions")
     assert response.status_code == 503
 
