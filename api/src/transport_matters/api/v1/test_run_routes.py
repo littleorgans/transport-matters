@@ -35,6 +35,8 @@ from transport_matters.test_run_manager import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+    from contextlib import AbstractContextManager
     from pathlib import Path
 
     from fastapi import Request
@@ -431,16 +433,14 @@ def test_post_rejects_unsupported_harness_before_spawn(
 
 
 def test_post_continuation_threads_lineage_context_and_idempotency(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, test_db: TestDb
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    test_db: TestDb,
+    lifespan_client: Callable[[], AbstractContextManager[TestClient]],
 ) -> None:
     asyncio.run(_seed_continuation_parent(test_db.database_url))
     harness = ManagedRunHarness(tmp_path, monkeypatch)
-    monkeypatch.setenv(env_keys.DATABASE_URL, test_db.database_url)
-    monkeypatch.setattr(
-        "transport_matters.main.resolve_database_url",
-        lambda _settings: test_db.database_url,
-    )
-    client = _client(monkeypatch, tmp_path)
+    monkeypatch.setenv(env_keys.CWD, str(tmp_path))
     body = {
         "harness": "claude",
         "worktreeId": str(harness.worktree_id),
@@ -448,7 +448,7 @@ def test_post_continuation_threads_lineage_context_and_idempotency(
         "idempotencyKey": "resume-click-1",
     }
 
-    with client:
+    with lifespan_client() as client:
         first = client.post("/v1/runs", json=body, headers=_http_headers(BACKEND_ORIGIN))
         second = client.post("/v1/runs", json=body, headers=_http_headers(BACKEND_ORIGIN))
 
@@ -471,14 +471,16 @@ def test_post_continuation_threads_lineage_context_and_idempotency(
 
 
 def test_post_continuation_returns_not_found_for_foreign_parent(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, test_db: TestDb
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    test_db: TestDb,
+    lifespan_client: Callable[[], AbstractContextManager[TestClient]],
 ) -> None:
     asyncio.run(_seed_continuation_parent(test_db.database_url, owner="other"))
     harness = ManagedRunHarness(tmp_path, monkeypatch)
-    monkeypatch.setenv(env_keys.DATABASE_URL, test_db.database_url)
-    client = _client(monkeypatch, tmp_path)
+    monkeypatch.setenv(env_keys.CWD, str(tmp_path))
 
-    with client:
+    with lifespan_client() as client:
         response = client.post(
             "/v1/runs",
             json={

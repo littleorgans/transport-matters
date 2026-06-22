@@ -3,16 +3,17 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from transport_matters.api.v1.session_test_support import session_client as _client
-from transport_matters.config import get_settings
-from transport_matters.main import create_app, lifespan
 from transport_matters.session.pool import create_async_pool
 from transport_matters.space.detection import DetectedSpace, DetectedWorktree, repo_instance_key
 from transport_matters.space.store import SpaceStore
 from transport_matters.workspace import workspace_id
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+    from contextlib import AbstractContextManager
     from pathlib import Path
 
+    from fastapi.testclient import TestClient
     import pytest
 
     from transport_matters.session.testing import TestDb
@@ -290,14 +291,11 @@ async def test_lifespan_resolves_api_cwd_into_current_space(
     test_db: TestDb,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    lifespan_client: Callable[[], AbstractContextManager[TestClient]],
 ) -> None:
     cwd = tmp_path / "api-cwd"
     cwd.mkdir()
-    monkeypatch.setenv("TRANSPORT_MATTERS_DATABASE_URL", test_db.database_url)
     monkeypatch.setenv("TRANSPORT_MATTERS_CWD", str(cwd))
-    monkeypatch.setattr(
-        "transport_matters.main.resolve_database_url", lambda _settings: test_db.database_url
-    )
     monkeypatch.setattr(
         "transport_matters.space.store.detect_space",
         lambda detected_cwd: DetectedSpace(
@@ -308,18 +306,13 @@ async def test_lifespan_resolves_api_cwd_into_current_space(
             worktrees=(_worktree(cwd, is_primary=True),),
         ),
     )
-    get_settings.cache_clear()
-    app = create_app()
 
-    try:
-        async with lifespan(app):
-            pass
-        async with (
-            create_async_pool(test_db.database_url, min_size=1, max_size=2) as pool,
-            pool.connection() as conn,
-        ):
-            spaces = await SpaceStore(conn, storage_dir=tmp_path / "storage").list_spaces()
-    finally:
-        get_settings.cache_clear()
+    with lifespan_client():
+        pass
+    async with (
+        create_async_pool(test_db.database_url, min_size=1, max_size=2) as pool,
+        pool.connection() as conn,
+    ):
+        spaces = await SpaceStore(conn, storage_dir=tmp_path / "storage").list_spaces()
 
     assert [item.space.name for item in spaces] == ["api-cwd"]

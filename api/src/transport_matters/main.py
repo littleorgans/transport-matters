@@ -25,6 +25,7 @@ from transport_matters.api.v1 import (
 from transport_matters.api.v1.router import api_router
 from transport_matters.config import (
     MissingDatabaseConfigError,
+    Settings,
     TEST_DB_PREFIX,
     get_settings,
     resolve_database_url,
@@ -207,6 +208,7 @@ async def _backfill_session_spaces(
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     logger.info("Starting %s", app.title)
+    settings = getattr(app.state, "settings", None) or get_settings()
     session_pool = None
     session_listener = None
     shared_proxy_manager = None
@@ -216,12 +218,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.session_event_listener = None
     app.state.shared_proxy_manager = None
     pending_shared_proxy_manager = SharedProxyManager.create(
-        runtime_dir=get_settings().storage_dir / "runtime" / "shared-proxy",
+        runtime_dir=settings.storage_dir / "runtime" / "shared-proxy",
     )
     pending_shared_proxy_manager_closed = False
     try:
         try:
-            database_url = resolve_database_url(get_settings())
+            database_url = settings.session_store_url or resolve_database_url(settings)
         except MissingDatabaseConfigError as exc:
             logger.info("Session store disabled: %s", exc)
         else:
@@ -262,8 +264,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         logger.info("Shutting down %s", app.title)
 
 
-def create_app() -> FastAPI:
-    settings = get_settings()
+def create_app(settings: Settings | None = None) -> FastAPI:
+    settings = settings or get_settings()
 
     import copy
 
@@ -283,6 +285,7 @@ def create_app() -> FastAPI:
         debug=settings.debug,
         lifespan=lifespan,
     )
+    app.state.settings = settings
 
     app.add_middleware(
         CORSMiddleware,

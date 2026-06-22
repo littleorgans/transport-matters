@@ -120,6 +120,10 @@ class Settings(BaseSettings):
         default=None,
         description="Test env override from TRANSPORT_MATTERS_TEST_DATABASE_URL.",
     )
+    session_store_url: str | None = Field(
+        default=None,
+        description="Injected runtime session-store URL used verbatim by app lifespan.",
+    )
     database: DatabaseSettings = Field(
         default_factory=DatabaseSettings,
         description="Database values loaded from settings.toml. Call resolve_* for precedence.",

@@ -26,7 +26,9 @@ from .session_routes import _event_stream, _timeline_stream
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+    from contextlib import AbstractContextManager
 
+    from fastapi.testclient import TestClient
     from psycopg import AsyncConnection
     from psycopg.rows import DictRow
 
@@ -457,23 +459,18 @@ async def test_session_timeline_stream_is_owner_scoped(test_db: TestDb) -> None:
 
 
 async def test_app_lifespan_releases_session_listener_connection(
-    test_db: TestDb, monkeypatch: pytest.MonkeyPatch
+    test_db: TestDb,
+    lifespan_client: Callable[[], AbstractContextManager[TestClient]],
 ) -> None:
-    monkeypatch.setenv("TRANSPORT_MATTERS_DATABASE_URL", test_db.database_url)
-    get_settings.cache_clear()
-    app = create_app()
-    async with lifespan(app):
-        listener = app.state.session_event_listener
+    with lifespan_client() as client:
+        listener = client.app.state.session_event_listener
         assert isinstance(listener, SessionEventListener)
         listener_pid = await _wait_for_pid(lambda: listener.connection_pid)
-    try:
-        assert await _wait_for_backend_gone(test_db.database_url, listener_pid)
-    finally:
-        get_settings.cache_clear()
+    assert await _wait_for_backend_gone(test_db.database_url, listener_pid)
 
 
 async def test_lifespan_runs_session_space_backfill_when_database_enabled(
-    test_db: TestDb,
+    lifespan_client: Callable[[], AbstractContextManager[TestClient]],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     calls: list[str] = []
@@ -486,15 +483,9 @@ async def test_lifespan_runs_session_space_backfill_when_database_enabled(
         calls.append(owner)
         return SessionSpaceBackfillResult(scanned=1, resolved=1)
 
-    monkeypatch.setenv("TRANSPORT_MATTERS_DATABASE_URL", test_db.database_url)
     monkeypatch.setattr("transport_matters.main.backfill_session_spaces", fake_backfill)
-    get_settings.cache_clear()
-    app = create_app()
-    try:
-        async with lifespan(app):
-            pass
-    finally:
-        get_settings.cache_clear()
+    with lifespan_client():
+        pass
 
     assert calls == ["local"]
 
@@ -522,7 +513,8 @@ async def test_lifespan_skips_session_space_backfill_without_database(
 
 
 async def test_lifespan_listener_start_failure_keeps_routes_unavailable(
-    test_db: TestDb, monkeypatch: pytest.MonkeyPatch
+    lifespan_client: Callable[[], AbstractContextManager[TestClient]],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     class FailingListener:
         def __init__(self, *_args: object, **_kwargs: object) -> None:
@@ -534,19 +526,11 @@ async def test_lifespan_listener_start_failure_keeps_routes_unavailable(
         async def aclose(self) -> None:
             self.closed = True
 
-    monkeypatch.setenv("TRANSPORT_MATTERS_DATABASE_URL", test_db.database_url)
     monkeypatch.setattr("transport_matters.main.SessionEventListener", FailingListener)
-    get_settings.cache_clear()
-    app = create_app()
-    try:
-        async with lifespan(app):
-            assert app.state.session_pool is None
-            transport = ASGITransport(app=app)
-            async with AsyncClient(transport=transport, base_url="http://test") as client:
-                response = await client.get("/v1/sessions")
-            assert response.status_code == 503
-    finally:
-        get_settings.cache_clear()
+    with lifespan_client() as client:
+        assert client.app.state.session_pool is None
+        response = client.get("/v1/sessions")
+    assert response.status_code == 503
 
 
 async def test_lifespan_degrades_when_database_unreachable(
@@ -555,18 +539,16 @@ async def test_lifespan_degrades_when_database_unreachable(
     # A configured-but-unreachable store must DEGRADE (503), not crash backend startup.
     # The launch-path preflight hard-blocks unreachable stores; this is the hosted/server
     # layer where the contract is degrade-not-crash.
-    monkeypatch.setenv("TRANSPORT_MATTERS_DATABASE_URL", "postgresql://u:p@127.0.0.1:1/none")
-    get_settings.cache_clear()
-    app = create_app()
-    try:
-        async with lifespan(app):
-            assert app.state.session_pool is None
-            transport = ASGITransport(app=app)
-            async with AsyncClient(transport=transport, base_url="http://test") as client:
-                response = await client.get("/v1/sessions")
-            assert response.status_code == 503
-    finally:
-        get_settings.cache_clear()
+    settings = get_settings().model_copy(
+        update={"session_store_url": "postgresql://u:p@127.0.0.1:1/tm_test_unreachable"}
+    )
+    app = create_app(settings=settings)
+    async with lifespan(app):
+        assert app.state.session_pool is None
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            response = await client.get("/v1/sessions")
+        assert response.status_code == 503
 
 
 def test_main_app_is_built_lazily_not_at_import() -> None:
@@ -584,7 +566,8 @@ def test_main_app_is_built_lazily_not_at_import() -> None:
 
 
 async def test_lifespan_fails_fast_on_migration_failure(
-    test_db: TestDb, monkeypatch: pytest.MonkeyPatch
+    lifespan_client: Callable[[], AbstractContextManager[TestClient]],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     # A CONFIRMED migration failure on a reachable DB must fail-fast (not degrade).
     from transport_matters.session.migrate import MigrationError
@@ -592,16 +575,10 @@ async def test_lifespan_fails_fast_on_migration_failure(
     def _broken_migration(_database_url: str) -> None:
         raise MigrationError("schema upgrade failed")
 
-    monkeypatch.setenv("TRANSPORT_MATTERS_DATABASE_URL", test_db.database_url)
     monkeypatch.setattr("transport_matters.main.apply_migrations", _broken_migration)
-    get_settings.cache_clear()
-    app = create_app()
-    try:
-        with pytest.raises(MigrationError):
-            async with lifespan(app):
-                pass
-    finally:
-        get_settings.cache_clear()
+    with pytest.raises(MigrationError):
+        with lifespan_client():
+            pass
 
 
 async def _seed_sessions(conn: AsyncConnection[DictRow]) -> None:
