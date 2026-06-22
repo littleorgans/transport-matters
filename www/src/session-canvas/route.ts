@@ -41,6 +41,28 @@ export function defaultCanvasId(launch: CanvasLaunchContext): string {
   return launch.workspaceHash ?? "direct-local";
 }
 
+/**
+ * In-place URL for a worktree switch: set `space_id` + `worktree_id` EXACTLY once on
+ * the current search, and drop any pinned `canvas_id` so the canvas re-keys to the new
+ * Space's default rather than staying pinned to the old canvas. Hand the result to
+ * `history.replaceState` — NEVER to `navigateToRoute`, which re-appends
+ * `window.location.search` and would yield a double-"?" URL that corrupts `worktree_id`
+ * on reload.
+ */
+export function worktreeSwitchUrl(
+  pathname: string,
+  search: string,
+  spaceId: string,
+  worktreeId: string,
+): string {
+  const params = new URLSearchParams(search);
+  params.set("space_id", spaceId);
+  params.set("worktree_id", worktreeId);
+  params.delete("canvas_id");
+  const query = params.toString();
+  return query ? `${pathname}?${query}` : pathname;
+}
+
 export function isStressCanvas(search: string | URLSearchParams): boolean {
   const params = typeof search === "string" ? new URLSearchParams(search) : search;
   return params.get("stress") === "1";

@@ -529,8 +529,10 @@ export interface RunLookupOptions {
 export async function listRuns(filters?: RunFilters): Promise<RunView[]> {
   const query = new URLSearchParams();
   if (filters?.state !== undefined) query.set("state", filters.state);
-  if (filters?.spaceId !== undefined) query.set("space_id", filters.spaceId);
-  if (filters?.worktreeId !== undefined) query.set("worktree_id", filters.worktreeId);
+  // camelCase to match the backend Query aliases (run_routes.py list_runs:
+  // alias="spaceId"/"worktreeId"); snake_case keys are silently ignored.
+  if (filters?.spaceId !== undefined) query.set("spaceId", filters.spaceId);
+  if (filters?.worktreeId !== undefined) query.set("worktreeId", filters.worktreeId);
   const suffix = query.toString();
   const response = await requestJson<{ items: RunView[]; nextCursor: string | null }>(
     suffix ? `/v1/runs?${suffix}` : "/v1/runs",

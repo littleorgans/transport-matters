@@ -313,6 +313,14 @@ describe("listRuns", () => {
     expect(fetchMock).toHaveBeenCalledWith("/v1/runs?state=RUNNING");
   });
 
+  it("forwards space/worktree filters as camelCase query params (backend Query aliases)", async () => {
+    const fetchMock = stubFetch({ items: [], nextCursor: null });
+
+    await listRuns({ spaceId: "space-1", worktreeId: "wt-1" });
+
+    expect(fetchMock).toHaveBeenCalledWith("/v1/runs?spaceId=space-1&worktreeId=wt-1");
+  });
+
   it("throws on a non-OK list response", async () => {
     stubFetch({ detail: "boom" }, 500);
 

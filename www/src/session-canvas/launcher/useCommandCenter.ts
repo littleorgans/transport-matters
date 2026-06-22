@@ -8,7 +8,6 @@ import {
   useState,
 } from "react";
 import type { CanvasGestureModifier } from "../../keybindings/gestureModifier";
-import type { SpaceSummary } from "../../types";
 import {
   type CommandRow,
   createRootNavFrame,
@@ -28,6 +27,7 @@ import {
 import { useLauncherHotkeys } from "./useLauncherHotkeys";
 import { useLauncherRows } from "./useLauncherRows";
 import { useRuntimeTemplates } from "./useRuntimeTemplates";
+import { useSpaces } from "./useSpaces";
 
 export interface UseCommandCenterArgs {
   /** Leaf command dispatcher; the canvas binds these to its store/handlers. */
@@ -38,8 +38,6 @@ export interface UseCommandCenterArgs {
   canvasGestureModifier: CanvasGestureModifier;
   /** Current persisted bypass-permissions flag, shown on the Settings toggle. */
   bypassPermissions: boolean;
-  /** Detected Spaces for the Workdir scope (sourced from useSpaces). */
-  spaces: SpaceSummary[];
   /** The canvas's rooted worktree, marked "Current" in the Space/Worktree rows. */
   activeWorktreeId: string | null;
 }
@@ -194,7 +192,6 @@ export function useCommandCenter({
   themeName,
   canvasGestureModifier,
   bypassPermissions,
-  spaces,
   activeWorktreeId,
 }: UseCommandCenterArgs) {
   const [open, setOpen] = useState(false);
@@ -217,6 +214,10 @@ export function useCommandCenter({
   const restoreFocusRef = useRef<HTMLElement | null>(null);
 
   const { templates, status, retry } = useRuntimeTemplates(hasOpened);
+  // Lazy like the specialist fleet: only fetch /v1/spaces once the palette has been
+  // opened, so a never-opened command center never hits the endpoint (matches the
+  // useSpaces docstring instead of eager-fetching on every canvas mount).
+  const spaces = useSpaces(hasOpened);
 
   const close = useCallback(() => {
     setOpen(false);

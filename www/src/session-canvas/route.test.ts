@@ -4,6 +4,7 @@ import {
   isStressCanvas,
   parseCanvasLaunchContext,
   selectRootRoute,
+  worktreeSwitchUrl,
 } from "./route";
 
 describe("session canvas route", () => {
@@ -97,5 +98,31 @@ describe("defaultCanvasId", () => {
   it("falls back to the legacy workspaceHash, then direct-local", () => {
     expect(defaultCanvasId({ ...base, workspaceHash: "hash-1" })).toBe("hash-1");
     expect(defaultCanvasId(base)).toBe("direct-local");
+  });
+});
+
+describe("worktreeSwitchUrl", () => {
+  it("sets space_id/worktree_id exactly once on a non-empty search and drops a pinned canvas_id", () => {
+    const url = worktreeSwitchUrl(
+      "/canvas",
+      "?workspace_hash=h&canvas_id=pinned",
+      "space-1",
+      "wt-1",
+    );
+    // Exactly ONE "?" — regression guard against the navigateToRoute double-append.
+    expect(url.match(/\?/g)).toHaveLength(1);
+    // On reload the route re-parses this query: worktree_id must be clean, not garbage.
+    const launch = parseCanvasLaunchContext(new URL(`https://x${url}`).search);
+    expect(launch.spaceId).toBe("space-1");
+    expect(launch.worktreeId).toBe("wt-1");
+    expect(launch.workspaceHash).toBe("h");
+    // A pinned canvas_id is dropped so the canvas re-keys to the new Space's default.
+    expect(launch.canvasId).toBeNull();
+  });
+
+  it("builds a clean query from an empty search", () => {
+    expect(worktreeSwitchUrl("/canvas", "", "space-1", "wt-1")).toBe(
+      "/canvas?space_id=space-1&worktree_id=wt-1",
+    );
   });
 });

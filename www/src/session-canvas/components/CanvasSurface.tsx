@@ -13,7 +13,7 @@ import type { LauncherCommand } from "../launcher/commandModel";
 import { useCanvasStore } from "../model/canvasStore";
 import { useCapturedRunStore } from "../model/capturedRunStore";
 import { openPaneIds } from "../model/layoutPlanning";
-import { type CanvasLaunchContext, parseCanvasLaunchContext } from "../route";
+import { type CanvasLaunchContext, parseCanvasLaunchContext, worktreeSwitchUrl } from "../route";
 import { bodyDragForRef, PICKER_PANE_ID, renderPaneContent } from "../viewers/registry";
 import { AmbientBackdrop } from "./AmbientBackdrop";
 import { CanvasDropHint } from "./CanvasDropHint";
@@ -88,7 +88,15 @@ function useCanvasCommandHandler({
     (command: LauncherCommand) => {
       switch (command.kind) {
         case "spawn":
-          addCapturedRun(command.harness, command.runtimeTemplate);
+          try {
+            // addCapturedRun throws on a canvas with no rooted worktree
+            // (plain/legacy /canvas, defaultWorktreeId === null): a captured run
+            // can't resolve a cwd. Surface it as a non-fatal error instead of
+            // letting it bubble out of the event handler and crash the surface.
+            addCapturedRun(command.harness, command.runtimeTemplate);
+          } catch (error) {
+            console.error("Failed to spawn captured run:", error);
+          }
           return;
         case "reset-view":
           resetViewport();
@@ -109,11 +117,22 @@ function useCanvasCommandHandler({
           setCanvasGestureModifier(command.modifier);
           return;
         case "select-worktree": {
-          const params = new URLSearchParams(window.location.search);
-          params.set("space_id", command.spaceId);
-          params.set("worktree_id", command.worktreeId);
-          navigateToRoute(`${window.location.pathname}?${params.toString()}`);
-          useCanvasStore.getState().initializeCanvas(parseCanvasLaunchContext(params));
+          // Set the query EXACTLY once via replaceState (passing a query-bearing path
+          // to navigateToRoute would re-append window.location.search → a double-"?"
+          // URL that corrupts worktree_id on reload), then re-root the canvas in place.
+          window.history.replaceState(
+            {},
+            "",
+            worktreeSwitchUrl(
+              window.location.pathname,
+              window.location.search,
+              command.spaceId,
+              command.worktreeId,
+            ),
+          );
+          useCanvasStore
+            .getState()
+            .initializeCanvas(parseCanvasLaunchContext(window.location.search));
           return;
         }
       }
