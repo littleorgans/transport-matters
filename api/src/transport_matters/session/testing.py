@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from hashlib import sha256
+from typing import ClassVar
 from urllib.parse import quote, urlsplit, urlunsplit
 from uuid import uuid4
 
@@ -15,6 +17,7 @@ from transport_matters.session.pool import connect
 @dataclass(frozen=True)
 class TestDb:
     __test__ = False
+    _template_names: ClassVar[dict[str, str]] = {}
 
     admin_url: str
     database_url: str
@@ -25,15 +28,36 @@ class TestDb:
         resolved_admin_url = admin_url or resolve_test_database_url(Settings.load())
         database_name = f"{TEST_DB_PREFIX}{os.getpid()}_{uuid4().hex}"
         database_url = database_url_for(resolved_admin_url, database_name)
+        template_name = cls.ensure_template(resolved_admin_url)
         with connect(resolved_admin_url, autocommit=True) as conn:
+            conn.execute(
+                sql.SQL("CREATE DATABASE {} TEMPLATE {}").format(
+                    sql.Identifier(database_name),
+                    sql.Identifier(template_name),
+                )
+            )
+        return cls(resolved_admin_url, database_url, database_name)
+
+    @classmethod
+    def ensure_template(cls, admin_url: str) -> str:
+        worker = _worker_name()
+        key = f"{admin_url}|{worker}"
+        if key in cls._template_names:
+            return cls._template_names[key]
+
+        digest = sha256(f"{admin_url}|{worker}|{os.getpid()}".encode()).hexdigest()[:12]
+        database_name = f"{TEST_DB_PREFIX}template_{worker}_{digest}"
+        database_url = database_url_for(admin_url, database_name)
+        with connect(admin_url, autocommit=True) as conn:
             conn.execute(sql.SQL("CREATE DATABASE {}").format(sql.Identifier(database_name)))
-        test_db = cls(resolved_admin_url, database_url, database_name)
+        template_db = cls(admin_url, database_url, database_name)
         try:
-            test_db.migrate()
+            template_db.migrate()
         except Exception:
-            test_db.drop()
+            template_db.drop()
             raise
-        return test_db
+        cls._template_names[key] = database_name
+        return database_name
 
     def migrate(self) -> None:
         upgrade_to_head(self.database_url)
@@ -60,3 +84,9 @@ def database_url_for(admin_url: str, database_name: str) -> str:
     return urlunsplit(
         (parts.scheme, parts.netloc, f"/{quote(database_name)}", parts.query, parts.fragment)
     )
+
+
+def _worker_name() -> str:
+    raw = os.environ.get("PYTEST_XDIST_WORKER", "gw_main")
+    safe = "".join(char if char.isalnum() else "_" for char in raw.lower())
+    return safe[:16] or "gw_main"
