@@ -253,6 +253,16 @@ def test_missing_database_url_errors_with_guidance(
         resolve_database_url(Settings.load_from(tmp_path / "missing-settings.toml"))
 
 
+def test_missing_test_database_url_errors_with_fallback_guidance(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("TRANSPORT_MATTERS_DATABASE_URL", raising=False)
+    monkeypatch.delenv("TRANSPORT_MATTERS_TEST_DATABASE_URL", raising=False)
+
+    with pytest.raises(MissingDatabaseConfigError, match="set TRANSPORT_MATTERS_DATABASE_URL"):
+        resolve_test_database_url(Settings.load_from(tmp_path / "missing-settings.toml"))
+
+
 def test_session_connect_error_does_not_attempt_connection(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
