@@ -45,7 +45,6 @@ _INHERITED_LEAK_KEYS = (
 _PRESERVED_PREFIX_KEYS = frozenset(
     {
         env_keys.HOME,
-        env_keys.DATABASE_URL,
         env_keys.TEST_DATABASE_URL,
         env_keys.DOCKER_PG_PORT,
     }
