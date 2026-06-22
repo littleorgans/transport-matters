@@ -11,15 +11,7 @@ from transport_matters.session.pool import create_async_pool
 from transport_matters.session.testing import TestDb
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Iterator
-
-
-def create_test_db() -> Iterator[TestDb]:
-    db = TestDb.create()
-    try:
-        yield db
-    finally:
-        db.drop()
+    from collections.abc import AsyncIterator
 
 
 @asynccontextmanager
