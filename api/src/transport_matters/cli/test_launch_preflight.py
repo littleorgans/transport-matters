@@ -8,7 +8,7 @@ import pytest
 import typer
 from typer.testing import CliRunner
 
-from transport_matters import config, env_keys
+from transport_matters import config
 from transport_matters.cli import launch_runtime, main
 from transport_matters.session_store_preflight import check_session_store
 
@@ -71,16 +71,10 @@ def test_preflight_returns_when_store_ok(monkeypatch: pytest.MonkeyPatch) -> Non
 
 def test_channel_ensure_db_makes_launch_preflight_pass(
     temporary_channel_database: TestDb,
-    channel_spec_factory: Callable[[str], ChannelSpec],
-    patch_channel_specs: Callable[..., None],
+    point_cli_at_channel_database: Callable[..., ChannelSpec],
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    spec = channel_spec_factory(temporary_channel_database.database_name)
-    patch_channel_specs(spec)
-    monkeypatch.setenv(env_keys.HOME, str(tmp_path))
-    monkeypatch.setenv(env_keys.DATABASE_URL, temporary_channel_database.admin_url)
-    config.get_settings.cache_clear()
+    point_cli_at_channel_database(temporary_channel_database, home=tmp_path)
 
     result = runner.invoke(main, ["channel", "ensure-db", "tmp"])
 

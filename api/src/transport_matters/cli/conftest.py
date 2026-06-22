@@ -19,6 +19,7 @@ from uuid import uuid4
 
 import pytest
 
+from transport_matters import config, env_keys
 from transport_matters.channel import ChannelSpec
 from transport_matters.session.testing import TestDb, database_url_for
 
@@ -73,10 +74,8 @@ def recently_closed_port() -> Iterator[int]:
 
 @pytest.fixture
 def temporary_channel_database() -> Iterator[TestDb]:
-    from transport_matters import config
-
     admin_url = config.resolve_test_database_url(config.Settings.load())
-    database_name = f"tm_channel_{os.getpid()}_{uuid4().hex}"
+    database_name = f"{config.TEST_DB_PREFIX}channel_{os.getpid()}_{uuid4().hex}"
     test_db = TestDb(admin_url, database_url_for(admin_url, database_name), database_name)
     try:
         yield test_db
@@ -119,6 +118,25 @@ def patch_channel_specs(
         )
 
     return patch
+
+
+@pytest.fixture
+def point_cli_at_channel_database(
+    channel_spec_factory: Callable[[str], ChannelSpec],
+    patch_channel_specs: Callable[..., None],
+    monkeypatch: pytest.MonkeyPatch,
+) -> Callable[..., ChannelSpec]:
+    def point(test_db: TestDb, *, home: Path | None = None) -> ChannelSpec:
+        spec = channel_spec_factory(test_db.database_name)
+        patch_channel_specs(spec)
+        if home is not None:
+            monkeypatch.setenv(env_keys.HOME, str(home))
+        monkeypatch.setenv(env_keys.CHANNEL, spec.id)
+        monkeypatch.setenv(env_keys.DATABASE_URL, test_db.admin_url)
+        config.get_settings.cache_clear()
+        return spec
+
+    return point
 
 
 @pytest.fixture

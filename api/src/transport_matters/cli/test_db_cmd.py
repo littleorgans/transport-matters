@@ -4,44 +4,41 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-import pytest
+from psycopg import sql
 from typer.testing import CliRunner
 
-from transport_matters import config
+from transport_matters import config, env_keys
 from transport_matters.cli import main
 from transport_matters.session.pool import connect
-from transport_matters.session.testing import TestDb
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Callable
+
+    import pytest
+
+    from transport_matters.session.testing import TestDb
 
 runner = CliRunner()
 
 
-@pytest.fixture
-def fresh_db() -> Iterator[TestDb]:
-    db = TestDb.create()
-    try:
-        yield db
-    finally:
-        db.drop()
-
-
-def test_db_status_reports_up_to_date(fresh_db: TestDb, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("TRANSPORT_MATTERS_DATABASE_URL", fresh_db.database_url)
-    config.get_settings.cache_clear()
+def test_db_status_reports_up_to_date(
+    test_db: TestDb,
+    point_cli_at_channel_database: Callable[..., object],
+) -> None:
+    point_cli_at_channel_database(test_db)
 
     result = runner.invoke(main, ["db", "status"])
 
     assert result.exit_code == 0, result.output
     assert "up to date" in result.output
+    assert test_db.database_name in result.output
     assert ":***@" in result.output  # password redacted
     assert ":tm@" not in result.output
 
 
 def test_db_status_unconfigured_exits_2(tmp_path: object, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("TRANSPORT_MATTERS_HOME", str(tmp_path))
-    monkeypatch.delenv("TRANSPORT_MATTERS_DATABASE_URL", raising=False)
+    monkeypatch.setenv(env_keys.HOME, str(tmp_path))
+    monkeypatch.delenv(env_keys.DATABASE_URL, raising=False)
     config.get_settings.cache_clear()
 
     result = runner.invoke(main, ["db", "status"])
@@ -50,17 +47,16 @@ def test_db_status_unconfigured_exits_2(tmp_path: object, monkeypatch: pytest.Mo
 
 
 def test_db_upgrade_brings_unmigrated_db_to_head(
-    fresh_db: TestDb, monkeypatch: pytest.MonkeyPatch
+    temporary_channel_database: TestDb,
+    point_cli_at_channel_database: Callable[..., object],
 ) -> None:
-    with connect(fresh_db.database_url, autocommit=True) as conn:
-        conn.execute("DROP TABLE IF EXISTS event_dead_letter CASCADE")
-        conn.execute("DROP TABLE IF EXISTS event_artifact CASCADE")
-        conn.execute("DROP TABLE IF EXISTS event CASCADE")
-        conn.execute("DROP TABLE IF EXISTS artifact CASCADE")
-        conn.execute("DROP TABLE IF EXISTS session CASCADE")
-        conn.execute("DROP TABLE IF EXISTS alembic_version")
-    monkeypatch.setenv("TRANSPORT_MATTERS_DATABASE_URL", fresh_db.database_url)
-    config.get_settings.cache_clear()
+    with connect(temporary_channel_database.admin_url, autocommit=True) as conn:
+        conn.execute(
+            sql.SQL("CREATE DATABASE {}").format(
+                sql.Identifier(temporary_channel_database.database_name)
+            )
+        )
+    point_cli_at_channel_database(temporary_channel_database)
 
     result = runner.invoke(main, ["db", "upgrade"])
 
