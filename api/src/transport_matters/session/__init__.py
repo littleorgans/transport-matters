@@ -1,6 +1,5 @@
 from transport_matters.session.artifacts import ARTIFACT_HASH_ALGO, artifact_hash
 from transport_matters.session.async_dao import AsyncSessionDao
-from transport_matters.session.dao import SessionDao
 from transport_matters.session.models import (
     SESSION_PURPOSE_VALUES,
     SESSION_VISIBILITY_VALUES,
@@ -41,7 +40,6 @@ __all__ = [
     "EventReadRow",
     "EventRow",
     "InlineArtifact",
-    "SessionDao",
     "SessionPurpose",
     "SessionRow",
     "SessionStatus",
