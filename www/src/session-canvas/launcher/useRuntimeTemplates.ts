@@ -1,11 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
 import { fetchRuntimeTemplates } from "../../api";
 import type { RuntimeTemplateSummary } from "../../types";
-import type { AgentsStatus } from "./commandModel";
+import { deriveFetchStatus, type FetchStatus } from "./commandModel";
 
 export interface RuntimeTemplatesResult {
   templates: RuntimeTemplateSummary[];
-  status: AgentsStatus;
+  status: FetchStatus;
   retry: () => void;
 }
 
@@ -24,18 +24,9 @@ export function useRuntimeTemplates(enabled = true): RuntimeTemplatesResult {
     staleTime: 30_000,
   });
 
-  const templates = query.data ?? [];
-  const status: AgentsStatus = query.isError
-    ? "error"
-    : query.data === undefined
-      ? "loading"
-      : templates.length === 0
-        ? "empty"
-        : "populated";
-
   return {
-    templates,
-    status,
+    templates: query.data ?? [],
+    status: deriveFetchStatus(query.isError, query.data),
     retry: () => {
       void query.refetch();
     },

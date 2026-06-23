@@ -1,12 +1,4 @@
-import {
-  type KeyboardEvent,
-  type SetStateAction,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { type SetStateAction, useCallback, useMemo, useRef, useState } from "react";
 import type { CanvasGestureModifier } from "../../keybindings/gestureModifier";
 import {
   type CommandRow,
@@ -25,8 +17,10 @@ import {
   updateTopFrame,
 } from "./commandModel";
 import { useLauncherHotkeys } from "./useLauncherHotkeys";
+import { useLauncherInputKeys } from "./useLauncherInputKeys";
 import { useLauncherRows } from "./useLauncherRows";
 import { useRuntimeTemplates } from "./useRuntimeTemplates";
+import { useSessionHistory } from "./useSessionHistory";
 import { useSpaces } from "./useSpaces";
 
 export interface UseCommandCenterArgs {
@@ -40,6 +34,8 @@ export interface UseCommandCenterArgs {
   bypassPermissions: boolean;
   /** The canvas's rooted worktree, marked "Current" in the Space/Worktree rows. */
   activeWorktreeId: string | null;
+  /** The canvas workspace the Sessions scope browses transcript history for. */
+  workspaceHash: string | null;
 }
 
 function assertNever(value: never): never {
@@ -49,6 +45,7 @@ function assertNever(value: never): never {
 interface LauncherActionInterpreterArgs {
   onCommand: (command: LauncherCommand) => void;
   retry: () => void;
+  retrySessions: () => void;
   close: () => void;
   descend: (scope: LauncherScope, originValue: string, param?: string) => void;
 }
@@ -70,12 +67,13 @@ interface NavFrameController {
 function useLauncherActionInterpreter({
   onCommand,
   retry,
+  retrySessions,
   close,
   descend,
 }: LauncherActionInterpreterArgs) {
   const effectSink = useMemo<Record<LauncherEffect, () => void>>(
-    () => ({ "retry-agents": retry }),
-    [retry],
+    () => ({ "retry-agents": retry, "retry-sessions": retrySessions }),
+    [retry, retrySessions],
   );
 
   const fire = useCallback(
@@ -193,6 +191,7 @@ export function useCommandCenter({
   canvasGestureModifier,
   bypassPermissions,
   activeWorktreeId,
+  workspaceHash,
 }: UseCommandCenterArgs) {
   const [open, setOpen] = useState(false);
   const {
@@ -218,6 +217,13 @@ export function useCommandCenter({
   // opened, so a never-opened command center never hits the endpoint (matches the
   // useSpaces docstring instead of eager-fetching on every canvas mount).
   const spaces = useSpaces(hasOpened);
+  // Same laziness for the Sessions scope: browse transcript history for the current
+  // workspace, fetched only once the palette has been opened.
+  const {
+    sessions,
+    status: sessionsStatus,
+    retry: retrySessions,
+  } = useSessionHistory(workspaceHash, hasOpened);
 
   const close = useCallback(() => {
     setOpen(false);
@@ -270,12 +276,15 @@ export function useCommandCenter({
     bypassPermissions,
     spaces,
     activeWorktreeId,
+    sessions,
+    sessionsStatus,
     setHighlighted,
   });
 
   const applyGesture = useLauncherActionInterpreter({
     onCommand,
     retry,
+    retrySessions,
     close,
     descend,
   });
@@ -288,48 +297,16 @@ export function useCommandCenter({
     [rowByValue, applyGesture],
   );
 
-  // Own Escape so it ALWAYS closes the whole palette, from any state (listbox
-  // open, a scope entered, query empty or not); ←/⌫ remain the scope-pop grammar.
-  // Ark's combobox dismisses Escape via a DOCUMENT-level capture listener that
-  // only closes its own listbox / clears the input. A WINDOW capture listener
-  // runs earlier in the capture path (window precedes document), so we close the
-  // palette and stopPropagation before Ark can consume the key. Active only while
-  // open.
-  useEffect(() => {
-    if (!open) return;
-    const onEscapeCapture = (event: globalThis.KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      event.preventDefault();
-      event.stopPropagation();
-      close();
-    };
-    window.addEventListener("keydown", onEscapeCapture, true);
-    return () => window.removeEventListener("keydown", onEscapeCapture, true);
-  }, [open, close]);
-
-  const onInputKeyDown = useCallback(
-    (event: KeyboardEvent<HTMLInputElement>) => {
-      const caret = event.currentTarget.selectionStart ?? 0;
-      if (event.key === "ArrowRight" && caret >= query.length) {
-        const row = highlighted ? rowByValue.get(highlighted) : undefined;
-        if (row?.action) {
-          const lifecycle = interactionFor(row.action).advance;
-          if (lifecycle !== "none") {
-            event.preventDefault();
-            applyGesture(row, lifecycle);
-          }
-        }
-        return;
-      }
-      const popsToRoot =
-        event.key === "ArrowLeft" ? caret === 0 : event.key === "Backspace" && query.length === 0;
-      if (popsToRoot && canBack) {
-        event.preventDefault();
-        back();
-      }
-    },
-    [query.length, highlighted, rowByValue, applyGesture, canBack, back],
-  );
+  const onInputKeyDown = useLauncherInputKeys({
+    open,
+    close,
+    query,
+    highlighted,
+    rowByValue,
+    applyGesture,
+    canBack,
+    back,
+  });
 
   return {
     open,
