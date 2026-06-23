@@ -14,11 +14,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi import status as http_status
 from fastapi.responses import StreamingResponse
 
+from transport_matters.api.v1.errors import raise_api_error
 from transport_matters.api.v1.exchanges import exchange_detail_route
 from transport_matters.api.v1.session_models import (
     DEFAULT_SESSIONS_LIMIT,
     MAX_SESSIONS_LIMIT,
-    ApiError,
     ListSessionsResponse,
     SessionEventListResponse,
     SessionView,
@@ -66,7 +66,7 @@ STREAM_FETCH_LIMIT = 1000
 async def _session_pool(request: Request) -> AsyncConnectionPool[AsyncConnection[DictRow]]:
     pool = optional_session_pool(request)
     if pool is None:
-        _raise_api_error(
+        raise_api_error(
             http_status.HTTP_503_SERVICE_UNAVAILABLE,
             "session_store_unavailable",
             "session store unavailable",
@@ -85,18 +85,8 @@ def _response_payload(response: Any) -> dict[str, Any]:
     return cast("dict[str, Any]", response.model_dump(mode="json", by_alias=True))
 
 
-def _api_error(code: str, message: str, details: object | None = None) -> dict[str, object]:
-    return _response_payload(ApiError(code=code, message=message, details=details))
-
-
-def _raise_api_error(
-    status_code: int, code: str, message: str, details: object | None = None
-) -> NoReturn:
-    raise HTTPException(status_code=status_code, detail=_api_error(code, message, details))
-
-
 def _not_found(session_id: str) -> NoReturn:
-    _raise_api_error(
+    raise_api_error(
         http_status.HTTP_404_NOT_FOUND,
         "session_not_found",
         f"session {session_id!r} was not found",
@@ -134,18 +124,18 @@ def _decode_cursor(cursor: str, *, filters: dict[str, object]) -> int:
         padded = cursor + "=" * (-len(cursor) % 4)
         payload = json.loads(base64.urlsafe_b64decode(padded.encode()).decode())
     except binascii.Error, UnicodeDecodeError, ValueError, json.JSONDecodeError:
-        _raise_api_error(http_status.HTTP_400_BAD_REQUEST, "invalid_cursor", "invalid cursor")
+        raise_api_error(http_status.HTTP_400_BAD_REQUEST, "invalid_cursor", "invalid cursor")
     if not isinstance(payload, dict):
-        _raise_api_error(http_status.HTTP_400_BAD_REQUEST, "invalid_cursor", "invalid cursor")
+        raise_api_error(http_status.HTTP_400_BAD_REQUEST, "invalid_cursor", "invalid cursor")
     if payload.get("filters") != filters:
-        _raise_api_error(
+        raise_api_error(
             http_status.HTTP_400_BAD_REQUEST,
             "invalid_cursor",
             "cursor does not match the active filters",
         )
     offset = payload.get("offset")
     if not isinstance(offset, int) or offset < 0:
-        _raise_api_error(http_status.HTTP_400_BAD_REQUEST, "invalid_cursor", "invalid cursor")
+        raise_api_error(http_status.HTTP_400_BAD_REQUEST, "invalid_cursor", "invalid cursor")
     return offset
 
 
@@ -166,7 +156,7 @@ async def list_sessions(
         validated_purpose = validate_session_purpose(purpose)
         validated_visibility = validate_session_visibility(visibility)
     except ValueError as exc:
-        _raise_api_error(http_status.HTTP_400_BAD_REQUEST, "invalid_request", str(exc))
+        raise_api_error(http_status.HTTP_400_BAD_REQUEST, "invalid_request", str(exc))
     filters = _cursor_filter_key(
         owner=owner,
         workspace_id=workspace_id,
