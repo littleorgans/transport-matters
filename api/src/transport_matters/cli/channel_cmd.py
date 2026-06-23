@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 from dataclasses import dataclass
@@ -30,7 +31,14 @@ from transport_matters.session.migrate import MigrationError, apply_migrations, 
 from transport_matters.session.pool import connect
 from transport_matters.storage_roots import default_storage_root
 
-from .desktop_runtime import desktop_record_path, read_live_desktop_record, stop_desktop_record
+from .desktop_runtime import (
+    DesktopRuntimeDiscoveryError,
+    DesktopRuntimeStatus,
+    desktop_record_path,
+    desktop_runtime_status_to_json,
+    discover_desktop_runtime,
+    stop_desktop_record,
+)
 from .identity import CLI_COMMAND
 
 if TYPE_CHECKING:
@@ -104,9 +112,7 @@ def list_channels() -> None:
                 spec.id,
                 str(spec.home),
                 spec.database_name,
-                str(spec.proxy_port),
-                str(spec.web_port),
-                _desktop_pid(spec),
+                *_desktop_columns(spec),
                 spec.electron_app_name,
                 spec.badge.text if spec.badge is not None else "none",
             )
@@ -118,11 +124,57 @@ def list_channels() -> None:
         typer.echo("  ".join(value.ljust(widths[index]) for index, value in enumerate(row)))
 
 
-def _desktop_pid(spec: ChannelSpec) -> str:
-    record = read_live_desktop_record(
-        desktop_record_path(default_storage_root(spec.id).expanduser().resolve())
+def _desktop_columns(spec: ChannelSpec) -> tuple[str, str, str]:
+    try:
+        status = _desktop_status(spec, health_timeout_ms=100)
+    except DesktopRuntimeDiscoveryError:
+        return str(spec.proxy_port), str(spec.web_port), ""
+    if status.state != "live":
+        return str(spec.proxy_port), str(spec.web_port), ""
+    return (
+        str(status.proxy_port) if status.proxy_port is not None else str(spec.proxy_port),
+        str(status.web_port) if status.web_port is not None else str(spec.web_port),
+        str(status.pid) if status.pid is not None else "",
     )
-    return "" if record is None else str(record.pid)
+
+
+@channel_app.command("status")
+def status(
+    channel: Annotated[
+        str | None,
+        typer.Argument(
+            help="Channel id to inspect. Defaults to TRANSPORT_MATTERS_CHANNEL or stable.",
+        ),
+    ] = None,
+    json_output: Annotated[
+        bool,
+        typer.Option("--json", help="Emit the desktop runtime status as JSON."),
+    ] = False,
+) -> None:
+    """Print detached desktop backend status for a channel."""
+    spec = _resolve_channel_or_exit(channel)
+    try:
+        runtime_status = _desktop_status(spec)
+    except DesktopRuntimeDiscoveryError as exc:
+        typer.secho(f"error: {exc.message}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(1) from exc
+
+    payload = desktop_runtime_status_to_json(runtime_status)
+    if json_output:
+        typer.echo(json.dumps(payload, sort_keys=True))
+        return
+    runtime = payload["runtime"]
+    typer.echo(f"{runtime['channel']}: {runtime['state']}")
+
+
+def _desktop_status(spec: ChannelSpec, *, health_timeout_ms: int = 500) -> DesktopRuntimeStatus:
+    return discover_desktop_runtime(
+        channel=spec.id,
+        storage_dir=default_storage_root(spec.id),
+        route="canvas",
+        cwd=Path.cwd(),
+        health_timeout_ms=health_timeout_ms,
+    )
 
 
 @channel_app.command("stop")

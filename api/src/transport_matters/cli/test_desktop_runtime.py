@@ -2,17 +2,23 @@
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import signal
 from typing import TYPE_CHECKING
 
+import pytest
+
 from transport_matters.cli.desktop_runtime import (
+    DesktopRuntimeDiscoveryError,
     DesktopRuntimeRecord,
     StopDesktopResult,
     desktop_log_path,
     desktop_record_path,
     desktop_runtime_dir,
+    desktop_runtime_status_to_json,
+    discover_desktop_runtime,
     is_pid_alive,
     read_live_desktop_record,
     stop_desktop_record,
@@ -37,6 +43,9 @@ def test_desktop_record_write_is_atomic_json(tmp_path: Path) -> None:
         proxy_port=8797,
         web_port=8798,
         log_path=str(desktop_log_path(tmp_path)),
+        cwd=str(tmp_path / "workspace"),
+        storage_dir=str(tmp_path),
+        version="1.2.3",
     )
 
     write_desktop_record(record_file, record)
@@ -45,6 +54,38 @@ def test_desktop_record_write_is_atomic_json(tmp_path: Path) -> None:
     assert loaded == record
     assert re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z", loaded.started_at)
     assert not list(record_file.parent.glob(".*.tmp"))
+
+
+def test_read_live_desktop_record_accepts_v1_record(tmp_path: Path) -> None:
+    record_file = desktop_record_path(tmp_path)
+    record_file.parent.mkdir(parents=True)
+    record_file.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "channel": "preview",
+                "pid": 1234,
+                "proxy_port": 8797,
+                "web_port": 8798,
+                "log_path": str(desktop_log_path(tmp_path)),
+                "started_at": "2026-06-23T07:00:00Z",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    loaded = read_live_desktop_record(record_file, pid_alive=lambda pid: pid == 1234)
+
+    assert loaded == DesktopRuntimeRecord(
+        channel="preview",
+        pid=1234,
+        proxy_port=8797,
+        web_port=8798,
+        log_path=str(desktop_log_path(tmp_path)),
+        started_at="2026-06-23T07:00:00Z",
+    )
+    assert loaded.instance == "channel"
+    assert loaded.version is None
 
 
 def test_is_pid_alive_reports_current_process_and_rejects_invalid_pid() -> None:
@@ -63,6 +104,9 @@ def test_read_live_desktop_record_unlinks_stale_record(tmp_path: Path) -> None:
             proxy_port=8797,
             web_port=8798,
             log_path=str(desktop_log_path(tmp_path)),
+            cwd=str(tmp_path / "workspace"),
+            storage_dir=str(tmp_path),
+            version="1.2.3",
         ),
     )
 
@@ -76,6 +120,133 @@ def test_read_live_desktop_record_rejects_malformed_payloads(tmp_path: Path) -> 
     record_file.write_text('{"schema_version":1,"pid":1234}', encoding="utf-8")
 
     assert read_live_desktop_record(record_file, pid_alive=lambda _pid: True) is None
+
+
+def test_discover_desktop_runtime_returns_absent_status(tmp_path: Path) -> None:
+    status = discover_desktop_runtime(
+        channel="preview",
+        storage_dir=tmp_path,
+        route="canvas",
+        cwd=tmp_path / "workspace",
+        health_timeout_ms=0,
+    )
+
+    assert desktop_runtime_status_to_json(status) == {
+        "runtime": {
+            "schemaVersion": 2,
+            "state": "absent",
+            "channel": "preview",
+            "instance": "channel",
+            "pid": None,
+            "proxyPort": None,
+            "webPort": None,
+            "apiBaseUrl": None,
+            "healthUrl": None,
+            "defaultRouteUrl": None,
+            "cwd": None,
+            "storageDir": str(tmp_path.resolve()),
+            "recordPath": str(desktop_record_path(tmp_path.resolve())),
+            "logPath": None,
+            "startedAt": None,
+            "version": None,
+        }
+    }
+
+
+@pytest.mark.parametrize(
+    ("payload", "reason"),
+    [
+        ("{", "invalid_json"),
+        ('{"schema_version":99}', "invalid_record"),
+    ],
+)
+def test_discover_desktop_runtime_raises_invalid_record(
+    tmp_path: Path, payload: str, reason: str
+) -> None:
+    record_file = desktop_record_path(tmp_path)
+    record_file.parent.mkdir(parents=True)
+    record_file.write_text(payload, encoding="utf-8")
+
+    with pytest.raises(DesktopRuntimeDiscoveryError) as exc_info:
+        discover_desktop_runtime(
+            channel="preview",
+            storage_dir=tmp_path,
+            route="canvas",
+            cwd=tmp_path / "workspace",
+            health_timeout_ms=0,
+        )
+
+    assert exc_info.value.code == "desktop_runtime_invalid"
+    assert exc_info.value.details is not None
+    assert exc_info.value.details["reason"] == reason
+    assert not record_file.exists()
+
+
+def test_discover_desktop_runtime_unlinks_stale_record(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    record_file = _write_preview_record(tmp_path, pid=1234)
+    monkeypatch.setattr("transport_matters.desktop_runtime.is_pid_alive", lambda _pid: False)
+
+    status = discover_desktop_runtime(
+        channel="preview",
+        storage_dir=tmp_path,
+        route="canvas",
+        cwd=tmp_path / "workspace",
+    )
+
+    payload = desktop_runtime_status_to_json(status)["runtime"]
+    assert payload["state"] == "stale"
+    assert payload["reason"] == "pid_not_running"
+    assert payload["pid"] == 1234
+    assert not record_file.exists()
+
+
+def test_discover_desktop_runtime_reports_unhealthy_when_health_probe_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _write_preview_record(tmp_path, pid=1234)
+    monkeypatch.setattr("transport_matters.desktop_runtime.is_pid_alive", lambda _pid: True)
+    monkeypatch.setattr(
+        "transport_matters.desktop_runtime.wait_for_port_ready",
+        lambda *_args, **_kwargs: False,
+    )
+
+    status = discover_desktop_runtime(
+        channel="preview",
+        storage_dir=tmp_path,
+        route="canvas",
+        cwd=tmp_path / "workspace",
+    )
+
+    payload = desktop_runtime_status_to_json(status)["runtime"]
+    assert payload["state"] == "unhealthy"
+    assert payload["reason"] == "health_probe_failed"
+    assert payload["webPort"] == 8798
+
+
+def test_discover_desktop_runtime_reports_live_payload(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _write_preview_record(tmp_path, pid=1234)
+    monkeypatch.setattr("transport_matters.desktop_runtime.is_pid_alive", lambda _pid: True)
+    monkeypatch.setattr(
+        "transport_matters.desktop_runtime.wait_for_port_ready",
+        lambda *_args, **_kwargs: True,
+    )
+
+    status = discover_desktop_runtime(
+        channel="preview",
+        storage_dir=tmp_path,
+        route="canvas",
+        cwd=tmp_path / "workspace",
+    )
+
+    payload = desktop_runtime_status_to_json(status)["runtime"]
+    assert payload["state"] == "live"
+    assert payload["apiBaseUrl"] == "http://127.0.0.1:8798"
+    assert payload["healthUrl"] == "http://127.0.0.1:8798/health"
+    assert str(payload["defaultRouteUrl"]).startswith("http://127.0.0.1:8798/canvas?")
 
 
 def test_stop_desktop_record_no_record_returns_nothing(tmp_path: Path) -> None:
@@ -189,6 +360,9 @@ def _write_preview_record(tmp_path: Path, *, pid: int) -> Path:
             proxy_port=8797,
             web_port=8798,
             log_path=str(desktop_log_path(tmp_path)),
+            cwd=str(tmp_path / "workspace"),
+            storage_dir=str(tmp_path),
+            version="1.2.3",
         ),
     )
     return record_file

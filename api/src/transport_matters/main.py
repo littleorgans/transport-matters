@@ -12,6 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from transport_matters.api.v1 import (
+    desktop_runtime,
     exchanges,
     meta,
     run_routes,
@@ -292,6 +293,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         tags=["exchanges"],
     )
     app.include_router(meta.run_router, prefix="/v1/runs/{run_id}/meta", tags=["meta"])
+    app.include_router(desktop_runtime.router, prefix="/v1", tags=["desktop-runtime"])
     app.include_router(stream.router, prefix="/v1", tags=["stream"])
     app.include_router(session_routes.router, prefix="/v1", tags=["sessions"])
     app.include_router(space_routes.router, prefix="/v1", tags=["spaces"])

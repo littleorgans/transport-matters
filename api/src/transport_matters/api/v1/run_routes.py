@@ -10,12 +10,13 @@ import json
 import os
 from typing import TYPE_CHECKING, Any, Literal, NoReturn, cast
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, WebSocket, WebSocketException
+from fastapi import APIRouter, Depends, Query, Request, WebSocket, WebSocketException
 from fastapi import status as http_status
 from pydantic import BaseModel, ConfigDict, Field
 from starlette.websockets import WebSocketDisconnect
 
 from transport_matters.api.v1 import terminal_bridge
+from transport_matters.api.v1.errors import raise_api_error
 from transport_matters.api.v1.run_continuation import (
     ContinuationSessionNotFound,
     build_continuation_launch_fields,
@@ -79,12 +80,6 @@ PublicRunState = Literal["RUNNING", "TERMINATING", "TERMINATED", "EXITED", "FAIL
 _PUBLIC_STATE_ALIASES: dict[RunState, PublicRunState] = {RunState.STARTING: "RUNNING"}
 
 router = APIRouter()
-
-
-class ApiError(BaseModel):
-    code: str
-    message: str
-    details: object | None = None
 
 
 class TerminalSizeModel(BaseModel):
@@ -168,35 +163,24 @@ def _run_manager(request: Request) -> RunManager:
     return get_run_manager_from_app(request.app)
 
 
-def _api_error(code: str, message: str, details: object | None = None) -> dict[str, object]:
-    payload = ApiError(code=code, message=message, details=details).model_dump(exclude_none=True)
-    return cast("dict[str, object]", payload)
-
-
-def _raise_api_error(
-    status_code: int, code: str, message: str, details: object | None = None
-) -> NoReturn:
-    raise HTTPException(status_code=status_code, detail=_api_error(code, message, details))
-
-
 def _http_error_from_manager(exc: RunManagerError) -> NoReturn:
     status_code = _RUN_MANAGER_HTTP_STATUS.get(exc.code)
     if status_code is None:
-        _raise_api_error(
+        raise_api_error(
             http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             "unmapped_run_manager_error",
             "unmapped run manager error",
             {"code": exc.code},
         )
-    _raise_api_error(status_code, exc.code, exc.message)
+    raise_api_error(status_code, exc.code, exc.message)
 
 
 def _not_found(run_id: str) -> NoReturn:
-    _raise_api_error(http_status.HTTP_404_NOT_FOUND, "run_not_found", f"run not found: {run_id}")
+    raise_api_error(http_status.HTTP_404_NOT_FOUND, "run_not_found", f"run not found: {run_id}")
 
 
 def _session_not_found(session_id: str) -> NoReturn:
-    _raise_api_error(
+    raise_api_error(
         http_status.HTTP_404_NOT_FOUND,
         "session_not_found",
         f"session {session_id!r} was not found",
@@ -206,12 +190,12 @@ def _session_not_found(session_id: str) -> NoReturn:
 async def require_http_origin(request: Request) -> None:
     if terminal_bridge.origin_allowed_for_request(request, get_settings()):
         return
-    _raise_api_error(http_status.HTTP_403_FORBIDDEN, "origin_not_allowed", "origin not allowed")
+    raise_api_error(http_status.HTTP_403_FORBIDDEN, "origin_not_allowed", "origin not allowed")
 
 
 def _validated_harness(harness: str) -> CapturedRunHarness:
     if harness not in _CAPTURED_RUN_HARNESS_ALLOWLIST:
-        _raise_api_error(
+        raise_api_error(
             http_status.HTTP_400_BAD_REQUEST,
             "unsupported_harness",
             f"unsupported captured run harness: {harness}",
@@ -223,13 +207,13 @@ def _validated_state(state: str) -> RunState:
     try:
         parsed = RunState(state)
     except ValueError:
-        _raise_api_error(
+        raise_api_error(
             http_status.HTTP_400_BAD_REQUEST,
             "invalid_request",
             f"unsupported run state: {state}",
         )
     if parsed not in _CURATED_STATES:
-        _raise_api_error(
+        raise_api_error(
             http_status.HTTP_400_BAD_REQUEST,
             "invalid_request",
             f"unsupported run state: {state}",
@@ -261,18 +245,18 @@ def _decode_cursor(cursor: str, *, filters: dict[str, str | None]) -> int:
         padded = cursor + "=" * (-len(cursor) % 4)
         payload = json.loads(base64.urlsafe_b64decode(padded.encode()).decode())
     except binascii.Error, UnicodeDecodeError, ValueError, json.JSONDecodeError:
-        _raise_api_error(http_status.HTTP_400_BAD_REQUEST, "invalid_cursor", "invalid cursor")
+        raise_api_error(http_status.HTTP_400_BAD_REQUEST, "invalid_cursor", "invalid cursor")
     if not isinstance(payload, dict):
-        _raise_api_error(http_status.HTTP_400_BAD_REQUEST, "invalid_cursor", "invalid cursor")
+        raise_api_error(http_status.HTTP_400_BAD_REQUEST, "invalid_cursor", "invalid cursor")
     if payload.get("filters") != filters:
-        _raise_api_error(
+        raise_api_error(
             http_status.HTTP_400_BAD_REQUEST,
             "invalid_cursor",
             "cursor does not match the active filters",
         )
     offset = payload.get("offset")
     if not isinstance(offset, int) or offset < 0:
-        _raise_api_error(http_status.HTTP_400_BAD_REQUEST, "invalid_cursor", "invalid cursor")
+        raise_api_error(http_status.HTTP_400_BAD_REQUEST, "invalid_cursor", "invalid cursor")
     return offset
 
 
@@ -286,13 +270,13 @@ def _parse_uuid_id[IdT: (SpaceId, WorktreeId)](
     if value is None or value == "":
         if required_code is None:
             return None
-        _raise_api_error(
+        raise_api_error(
             http_status.HTTP_400_BAD_REQUEST, required_code, f"{field_name} is required"
         )
     try:
         return id_type.parse(value)
     except ValueError:
-        _raise_api_error(
+        return raise_api_error(
             http_status.HTTP_400_BAD_REQUEST,
             invalid_code,
             f"{field_name} must be a UUID",
@@ -308,7 +292,7 @@ async def _resolved_worktree(
     assert worktree_id is not None
     pool = optional_session_pool(request)
     if pool is None:
-        _raise_api_error(
+        raise_api_error(
             http_status.HTTP_503_SERVICE_UNAVAILABLE,
             "session_store_unavailable",
             "session store unavailable",
@@ -316,9 +300,9 @@ async def _resolved_worktree(
     async with pool.connection() as conn:
         resolved = await SpaceStore(conn).resolve_worktree(worktree_id, owner=owner)
     if resolved is None:
-        _raise_api_error(http_status.HTTP_404_NOT_FOUND, "worktree_not_found", "worktree not found")
+        raise_api_error(http_status.HTTP_404_NOT_FOUND, "worktree_not_found", "worktree not found")
     if resolved.missing or resolved.archived:
-        _raise_api_error(
+        raise_api_error(
             http_status.HTTP_409_CONFLICT,
             "worktree_unavailable",
             "worktree is missing or archived",
@@ -328,7 +312,7 @@ async def _resolved_worktree(
 
 def _required_non_empty(value: str | None, *, field_name: str) -> str:
     if value is None or value.strip() == "":
-        _raise_api_error(
+        raise_api_error(
             http_status.HTTP_400_BAD_REQUEST,
             "invalid_request",
             f"{field_name} is required",
@@ -348,7 +332,7 @@ async def _launch_fields(
     _required_non_empty(body.idempotency_key, field_name="idempotencyKey")
     pool = optional_session_pool(request)
     if pool is None:
-        _raise_api_error(
+        raise_api_error(
             http_status.HTTP_503_SERVICE_UNAVAILABLE,
             "session_store_unavailable",
             "session store unavailable",
@@ -371,7 +355,7 @@ def _runtime_template_ref(
     try:
         return resolve_runtime_template(name, harness, env=os.environ)
     except ValueError as exc:
-        _raise_api_error(
+        return raise_api_error(
             http_status.HTTP_400_BAD_REQUEST,
             "invalid_runtime_template",
             str(exc),

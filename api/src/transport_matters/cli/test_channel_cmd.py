@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import replace
 from typing import TYPE_CHECKING
 
@@ -69,13 +70,18 @@ def test_channel_list_renders_live_desktop_pid(
         DesktopRuntimeRecord(
             channel=spec.id,
             pid=4321,
-            proxy_port=spec.proxy_port,
-            web_port=spec.web_port,
+            proxy_port=19997,
+            web_port=19998,
             log_path=str(spec.home / "runtime" / "desktop.log"),
+            cwd=str(tmp_path / "workspace"),
+            storage_dir=str(spec.home),
+            version="1.2.3",
         ),
     )
+    monkeypatch.setattr("transport_matters.desktop_runtime.is_pid_alive", lambda pid: pid == 4321)
     monkeypatch.setattr(
-        "transport_matters.cli.desktop_runtime.is_pid_alive", lambda pid: pid == 4321
+        "transport_matters.desktop_runtime.wait_for_port_ready",
+        lambda *_args, **_kwargs: True,
     )
 
     result = runner.invoke(main, ["channel", "list"])
@@ -83,6 +89,8 @@ def test_channel_list_renders_live_desktop_pid(
     assert result.exit_code == 0, result.output
     assert "pid" in result.output
     assert "4321" in result.output
+    assert "19997" in result.output
+    assert "19998" in result.output
 
 
 def test_channel_list_blanks_invalid_or_inaccessible_desktop_pid(
@@ -102,19 +110,80 @@ def test_channel_list_blanks_invalid_or_inaccessible_desktop_pid(
             proxy_port=spec.proxy_port,
             web_port=spec.web_port,
             log_path=str(spec.home / "runtime" / "desktop.log"),
+            cwd=str(tmp_path / "workspace"),
+            storage_dir=str(spec.home),
+            version="1.2.3",
         ),
     )
 
     def raise_permission(_pid: int) -> bool:
         raise PermissionError
 
-    monkeypatch.setattr("transport_matters.cli.desktop_runtime.is_pid_alive", raise_permission)
+    monkeypatch.setattr("transport_matters.desktop_runtime.is_pid_alive", raise_permission)
 
     result = runner.invoke(main, ["channel", "list"])
 
     assert result.exit_code == 0, result.output
     assert "pid" in result.output
     assert "4321" not in result.output
+
+
+def test_channel_status_json_returns_absent_payload(
+    channel_spec_factory: Callable[[str], ChannelSpec],
+    patch_channel_specs: Callable[..., None],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    spec = replace(channel_spec_factory("tm_status"), home=tmp_path / "tm-home")
+    patch_channel_specs(spec)
+    monkeypatch.delenv(env_keys.HOME, raising=False)
+
+    result = runner.invoke(main, ["channel", "status", "tmp", "--json"])
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["runtime"]["schemaVersion"] == 2
+    assert payload["runtime"]["state"] == "absent"
+    assert payload["runtime"]["channel"] == "tmp"
+    assert payload["runtime"]["recordPath"] == str(desktop_record_path(spec.home.resolve()))
+
+
+def test_channel_status_json_returns_live_payload(
+    channel_spec_factory: Callable[[str], ChannelSpec],
+    patch_channel_specs: Callable[..., None],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    spec = replace(channel_spec_factory("tm_status"), home=tmp_path / "tm-home")
+    patch_channel_specs(spec)
+    monkeypatch.delenv(env_keys.HOME, raising=False)
+    write_desktop_record(
+        desktop_record_path(spec.home),
+        DesktopRuntimeRecord(
+            channel=spec.id,
+            pid=4321,
+            proxy_port=19997,
+            web_port=19998,
+            log_path=str(spec.home / "runtime" / "desktop.log"),
+            cwd=str(tmp_path / "workspace"),
+            storage_dir=str(spec.home),
+            version="1.2.3",
+        ),
+    )
+    monkeypatch.setattr("transport_matters.desktop_runtime.is_pid_alive", lambda pid: pid == 4321)
+    monkeypatch.setattr(
+        "transport_matters.desktop_runtime.wait_for_port_ready",
+        lambda *_args, **_kwargs: True,
+    )
+
+    result = runner.invoke(main, ["channel", "status", "tmp", "--json"])
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["runtime"]["state"] == "live"
+    assert payload["runtime"]["proxyPort"] == 19997
+    assert payload["runtime"]["webPort"] == 19998
+    assert payload["runtime"]["pid"] == 4321
 
 
 def test_channel_stop_no_running_backend(

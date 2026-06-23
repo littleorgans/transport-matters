@@ -11,14 +11,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from threading import Thread
 from typing import TYPE_CHECKING, Any, Literal
-from urllib.parse import urlencode
 
 import typer
 
-from transport_matters import env_keys
+from transport_matters import __version__, env_keys
 from transport_matters.channel import ChannelSpec, activate_channel, resolve_channel_spec
+from transport_matters.desktop_event import build_backend_started_event
 from transport_matters.storage_roots import default_storage_root
-from transport_matters.workspace import workspace_id
 
 from .desktop_runtime import (
     DesktopRuntimeRecord,
@@ -150,36 +149,6 @@ def prepare_desktop_launch(
     )
 
 
-def build_backend_started_event(
-    *,
-    route: str,
-    cwd: Path,
-    resolved_storage: Path,
-    web_port: int,
-) -> dict[str, Any]:
-    """Build the one-line startup JSON contract for the desktop canvas."""
-    wid = workspace_id(cwd)
-    base_url = loopback_http_url(web_port)
-    route_query = urlencode(
-        {
-            "owner": "local",
-            "workspace_hash": wid.hash,
-        }
-    )
-    return {
-        "type": "transport_matters.backend_started",
-        "cwd": str(cwd),
-        "workspace": {
-            "slug": wid.slug,
-            "hash": wid.hash,
-        },
-        "webPort": web_port,
-        "baseUrl": base_url,
-        "routeUrl": f"{base_url}/{route}?{route_query}",
-        "storageDir": str(resolved_storage),
-    }
-
-
 def spawn_detached_electron(launch: ElectronLaunch, event: dict[str, Any]) -> None:
     """Start the desktop shell as a detached viewer for an existing backend."""
     env = {
@@ -302,6 +271,9 @@ def run_desktop_detached(
         proxy_port=int(plan.env[env_keys.PROXY_PORT]),
         web_port=plan.web_port,
         log_path=str(log_path),
+        cwd=str(resolved_cwd),
+        storage_dir=str(resolved_storage),
+        version=__version__,
     )
     write_desktop_record(desktop_record_path(resolved_storage), record)
 
