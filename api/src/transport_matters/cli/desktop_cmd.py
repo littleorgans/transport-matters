@@ -19,14 +19,19 @@ from transport_matters.channel import ChannelSpec, activate_channel, resolve_cha
 from transport_matters.desktop_event import build_backend_started_event
 from transport_matters.storage_roots import default_storage_root
 
+from .desktop_recovery import (
+    force_restart_desktop_runtime_or_exit,
+    recover_desktop_runtime_or_exit,
+    refuse_desktop_runtime_or_exit,
+)
 from .desktop_runtime import (
+    DesktopLivenessPolicy,
     DesktopRuntimeDiscoveryError,
     DesktopRuntimeRecord,
     DesktopRuntimeStatus,
     desktop_log_path,
     desktop_record_path,
     discover_desktop_runtime,
-    stop_desktop_record,
     write_desktop_record,
 )
 from .launch_runtime import preflight_session_store_or_exit
@@ -250,21 +255,6 @@ def _attach_existing_desktop(
     _spawn_or_exit(spawn_electron, launch, event)
 
 
-def _recover_desktop_runtime_or_exit(status: DesktopRuntimeStatus) -> None:
-    try:
-        stop_desktop_record(Path(status.record_path))
-    except OSError as exc:
-        hint = f" Inspect logs at {status.log_path}." if status.log_path else ""
-        typer.secho(
-            "error: could not recover "
-            f"{status.state} desktop runtime at {status.record_path}: {exc}."
-            f"{hint} Remove the runtime record or stop the process, then retry.",
-            fg=typer.colors.RED,
-            err=True,
-        )
-        raise typer.Exit(1) from exc
-
-
 def run_desktop_detached(
     *,
     channel: str | None = None,
@@ -278,6 +268,8 @@ def run_desktop_detached(
     resolve_electron_launch_func: Callable[[], ElectronLaunch] | None = None,
     spawn_electron_func: Callable[[ElectronLaunch, dict[str, Any]], None] | None = None,
     popen_func: Callable[..., Any] | None = None,
+    force_restart: bool = False,
+    liveness_policy: DesktopLivenessPolicy | None = None,
 ) -> None:
     """Start the detached backend, wait for readiness, open the viewer, and return."""
     channel_spec = activate_channel(channel)
@@ -290,12 +282,18 @@ def run_desktop_detached(
             storage_dir=resolved_storage,
             route=normalized_route,
             cwd=resolved_cwd,
+            liveness_policy=liveness_policy,
         )
     except DesktopRuntimeDiscoveryError as exc:
         typer.secho(f"error: {exc.message}", fg=typer.colors.RED, err=True)
         raise typer.Exit(1) from exc
 
-    if runtime_status.state == "live":
+    if force_restart and runtime_status.state != "absent":
+        force_restart_desktop_runtime_or_exit(
+            runtime_status,
+            channel=channel_spec.id,
+        )
+    elif runtime_status.state == "live":
         _attach_existing_desktop(
             status=runtime_status,
             route=normalized_route,
@@ -303,8 +301,12 @@ def run_desktop_detached(
             spawn_electron_func=spawn_electron_func,
         )
         return
-    if runtime_status.state in {"stale", "unhealthy"}:
-        _recover_desktop_runtime_or_exit(runtime_status)
+    elif runtime_status.state == "stale":
+        recover_desktop_runtime_or_exit(runtime_status, channel=channel_spec.id, announce=False)
+    elif runtime_status.state == "not-serving":
+        recover_desktop_runtime_or_exit(runtime_status, channel=channel_spec.id, announce=True)
+    elif runtime_status.state in {"wedged", "unhealthy"}:
+        refuse_desktop_runtime_or_exit(runtime_status, channel=channel_spec.id)
 
     plan = prepare_desktop_launch(
         channel=channel_spec.id,

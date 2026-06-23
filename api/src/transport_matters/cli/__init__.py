@@ -388,15 +388,37 @@ def desktop(
             help="Run the desktop backend in the foreground and stream logs.",
         ),
     ] = False,
+    force_restart: Annotated[
+        bool,
+        typer.Option(
+            "--force-restart",
+            help="Explicitly terminate the recorded desktop backend before restart.",
+        ),
+    ] = False,
 ) -> None:
     """Start the canvas desktop viewer and backend server."""
     _activate_channel_or_exit(channel)
-    launcher = run_desktop_launch if foreground else run_desktop_detached
-    launcher(
+    if foreground:
+        if force_restart:
+            typer.secho(
+                "error: --force-restart is only supported for detached desktop launch.",
+                fg=typer.colors.RED,
+                err=True,
+            )
+            raise typer.Exit(2)
+        run_desktop_launch(
+            channel=channel,
+            work_dir=work_dir,
+            web_port=web_port,
+            storage_dir=storage_dir,
+        )
+        return
+    run_desktop_detached(
         channel=channel,
         work_dir=work_dir,
         web_port=web_port,
         storage_dir=storage_dir,
+        force_restart=force_restart,
     )
 
 

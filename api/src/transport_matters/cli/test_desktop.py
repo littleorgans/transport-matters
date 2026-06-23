@@ -109,6 +109,7 @@ def test_desktop_ignores_ambient_cross_agent_env(
         "work_dir": None,
         "web_port": None,
         "storage_dir": None,
+        "force_restart": False,
     }
 
 
@@ -162,6 +163,7 @@ def test_desktop_command_passes_only_backend_launch_options(
             "9901",
             "--storage-dir",
             str(tmp_path / "storage"),
+            "--force-restart",
         ],
     )
 
@@ -170,11 +172,13 @@ def test_desktop_command_passes_only_backend_launch_options(
     assert calls["work_dir"] == tmp_path
     assert calls["web_port"] == 9901
     assert calls["storage_dir"] == tmp_path / "storage"
+    assert calls["force_restart"] is True
     assert set(calls) == {
         "channel",
         "work_dir",
         "web_port",
         "storage_dir",
+        "force_restart",
     }
 
 
