@@ -21,15 +21,21 @@ import {
 } from "./env.js";
 import {
   APP_NAME,
-  DEFAULT_WEB_PORT,
   createHostedWindow,
   createWindowOptions,
   rendererUrlForPort,
 } from "./window.js";
+import {
+  liveRuntimePorts,
+  readDesktopRuntimeStatus,
+  resolveRuntimeStatus,
+  type DesktopRuntimeDiscoveryOptions,
+  type DesktopRuntimeStatus,
+  type DesktopRuntimeStatusReader,
+} from "./desktopRuntime.js";
 
 const moduleDir = dirname(fileURLToPath(import.meta.url));
 
-const DEFAULT_PROXY_PORT = 8787;
 const HOSTED_BACKEND_FAILURE_LIMIT = 3;
 const HOSTED_BACKEND_POLL_GAP_MS = 1_000;
 const PREVIEW_AMBER_ICON = join(moduleDir, "../assets/preview-amber.png");
@@ -90,6 +96,8 @@ export interface AppLifecycleOptions {
   channelSpec?: DesktopChannelSpec;
   env?: NodeJS.ProcessEnv;
   icon?: string;
+  readRuntimeStatus?: DesktopRuntimeStatusReader;
+  runtimeStatus?: DesktopRuntimeStatus | null;
   title?: string;
 }
 
@@ -110,6 +118,10 @@ export interface HostedDesktopLifecycleOptions {
 }
 
 export type HostedBackendHealthProbe = (healthUrl: string) => Promise<boolean>;
+
+export interface DesktopLifecycleFromEnvOptions {
+  readRuntimeStatus?: DesktopRuntimeStatusReader;
+}
 
 interface HostedWindowLifecycleOptions {
   quitOnWindowAllClosed?: boolean;
@@ -157,11 +169,20 @@ export function resolveBackendStartupOptions(
   env: NodeJS.ProcessEnv = process.env,
   cwd = process.cwd(),
   spec: DesktopChannelSpec = resolveDesktopChannelSpec(env),
+  discoveryOptions: DesktopRuntimeDiscoveryOptions = {},
 ): BackendStartupOptions {
+  const runtimeStatus = resolveRuntimeStatus(spec, env, discoveryOptions);
+  const runtimePorts = liveRuntimePorts(runtimeStatus);
   return {
     env: { ...env, [ENV.CHANNEL]: spec.id },
-    proxyPort: resolvePort(env[ENV.PROXY_PORT], spec.proxyPort),
-    webPort: resolvePort(env[ENV.WEB_PORT], spec.webPort),
+    proxyPort: resolvePort(
+      env[ENV.PROXY_PORT],
+      runtimePorts.proxyPort ?? spec.proxyPort,
+    ),
+    webPort: resolvePort(
+      env[ENV.WEB_PORT],
+      runtimePorts.webPort ?? spec.webPort,
+    ),
     workspaceDir: cwd,
   };
 }
@@ -269,10 +290,25 @@ export function registerAppLifecycle(options: AppLifecycleOptions = {}): void {
   bindBackendQuitCleanup(app, () => backend);
 
   void app.whenReady().then(() => {
+    const runtimeStatus = resolveRuntimeStatus(channelSpec, env, {
+      readRuntimeStatus: options.readRuntimeStatus,
+      runtimeStatus: options.runtimeStatus,
+    });
+    const runtimeRouteUrl = liveRuntimeRouteUrl(runtimeStatus);
+    if (runtimeRouteUrl !== undefined) {
+      registerHostedDesktopLifecycle({
+        icon: options.icon,
+        routeUrl: runtimeRouteUrl,
+        title: options.title,
+      });
+      return;
+    }
+
     const startupOptions = resolveBackendStartupOptions(
       env,
       process.cwd(),
       channelSpec,
+      { runtimeStatus },
     );
     startupOptions.icon = options.icon;
     startupOptions.title = options.title;
@@ -527,6 +563,7 @@ export function registerDesktopPackageSmoke(
 
 export function registerDesktopLifecycleFromEnv(
   env: NodeJS.ProcessEnv = process.env,
+  options: DesktopLifecycleFromEnvOptions = {},
 ): void {
   const channelSpec = resolveDesktopChannelSpec(env);
   const identity = applyChannelIdentity(app, channelSpec);
@@ -550,6 +587,7 @@ export function registerDesktopLifecycleFromEnv(
     channelSpec,
     env,
     icon: identity.icon,
+    readRuntimeStatus: options.readRuntimeStatus,
     title: identity.title,
   });
 }
@@ -597,6 +635,20 @@ function buildMainWindowOptions(options: MainWindowOptions): MainWindowOptions {
     result.title = options.title;
   }
   return result;
+}
+
+function liveRuntimeRouteUrl(
+  status: DesktopRuntimeStatus | null,
+): string | undefined {
+  if (status?.state !== "live") {
+    return undefined;
+  }
+  if (status.defaultRouteUrl !== null) {
+    return status.defaultRouteUrl;
+  }
+  return status.webPort === null
+    ? undefined
+    : rendererUrlForPort(status.webPort);
 }
 
 function resolvePort(value: string | undefined, fallback: number): number {

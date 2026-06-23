@@ -17,6 +17,7 @@
   "include": [
     "src/backendHealth.ts",
     "src/backendProcess.ts",
+    "src/desktopRuntime.ts",
     "src/env.ts",
     "src/main.ts",
     "src/packageSmoke.ts",
