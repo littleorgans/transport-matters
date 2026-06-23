@@ -1,16 +1,19 @@
 """Port-probing helpers used by `start` and `doctor`."""
 
 import socket
-import time
 
 import typer
 
-LOOPBACK_HOST = "127.0.0.1"
+from transport_matters.loopback import LOOPBACK_HOST, loopback_http_url, wait_for_port_ready
 
-
-def loopback_http_url(port: int) -> str:
-    """Return the explicit IPv4 loopback URL for *port*."""
-    return f"http://{LOOPBACK_HOST}:{port}"
+__all__ = [
+    "LOOPBACK_HOST",
+    "loopback_http_url",
+    "port_in_use",
+    "raise_port_in_use",
+    "validate_port_option",
+    "wait_for_port_ready",
+]
 
 
 def validate_port_option(value: int | None) -> int | None:
@@ -61,23 +64,3 @@ def raise_port_in_use(label: str, flag: str, port: int) -> None:
         err=True,
     )
     raise typer.Exit(2)
-
-
-def wait_for_port_ready(
-    host: str, port: int, *, timeout: float = 5.0, interval: float = 0.1
-) -> bool:
-    """Poll a TCP port until it accepts connections, or return False on timeout.
-
-    We poll (not sleep) because mitmdump's startup time varies with the
-    machine: fast on a dev laptop, noticeably slower on CI. A fixed sleep
-    either wastes time on fast systems or races on slow ones. Polling
-    returns as soon as the socket is ready.
-    """
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        try:
-            with socket.create_connection((host, port), timeout=0.2):
-                return True
-        except OSError:
-            time.sleep(interval)
-    return False

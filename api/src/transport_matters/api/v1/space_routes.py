@@ -7,12 +7,13 @@ import binascii
 import json
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Annotated, Any, Literal, NoReturn
+from typing import TYPE_CHECKING, Annotated, Any, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, Query, Request
 from fastapi import status as http_status
 from pydantic import BaseModel, ConfigDict, Field
 
+from transport_matters.api.v1.errors import raise_api_error
 from transport_matters.api.v1.run_routes import require_http_origin
 from transport_matters.api.v1.session_store import optional_session_pool
 from transport_matters.space.detection import SpaceDetectionError
@@ -29,12 +30,6 @@ DEFAULT_OWNER = "local"
 DEFAULT_SPACES_LIMIT = 50
 MAX_SPACES_LIMIT = 100
 SpaceKind = Literal["repo", "plain"]
-
-
-class ApiError(BaseModel):
-    code: str
-    message: str
-    details: object | None = None
 
 
 class WorktreeSummary(BaseModel):
@@ -140,18 +135,6 @@ class CanvasMutationResponse(BaseModel):
     canvas: CanvasSummary
 
 
-def _api_error(code: str, message: str, details: object | None = None) -> dict[str, object]:
-    return ApiError(code=code, message=message, details=details).model_dump(
-        mode="json", exclude_none=True
-    )
-
-
-def _raise_api_error(
-    status_code: int, code: str, message: str, details: object | None = None
-) -> NoReturn:
-    raise HTTPException(status_code=status_code, detail=_api_error(code, message, details))
-
-
 def _response_payload(response: BaseModel) -> dict[str, object]:
     return response.model_dump(mode="json", by_alias=True, exclude_none=True)
 
@@ -159,7 +142,7 @@ def _response_payload(response: BaseModel) -> dict[str, object]:
 async def _session_pool(request: Request) -> AsyncConnectionPool[AsyncConnection[DictRow]]:
     pool = optional_session_pool(request)
     if pool is None:
-        _raise_api_error(
+        raise_api_error(
             http_status.HTTP_503_SERVICE_UNAVAILABLE,
             "session_store_unavailable",
             "session store unavailable",
@@ -176,12 +159,12 @@ def _decode_cursor(cursor: str) -> int:
     try:
         payload = json.loads(base64.urlsafe_b64decode(cursor.encode("ascii")))
     except binascii.Error, json.JSONDecodeError, UnicodeDecodeError:
-        _raise_api_error(http_status.HTTP_400_BAD_REQUEST, "invalid_cursor", "invalid cursor")
+        raise_api_error(http_status.HTTP_400_BAD_REQUEST, "invalid_cursor", "invalid cursor")
     if not isinstance(payload, dict):
-        _raise_api_error(http_status.HTTP_400_BAD_REQUEST, "invalid_cursor", "invalid cursor")
+        raise_api_error(http_status.HTTP_400_BAD_REQUEST, "invalid_cursor", "invalid cursor")
     offset = payload.get("offset")
     if not isinstance(offset, int) or offset < 0:
-        _raise_api_error(http_status.HTTP_400_BAD_REQUEST, "invalid_cursor", "invalid cursor")
+        raise_api_error(http_status.HTTP_400_BAD_REQUEST, "invalid_cursor", "invalid cursor")
     return offset
 
 
@@ -189,7 +172,7 @@ def _parse_space_id(value: str) -> SpaceId:
     try:
         return SpaceId.parse(value)
     except ValueError:
-        _raise_api_error(
+        return raise_api_error(
             http_status.HTTP_400_BAD_REQUEST, "invalid_space_id", "space id must be a UUID"
         )
 
@@ -200,7 +183,7 @@ def _parse_worktree_id(value: str | None) -> WorktreeId | None:
     try:
         return WorktreeId.parse(value)
     except ValueError:
-        _raise_api_error(
+        return raise_api_error(
             http_status.HTTP_400_BAD_REQUEST, "invalid_worktree_id", "worktree id must be a UUID"
         )
 
@@ -209,7 +192,7 @@ def _parse_canvas_id(value: str) -> CanvasId:
     try:
         return CanvasId.parse(value)
     except ValueError:
-        _raise_api_error(
+        return raise_api_error(
             http_status.HTTP_400_BAD_REQUEST, "invalid_canvas_id", "canvas id must be a UUID"
         )
 
@@ -217,7 +200,7 @@ def _parse_canvas_id(value: str) -> CanvasId:
 def _request_cwd(cwd: str) -> Path:
     path = Path(cwd).expanduser()
     if not path.is_absolute():
-        _raise_api_error(http_status.HTTP_400_BAD_REQUEST, "invalid_cwd", "cwd must be absolute")
+        raise_api_error(http_status.HTTP_400_BAD_REQUEST, "invalid_cwd", "cwd must be absolute")
     return path
 
 
@@ -280,7 +263,7 @@ def _refresh_path(snapshot: SpaceSnapshot) -> Path:
     for worktree in snapshot.worktrees:
         if worktree.path is not None and not worktree.missing and not worktree.archived:
             return Path(worktree.path)
-    _raise_api_error(
+    return raise_api_error(
         http_status.HTTP_409_CONFLICT,
         "space_not_refreshable",
         "space has no active worktree path to refresh from",
@@ -292,7 +275,7 @@ def _require_worktree_in_space(snapshot: SpaceSnapshot, worktree_id: WorktreeId 
         return
     if any(item.worktree_id == worktree_id for item in snapshot.worktrees):
         return
-    _raise_api_error(
+    raise_api_error(
         http_status.HTTP_400_BAD_REQUEST,
         "invalid_worktree_id",
         "defaultWorktreeId must belong to the target space",
@@ -302,7 +285,7 @@ def _require_worktree_in_space(snapshot: SpaceSnapshot, worktree_id: WorktreeId 
 async def _require_snapshot(store: SpaceStore, space_id: SpaceId, *, owner: str) -> SpaceSnapshot:
     snapshot = await store.get_space_snapshot(space_id, owner=owner)
     if snapshot is None:
-        _raise_api_error(http_status.HTTP_404_NOT_FOUND, "space_not_found", "space not found")
+        raise_api_error(http_status.HTTP_404_NOT_FOUND, "space_not_found", "space not found")
     return snapshot
 
 
@@ -319,7 +302,7 @@ async def _require_canvas_space_id(
     )
     row = await cursor.fetchone()
     if row is None:
-        _raise_api_error(http_status.HTTP_404_NOT_FOUND, "canvas_not_found", "canvas not found")
+        raise_api_error(http_status.HTTP_404_NOT_FOUND, "canvas_not_found", "canvas not found")
     return SpaceId.from_uuid(row["space_id"])
 
 
@@ -356,12 +339,12 @@ async def resolve_space(
         async with pool.connection() as conn:
             snapshot = await SpaceStore(conn).resolve_cwd(cwd, owner=owner, create=body.create)
     except SpaceDetectionError as exc:
-        _raise_api_error(http_status.HTTP_400_BAD_REQUEST, exc.code, exc.message, exc.details)
+        raise_api_error(http_status.HTTP_400_BAD_REQUEST, exc.code, exc.message, exc.details)
     if snapshot is None:
-        _raise_api_error(http_status.HTTP_404_NOT_FOUND, "space_not_found", "space not found")
+        raise_api_error(http_status.HTTP_404_NOT_FOUND, "space_not_found", "space not found")
     worktree = _worktree_for_cwd(snapshot, cwd)
     if worktree is None:
-        _raise_api_error(
+        raise_api_error(
             http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             "worktree_resolution_failed",
             "resolved space did not include the requested cwd",
@@ -402,7 +385,7 @@ async def patch_space(
             parsed, owner=owner, name=body.label, archived=body.archived
         )
         if updated is None:
-            _raise_api_error(http_status.HTTP_404_NOT_FOUND, "space_not_found", "space not found")
+            raise_api_error(http_status.HTTP_404_NOT_FOUND, "space_not_found", "space not found")
         snapshot = await _require_snapshot(store, parsed, owner=owner)
     return _response_payload(SpaceMutationResponse(space=_space_summary(snapshot)))
 
@@ -424,12 +407,12 @@ async def list_space_worktrees(
                     _refresh_path(snapshot), owner=owner, create=True
                 )
                 if refreshed is None:
-                    _raise_api_error(
+                    raise_api_error(
                         http_status.HTTP_404_NOT_FOUND, "space_not_found", "space not found"
                     )
                 snapshot = refreshed
     except SpaceDetectionError as exc:
-        _raise_api_error(http_status.HTTP_400_BAD_REQUEST, exc.code, exc.message, exc.details)
+        raise_api_error(http_status.HTTP_400_BAD_REQUEST, exc.code, exc.message, exc.details)
     return _response_payload(
         WorktreeListResponse(items=[_worktree_summary(item) for item in snapshot.worktrees])
     )
@@ -497,5 +480,5 @@ async def patch_canvas(
             archived=body.archived,
         )
     if canvas is None:
-        _raise_api_error(http_status.HTTP_404_NOT_FOUND, "canvas_not_found", "canvas not found")
+        raise_api_error(http_status.HTTP_404_NOT_FOUND, "canvas_not_found", "canvas not found")
     return _response_payload(CanvasMutationResponse(canvas=_canvas_summary(canvas)))

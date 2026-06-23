@@ -18,12 +18,16 @@ const browserWindowConstructor = vi.fn();
 const dialogShowErrorBox = vi.fn();
 const loadURL = vi.fn();
 const once = vi.fn();
+const appOn = vi.fn();
+const appQuit = vi.fn();
+const appWhenReady = vi.fn(() => new Promise(() => undefined));
 const setAppUserModelId = vi.fn();
 const setDockIcon = vi.fn();
 const setName = vi.fn();
 const setPath = vi.fn();
 const setWindowOpenHandler = vi.fn();
 const show = vi.fn();
+const windowOn = vi.fn();
 const webContentsOn = vi.fn();
 
 function createBackendFixture(): LaunchedBackendProcess {
@@ -42,17 +46,27 @@ function createBackendFixture(): LaunchedBackendProcess {
   };
 }
 
+function createLiveRuntimeStatus() {
+  return {
+    channel: "stable",
+    defaultRouteUrl: null,
+    proxyPort: 9900,
+    state: "live" as const,
+    webPort: 9901,
+  };
+}
+
 vi.mock("electron", () => ({
   app: {
     dock: {
       setIcon: setDockIcon,
     },
-    on: vi.fn(),
-    quit: vi.fn(),
+    on: appOn,
+    quit: appQuit,
     setAppUserModelId,
     setName,
     setPath,
-    whenReady: vi.fn(() => new Promise(() => undefined)),
+    whenReady: appWhenReady,
   },
   BrowserWindow: vi.fn(function BrowserWindow(
     options: Record<string, unknown>,
@@ -60,6 +74,7 @@ vi.mock("electron", () => ({
     browserWindowConstructor(options);
     return {
       loadURL,
+      on: windowOn,
       once,
       show,
       webContents: {
@@ -183,6 +198,10 @@ async function registerHostedLifecycleFixture(
 
 describe("desktop main process", () => {
   beforeEach(() => {
+    appOn.mockReset();
+    appQuit.mockClear();
+    appWhenReady.mockReset();
+    appWhenReady.mockImplementation(() => new Promise(() => undefined));
     browserWindowConstructor.mockClear();
     dialogShowErrorBox.mockClear();
     loadURL.mockClear();
@@ -193,6 +212,7 @@ describe("desktop main process", () => {
     setPath.mockClear();
     setWindowOpenHandler.mockClear();
     show.mockClear();
+    windowOn.mockClear();
     webContentsOn.mockClear();
   });
 
@@ -286,6 +306,8 @@ describe("desktop main process", () => {
         TRANSPORT_MATTERS_WEB_PORT: "9901",
       },
       "/tmp/workspace",
+      undefined,
+      { runtimeStatus: null },
     );
 
     await startBackendAndCreateWindow(startupOptions, {
@@ -316,6 +338,8 @@ describe("desktop main process", () => {
       resolveBackendStartupOptions(
         { TRANSPORT_MATTERS_DESKTOP_CLIENT: "gemini" },
         "/tmp/workspace",
+        undefined,
+        { runtimeStatus: null },
       ),
     ).toEqual({
       env: {
@@ -324,6 +348,27 @@ describe("desktop main process", () => {
       },
       proxyPort: 8787,
       webPort: 8788,
+      workspaceDir: "/tmp/workspace",
+    });
+  });
+
+  it("prefers live runtime ports while preserving explicit pins", async () => {
+    const { resolveBackendStartupOptions } = await import("./main.js");
+
+    expect(
+      resolveBackendStartupOptions(
+        { TRANSPORT_MATTERS_PROXY_PORT: "9910" },
+        "/tmp/workspace",
+        undefined,
+        { runtimeStatus: createLiveRuntimeStatus() },
+      ),
+    ).toEqual({
+      env: {
+        TRANSPORT_MATTERS_CHANNEL: "stable",
+        TRANSPORT_MATTERS_PROXY_PORT: "9910",
+      },
+      proxyPort: 9910,
+      webPort: 9901,
       workspaceDir: "/tmp/workspace",
     });
   });
@@ -446,6 +491,21 @@ describe("desktop main process", () => {
     });
     expect(on).toHaveBeenCalledWith("activate", expect.any(Function));
     expect(on).toHaveBeenCalledWith("window-all-closed", expect.any(Function));
+  });
+
+  it("opens a live discovered runtime without backend startup", async () => {
+    const { registerDesktopLifecycleFromEnv } = await import("./main.js");
+
+    appWhenReady.mockResolvedValue(undefined);
+    registerDesktopLifecycleFromEnv({}, {
+      readRuntimeStatus: createLiveRuntimeStatus,
+    });
+    await flushPromiseQueue();
+
+    expect(loadURL).toHaveBeenCalledWith("http://127.0.0.1:9901/canvas");
+    expect(appOn.mock.calls.map(([event]) => event)).toEqual(
+      expect.arrayContaining(["activate", "window-all-closed"]),
+    );
   });
 
   it("quits the hosted app when the only hosted window closes on darwin", async () => {

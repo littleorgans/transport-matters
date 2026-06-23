@@ -8,6 +8,12 @@ filename does not match ``test_*.py`` / ``*_test.py``.
 import re
 from typing import TYPE_CHECKING, Any
 
+from transport_matters.cli.desktop_runtime import (
+    DesktopRuntimeRecord,
+    desktop_log_path,
+    desktop_record_path,
+    write_desktop_record,
+)
 from transport_matters.manifest import Manifest
 from transport_matters.manifest import write as _manifest_write
 from transport_matters.workspace import run_root, workspace_id
@@ -42,6 +48,34 @@ _ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;]*m")
 def _plain(text: str) -> str:
     """Strip ANSI SGR escapes so plain substring assertions work."""
     return _ANSI_ESCAPE.sub("", text)
+
+
+def _write_desktop_record(
+    storage_dir: Path,
+    *,
+    pid: int,
+    channel: str = "preview",
+    proxy_port: int = 8797,
+    web_port: int = 8798,
+    cwd: Path | None = None,
+    version: str = "1.2.3",
+) -> Path:
+    """Write a detached desktop runtime test record."""
+    record_file = desktop_record_path(storage_dir)
+    write_desktop_record(
+        record_file,
+        DesktopRuntimeRecord(
+            channel=channel,
+            pid=pid,
+            proxy_port=proxy_port,
+            web_port=web_port,
+            log_path=str(desktop_log_path(storage_dir)),
+            cwd=str(cwd if cwd is not None else storage_dir / "workspace"),
+            storage_dir=str(storage_dir),
+            version=version,
+        ),
+    )
+    return record_file
 
 
 def _which_all(path: str = "/usr/bin/mitmdump") -> Any:
