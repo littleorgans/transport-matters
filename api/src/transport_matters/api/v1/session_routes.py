@@ -3,11 +3,8 @@
 from __future__ import annotations
 
 import asyncio
-import base64
-import binascii
-import json
 import logging
-from typing import TYPE_CHECKING, Annotated, Any, NoReturn, cast
+from typing import TYPE_CHECKING, Annotated, Any
 from uuid import UUID  # noqa: TC003 - FastAPI resolves query annotation types at runtime.
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -16,6 +13,12 @@ from fastapi.responses import StreamingResponse
 
 from transport_matters.api.v1.errors import raise_api_error
 from transport_matters.api.v1.exchanges import exchange_detail_route
+from transport_matters.api.v1.responses import (
+    decode_cursor,
+    encode_cursor,
+    raise_not_found,
+    response_payload,
+)
 from transport_matters.api.v1.session_models import (
     DEFAULT_SESSIONS_LIMIT,
     MAX_SESSIONS_LIMIT,
@@ -81,18 +84,6 @@ def _session_hub(request: Request) -> SessionEventHub:
     return hub
 
 
-def _response_payload(response: Any) -> dict[str, Any]:
-    return cast("dict[str, Any]", response.model_dump(mode="json", by_alias=True))
-
-
-def _not_found(session_id: str) -> NoReturn:
-    raise_api_error(
-        http_status.HTTP_404_NOT_FOUND,
-        "session_not_found",
-        f"session {session_id!r} was not found",
-    )
-
-
 def _cursor_filter_key(
     *,
     owner: str,
@@ -112,31 +103,6 @@ def _cursor_filter_key(
         "visibility": visibility,
         "includeInternal": include_internal,
     }
-
-
-def _encode_cursor(offset: int, *, filters: dict[str, object]) -> str:
-    raw = json.dumps({"offset": offset, "filters": filters}, separators=(",", ":")).encode()
-    return base64.urlsafe_b64encode(raw).decode().rstrip("=")
-
-
-def _decode_cursor(cursor: str, *, filters: dict[str, object]) -> int:
-    try:
-        padded = cursor + "=" * (-len(cursor) % 4)
-        payload = json.loads(base64.urlsafe_b64decode(padded.encode()).decode())
-    except binascii.Error, UnicodeDecodeError, ValueError, json.JSONDecodeError:
-        raise_api_error(http_status.HTTP_400_BAD_REQUEST, "invalid_cursor", "invalid cursor")
-    if not isinstance(payload, dict):
-        raise_api_error(http_status.HTTP_400_BAD_REQUEST, "invalid_cursor", "invalid cursor")
-    if payload.get("filters") != filters:
-        raise_api_error(
-            http_status.HTTP_400_BAD_REQUEST,
-            "invalid_cursor",
-            "cursor does not match the active filters",
-        )
-    offset = payload.get("offset")
-    if not isinstance(offset, int) or offset < 0:
-        raise_api_error(http_status.HTTP_400_BAD_REQUEST, "invalid_cursor", "invalid cursor")
-    return offset
 
 
 @router.get("/sessions", response_model=ListSessionsResponse)
@@ -166,7 +132,7 @@ async def list_sessions(
         visibility=validated_visibility,
         include_internal=include_internal,
     )
-    offset = _decode_cursor(cursor, filters=filters) if cursor is not None else 0
+    offset = decode_cursor(cursor, filters=filters) if cursor is not None else 0
     async with pool.connection() as conn:
         dao = AsyncSessionDao(conn)
         rows = await dao.list_session_views(
@@ -181,8 +147,10 @@ async def list_sessions(
             offset=offset,
         )
     items = [session_view_from_row(row) for row in rows[:limit]]
-    next_cursor = _encode_cursor(offset + limit, filters=filters) if len(rows) > limit else None
-    return _response_payload(ListSessionsResponse(items=items, next_cursor=next_cursor))
+    next_cursor = encode_cursor(offset + limit, filters=filters) if len(rows) > limit else None
+    return response_payload(
+        ListSessionsResponse(items=items, next_cursor=next_cursor), exclude_none=False
+    )
 
 
 @router.get("/sessions/{session_id}", response_model=SessionView)
@@ -194,8 +162,8 @@ async def get_session(
     async with pool.connection() as conn:
         row = await AsyncSessionDao(conn).get_session_view_for_owner(session_id, owner=owner)
     if row is None:
-        _not_found(session_id)
-    return _response_payload(session_view_from_row(row))
+        raise_not_found("session_not_found", f"session {session_id!r} was not found")
+    return response_payload(session_view_from_row(row), exclude_none=False)
 
 
 @router.get("/sessions/{session_id}/events", response_model=SessionEventListResponse)
@@ -546,7 +514,7 @@ async def _require_session(
 ) -> SessionRow:
     session = await AsyncSessionDao(conn).get_session_for_owner(session_id, owner=owner)
     if session is None:
-        _not_found(session_id)
+        raise_not_found("session_not_found", f"session {session_id!r} was not found")
     return session
 
 

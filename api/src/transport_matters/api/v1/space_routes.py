@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-import base64
-import binascii
-import json
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Any, Literal
@@ -14,6 +11,7 @@ from fastapi import status as http_status
 from pydantic import BaseModel, ConfigDict, Field
 
 from transport_matters.api.v1.errors import raise_api_error
+from transport_matters.api.v1.responses import decode_cursor, encode_cursor, response_payload
 from transport_matters.api.v1.run_routes import require_http_origin
 from transport_matters.api.v1.session_store import optional_session_pool
 from transport_matters.space.detection import SpaceDetectionError
@@ -135,10 +133,6 @@ class CanvasMutationResponse(BaseModel):
     canvas: CanvasSummary
 
 
-def _response_payload(response: BaseModel) -> dict[str, object]:
-    return response.model_dump(mode="json", by_alias=True, exclude_none=True)
-
-
 async def _session_pool(request: Request) -> AsyncConnectionPool[AsyncConnection[DictRow]]:
     pool = optional_session_pool(request)
     if pool is None:
@@ -148,24 +142,6 @@ async def _session_pool(request: Request) -> AsyncConnectionPool[AsyncConnection
             "session store unavailable",
         )
     return pool
-
-
-def _encode_cursor(offset: int) -> str:
-    payload = json.dumps({"offset": offset}, separators=(",", ":"))
-    return base64.urlsafe_b64encode(payload.encode("utf-8")).decode("ascii")
-
-
-def _decode_cursor(cursor: str) -> int:
-    try:
-        payload = json.loads(base64.urlsafe_b64decode(cursor.encode("ascii")))
-    except binascii.Error, json.JSONDecodeError, UnicodeDecodeError:
-        raise_api_error(http_status.HTTP_400_BAD_REQUEST, "invalid_cursor", "invalid cursor")
-    if not isinstance(payload, dict):
-        raise_api_error(http_status.HTTP_400_BAD_REQUEST, "invalid_cursor", "invalid cursor")
-    offset = payload.get("offset")
-    if not isinstance(offset, int) or offset < 0:
-        raise_api_error(http_status.HTTP_400_BAD_REQUEST, "invalid_cursor", "invalid cursor")
-    return offset
 
 
 def _parse_space_id(value: str) -> SpaceId:
@@ -313,14 +289,16 @@ async def list_spaces(
     limit: Annotated[int, Query(ge=1, le=MAX_SPACES_LIMIT)] = DEFAULT_SPACES_LIMIT,
     cursor: Annotated[str | None, Query()] = None,
 ) -> dict[str, object]:
-    offset = _decode_cursor(cursor) if cursor is not None else 0
+    offset = decode_cursor(cursor, strip_padding=False) if cursor is not None else 0
     async with pool.connection() as conn:
         summaries = await SpaceStore(conn).list_spaces(owner=owner, limit=limit + 1, offset=offset)
     snapshots = [
         SpaceSnapshot(item.space, item.git_identity, item.worktrees) for item in summaries[:limit]
     ]
-    next_cursor = _encode_cursor(offset + limit) if len(summaries) > limit else None
-    return _response_payload(
+    next_cursor = (
+        encode_cursor(offset + limit, strip_padding=False) if len(summaries) > limit else None
+    )
+    return response_payload(
         ListSpacesResponse(
             items=[_space_summary(item) for item in snapshots], next_cursor=next_cursor
         )
@@ -349,7 +327,7 @@ async def resolve_space(
             "worktree_resolution_failed",
             "resolved space did not include the requested cwd",
         )
-    return _response_payload(
+    return response_payload(
         ResolveSpaceResponse(
             space=_space_summary(snapshot),
             worktree=_worktree_summary(worktree),
@@ -367,7 +345,7 @@ async def get_space(
     parsed = _parse_space_id(space_id)
     async with pool.connection() as conn:
         snapshot = await _require_snapshot(SpaceStore(conn), parsed, owner=owner)
-    return _response_payload(_detail_response(snapshot))
+    return response_payload(_detail_response(snapshot))
 
 
 @router.patch("/spaces/{space_id}")
@@ -387,7 +365,7 @@ async def patch_space(
         if updated is None:
             raise_api_error(http_status.HTTP_404_NOT_FOUND, "space_not_found", "space not found")
         snapshot = await _require_snapshot(store, parsed, owner=owner)
-    return _response_payload(SpaceMutationResponse(space=_space_summary(snapshot)))
+    return response_payload(SpaceMutationResponse(space=_space_summary(snapshot)))
 
 
 @router.get("/spaces/{space_id}/worktrees")
@@ -413,7 +391,7 @@ async def list_space_worktrees(
                 snapshot = refreshed
     except SpaceDetectionError as exc:
         raise_api_error(http_status.HTTP_400_BAD_REQUEST, exc.code, exc.message, exc.details)
-    return _response_payload(
+    return response_payload(
         WorktreeListResponse(items=[_worktree_summary(item) for item in snapshot.worktrees])
     )
 
@@ -427,7 +405,7 @@ async def list_space_canvases(
     parsed = _parse_space_id(space_id)
     async with pool.connection() as conn:
         snapshot = await _require_snapshot(SpaceStore(conn), parsed, owner=owner)
-    return _response_payload(
+    return response_payload(
         CanvasListResponse(items=[_canvas_summary(item) for item in snapshot.canvases])
     )
 
@@ -453,7 +431,7 @@ async def create_canvas(
             default_worktree_id=default_worktree_id,
             layout=body.layout,
         )
-    return _response_payload(CanvasMutationResponse(canvas=_canvas_summary(canvas)))
+    return response_payload(CanvasMutationResponse(canvas=_canvas_summary(canvas)))
 
 
 @router.patch("/canvases/{canvas_id}")
@@ -481,4 +459,4 @@ async def patch_canvas(
         )
     if canvas is None:
         raise_api_error(http_status.HTTP_404_NOT_FOUND, "canvas_not_found", "canvas not found")
-    return _response_payload(CanvasMutationResponse(canvas=_canvas_summary(canvas)))
+    return response_payload(CanvasMutationResponse(canvas=_canvas_summary(canvas)))
