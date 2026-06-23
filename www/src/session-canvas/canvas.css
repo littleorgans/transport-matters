@@ -330,6 +330,22 @@
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
+.canvas-transcript__filter-toggle {
+  margin-left: auto;
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: var(--color-txt-3);
+  font: inherit;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.canvas-transcript__filter-toggle:hover {
+  color: var(--color-txt-2);
+}
+.canvas-transcript__filter-toggle[aria-pressed="true"] {
+  color: var(--color-amber);
+}
 .canvas-transcript__messages {
   display: flex;
   min-height: 0;
@@ -352,6 +368,10 @@
 .canvas-transcript-message[data-kind="wire_context"] {
   border-left: 2px solid var(--color-amber);
   background: color-mix(in srgb, var(--color-amber) 8%, var(--color-surface));
+}
+.canvas-transcript-message[data-hidden] {
+  border-left: 2px dashed var(--color-txt-3);
+  opacity: 0.5;
 }
 .canvas-transcript-message__header {
   display: flex;

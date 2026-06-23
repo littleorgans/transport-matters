@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ViewerProps } from "../../model/paneRecords";
 import {
@@ -130,7 +130,61 @@ describe("TranscriptChatPane", () => {
 
     await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("Transcript failed"));
   });
+
+  it("hides denylisted records by default and reveals them via the toggle", async () => {
+    installMockTransport((path) =>
+      path.startsWith("/api/meta")
+        ? jsonResponse(metaWithDenylist([{ path: "attachment.type", equals: "output_style" }]))
+        : jsonResponse({
+            events: [
+              makeSessionEvent({
+                seq: 1,
+                body: { kind: "assistant", parts: [{ type: "text", text: "visible turn" }] },
+                nativePayload: { type: "message" },
+              }),
+              makeSessionEvent({
+                seq: 2,
+                role: "system",
+                body: {
+                  kind: "wire_injected",
+                  label: "Output style",
+                  parts: [{ type: "text", text: "hidden style" }],
+                },
+                nativePayload: { type: "attachment", attachment: { type: "output_style" } },
+              }),
+            ],
+            nextFromSeq: null,
+          }),
+    );
+
+    renderWithQuery(<TranscriptChatPane {...transcriptProps()} />);
+
+    await waitFor(() => expect(screen.getByText("visible turn")).toBeInTheDocument());
+    expect(screen.queryByText("hidden style")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /show 1 filtered/i }));
+
+    await waitFor(() => {
+      const hidden = screen.getByText("hidden style").closest("article");
+      expect(hidden).toHaveAttribute("data-hidden", "true");
+    });
+  });
 });
+
+function metaWithDenylist(
+  transcript_denylist: ReadonlyArray<{ path: string; equals?: unknown }>,
+): Record<string, unknown> {
+  return {
+    channel: "stable",
+    channel_badge: null,
+    channel_label: "Stable",
+    cwd: "/repo",
+    harnesses: [],
+    workspace_id: "ws/hash",
+    run_id: null,
+    transcript_denylist,
+  };
+}
 
 function transcriptProps(): ViewerProps<{
   kind: "session-timeline";

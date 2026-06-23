@@ -123,6 +123,7 @@ describe("fetchMeta", () => {
       harnesses,
       runId: "run-123",
       workspaceId: "workspace/hash",
+      transcriptDenylist: [],
     });
     expect(fetchMock).toHaveBeenCalledWith("/api/meta");
   });
