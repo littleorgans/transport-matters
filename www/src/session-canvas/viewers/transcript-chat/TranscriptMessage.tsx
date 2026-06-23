@@ -5,14 +5,17 @@ import type { TranscriptMessageModel } from "../../stream/mapIrToChat";
 
 export interface TranscriptMessageProps {
   message: TranscriptMessageModel;
+  /** When true, the denylist hides this record; it renders dimmed (reveal-on-toggle). */
+  hidden?: boolean;
 }
 
-export function TranscriptMessage({ message }: TranscriptMessageProps) {
+export function TranscriptMessage({ message, hidden = false }: TranscriptMessageProps) {
   return (
     <article
       className="canvas-transcript-message"
       data-kind={message.kind}
       data-role={message.role}
+      data-hidden={hidden || undefined}
     >
       <header className="canvas-transcript-message__header">
         <span>{message.role}</span>

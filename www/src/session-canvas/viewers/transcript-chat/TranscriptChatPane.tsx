@@ -1,9 +1,11 @@
-import { useCallback, useEffect, useMemo, useReducer } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useState } from "react";
+import { useMeta } from "../../../hooks/useMeta";
 import type { SessionEventView } from "../../api/sessionEvents";
 import { useSessionEvents } from "../../hooks/useSessionEvents";
 import type { ViewerProps } from "../../model/paneRecords";
 import { mapSessionEventToChatItems } from "../../stream/mapIrToChat";
 import { createSessionEventState, sessionEventReducer } from "../../stream/sessionEventReducer";
+import { annotateDeniedMessages } from "../../stream/transcriptDenylist";
 import { useSessionEventStream } from "../../stream/useSessionEventStream";
 import { TranscriptMessage } from "./TranscriptMessage";
 
@@ -35,7 +37,21 @@ export function TranscriptChatPane({
     }
   }, [backlog.data, sessionId]);
 
+  const { meta } = useMeta();
   const messages = useMemo(() => state.events.flatMap(mapSessionEventToChatItems), [state.events]);
+  const annotated = useMemo(
+    () => annotateDeniedMessages(messages, meta?.transcriptDenylist),
+    [messages, meta?.transcriptDenylist],
+  );
+  const hiddenCount = useMemo(
+    () => annotated.reduce((count, item) => count + (item.hidden ? 1 : 0), 0),
+    [annotated],
+  );
+  const [showHidden, setShowHidden] = useState(false);
+  const visible = useMemo(
+    () => (showHidden ? annotated : annotated.filter((item) => !item.hidden)),
+    [annotated, showHidden],
+  );
 
   if (backlog.isLoading) return <TranscriptLoading />;
   if (backlog.error)
@@ -44,10 +60,16 @@ export function TranscriptChatPane({
 
   return (
     <div className="canvas-transcript">
-      <TranscriptStatus connected={stream.connected} missingFromSeq={state.missingFromSeq} />
+      <TranscriptStatus
+        connected={stream.connected}
+        missingFromSeq={state.missingFromSeq}
+        hiddenCount={hiddenCount}
+        showHidden={showHidden}
+        onToggleHidden={() => setShowHidden((current) => !current)}
+      />
       <div className="canvas-transcript__messages">
-        {messages.map((message) => (
-          <TranscriptMessage key={message.id} message={message} />
+        {visible.map((item) => (
+          <TranscriptMessage key={item.message.id} message={item.message} hidden={item.hidden} />
         ))}
       </div>
     </div>
@@ -57,14 +79,30 @@ export function TranscriptChatPane({
 function TranscriptStatus({
   connected,
   missingFromSeq,
+  hiddenCount,
+  showHidden,
+  onToggleHidden,
 }: {
   connected: boolean;
   missingFromSeq: number | null;
+  hiddenCount: number;
+  showHidden: boolean;
+  onToggleHidden(): void;
 }) {
   return (
     <div className="canvas-transcript__status" aria-live="polite">
       <span>{connected ? "live" : "reconnecting"}</span>
       {missingFromSeq !== null ? <span>gap from seq {missingFromSeq}</span> : null}
+      {hiddenCount > 0 ? (
+        <button
+          type="button"
+          className="canvas-transcript__filter-toggle"
+          aria-pressed={showHidden}
+          onClick={onToggleHidden}
+        >
+          {showHidden ? `hide ${hiddenCount} filtered` : `show ${hiddenCount} filtered`}
+        </button>
+      ) : null}
     </div>
   );
 }

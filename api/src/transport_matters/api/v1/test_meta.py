@@ -1,5 +1,6 @@
 """Tests for the meta endpoint."""
 
+import json
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -42,6 +43,7 @@ class TestMeta:
             "workspace_id",
             "run_id",
             "harnesses",
+            "transcript_denylist",
         }
         assert data["channel"] == "stable"
         assert data["channel_label"] == "Stable"
@@ -50,6 +52,31 @@ class TestMeta:
         assert isinstance(data["workspace_id"], str)
         assert data["run_id"] is None
         assert isinstance(data["harnesses"], list)
+        assert isinstance(data["transcript_denylist"], list)
+
+    async def test_transcript_denylist_defaults_empty(
+        self, client: AsyncClient, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        # No file on disk under the storage root -> reveal-all (empty denylist).
+        monkeypatch.setenv("TRANSPORT_MATTERS_HOME", str(tmp_path))
+        config.get_settings.cache_clear()
+        response = await client.get("/api/meta")
+        assert response.json()["transcript_denylist"] == []
+
+    async def test_transcript_denylist_echoes_file(
+        self, client: AsyncClient, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        # The endpoint echoes the operator-edited file verbatim so the UI can apply it.
+        monkeypatch.setenv("TRANSPORT_MATTERS_HOME", str(tmp_path))
+        config.get_settings.cache_clear()
+        (tmp_path / "transcript_denylist.json").write_text(
+            json.dumps({"hide": [{"path": "attachment.type", "equals": "output_style"}]}),
+            encoding="utf-8",
+        )
+        response = await client.get("/api/meta")
+        assert response.json()["transcript_denylist"] == [
+            {"path": "attachment.type", "equals": "output_style"}
+        ]
 
     async def test_preview_channel_meta_fields(
         self, client: AsyncClient, monkeypatch: pytest.MonkeyPatch

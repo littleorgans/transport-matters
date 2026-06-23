@@ -30,6 +30,7 @@ from transport_matters.harnesses import (
     HarnessTrustRequirement,
     list_harness_descriptors,
 )
+from transport_matters.transcript_denylist import TranscriptDenyRule, read_transcript_denylist
 from transport_matters.workspace import workspace_id as _workspace_id
 
 router = APIRouter()
@@ -84,6 +85,7 @@ class MetaResponse(BaseModel):
     channel_label: str
     channel_badge: ChannelBadgeResponse | None
     harnesses: tuple[HarnessDescriptorResponse, ...]
+    transcript_denylist: tuple[TranscriptDenyRule, ...]
 
 
 @router.get("")
@@ -135,4 +137,5 @@ def _build_meta_response(*, cwd: str, workspace_id: str, run_id: str | None) -> 
             HarnessDescriptorResponse.from_descriptor(descriptor)
             for descriptor in list_harness_descriptors()
         ),
+        transcript_denylist=read_transcript_denylist().hide,
     )

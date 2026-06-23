@@ -333,6 +333,18 @@ export async function fetchPausedFlowDetail(flowId: string): Promise<PausedFlow>
 
 // ── Meta endpoint ─────────────────────────────────────────────────
 
+/**
+ * One transcript denylist rule, echoed verbatim from
+ * `~/.transport-matters/transcript_denylist.json`. The transcript view applies these as
+ * a presentation default: a record whose native payload matches any rule is hidden
+ * behind a show-hidden toggle. `equals` omitted (or null) means "hide whenever `path`
+ * resolves to a present value". Mirrors `TranscriptDenyRule` in the backend.
+ */
+export interface TranscriptDenyRule {
+  path: string;
+  equals?: unknown;
+}
+
 export interface Meta {
   channel: string;
   channelBadge: ChannelBadgeMeta | null;
@@ -341,6 +353,7 @@ export interface Meta {
   harnesses: HarnessDescriptor[];
   workspaceId: string;
   runId?: string | null;
+  transcriptDenylist: TranscriptDenyRule[];
 }
 
 export interface ChannelBadgeMeta {
@@ -369,6 +382,7 @@ export async function fetchMeta(runId?: string): Promise<Meta> {
     harnesses: HarnessDescriptor[];
     workspace_id: string;
     run_id: string | null;
+    transcript_denylist?: TranscriptDenyRule[];
   }>(path, undefined, "Failed to fetch meta");
   return {
     channel: raw.channel,
@@ -378,6 +392,7 @@ export async function fetchMeta(runId?: string): Promise<Meta> {
     harnesses: raw.harnesses,
     workspaceId: raw.workspace_id,
     runId: raw.run_id,
+    transcriptDenylist: raw.transcript_denylist ?? [],
   };
 }
 

@@ -26,6 +26,7 @@ beforeEach(() => {
     cwd: "/tmp/fake",
     harnesses: [],
     workspaceId: "fake/abc123",
+    transcriptDenylist: [],
   };
 });
 
