@@ -437,6 +437,8 @@ def test_run_desktop_detached_activates_channel_before_prepare(
 
     run_desktop_detached(
         channel="preview",
+        work_dir=tmp_path,
+        storage_dir=tmp_path / "storage",
         spawn_electron_func=lambda _launch, _event: calls.append("electron"),
         popen_func=lambda *_args, **_kwargs: SimpleNamespace(pid=4321),
     )

@@ -10,7 +10,7 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 from threading import Thread
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 import typer
 
@@ -20,9 +20,13 @@ from transport_matters.desktop_event import build_backend_started_event
 from transport_matters.storage_roots import default_storage_root
 
 from .desktop_runtime import (
+    DesktopRuntimeDiscoveryError,
     DesktopRuntimeRecord,
+    DesktopRuntimeStatus,
     desktop_log_path,
     desktop_record_path,
+    discover_desktop_runtime,
+    stop_desktop_record,
     write_desktop_record,
 )
 from .launch_runtime import preflight_session_store_or_exit
@@ -220,6 +224,47 @@ def run_desktop_launch(
     serve_backend(plan, on_backend_ready)
 
 
+def _attach_existing_desktop(
+    *,
+    status: DesktopRuntimeStatus,
+    route: RouteName,
+    resolve_electron_launch_func: Callable[[], ElectronLaunch] | None,
+    spawn_electron_func: Callable[[ElectronLaunch, dict[str, Any]], None] | None,
+) -> None:
+    if status.web_port is None or status.cwd is None:
+        typer.secho(
+            f"error: live desktop runtime is missing attach data at {status.record_path}",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        raise typer.Exit(1)
+    event = build_backend_started_event(
+        route=route,
+        cwd=Path(status.cwd),
+        resolved_storage=Path(status.storage_dir),
+        web_port=status.web_port,
+    )
+    resolve_electron = resolve_electron_launch_func or resolve_electron_launch
+    launch = _resolve_or_exit(resolve_electron)
+    spawn_electron = spawn_electron_func or spawn_detached_electron
+    _spawn_or_exit(spawn_electron, launch, event)
+
+
+def _recover_desktop_runtime_or_exit(status: DesktopRuntimeStatus) -> None:
+    try:
+        stop_desktop_record(Path(status.record_path))
+    except OSError as exc:
+        hint = f" Inspect logs at {status.log_path}." if status.log_path else ""
+        typer.secho(
+            "error: could not recover "
+            f"{status.state} desktop runtime at {status.record_path}: {exc}."
+            f"{hint} Remove the runtime record or stop the process, then retry.",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        raise typer.Exit(1) from exc
+
+
 def run_desktop_detached(
     *,
     channel: str | None = None,
@@ -229,22 +274,47 @@ def run_desktop_detached(
     web_port: int | None = None,
     storage_dir: Path | None = None,
     debug: bool = False,
-    allocate_port_pair_func: Callable[[], tuple[int, int]] | None = None,
+    port_in_use_func: Callable[[int], bool] = port_in_use,
     resolve_electron_launch_func: Callable[[], ElectronLaunch] | None = None,
     spawn_electron_func: Callable[[ElectronLaunch, dict[str, Any]], None] | None = None,
     popen_func: Callable[..., Any] | None = None,
 ) -> None:
     """Start the detached backend, wait for readiness, open the viewer, and return."""
     channel_spec = activate_channel(channel)
+    normalized_route = cast("RouteName", _normalize_route(route))
+    resolved_cwd = _resolve_work_dir(work_dir)
+    resolved_storage = _resolve_storage_dir(storage_dir, channel=channel_spec.id, env=os.environ)
+    try:
+        runtime_status = discover_desktop_runtime(
+            channel=channel_spec.id,
+            storage_dir=resolved_storage,
+            route=normalized_route,
+            cwd=resolved_cwd,
+        )
+    except DesktopRuntimeDiscoveryError as exc:
+        typer.secho(f"error: {exc.message}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(1) from exc
+
+    if runtime_status.state == "live":
+        _attach_existing_desktop(
+            status=runtime_status,
+            route=normalized_route,
+            resolve_electron_launch_func=resolve_electron_launch_func,
+            spawn_electron_func=spawn_electron_func,
+        )
+        return
+    if runtime_status.state in {"stale", "unhealthy"}:
+        _recover_desktop_runtime_or_exit(runtime_status)
+
     plan = prepare_desktop_launch(
         channel=channel_spec.id,
-        route=route,
-        work_dir=work_dir,
+        route=normalized_route,
+        work_dir=resolved_cwd,
         proxy_port=proxy_port,
         web_port=web_port,
-        storage_dir=storage_dir,
+        storage_dir=resolved_storage,
         debug=debug,
-        allocate_port_pair_func=allocate_port_pair_func,
+        port_in_use_func=port_in_use_func,
         launch_viewer=True,
         resolve_electron_launch_func=resolve_electron_launch_func,
     )

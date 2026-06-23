@@ -25,6 +25,8 @@ from transport_matters.cli.desktop_runtime import (
     write_desktop_record,
 )
 
+from ._helpers import _write_desktop_record
+
 if TYPE_CHECKING:
     from pathlib import Path
 
@@ -351,18 +353,4 @@ def test_stop_desktop_record_permission_error_bubbles(tmp_path: Path) -> None:
 
 
 def _write_preview_record(tmp_path: Path, *, pid: int) -> Path:
-    record_file = desktop_record_path(tmp_path)
-    write_desktop_record(
-        record_file,
-        DesktopRuntimeRecord(
-            channel="preview",
-            pid=pid,
-            proxy_port=8797,
-            web_port=8798,
-            log_path=str(desktop_log_path(tmp_path)),
-            cwd=str(tmp_path / "workspace"),
-            storage_dir=str(tmp_path),
-            version="1.2.3",
-        ),
-    )
-    return record_file
+    return _write_desktop_record(tmp_path, pid=pid)

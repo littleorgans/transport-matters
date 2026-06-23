@@ -293,20 +293,22 @@ def stop_desktop_record(
     *,
     timeout_s: float = 3.0,
     poll_s: float = 0.1,
-    pid_alive: Callable[[int], bool] = is_pid_alive,
-    kill: Callable[[int, int], None] = os.kill,
+    pid_alive: Callable[[int], bool] | None = None,
+    kill: Callable[[int, int], None] | None = None,
     sleep: Callable[[float], None] = time.sleep,
 ) -> StopDesktopResult:
+    pid_alive_func = pid_alive or is_pid_alive
+    kill_func = kill or os.kill
     record = _read_desktop_record_for_stop(record_path)
     if record is None:
         return StopDesktopResult(status="nothing")
 
-    if not pid_alive(record.pid):
+    if not pid_alive_func(record.pid):
         _unlink_desktop_record(record_path)
         return StopDesktopResult(status="nothing")
 
     try:
-        kill(record.pid, signal.SIGTERM)
+        kill_func(record.pid, signal.SIGTERM)
     except ProcessLookupError:
         _unlink_desktop_record(record_path)
         return StopDesktopResult(status="stopped", pid=record.pid)
@@ -314,19 +316,19 @@ def stop_desktop_record(
     remaining_s = max(timeout_s, 0.0)
     interval_s = poll_s if poll_s > 0 else remaining_s
     while remaining_s > 0:
-        if not pid_alive(record.pid):
+        if not pid_alive_func(record.pid):
             _unlink_desktop_record(record_path)
             return StopDesktopResult(status="stopped", pid=record.pid)
         sleep_for_s = min(interval_s, remaining_s)
         sleep(sleep_for_s)
         remaining_s -= sleep_for_s
 
-    if not pid_alive(record.pid):
+    if not pid_alive_func(record.pid):
         _unlink_desktop_record(record_path)
         return StopDesktopResult(status="stopped", pid=record.pid)
 
     with contextlib.suppress(ProcessLookupError):
-        kill(record.pid, signal.SIGKILL)
+        kill_func(record.pid, signal.SIGKILL)
     _unlink_desktop_record(record_path)
     return StopDesktopResult(status="stopped", pid=record.pid)
 
