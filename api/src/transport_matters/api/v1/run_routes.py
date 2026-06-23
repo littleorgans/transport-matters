@@ -3,10 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-import base64
-import binascii
 import contextlib
-import json
 import os
 from typing import TYPE_CHECKING, Any, Literal, NoReturn, cast
 
@@ -17,6 +14,12 @@ from starlette.websockets import WebSocketDisconnect
 
 from transport_matters.api.v1 import terminal_bridge
 from transport_matters.api.v1.errors import raise_api_error
+from transport_matters.api.v1.responses import (
+    decode_cursor,
+    encode_cursor,
+    raise_not_found,
+    response_payload,
+)
 from transport_matters.api.v1.run_continuation import (
     ContinuationSessionNotFound,
     build_continuation_launch_fields,
@@ -175,18 +178,6 @@ def _http_error_from_manager(exc: RunManagerError) -> NoReturn:
     raise_api_error(status_code, exc.code, exc.message)
 
 
-def _not_found(run_id: str) -> NoReturn:
-    raise_api_error(http_status.HTTP_404_NOT_FOUND, "run_not_found", f"run not found: {run_id}")
-
-
-def _session_not_found(session_id: str) -> NoReturn:
-    raise_api_error(
-        http_status.HTTP_404_NOT_FOUND,
-        "session_not_found",
-        f"session {session_id!r} was not found",
-    )
-
-
 async def require_http_origin(request: Request) -> None:
     if terminal_bridge.origin_allowed_for_request(request, get_settings()):
         return
@@ -233,31 +224,6 @@ def _cursor_filter_key(
     state: str | None, space_id: str | None, worktree_id: str | None
 ) -> dict[str, str | None]:
     return {"state": state, "spaceId": space_id, "worktreeId": worktree_id}
-
-
-def _encode_cursor(offset: int, *, filters: dict[str, str | None]) -> str:
-    raw = json.dumps({"offset": offset, "filters": filters}, separators=(",", ":")).encode()
-    return base64.urlsafe_b64encode(raw).decode().rstrip("=")
-
-
-def _decode_cursor(cursor: str, *, filters: dict[str, str | None]) -> int:
-    try:
-        padded = cursor + "=" * (-len(cursor) % 4)
-        payload = json.loads(base64.urlsafe_b64decode(padded.encode()).decode())
-    except binascii.Error, UnicodeDecodeError, ValueError, json.JSONDecodeError:
-        raise_api_error(http_status.HTTP_400_BAD_REQUEST, "invalid_cursor", "invalid cursor")
-    if not isinstance(payload, dict):
-        raise_api_error(http_status.HTTP_400_BAD_REQUEST, "invalid_cursor", "invalid cursor")
-    if payload.get("filters") != filters:
-        raise_api_error(
-            http_status.HTTP_400_BAD_REQUEST,
-            "invalid_cursor",
-            "cursor does not match the active filters",
-        )
-    offset = payload.get("offset")
-    if not isinstance(offset, int) or offset < 0:
-        raise_api_error(http_status.HTTP_400_BAD_REQUEST, "invalid_cursor", "invalid cursor")
-    return offset
 
 
 def _parse_uuid_id[IdT: (SpaceId, WorktreeId)](
@@ -342,7 +308,7 @@ async def _launch_fields(
             pool, parent_session_id=parent_session_id, owner=owner
         )
     except ContinuationSessionNotFound:
-        _session_not_found(parent_session_id)
+        raise_not_found("session_not_found", f"session {parent_session_id!r} was not found")
     return continuation.fields
 
 
@@ -430,13 +396,6 @@ def run_view_payload(view: ManagedRunView) -> dict[str, object]:
     )
 
 
-def _response_payload(response: BaseModel) -> dict[str, object]:
-    return cast(
-        "dict[str, object]",
-        response.model_dump(mode="json", by_alias=True, exclude_none=True),
-    )
-
-
 @router.post(RUNS_ROUTE_PREFIX, status_code=http_status.HTTP_201_CREATED)
 async def create_run(
     body: CreateRunRequest,
@@ -460,7 +419,7 @@ async def create_run(
         run = await manager.spawn(spawn_request)
     except RunManagerError as exc:
         _http_error_from_manager(exc)
-    return _response_payload(CreateRunResponse(run=run_view_model(run.view())))
+    return response_payload(CreateRunResponse(run=run_view_model(run.view())))
 
 
 @router.get(RUNS_ROUTE_PREFIX)
@@ -473,7 +432,7 @@ async def list_runs(
     cursor: str | None = Query(default=None),
 ) -> dict[str, object]:
     cursor_filters = _cursor_filter_key(state, space_id, worktree_id)
-    offset = _decode_cursor(cursor, filters=cursor_filters) if cursor is not None else 0
+    offset = decode_cursor(cursor, filters=cursor_filters) if cursor is not None else 0
     filters = RunFilters(
         space_id=_parse_uuid_id(space_id, SpaceId, "spaceId", "invalid_space_id"),
         worktree_id=_parse_uuid_id(worktree_id, WorktreeId, "worktreeId", "invalid_worktree_id"),
@@ -484,7 +443,7 @@ async def list_runs(
     page = views[offset : offset + limit]
     next_offset = offset + limit
     next_cursor = (
-        _encode_cursor(next_offset, filters=cursor_filters) if next_offset < len(views) else None
+        encode_cursor(next_offset, filters=cursor_filters) if next_offset < len(views) else None
     )
     return {"items": [run_view_payload(view) for view in page], "nextCursor": next_cursor}
 
@@ -495,8 +454,8 @@ async def get_run(run_id: str, request: Request) -> dict[str, object]:
     try:
         view = manager.get(run_id).view()
     except RunNotFoundError:
-        _not_found(run_id)
-    return _response_payload(CreateRunResponse(run=run_view_model(view)))
+        raise_not_found("run_not_found", f"run not found: {run_id}")
+    return response_payload(CreateRunResponse(run=run_view_model(view)))
 
 
 @router.post(RUNS_ROUTE_PREFIX + "/{run_id}/terminate")
@@ -509,8 +468,8 @@ async def terminate_run(
     try:
         view = await manager.terminate(run_id, reason="explicit")
     except RunNotFoundError:
-        _not_found(run_id)
-    return _response_payload(TerminateRunResponse(run=run_view_model(view)))
+        raise_not_found("run_not_found", f"run not found: {run_id}")
+    return response_payload(TerminateRunResponse(run=run_view_model(view)))
 
 
 @router.websocket(RUNS_ROUTE_PREFIX + "/{run_id}/terminal")
