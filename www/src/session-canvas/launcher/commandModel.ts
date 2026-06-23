@@ -14,7 +14,13 @@ import type {
   SpaceSummary,
   WorktreeSummary,
 } from "../../types";
-import { CAPTURED_RUN_PROVIDERS, harnessLabel, locatorTail } from "../model/paneRecords";
+import type { SessionSummary } from "../api/sessionClient";
+import {
+  CAPTURED_RUN_PROVIDERS,
+  harnessLabel,
+  locatorTail,
+  type SpawnSessionDescriptor,
+} from "../model/paneRecords";
 
 export const LAUNCHER_SCOPES = [
   "root",
@@ -72,8 +78,18 @@ export function updateTopFrame(stack: NavFrame[], patch: Partial<NavFrame>): Nav
   return [...stack.slice(0, -1), { ...topFrame(stack), ...patch }];
 }
 
-/** Resolution status of the runtime-template fetch (drives the Agents states). */
-export type AgentsStatus = "loading" | "error" | "empty" | "populated";
+/** Four-state resolution of an async scope fetch (Agents specialists, Sessions history). */
+export type FetchStatus = "loading" | "error" | "empty" | "populated";
+
+/** Maps a react-query result (`isError` + `data`) into the four-state contract. */
+export function deriveFetchStatus(
+  isError: boolean,
+  data: readonly unknown[] | undefined,
+): FetchStatus {
+  if (isError) return "error";
+  if (data === undefined) return "loading";
+  return data.length === 0 ? "empty" : "populated";
+}
 
 /** A leaf effect dispatched out to the canvas; scope nav is handled internally. */
 export type LauncherCommand =
@@ -84,10 +100,11 @@ export type LauncherCommand =
   | { kind: "cycle-theme" }
   | { kind: "toggle-bypass-permissions" }
   | { kind: "set-canvas-gesture-modifier"; modifier: CanvasGestureModifier }
-  | { kind: "select-worktree"; spaceId: string; worktreeId: string };
+  | { kind: "select-worktree"; spaceId: string; worktreeId: string }
+  | { kind: "open-session"; session: SpawnSessionDescriptor };
 
 /** Command-center-local effects handled inside the launcher hook. */
-export type LauncherEffect = "retry-agents";
+export type LauncherEffect = "retry-agents" | "retry-sessions";
 
 /** What a row does on `↵`: enter a sub-scope, fire a command, or run a local effect. */
 export type RowAction =
@@ -113,6 +130,7 @@ const COMMAND_INTERACTIONS: Partial<Record<LauncherCommand["kind"], Interaction>
 };
 const EFFECT_INTERACTIONS: Record<LauncherEffect, Interaction> = {
   "retry-agents": { enter: "run-stay", advance: "none" },
+  "retry-sessions": { enter: "run-stay", advance: "none" },
 };
 
 export function interactionFor(action: RowAction): Interaction {
@@ -147,6 +165,7 @@ const GROUP_AGENTS = "Agents";
 const GROUP_CANVAS = "Canvas";
 const GROUP_SETTINGS = "Settings";
 const GROUP_WORKDIR = "Workdir";
+const GROUP_SESSIONS = "Sessions";
 
 const VENDOR_LABELS: Record<RuntimeTemplateVendor, string> = {
   anthropic: "Anthropic",
@@ -220,13 +239,13 @@ function agentSpawnRows(templates: RuntimeTemplateSummary[]): CommandRow[] {
 /** Agents-scope rows: the spawnable rows plus the quiet four-state status rows. */
 export function buildAgentRows(
   templates: RuntimeTemplateSummary[],
-  status: AgentsStatus,
+  status: FetchStatus,
 ): CommandRow[] {
   return [...agentSpawnRows(templates), ...agentsStatusRows(status)];
 }
 
 /** The quiet status/skeleton/retry rows that make the four states legible. */
-function agentsStatusRows(status: AgentsStatus): CommandRow[] {
+function agentsStatusRows(status: FetchStatus): CommandRow[] {
   switch (status) {
     case "loading":
       return [0, 1].map((index) => ({
@@ -436,6 +455,84 @@ export function buildWorktreeRows(
   );
 }
 
+/** The spawn descriptor a session row threads to the EXISTING transcript handler. */
+function sessionSpawnDescriptor(session: SessionSummary): SpawnSessionDescriptor {
+  return {
+    sessionId: session.sessionId,
+    title: session.title,
+    provider: session.provider,
+    harness: session.harness,
+    status: session.status,
+    lastActivityAt: session.lastActivityAt,
+  };
+}
+
+/** One Sessions-scope row per captured session; ↵ opens (or focuses) its transcript. */
+function sessionRow(session: SessionSummary): CommandRow {
+  const turns = session.turnCount === 1 ? "1 turn" : `${session.turnCount} turns`;
+  return {
+    value: `session:${session.sessionId}`,
+    title: session.title ?? `${session.harness} session`,
+    subtitle: `${session.harness} · ${turns}`,
+    group: GROUP_SESSIONS,
+    action: {
+      kind: "command",
+      command: { kind: "open-session", session: sessionSpawnDescriptor(session) },
+    },
+  };
+}
+
+/** The quiet status/skeleton/retry rows that make the four Sessions states legible. */
+function sessionsStatusRows(status: FetchStatus): CommandRow[] {
+  switch (status) {
+    case "loading":
+      return [0, 1].map((index) => ({
+        value: `status:sessions-loading:${index}`,
+        title: "Loading sessions…",
+        group: GROUP_SESSIONS,
+        disabled: true,
+      }));
+    case "error":
+      return [
+        {
+          value: "status:sessions-error",
+          title: "Couldn’t load transcript history",
+          subtitle: "The session store didn’t respond",
+          group: GROUP_SESSIONS,
+          disabled: true,
+        },
+        {
+          value: "action:retry-sessions",
+          title: "Retry",
+          subtitle: "Fetch transcript history again",
+          group: GROUP_SESSIONS,
+          action: { kind: "effect", effect: "retry-sessions" },
+        },
+      ];
+    case "empty":
+      return [
+        {
+          value: "status:sessions-empty",
+          title: "No transcript history yet",
+          subtitle: "Captured sessions will appear here",
+          group: GROUP_SESSIONS,
+          disabled: true,
+        },
+      ];
+    case "populated":
+      return [];
+  }
+}
+
+/**
+ * Sessions scope: one row per captured session (R: browse transcript history),
+ * plus the quiet four-state status rows. Wiring only — each row reuses the
+ * shipped `spawnOrFocusTranscript` path; search/replay internals stay deferred.
+ */
+export function buildSessionsRows(sessions: SessionSummary[], status: FetchStatus): CommandRow[] {
+  return [...sessions.map(sessionRow), ...sessionsStatusRows(status)];
+}
+
 /** The five root domains. Each ↵ ENTERS its scope; accelerators jump from anywhere. */
 const DOMAINS: {
   scope: LauncherScope;
@@ -478,27 +575,16 @@ function buildFlatSearchRows(inputs: ScopeRowInputs): CommandRow[] {
   ];
 }
 
-/** A single quiet placeholder for a domain whose internals are not wired yet. */
-function buildDeferredRows(label: string): CommandRow[] {
-  return [
-    {
-      value: `status:${label.toLowerCase()}-deferred`,
-      title: `${label} lands next`,
-      subtitle: "Wired into the command center; internals to come",
-      group: label,
-      disabled: true,
-    },
-  ];
-}
-
 export interface ScopeRowInputs {
   templates: RuntimeTemplateSummary[];
-  agentsStatus: AgentsStatus;
+  agentsStatus: FetchStatus;
   themeName: string;
   canvasGestureModifier: CanvasGestureModifier;
   bypassPermissions: boolean;
   spaces: SpaceSummary[];
   activeWorktreeId: string | null;
+  sessions: SessionSummary[];
+  sessionsStatus: FetchStatus;
 }
 
 /**
@@ -527,7 +613,7 @@ export function buildScopeRows(
     case "worktree":
       return buildWorktreeRows(inputs.spaces, param, inputs.activeWorktreeId);
     case "sessions":
-      return buildDeferredRows("Sessions");
+      return buildSessionsRows(inputs.sessions, inputs.sessionsStatus);
   }
 }
 

@@ -2,9 +2,10 @@ import { createListCollection } from "@ark-ui/react/combobox";
 import { type Dispatch, type SetStateAction, useEffect, useMemo } from "react";
 import type { CanvasGestureModifier } from "../../keybindings/gestureModifier";
 import type { RuntimeTemplateSummary, SpaceSummary } from "../../types";
+import type { SessionSummary } from "../api/sessionClient";
 import {
-  type AgentsStatus,
   buildScopeRows,
+  type FetchStatus,
   filterRows,
   firstSelectableValue,
   groupRows,
@@ -17,12 +18,14 @@ export interface LauncherRowsArgs {
   query: string;
   param: string | undefined;
   templates: RuntimeTemplateSummary[];
-  status: AgentsStatus;
+  status: FetchStatus;
   themeName: string;
   canvasGestureModifier: CanvasGestureModifier;
   bypassPermissions: boolean;
   spaces: SpaceSummary[];
   activeWorktreeId: string | null;
+  sessions: SessionSummary[];
+  sessionsStatus: FetchStatus;
   setHighlighted: Dispatch<SetStateAction<string | undefined>>;
 }
 
@@ -44,6 +47,8 @@ export function useLauncherRows({
   bypassPermissions,
   spaces,
   activeWorktreeId,
+  sessions,
+  sessionsStatus,
   setHighlighted,
 }: LauncherRowsArgs) {
   const inputs = useMemo<ScopeRowInputs>(
@@ -55,6 +60,8 @@ export function useLauncherRows({
       bypassPermissions,
       spaces,
       activeWorktreeId,
+      sessions,
+      sessionsStatus,
     }),
     [
       templates,
@@ -64,6 +71,8 @@ export function useLauncherRows({
       bypassPermissions,
       spaces,
       activeWorktreeId,
+      sessions,
+      sessionsStatus,
     ],
   );
   const visibleRows = useMemo(

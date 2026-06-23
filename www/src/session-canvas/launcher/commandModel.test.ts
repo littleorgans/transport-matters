@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { RuntimeTemplateSummary, SpaceSummary } from "../../types";
+import { makeSessionSummary } from "../testUtils";
 import {
   buildAgentRows,
   buildScopeRows,
+  buildSessionsRows,
   createRootNavFrame,
   createScopeNavFrame,
+  deriveFetchStatus,
   domainRowValue,
   filterRows,
   firstSelectableValue,
@@ -71,6 +74,8 @@ const baseInputs = (overrides: Partial<ScopeRowInputs> = {}): ScopeRowInputs => 
   bypassPermissions: false,
   spaces: [],
   activeWorktreeId: null,
+  sessions: [],
+  sessionsStatus: "populated",
   ...overrides,
 });
 
@@ -184,6 +189,7 @@ describe("interactionFor", () => {
     [{ kind: "cycle-theme" }, commitCycleTheme],
     [{ kind: "toggle-bypass-permissions" }, commitCycleTheme],
     [{ kind: "set-canvas-gesture-modifier", modifier: "Shift" }, runAndClose],
+    [{ kind: "open-session", session: makeSessionSummary() }, runAndClose],
   ];
   const actionCases: [string, RowAction, Interaction][] = [
     ["enter scope", { kind: "enter", scope: "agents" }, { enter: "descend", advance: "descend" }],
@@ -193,8 +199,13 @@ describe("interactionFor", () => {
       expected,
     ]),
     [
-      "retry effect",
+      "retry-agents effect",
       { kind: "effect", effect: "retry-agents" },
+      { enter: "run-stay", advance: "none" },
+    ],
+    [
+      "retry-sessions effect",
+      { kind: "effect", effect: "retry-sessions" },
       { enter: "run-stay", advance: "none" },
     ],
   ];
@@ -345,15 +356,6 @@ describe("buildScopeRows — domains-first root", () => {
       "cmd:goto-lab",
     ]);
   });
-
-  it("Workdir/Sessions wire in as a single quiet placeholder", () => {
-    for (const scope of ["workdir", "sessions"] as const) {
-      const rows = buildScopeRows(scope, baseInputs(), "");
-      expect(rows).toHaveLength(1);
-      expect(rows[0]?.disabled).toBe(true);
-      expect(rows[0]?.action).toBeUndefined();
-    }
-  });
 });
 
 describe("row helpers", () => {
@@ -490,5 +492,88 @@ describe("nav param threading", () => {
       highlightedValue: undefined,
       param: "space-repo",
     });
+  });
+});
+
+const sessionA = makeSessionSummary({
+  sessionId: "s-a",
+  title: "Refactor auth",
+  harness: "claude",
+  turnCount: 3,
+});
+// title forced null AFTER the fixture: makeSessionSummary coalesces null → default.
+const sessionB = {
+  ...makeSessionSummary({ sessionId: "s-b", harness: "codex", turnCount: 1 }),
+  title: null,
+};
+
+describe("Sessions scope — transcript history rows", () => {
+  it("lists one row per session and opens its transcript on ↵", () => {
+    const rows = buildScopeRows("sessions", baseInputs({ sessions: [sessionA, sessionB] }), "");
+    expect(rows.map((row) => row.value)).toEqual(["session:s-a", "session:s-b"]);
+    expect(rows.every((row) => row.group === "Sessions")).toBe(true);
+    // The row carries only the spawn descriptor (a SessionSummary subset), threaded
+    // straight to the EXISTING spawnOrFocusTranscript handler.
+    expect(rows[0]?.action).toEqual({
+      kind: "command",
+      command: {
+        kind: "open-session",
+        session: {
+          sessionId: "s-a",
+          title: "Refactor auth",
+          provider: sessionA.provider,
+          harness: "claude",
+          status: sessionA.status,
+          lastActivityAt: sessionA.lastActivityAt,
+        },
+      },
+    });
+  });
+
+  it("falls back to a harness-titled row and pluralises the turn count", () => {
+    const onlyA = buildScopeRows("sessions", baseInputs({ sessions: [sessionA] }), "");
+    expect(onlyA[0]?.subtitle).toBe("claude · 3 turns");
+    const onlyB = buildScopeRows("sessions", baseInputs({ sessions: [sessionB] }), "");
+    expect(onlyB[0]?.title).toBe("codex session");
+    expect(onlyB[0]?.subtitle).toBe("codex · 1 turn");
+  });
+
+  it("loading shows disabled skeletons and nothing selectable", () => {
+    const rows = buildScopeRows("sessions", baseInputs({ sessionsStatus: "loading" }), "");
+    expect(rows).toHaveLength(2);
+    expect(rows.every((row) => row.disabled)).toBe(true);
+    expect(firstSelectableValue(rows)).toBeUndefined();
+  });
+
+  it("error shows a quiet note plus a retry-sessions effect", () => {
+    const rows = buildScopeRows("sessions", baseInputs({ sessionsStatus: "error" }), "");
+    expect(rows.some((row) => row.value === "status:sessions-error" && row.disabled)).toBe(true);
+    expect(rows.find((row) => row.value === "action:retry-sessions")?.action).toEqual({
+      kind: "effect",
+      effect: "retry-sessions",
+    });
+  });
+
+  it("empty shows a single quiet placeholder", () => {
+    const rows = buildScopeRows("sessions", baseInputs({ sessionsStatus: "empty" }), "");
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.value).toBe("status:sessions-empty");
+    expect(rows[0]?.disabled).toBe(true);
+  });
+
+  it("filters session rows by title or harness, case-insensitively", () => {
+    const rows = buildSessionsRows([sessionA, sessionB], "populated");
+    expect(filterRows(rows, "codex").map((row) => row.value)).toEqual(["session:s-b"]);
+    expect(filterRows(rows, "refactor").map((row) => row.value)).toEqual(["session:s-a"]);
+  });
+});
+
+describe("deriveFetchStatus", () => {
+  it("maps a react-query result into the four-state contract", () => {
+    expect(deriveFetchStatus(true, undefined)).toBe("error");
+    expect(deriveFetchStatus(true, [])).toBe("error");
+    expect(deriveFetchStatus(false, undefined)).toBe("loading");
+    expect(deriveFetchStatus(false, [])).toBe("empty");
+    expect(deriveFetchStatus(false, [makeSessionSummary()])).toBe("populated");
   });
 });

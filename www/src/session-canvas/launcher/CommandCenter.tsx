@@ -35,12 +35,14 @@ export function CommandCenter({
   bypassPermissions,
 }: CommandCenterProps) {
   const activeWorktreeId = useCanvasStore((state) => state.defaultWorktreeId);
+  const workspaceHash = useCanvasStore((state) => state.workspaceHash);
   const center = useCommandCenter({
     onCommand,
     themeName,
     canvasGestureModifier,
     bypassPermissions,
     activeWorktreeId,
+    workspaceHash,
   });
   const panelRef = useRef<HTMLDivElement>(null);
   // Keep the highlighted row scrolled into the bounded results list as the arrow

@@ -35,18 +35,6 @@ const paneBodyDrag = (paneId: PaneId): boolean => {
 };
 
 type CanvasStoreSnapshot = ReturnType<typeof useCanvasStore.getState>;
-type CapturedRunStoreSnapshot = ReturnType<typeof useCapturedRunStore.getState>;
-type KeymapStoreSnapshot = ReturnType<typeof useKeymapStore.getState>;
-type ThemeStoreSnapshot = ReturnType<typeof useThemeStore.getState>;
-
-interface CanvasCommandHandlerOptions {
-  addCapturedRun: CanvasStoreSnapshot["addCapturedRun"];
-  cycleTheme: ThemeStoreSnapshot["cycleTheme"];
-  focusPane: CanvasStoreSnapshot["focusPane"];
-  resetViewport: CanvasStoreSnapshot["resetViewport"];
-  setCanvasGestureModifier: KeymapStoreSnapshot["setCanvasGestureModifier"];
-  toggleBypassPermissions: CapturedRunStoreSnapshot["toggleBypassPermissions"];
-}
 
 interface CanvasPaneRendererOptions {
   canvasId: CanvasStoreSnapshot["canvasId"];
@@ -76,14 +64,16 @@ const SortablePane = createSortablePaneAdapter({
   useLiftDisabled: (paneId) => useCanvasStore((state) => state.expandedPaneId === paneId),
 });
 
-function useCanvasCommandHandler({
-  addCapturedRun,
-  cycleTheme,
-  focusPane,
-  resetViewport,
-  setCanvasGestureModifier,
-  toggleBypassPermissions,
-}: CanvasCommandHandlerOptions): (command: LauncherCommand) => void {
+function useCanvasCommandHandler(): (command: LauncherCommand) => void {
+  // Self-sources the leaf store actions it dispatches to, so the surface composes
+  // it with no command-threading boilerplate (mirrors useCanvasPaneRenderer's split).
+  const addCapturedRun = useCanvasStore((state) => state.addCapturedRun);
+  const cycleTheme = useThemeStore((state) => state.cycleTheme);
+  const focusPane = useCanvasStore((state) => state.focusPane);
+  const resetViewport = useCanvasStore((state) => state.resetViewport);
+  const setCanvasGestureModifier = useKeymapStore((state) => state.setCanvasGestureModifier);
+  const toggleBypassPermissions = useCapturedRunStore((state) => state.toggleBypassPermissions);
+  const spawnOrFocusTranscript = useCanvasStore((state) => state.spawnOrFocusTranscript);
   return useCallback(
     (command: LauncherCommand) => {
       switch (command.kind) {
@@ -135,6 +125,11 @@ function useCanvasCommandHandler({
             .initializeCanvas(parseCanvasLaunchContext(window.location.search));
           return;
         }
+        case "open-session":
+          // Reuse the shipped transcript path: spawn (or focus, if already open)
+          // the picked session's transcript pane on the current canvas.
+          spawnOrFocusTranscript(command.session);
+          return;
       }
     },
     [
@@ -144,6 +139,7 @@ function useCanvasCommandHandler({
       cycleTheme,
       setCanvasGestureModifier,
       toggleBypassPermissions,
+      spawnOrFocusTranscript,
     ],
   );
 }
@@ -269,29 +265,17 @@ export function CanvasSurface({
   const restorePaneAtIndex = useCanvasStore((state) => state.restorePaneAtIndex);
   const setBounds = useCanvasStore((state) => state.setBounds);
   const setViewport = useCanvasStore((state) => state.setViewport);
-  const resetViewport = useCanvasStore((state) => state.resetViewport);
   const spawnOrFocusTranscript = useCanvasStore((state) => state.spawnOrFocusTranscript);
-  const addCapturedRun = useCanvasStore((state) => state.addCapturedRun);
   const themeName = useThemeStore((state) => state.theme?.name ?? "NONE");
-  const cycleTheme = useThemeStore((state) => state.cycleTheme);
   const canvasGestureModifier = useKeymapStore((state) => state.canvasGestureModifier);
-  const setCanvasGestureModifier = useKeymapStore((state) => state.setCanvasGestureModifier);
   const bypassPermissions = useCapturedRunStore((state) => state.bypassPermissions);
-  const toggleBypassPermissions = useCapturedRunStore((state) => state.toggleBypassPermissions);
   const surfaceRef = useRef<HTMLElement>(null);
   const focusedPaneId = layout.focusedPaneId;
   const { reorderActive, markReorderActive, finishReorder } = useReorderSettle();
 
   // The command center re-homes the deleted command bar's functions: every leaf
   // entry routes to the SAME existing handler, so zero-chrome regresses nothing.
-  const handleCommand = useCanvasCommandHandler({
-    addCapturedRun,
-    cycleTheme,
-    focusPane,
-    resetViewport,
-    setCanvasGestureModifier,
-    toggleBypassPermissions,
-  });
+  const handleCommand = useCanvasCommandHandler();
   const dndDeps = useMemo(
     () => ({
       getLayout: () => useCanvasStore.getState().layout,
