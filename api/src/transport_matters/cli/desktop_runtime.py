@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from transport_matters.desktop_runtime import (
+    DesktopHealthProbeResult,
+    DesktopLivenessPolicy,
     DesktopRuntimeDiscoveryError,
     DesktopRuntimeRecord,
     DesktopRuntimeState,
@@ -17,12 +19,15 @@ from transport_matters.desktop_runtime import (
     desktop_runtime_status_to_json,
     discover_desktop_runtime,
     is_pid_alive,
+    probe_desktop_liveness,
     read_live_desktop_record,
     stop_desktop_record,
     write_desktop_record,
 )
 
 __all__ = [
+    "DesktopHealthProbeResult",
+    "DesktopLivenessPolicy",
     "DesktopRuntimeDiscoveryError",
     "DesktopRuntimeRecord",
     "DesktopRuntimeState",
@@ -37,6 +42,7 @@ __all__ = [
     "desktop_runtime_status_to_json",
     "discover_desktop_runtime",
     "is_pid_alive",
+    "probe_desktop_liveness",
     "read_live_desktop_record",
     "stop_desktop_record",
     "write_desktop_record",

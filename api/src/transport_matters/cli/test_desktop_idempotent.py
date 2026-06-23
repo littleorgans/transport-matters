@@ -12,6 +12,8 @@ import typer
 from transport_matters.cli import desktop_cmd
 from transport_matters.cli.desktop_cmd import ElectronLaunch, run_desktop_detached
 from transport_matters.cli.desktop_runtime import (
+    DesktopHealthProbeResult,
+    DesktopLivenessPolicy,
     desktop_record_path,
     read_live_desktop_record,
 )
@@ -39,8 +41,8 @@ def test_run_desktop_detached_live_runtime_attaches_without_backend(
     )
     monkeypatch.setattr("transport_matters.desktop_runtime.is_pid_alive", lambda _pid: True)
     monkeypatch.setattr(
-        "transport_matters.desktop_runtime.wait_for_port_ready",
-        lambda *_args, **_kwargs: True,
+        "transport_matters.desktop_runtime._probe_desktop_health",
+        lambda *_args, **_kwargs: DesktopHealthProbeResult(status="live"),
     )
     monkeypatch.setattr(
         "transport_matters.desktop_runtime._read_runtime_meta_channel",
@@ -102,21 +104,14 @@ def test_run_desktop_detached_absent_runtime_starts_normally(
     assert record is not None
 
 
-@pytest.mark.parametrize(
-    ("pid_alive", "health_ready", "expected_recovery_signals"),
-    [(False, True, ()), (True, False, (signal.SIGTERM,))],
-)
-def test_run_desktop_detached_recovers_stale_or_unhealthy_runtime_before_start(
+def test_run_desktop_detached_recovers_dead_pid_before_start(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
-    pid_alive: bool,
-    health_ready: bool,
-    expected_recovery_signals: tuple[int, ...],
 ) -> None:
-    monkeypatch.setattr("transport_matters.desktop_runtime.is_pid_alive", lambda _pid: pid_alive)
+    monkeypatch.setattr("transport_matters.desktop_runtime.is_pid_alive", lambda _pid: False)
     monkeypatch.setattr(
-        "transport_matters.desktop_runtime.wait_for_port_ready",
-        lambda *_args, **_kwargs: health_ready,
+        "transport_matters.desktop_runtime._probe_desktop_health",
+        lambda *_args, **_kwargs: DesktopHealthProbeResult(status="live"),
     )
     kill_calls: list[tuple[int, int]] = []
 
@@ -157,7 +152,248 @@ def test_run_desktop_detached_recovers_stale_or_unhealthy_runtime_before_start(
     record = read_live_desktop_record(record_path, pid_alive=lambda pid: pid == 8765)
     assert record is not None
     assert record.pid == 8765
-    assert kill_calls == [(987654321, sig) for sig in expected_recovery_signals]
+    assert kill_calls == []
+
+
+def test_run_desktop_detached_recovers_refused_runtime_with_warning(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr("transport_matters.desktop_runtime.is_pid_alive", lambda _pid: True)
+    monkeypatch.setattr("transport_matters.desktop_runtime.time.sleep", lambda _seconds: None)
+    monkeypatch.setattr(
+        "transport_matters.desktop_runtime._probe_desktop_health",
+        lambda *_args, **_kwargs: DesktopHealthProbeResult(status="refused"),
+    )
+    monkeypatch.setattr(desktop_cmd, "wait_for_port_ready", lambda *_args, **_kwargs: True)
+    kill_calls: list[tuple[int, int]] = []
+
+    def fake_kill(pid: int, sig: int) -> None:
+        kill_calls.append((pid, sig))
+        raise ProcessLookupError
+
+    monkeypatch.setattr("transport_matters.desktop_runtime.os.kill", fake_kill)
+    storage = tmp_path / "storage"
+    workspace = tmp_path / "workspace"
+    record_path = desktop_record_path(storage)
+    _write_desktop_record(
+        storage,
+        pid=987654321,
+        proxy_port=9900,
+        web_port=9901,
+        cwd=workspace,
+        version="test",
+    )
+
+    run_desktop_detached(
+        channel="preview",
+        work_dir=tmp_path,
+        proxy_port=9900,
+        web_port=9901,
+        storage_dir=storage,
+        resolve_electron_launch_func=lambda: ElectronLaunch(argv=("/bin/electron",), cwd=tmp_path),
+        spawn_electron_func=lambda _launch, _event: None,
+        popen_func=lambda _args, **_kwargs: SimpleNamespace(pid=8765),
+    )
+
+    stderr = _plain(capsys.readouterr().err)
+    assert "channel preview" in stderr
+    assert "pid 987654321" in stderr
+    assert "refused connections" in stderr
+    record = read_live_desktop_record(record_path, pid_alive=lambda pid: pid == 8765)
+    assert record is not None
+    assert record.pid == 8765
+    assert kill_calls == [(987654321, signal.SIGTERM)]
+
+
+def test_run_desktop_detached_transient_timeout_retries_then_attaches(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr("transport_matters.desktop_runtime.is_pid_alive", lambda _pid: True)
+    monkeypatch.setattr("transport_matters.desktop_runtime.time.sleep", lambda _seconds: None)
+    probe_results = [
+        DesktopHealthProbeResult(status="timeout"),
+        DesktopHealthProbeResult(status="live"),
+    ]
+    monkeypatch.setattr(
+        "transport_matters.desktop_runtime._probe_desktop_health",
+        lambda *_args, **_kwargs: probe_results.pop(0),
+    )
+    monkeypatch.setattr(
+        "transport_matters.desktop_runtime._read_runtime_meta_channel",
+        lambda *_args, **_kwargs: "preview",
+    )
+    kill_calls: list[tuple[int, int]] = []
+    monkeypatch.setattr(
+        "transport_matters.desktop_runtime.os.kill",
+        lambda pid, sig: kill_calls.append((pid, sig)),
+    )
+    storage = tmp_path / "storage"
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    _write_desktop_record(
+        storage,
+        pid=987654321,
+        proxy_port=9900,
+        web_port=9901,
+        cwd=workspace,
+        version="test",
+    )
+    spawned: list[dict[str, Any]] = []
+
+    run_desktop_detached(
+        channel="preview",
+        work_dir=tmp_path,
+        storage_dir=storage,
+        liveness_policy=DesktopLivenessPolicy(attempts=2, backoff_s=0.01),
+        resolve_electron_launch_func=lambda: ElectronLaunch(argv=("/bin/electron",), cwd=tmp_path),
+        spawn_electron_func=lambda _launch, event: spawned.append(event),
+        popen_func=lambda *_args, **_kwargs: pytest.fail("backend should not start"),
+    )
+
+    assert len(spawned) == 1
+    assert kill_calls == []
+
+
+def test_run_desktop_detached_refuses_persistent_timeout_without_kill(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr("transport_matters.desktop_runtime.is_pid_alive", lambda _pid: True)
+    monkeypatch.setattr("transport_matters.desktop_runtime.time.sleep", lambda _seconds: None)
+    monkeypatch.setattr(
+        "transport_matters.desktop_runtime._probe_desktop_health",
+        lambda *_args, **_kwargs: DesktopHealthProbeResult(status="timeout"),
+    )
+    kill_calls: list[tuple[int, int]] = []
+    monkeypatch.setattr(
+        "transport_matters.desktop_runtime.os.kill",
+        lambda pid, sig: kill_calls.append((pid, sig)),
+    )
+    storage = tmp_path / "storage"
+    workspace = tmp_path / "workspace"
+    _write_desktop_record(
+        storage,
+        pid=987654321,
+        proxy_port=9900,
+        web_port=9901,
+        cwd=workspace,
+        version="test",
+    )
+
+    with pytest.raises(typer.Exit) as exc:
+        run_desktop_detached(
+            channel="preview",
+            work_dir=tmp_path,
+            storage_dir=storage,
+            resolve_electron_launch_func=lambda: pytest.fail("viewer should not resolve"),
+            popen_func=lambda *_args, **_kwargs: pytest.fail("backend should not start"),
+        )
+
+    assert exc.value.exit_code == 1
+    stderr = _plain(capsys.readouterr().err)
+    assert "channel preview" in stderr
+    assert "pid 987654321" in stderr
+    assert "http://127.0.0.1:9901/health" in stderr
+    assert "transport-matters desktop --force-restart" in stderr
+    assert "transport-matters doctor" in stderr
+    assert kill_calls == []
+
+
+@pytest.mark.parametrize(
+    "probe_results",
+    [
+        [DesktopHealthProbeResult(status="failed"), DesktopHealthProbeResult(status="refused")],
+        [DesktopHealthProbeResult(status="refused"), DesktopHealthProbeResult(status="failed")],
+    ],
+)
+def test_run_desktop_detached_refuses_mixed_probe_results_without_kill(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    probe_results: list[DesktopHealthProbeResult],
+) -> None:
+    monkeypatch.setattr("transport_matters.desktop_runtime.is_pid_alive", lambda _pid: True)
+    monkeypatch.setattr("transport_matters.desktop_runtime.time.sleep", lambda _seconds: None)
+    results = probe_results.copy()
+    monkeypatch.setattr(
+        "transport_matters.desktop_runtime._probe_desktop_health",
+        lambda *_args, **_kwargs: results.pop(0),
+    )
+    monkeypatch.setattr(desktop_cmd, "wait_for_port_ready", lambda *_args, **_kwargs: True)
+    kill_calls: list[tuple[int, int]] = []
+
+    def fake_kill(pid: int, sig: int) -> None:
+        kill_calls.append((pid, sig))
+        raise ProcessLookupError
+
+    monkeypatch.setattr("transport_matters.desktop_runtime.os.kill", fake_kill)
+    storage = tmp_path / "storage"
+    _write_desktop_record(
+        storage,
+        pid=987654321,
+        proxy_port=9900,
+        web_port=9901,
+        cwd=tmp_path / "workspace",
+        version="test",
+    )
+
+    with pytest.raises(typer.Exit) as exc:
+        run_desktop_detached(
+            channel="preview",
+            work_dir=tmp_path,
+            storage_dir=storage,
+            liveness_policy=DesktopLivenessPolicy(attempts=len(probe_results), backoff_s=0.01),
+            resolve_electron_launch_func=lambda: pytest.fail("viewer should not resolve"),
+            popen_func=lambda *_args, **_kwargs: pytest.fail("backend should not start"),
+        )
+
+    assert exc.value.exit_code == 1
+    assert kill_calls == []
+
+
+def test_run_desktop_detached_force_restart_kills_live_runtime(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr("transport_matters.desktop_runtime.is_pid_alive", lambda _pid: True)
+    monkeypatch.setattr(
+        "transport_matters.desktop_runtime._probe_desktop_health",
+        lambda *_args, **_kwargs: DesktopHealthProbeResult(status="timeout"),
+    )
+    monkeypatch.setattr(desktop_cmd, "wait_for_port_ready", lambda *_args, **_kwargs: True)
+    kill_calls: list[tuple[int, int]] = []
+
+    def fake_kill(pid: int, sig: int) -> None:
+        kill_calls.append((pid, sig))
+        raise ProcessLookupError
+
+    monkeypatch.setattr("transport_matters.desktop_runtime.os.kill", fake_kill)
+    storage = tmp_path / "storage"
+    _write_desktop_record(
+        storage,
+        pid=987654321,
+        proxy_port=9900,
+        web_port=9901,
+        cwd=tmp_path / "workspace",
+        version="test",
+    )
+
+    run_desktop_detached(
+        channel="preview",
+        work_dir=tmp_path,
+        proxy_port=9900,
+        web_port=9901,
+        storage_dir=storage,
+        force_restart=True,
+        resolve_electron_launch_func=lambda: ElectronLaunch(argv=("/bin/electron",), cwd=tmp_path),
+        spawn_electron_func=lambda _launch, _event: None,
+        popen_func=lambda _args, **_kwargs: SimpleNamespace(pid=8765),
+    )
+
+    assert kill_calls == [(987654321, signal.SIGTERM)]
 
 
 def test_run_desktop_detached_refuses_non_tm_listener(

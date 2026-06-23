@@ -11,6 +11,8 @@ from typing import TYPE_CHECKING
 import pytest
 
 from transport_matters.cli.desktop_runtime import (
+    DesktopHealthProbeResult,
+    DesktopLivenessPolicy,
     DesktopRuntimeDiscoveryError,
     DesktopRuntimeRecord,
     StopDesktopResult,
@@ -210,8 +212,8 @@ def test_discover_desktop_runtime_reports_unhealthy_when_health_probe_fails(
     _write_preview_record(tmp_path, pid=1234)
     monkeypatch.setattr("transport_matters.desktop_runtime.is_pid_alive", lambda _pid: True)
     monkeypatch.setattr(
-        "transport_matters.desktop_runtime.wait_for_port_ready",
-        lambda *_args, **_kwargs: False,
+        "transport_matters.desktop_runtime._probe_desktop_health",
+        lambda *_args, **_kwargs: DesktopHealthProbeResult(status="failed"),
     )
 
     status = discover_desktop_runtime(
@@ -227,14 +229,71 @@ def test_discover_desktop_runtime_reports_unhealthy_when_health_probe_fails(
     assert payload["webPort"] == 8798
 
 
+def test_discover_desktop_runtime_reports_not_serving_after_refused_debounce(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _write_preview_record(tmp_path, pid=1234)
+    monkeypatch.setattr("transport_matters.desktop_runtime.is_pid_alive", lambda _pid: True)
+    monkeypatch.setattr("transport_matters.desktop_runtime.time.sleep", lambda _seconds: None)
+    probes: list[tuple[int, float]] = []
+
+    def refused_probe(web_port: int, *, timeout_s: float) -> DesktopHealthProbeResult:
+        probes.append((web_port, timeout_s))
+        return DesktopHealthProbeResult(status="refused")
+
+    monkeypatch.setattr("transport_matters.desktop_runtime._probe_desktop_health", refused_probe)
+
+    status = discover_desktop_runtime(
+        channel="preview",
+        storage_dir=tmp_path,
+        route="canvas",
+        cwd=tmp_path / "workspace",
+        liveness_policy=DesktopLivenessPolicy(
+            attempts=3,
+            per_probe_timeout_s=2.0,
+            backoff_s=0.01,
+        ),
+    )
+
+    payload = desktop_runtime_status_to_json(status)["runtime"]
+    assert payload["state"] == "not-serving"
+    assert payload["reason"] == "health_probe_refused"
+    assert probes == [(8798, 2.0), (8798, 2.0), (8798, 2.0)]
+
+
+def test_discover_desktop_runtime_reports_wedged_after_timeout_debounce(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _write_preview_record(tmp_path, pid=1234)
+    monkeypatch.setattr("transport_matters.desktop_runtime.is_pid_alive", lambda _pid: True)
+    monkeypatch.setattr("transport_matters.desktop_runtime.time.sleep", lambda _seconds: None)
+
+    monkeypatch.setattr(
+        "transport_matters.desktop_runtime._probe_desktop_health",
+        lambda *_args, **_kwargs: DesktopHealthProbeResult(status="timeout"),
+    )
+
+    status = discover_desktop_runtime(
+        channel="preview",
+        storage_dir=tmp_path,
+        route="canvas",
+        cwd=tmp_path / "workspace",
+        liveness_policy=DesktopLivenessPolicy(attempts=3),
+    )
+
+    payload = desktop_runtime_status_to_json(status)["runtime"]
+    assert payload["state"] == "wedged"
+    assert payload["reason"] == "health_probe_timeout"
+
+
 def test_discover_desktop_runtime_reports_live_payload(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _write_preview_record(tmp_path, pid=1234)
     monkeypatch.setattr("transport_matters.desktop_runtime.is_pid_alive", lambda _pid: True)
     monkeypatch.setattr(
-        "transport_matters.desktop_runtime.wait_for_port_ready",
-        lambda *_args, **_kwargs: True,
+        "transport_matters.desktop_runtime._probe_desktop_health",
+        lambda *_args, **_kwargs: DesktopHealthProbeResult(status="live"),
     )
 
     status = discover_desktop_runtime(

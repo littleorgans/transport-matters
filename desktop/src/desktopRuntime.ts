@@ -8,7 +8,9 @@ export type DesktopRuntimeState =
   | "absent"
   | "live"
   | "stale"
-  | "unhealthy";
+  | "unhealthy"
+  | "not-serving"
+  | "wedged";
 
 export interface DesktopRuntimeStatus {
   channel: string;
@@ -113,7 +115,9 @@ function requireState(value: unknown): DesktopRuntimeState {
     value === "absent" ||
     value === "live" ||
     value === "stale" ||
-    value === "unhealthy"
+    value === "unhealthy" ||
+    value === "not-serving" ||
+    value === "wedged"
   ) {
     return value;
   }

@@ -7,6 +7,7 @@ import errno
 import json
 import os
 import signal
+import socket
 import time
 import urllib.error
 import urllib.request
@@ -17,7 +18,7 @@ from typing import TYPE_CHECKING, Any, Literal, NotRequired, TypedDict
 
 from transport_matters.atomic_io import write_atomic_json
 from transport_matters.desktop_event import build_backend_started_event
-from transport_matters.loopback import LOOPBACK_HOST, loopback_http_url, wait_for_port_ready
+from transport_matters.loopback import loopback_http_url
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -37,8 +38,9 @@ _FIELD_ALIASES = {
     "started_at": "startedAt",
 }
 
-DesktopRuntimeState = Literal["absent", "live", "stale", "unhealthy"]
+DesktopRuntimeState = Literal["absent", "live", "stale", "unhealthy", "not-serving", "wedged"]
 RouteName = Literal["canvas", "canvas-lab"]
+DesktopHealthProbeStatus = Literal["live", "refused", "timeout", "failed"]
 
 
 class DesktopRuntimeStatusJson(TypedDict):
@@ -63,6 +65,19 @@ class DesktopRuntimeStatusJson(TypedDict):
 
 class DesktopRuntimeStatusResponseJson(TypedDict):
     runtime: DesktopRuntimeStatusJson
+
+
+@dataclass(frozen=True, slots=True)
+class DesktopLivenessPolicy:
+    attempts: int = 3
+    per_probe_timeout_s: float = 2.0
+    backoff_s: float = 0.2
+
+
+@dataclass(frozen=True, slots=True)
+class DesktopHealthProbeResult:
+    status: DesktopHealthProbeStatus
+    reason: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -143,13 +158,41 @@ def write_desktop_record(record_path: Path, record: DesktopRuntimeRecord) -> Non
     write_atomic_json(record_path, asdict(record))
 
 
+def probe_desktop_liveness(
+    web_port: int,
+    *,
+    policy: DesktopLivenessPolicy | None = None,
+    probe_once: Callable[..., DesktopHealthProbeResult] | None = None,
+    sleep: Callable[[float], None] | None = None,
+) -> DesktopHealthProbeResult:
+    resolved = policy or DesktopLivenessPolicy()
+    attempts = max(resolved.attempts, 1)
+    timeout_s = max(resolved.per_probe_timeout_s, 0.05)
+    probe = probe_once or _probe_desktop_health
+    sleep_func = sleep or time.sleep
+    results: list[DesktopHealthProbeResult] = []
+    for index in range(attempts):
+        result = probe(web_port, timeout_s=timeout_s)
+        if result.status == "live":
+            return result
+        results.append(result)
+        if index < attempts - 1 and resolved.backoff_s > 0:
+            sleep_func(resolved.backoff_s)
+    if any(result.status == "timeout" for result in results):
+        return DesktopHealthProbeResult(status="timeout")
+    if results and all(result.status == "refused" for result in results):
+        return DesktopHealthProbeResult(status="refused")
+    return DesktopHealthProbeResult(status="failed")
+
+
 def discover_desktop_runtime(
     *,
     channel: str,
     storage_dir: Path,
     route: RouteName,
     cwd: Path,
-    health_timeout_ms: int = 500,
+    health_timeout_ms: int | None = None,
+    liveness_policy: DesktopLivenessPolicy | None = None,
 ) -> DesktopRuntimeStatus:
     """Return the runtime status for a channel without starting a backend."""
     resolved_storage = storage_dir.expanduser().resolve()
@@ -195,19 +238,21 @@ def discover_desktop_runtime(
         _unlink_desktop_record(record_path, ignore_permission=True)
         return status
 
-    timeout_s = max(health_timeout_ms, 0) / 1000.0
-    if not wait_for_port_ready(LOOPBACK_HOST, record.web_port, timeout=timeout_s):
+    policy = _resolve_liveness_policy(liveness_policy, health_timeout_ms)
+    liveness = probe_desktop_liveness(record.web_port, policy=policy)
+    if liveness.status != "live":
+        state, reason = _status_for_probe_result(liveness)
         return _status_from_record(
             record,
-            state="unhealthy",
+            state=state,
             storage_dir=resolved_storage,
             record_path=record_path,
             route=route,
             cwd=resolved_cwd,
-            reason="health_probe_failed",
+            reason=reason,
         )
 
-    meta_channel = _read_runtime_meta_channel(record.web_port, timeout_s=timeout_s)
+    meta_channel = _read_runtime_meta_channel(record.web_port, timeout_s=policy.per_probe_timeout_s)
     if meta_channel is not None and meta_channel != channel:
         return _status_from_record(
             record,
@@ -254,6 +299,64 @@ def desktop_runtime_status_to_json(
     if status.reason is not None:
         runtime["reason"] = status.reason
     return {"runtime": runtime}
+
+
+def _resolve_liveness_policy(
+    policy: DesktopLivenessPolicy | None,
+    health_timeout_ms: int | None,
+) -> DesktopLivenessPolicy:
+    if policy is not None:
+        return policy
+    if health_timeout_ms is None:
+        return DesktopLivenessPolicy()
+    return DesktopLivenessPolicy(per_probe_timeout_s=max(health_timeout_ms, 0) / 1000.0)
+
+
+def _status_for_probe_result(
+    result: DesktopHealthProbeResult,
+) -> tuple[DesktopRuntimeState, str]:
+    if result.status == "refused":
+        return "not-serving", "health_probe_refused"
+    if result.status == "timeout":
+        return "wedged", "health_probe_timeout"
+    return "unhealthy", "health_probe_failed"
+
+
+def _probe_desktop_health(web_port: int, *, timeout_s: float) -> DesktopHealthProbeResult:
+    url = f"{loopback_http_url(web_port)}/health"
+    try:
+        with urllib.request.urlopen(url, timeout=max(timeout_s, 0.05)) as response:
+            status = int(getattr(response, "status", 200))
+    except urllib.error.HTTPError as exc:
+        return DesktopHealthProbeResult(status="failed", reason=f"http_{exc.code}")
+    except urllib.error.URLError as exc:
+        reason = exc.reason
+        if _is_connection_refused(reason):
+            return DesktopHealthProbeResult(status="refused")
+        if _is_timeout_error(reason):
+            return DesktopHealthProbeResult(status="timeout")
+        return DesktopHealthProbeResult(status="failed", reason=str(reason))
+    except TimeoutError:
+        return DesktopHealthProbeResult(status="timeout")
+    except OSError as exc:
+        if _is_connection_refused(exc):
+            return DesktopHealthProbeResult(status="refused")
+        if _is_timeout_error(exc):
+            return DesktopHealthProbeResult(status="timeout")
+        return DesktopHealthProbeResult(status="failed", reason=str(exc))
+    return DesktopHealthProbeResult(status="live" if 200 <= status < 300 else "failed")
+
+
+def _is_connection_refused(value: object) -> bool:
+    return isinstance(value, ConnectionRefusedError) or (
+        isinstance(value, OSError) and value.errno == errno.ECONNREFUSED
+    )
+
+
+def _is_timeout_error(value: object) -> bool:
+    return isinstance(value, TimeoutError | socket.timeout) or (
+        isinstance(value, OSError) and value.errno == errno.ETIMEDOUT
+    )
 
 
 def read_live_desktop_record(

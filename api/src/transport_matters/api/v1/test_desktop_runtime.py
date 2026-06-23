@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 import transport_matters.api.v1.desktop_runtime as desktop_runtime_routes
 from transport_matters.desktop_runtime import (
+    DesktopHealthProbeResult,
     DesktopRuntimeDiscoveryError,
     DesktopRuntimeRecord,
     desktop_log_path,
@@ -52,8 +53,8 @@ async def test_desktop_runtime_endpoint_returns_live_status(
     )
     monkeypatch.setattr("transport_matters.desktop_runtime.is_pid_alive", lambda _pid: True)
     monkeypatch.setattr(
-        "transport_matters.desktop_runtime.wait_for_port_ready",
-        lambda *_args, **_kwargs: True,
+        "transport_matters.desktop_runtime._probe_desktop_health",
+        lambda *_args, **_kwargs: DesktopHealthProbeResult(status="live"),
     )
 
     response = await client.get("/v1/desktop-runtime")

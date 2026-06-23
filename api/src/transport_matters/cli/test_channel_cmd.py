@@ -12,6 +12,7 @@ import transport_matters.cli.channel_cmd as channel_cmd
 from transport_matters import config, env_keys
 from transport_matters.cli import main
 from transport_matters.cli.desktop_runtime import (
+    DesktopHealthProbeResult,
     DesktopRuntimeRecord,
     StopDesktopResult,
     desktop_record_path,
@@ -80,8 +81,8 @@ def test_channel_list_renders_live_desktop_pid(
     )
     monkeypatch.setattr("transport_matters.desktop_runtime.is_pid_alive", lambda pid: pid == 4321)
     monkeypatch.setattr(
-        "transport_matters.desktop_runtime.wait_for_port_ready",
-        lambda *_args, **_kwargs: True,
+        "transport_matters.desktop_runtime._probe_desktop_health",
+        lambda *_args, **_kwargs: DesktopHealthProbeResult(status="live"),
     )
 
     result = runner.invoke(main, ["channel", "list"])
@@ -172,8 +173,8 @@ def test_channel_status_json_returns_live_payload(
     )
     monkeypatch.setattr("transport_matters.desktop_runtime.is_pid_alive", lambda pid: pid == 4321)
     monkeypatch.setattr(
-        "transport_matters.desktop_runtime.wait_for_port_ready",
-        lambda *_args, **_kwargs: True,
+        "transport_matters.desktop_runtime._probe_desktop_health",
+        lambda *_args, **_kwargs: DesktopHealthProbeResult(status="live"),
     )
 
     result = runner.invoke(main, ["channel", "status", "tmp", "--json"])
