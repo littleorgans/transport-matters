@@ -21,27 +21,29 @@ to everything below.
   runs the working tree with isolated home, DB, ports, and Electron identity. See
   `docs/CHANNELS.md`.
 
-## ★ Current focus — finish the ⌘K launcher
+## ★ Current focus — session transcripts, progressive subtraction
 
-The launcher is shipped end to end except two scope stubs: zero-chrome ⌘K command center,
-domains-first root, keybinding engine, action/nav/interaction model, and the
-Agents/Canvas/Settings scopes (Ark UI via `Combobox`). The Agents scope is a real spawn
-launcher with recommendation-default logic, native-always-present, and
-loading/error/empty/populated states. The recommendation-default path is **live end to end**:
-TM's `runtime_registry` reads schema-2 `capabilities.json` from `~/.agent-runtimes/runtimes`
-(shipped + committed), all templates carry `recommended_model.default` / `by_vendor`, surfaced
-through `runtime_template_routes.py get_runtime_templates` → `GET /v1/runtime-templates` → the
-`www` Agents launcher (`commandModel templateSpawnHarness` / `recommendedSubtitle`). Verified
-by running the registry reader against the live data.
+The ⌘K launcher is **complete and merged**, so it leaves this file per the merged-work rule:
+instance discovery seam + idempotent desktop launch (#170), world-class liveness recovery
+(#171), and the real Sessions scope (#172); the Workdir scope shipped earlier (#166).
 
-One gap remains before the launcher is whole:
+Browse + view shipped (chat UI, full `nativePayload`, nothing filtered, complete visibility is
+the product). The Sessions launcher scope now lists transcript history inline and opens via the
+existing `spawnOrFocusTranscript`. Next, in order:
 
-- **Workdir + Sessions launcher scopes.** Both are disabled `buildDeferredRows` placeholders
-  today (`commandModel buildScopeRows`). Design them into real scopes. The Sessions *launcher
-  scope* is distinct from the live canvas transcript reader (track 2 below).
+- **S2 denylist (current):** append-only JSON-path list
+  (`~/.transport-matters/transcript_denylist.json`), default empty, UI-side presentation filter.
+  Reveal everything, then hide what's decided not useful.
+- **search** across stored transcripts, pending.
+- **import** the CLI's recorded stream into the DB, pending (`WORK-REMAINING` §9).
+- **F2 open decision:** cap `raw` size on the SSE stream (full inline base64 per frame) vs
+  accept it per complete-visibility.
+- Not in this track: replay, fork, share, eval. Deferred, not dropped.
 
-Refs: `~/.mdx/projects/transport-matters-launcher-ui-spec.md` (complete),
-`~/.mdx/projects/tm-ui-component-strategy.md`. `cli`→`harness` rename done; spec complete.
+**Parallel quality track:** C→A debt reduction (repo graded C, 26 production dupe clusters).
+First move in flight: delete the orphaned sync `SessionDao`. The rest rides groom-as-you-touch
+inside roadmap PRs plus one bounded batch, no standalone cleanup sprint. Plan: cm decision
+(tm-inflection); audit `~/.mdx/projects/tm-inflection-code-health.md`.
 
 ## Next up — committed tracks, not yet started
 
@@ -60,21 +62,7 @@ First-run welcome flow in the desktop. Nothing built yet (the only artifact is
 - **Coupling:** onboarding's "ENV & settings → edit overlays" is the **same config/overlay
   surface** the desktop manages. Build the overlay model once or it forks.
 
-### 2. Session transcripts — progressive subtraction
-
-Browse + view shipped (chat UI, full `nativePayload`, nothing filtered — complete visibility
-is the product). Next, in order:
-
-- **S2 denylist:** append-only JSON-path list (`~/.transport-matters/transcript_denylist.json`),
-  default empty, UI-side presentation filter. Reveal everything, then hide what's decided not
-  useful.
-- **search** across stored transcripts — pending.
-- **import** the CLI's recorded stream into the DB — pending (`WORK-REMAINING` §9).
-- **F2 open decision:** cap `raw` size on the SSE stream (full inline base64 per frame) vs
-  accept it per complete-visibility.
-- Not in this track: replay, fork, share, eval. Deferred, not dropped.
-
-### 3. Ephemeral-home loose ends
+### 2. Ephemeral-home loose ends
 
 Runtime-home slices are merged. Two follow-ups still open:
 
