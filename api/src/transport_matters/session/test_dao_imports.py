@@ -17,7 +17,6 @@ def test_session_dao_modules_import_in_subprocess() -> None:
     for module in (
         "transport_matters.session.dao_rows",
         "transport_matters.session.dao_statements",
-        "transport_matters.session.dao",
         "transport_matters.session.async_dao",
         "transport_matters.session",
     ):

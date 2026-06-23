@@ -3,9 +3,6 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-import psycopg
-import psycopg.rows
-
 from transport_matters.index.adapters.base import (
     FileTailSource,
     SessionBinding,
@@ -15,8 +12,9 @@ from transport_matters.index.adapters.claude import ClaudeAdapter
 from transport_matters.index.adapters.codex import CodexAdapter
 from transport_matters.index.sessions import synth_session_id
 from transport_matters.index.tailer import TailCursor, TranscriptTailer
+from transport_matters.session import async_connect
+from transport_matters.session.async_dao import AsyncSessionDao
 from transport_matters.session.backfill import replay_transcript_run
-from transport_matters.session.dao import SessionDao
 from transport_matters.session.ingest import EventWrite, build_event
 from transport_matters.session.test_foundation import root_session
 from transport_matters.storage.disk_layout import DiskStorageLayout
@@ -226,9 +224,9 @@ def test_backfill_preserves_codex_items_subagent_source_lines(tmp_path: Path) ->
     assert spans == expected_spans
 
 
-def test_session_schema_allows_n_child_sessions_per_parent(test_db: TestDb) -> None:
-    with psycopg.connect(test_db.database_url, row_factory=psycopg.rows.dict_row) as conn:
-        dao = SessionDao(conn)
+async def test_session_schema_allows_n_child_sessions_per_parent(test_db: TestDb) -> None:
+    async with await async_connect(test_db.database_url, autocommit=True) as conn:
+        dao = AsyncSessionDao(conn)
         parent = root_session("parent", native_session_id="native-parent")
         child_a = root_session("child-a", native_session_id="native-child-a").model_copy(
             update={"parent_session_id": "parent", "forked_at_seq": 1}
@@ -236,12 +234,12 @@ def test_session_schema_allows_n_child_sessions_per_parent(test_db: TestDb) -> N
         child_b = root_session("child-b", native_session_id="native-child-b").model_copy(
             update={"parent_session_id": "parent", "forked_at_seq": 2}
         )
-        dao.upsert_session(parent)
-        dao.upsert_session(child_a)
-        dao.upsert_session(child_b)
+        await dao.upsert_session(parent)
+        await dao.upsert_session(child_a)
+        await dao.upsert_session(child_b)
 
-        children = dao.list_child_sessions_for_owner("parent", owner="local")
-        indexes = conn.execute(
+        children = await dao.list_child_sessions_for_owner("parent", owner="local")
+        cursor = await conn.execute(
             """
             SELECT indexname
             FROM pg_indexes
@@ -249,7 +247,8 @@ def test_session_schema_allows_n_child_sessions_per_parent(test_db: TestDb) -> N
               AND tablename = 'session'
               AND indexname = 'session_parent_ix'
             """
-        ).fetchall()
+        )
+        indexes = await cursor.fetchall()
 
     assert [child.session_id for child in children] == ["child-a", "child-b"]
     assert indexes == [{"indexname": "session_parent_ix"}]
