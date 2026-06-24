@@ -16,7 +16,6 @@ from typing import TYPE_CHECKING
 
 import typer
 
-from transport_matters.captured_run import require_web_port
 from transport_matters.channel import activate_channel
 from transport_matters.launch_environment import (
     HARNESS_NAME_CODEX,
@@ -37,6 +36,7 @@ from .launch_runtime import (
     prepare_launch,
     print_invocation,
     reject_passthrough_without_client,
+    require_web_port,
 )
 from .net import loopback_http_url
 from .runner import ManagedClient
