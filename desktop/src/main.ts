@@ -1,6 +1,6 @@
 import { app, BrowserWindow, dialog, type WebContents } from "electron";
-import { writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { realpathSync, writeFileSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   launchBackendProcess,
@@ -178,7 +178,9 @@ export function resolveBackendStartupOptions(
   discoveryOptions: DesktopRuntimeDiscoveryOptions = {},
 ): BackendStartupOptions {
   const runtimeStatus = resolveRuntimeStatus(spec, env, discoveryOptions);
-  const runtimePorts = liveRuntimePorts(runtimeStatus);
+  const runtimePorts = liveRuntimePorts(
+    runtimeServesWorkspace(runtimeStatus, cwd) ? runtimeStatus : null,
+  );
   return {
     env: { ...env, [ENV.CHANNEL]: spec.id },
     proxyPort: resolvePort(
@@ -301,7 +303,7 @@ export function registerAppLifecycle(options: AppLifecycleOptions = {}): void {
       readRuntimeStatus: options.readRuntimeStatus,
       runtimeStatus: options.runtimeStatus,
     });
-    const runtimeRouteUrl = liveRuntimeRouteUrl(runtimeStatus);
+    const runtimeRouteUrl = liveRuntimeRouteUrl(runtimeStatus, workspaceDir);
     if (runtimeRouteUrl !== undefined) {
       registerHostedDesktopLifecycle({
         icon: options.icon,
@@ -321,7 +323,10 @@ export function registerAppLifecycle(options: AppLifecycleOptions = {}): void {
     const refreshedStatus = resolveRuntimeStatus(channelSpec, env, {
       readRuntimeStatus: options.readRuntimeStatus,
     });
-    const refreshedRouteUrl = liveRuntimeRouteUrl(refreshedStatus);
+    const refreshedRouteUrl = liveRuntimeRouteUrl(
+      refreshedStatus,
+      workspaceDir,
+    );
     if (refreshedRouteUrl !== undefined) {
       registerHostedDesktopLifecycle({
         icon: options.icon,
@@ -600,8 +605,9 @@ function buildMainWindowOptions(options: MainWindowOptions): MainWindowOptions {
 
 function liveRuntimeRouteUrl(
   status: DesktopRuntimeStatus | null,
+  workspaceDir: string,
 ): string | undefined {
-  if (status?.state !== "live") {
+  if (!runtimeServesWorkspace(status, workspaceDir)) {
     return undefined;
   }
   if (status.defaultRouteUrl !== null) {
@@ -610,6 +616,26 @@ function liveRuntimeRouteUrl(
   return status.webPort === null
     ? undefined
     : rendererUrlForPort(status.webPort);
+}
+
+function runtimeServesWorkspace(
+  status: DesktopRuntimeStatus | null,
+  workspaceDir: string,
+): status is DesktopRuntimeStatus {
+  if (status?.state !== "live" || status.cwd === null) {
+    return false;
+  }
+  return (
+    canonicalWorkspacePath(status.cwd) === canonicalWorkspacePath(workspaceDir)
+  );
+}
+
+function canonicalWorkspacePath(value: string): string {
+  try {
+    return realpathSync(value);
+  } catch {
+    return resolve(value);
+  }
 }
 
 function resolvePort(value: string | undefined, fallback: number): number {

@@ -17,6 +17,7 @@ describe("desktop runtime status reader", () => {
         JSON.stringify({
           runtime: {
             channel: "stable",
+            cwd: "/tmp/workspace",
             defaultRouteUrl: "http://127.0.0.1:9901/canvas",
             proxyPort: 9900,
             state: "live",
@@ -26,6 +27,7 @@ describe("desktop runtime status reader", () => {
       ),
     ).toEqual({
       channel: "stable",
+      cwd: "/tmp/workspace",
       defaultRouteUrl: "http://127.0.0.1:9901/canvas",
       proxyPort: 9900,
       state: "live",
@@ -38,6 +40,7 @@ describe("desktop runtime status reader", () => {
       JSON.stringify({
         runtime: {
           channel: "stable",
+          cwd: "/tmp/workspace",
           defaultRouteUrl: null,
           proxyPort: 9900,
           state: "live",
@@ -54,6 +57,7 @@ describe("desktop runtime status reader", () => {
       ),
     ).toEqual({
       channel: "stable",
+      cwd: "/tmp/workspace",
       defaultRouteUrl: null,
       proxyPort: 9900,
       state: "live",
@@ -76,6 +80,7 @@ describe("desktop runtime status reader", () => {
         JSON.stringify({
           runtime: {
             channel: "preview",
+            cwd: "/tmp/workspace",
             defaultRouteUrl: null,
             proxyPort: 8797,
             state: "live",
