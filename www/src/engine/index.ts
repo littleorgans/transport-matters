@@ -5,3 +5,4 @@ export * from "./react/PaneFrame";
 export * from "./reducers/layoutState";
 export * from "./reducers/paneLifecycle";
 export * from "./types";
+export * from "./viewport";
