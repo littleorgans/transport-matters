@@ -1,8 +1,9 @@
 import { execFileSync } from "node:child_process";
 import type { DesktopChannelSpec } from "./env.js";
 
-const STATUS_COMMAND_TIMEOUT_MS = 2_000;
 const STATUS_COMMAND = "transport-matters";
+const STATUS_COMMAND_TIMEOUT_MS = 2_000;
+const RECLAIM_COMMAND_TIMEOUT_MS = 12_000;
 
 export type DesktopRuntimeState =
   | "absent"
@@ -25,10 +26,22 @@ export type DesktopRuntimeStatusCommand = (
   env: NodeJS.ProcessEnv,
 ) => string;
 
+export type DesktopRuntimeReclaimCommand = (
+  channel: string,
+  workspaceDir: string,
+  env: NodeJS.ProcessEnv,
+) => void;
+
 export type DesktopRuntimeStatusReader = (
   spec: DesktopChannelSpec,
   env: NodeJS.ProcessEnv,
 ) => DesktopRuntimeStatus | null;
+
+export type DesktopRuntimeReclaimer = (
+  spec: DesktopChannelSpec,
+  env: NodeJS.ProcessEnv,
+  workspaceDir: string,
+) => void;
 
 export interface DesktopRuntimeDiscoveryOptions {
   readRuntimeStatus?: DesktopRuntimeStatusReader;
@@ -76,6 +89,15 @@ export function liveRuntimePorts(status: DesktopRuntimeStatus | null): {
   };
 }
 
+export function reclaimDesktopRuntime(
+  spec: DesktopChannelSpec,
+  env: NodeJS.ProcessEnv = process.env,
+  workspaceDir = process.cwd(),
+  runReclaimCommand: DesktopRuntimeReclaimCommand = runDesktopRuntimeReclaimCommand,
+): void {
+  runReclaimCommand(spec.id, workspaceDir, env);
+}
+
 export function parseDesktopRuntimeStatus(
   raw: string,
 ): DesktopRuntimeStatus {
@@ -106,6 +128,22 @@ function runDesktopRuntimeStatusCommand(
       env,
       stdio: ["ignore", "pipe", "ignore"],
       timeout: STATUS_COMMAND_TIMEOUT_MS,
+    },
+  );
+}
+
+function runDesktopRuntimeReclaimCommand(
+  channel: string,
+  workspaceDir: string,
+  env: NodeJS.ProcessEnv,
+): void {
+  execFileSync(
+    STATUS_COMMAND,
+    ["_desktop-reclaim", "--work-dir", workspaceDir, "--channel", channel],
+    {
+      env,
+      stdio: "pipe",
+      timeout: RECLAIM_COMMAND_TIMEOUT_MS,
     },
   );
 }

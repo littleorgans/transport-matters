@@ -55,6 +55,7 @@ from .desktop_cmd import (
     run_desktop_backend_server,
     run_desktop_detached,
     run_desktop_launch,
+    run_desktop_reclaim,
 )
 from .diagnose import run_doctor
 from .help import PlainCommand, PlainGroup
@@ -382,18 +383,12 @@ def desktop(
     """Start the canvas desktop viewer and backend server."""
     _activate_channel_or_exit(channel)
     if foreground:
-        if force_restart:
-            typer.secho(
-                "error: --force-restart is only supported for detached desktop launch.",
-                fg=typer.colors.RED,
-                err=True,
-            )
-            raise typer.Exit(2)
         run_desktop_launch(
             channel=channel,
             work_dir=work_dir,
             web_port=web_port,
             storage_dir=storage_dir,
+            force_restart=force_restart,
         )
         return
     run_desktop_detached(
@@ -452,6 +447,34 @@ def desktop_backend(
         web_port=web_port,
         storage_dir=storage_dir,
         debug=debug,
+    )
+
+
+@main.command(
+    name="_desktop-reclaim",
+    cls=PlainCommand,
+    hidden=True,
+    context_settings={"help_option_names": ["-h", "--help"]},
+)
+def desktop_reclaim(
+    channel: ChannelOption = None,
+    work_dir: WorkDirOption = None,
+    storage_dir: StorageDirOption = None,
+    force_restart: Annotated[
+        bool,
+        typer.Option(
+            "--force-restart",
+            help="Explicitly terminate the recorded desktop backend before restart.",
+        ),
+    ] = False,
+) -> None:
+    """Reclaim a recorded desktop backend before an Electron owned relaunch."""
+    _activate_channel_or_exit(channel)
+    run_desktop_reclaim(
+        channel=channel,
+        work_dir=work_dir,
+        storage_dir=storage_dir,
+        force_restart=force_restart,
     )
 
 

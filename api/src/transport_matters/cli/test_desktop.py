@@ -205,6 +205,7 @@ def test_desktop_foreground_dispatches_to_blocking_launch(
         "work_dir": tmp_path,
         "web_port": None,
         "storage_dir": None,
+        "force_restart": False,
     }
 
 
