@@ -3,6 +3,7 @@ import type { DesktopChannelSpec } from "./env.js";
 import {
   parseDesktopRuntimeStatus,
   readDesktopRuntimeStatus,
+  reclaimDesktopRuntime,
 } from "./desktopRuntime.js";
 
 const stableSpec = {
@@ -83,5 +84,18 @@ describe("desktop runtime status reader", () => {
         }),
       ),
     ).toBeNull();
+  });
+
+  it("reclaims through the hidden CLI bootstrap surface", () => {
+    const runReclaimCommand = vi.fn();
+    const env = { TRANSPORT_MATTERS_CHANNEL: "stable" };
+
+    reclaimDesktopRuntime(stableSpec, env, "/tmp/workspace", runReclaimCommand);
+
+    expect(runReclaimCommand).toHaveBeenCalledWith(
+      "stable",
+      "/tmp/workspace",
+      env,
+    );
   });
 });

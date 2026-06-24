@@ -28,16 +28,20 @@ import {
 import {
   liveRuntimePorts,
   readDesktopRuntimeStatus,
+  reclaimDesktopRuntime,
   resolveRuntimeStatus,
   type DesktopRuntimeDiscoveryOptions,
+  type DesktopRuntimeReclaimer,
   type DesktopRuntimeStatus,
   type DesktopRuntimeStatusReader,
 } from "./desktopRuntime.js";
+import {
+  registerHostedBackendLivenessPoll,
+  type HostedBackendHealthProbe,
+} from "./hostedLiveness.js";
 
 const moduleDir = dirname(fileURLToPath(import.meta.url));
 
-const HOSTED_BACKEND_FAILURE_LIMIT = 3;
-const HOSTED_BACKEND_POLL_GAP_MS = 1_000;
 const PREVIEW_AMBER_ICON = join(moduleDir, "../assets/preview-amber.png");
 
 export interface MainWindowOptions {
@@ -97,6 +101,7 @@ export interface AppLifecycleOptions {
   env?: NodeJS.ProcessEnv;
   icon?: string;
   readRuntimeStatus?: DesktopRuntimeStatusReader;
+  reclaimRuntime?: DesktopRuntimeReclaimer;
   runtimeStatus?: DesktopRuntimeStatus | null;
   title?: string;
 }
@@ -117,10 +122,11 @@ export interface HostedDesktopLifecycleOptions {
   title?: string;
 }
 
-export type HostedBackendHealthProbe = (healthUrl: string) => Promise<boolean>;
+export type { HostedBackendHealthProbe };
 
 export interface DesktopLifecycleFromEnvOptions {
   readRuntimeStatus?: DesktopRuntimeStatusReader;
+  reclaimRuntime?: DesktopRuntimeReclaimer;
 }
 
 interface HostedWindowLifecycleOptions {
@@ -286,6 +292,7 @@ export function registerAppLifecycle(options: AppLifecycleOptions = {}): void {
   let backend: LaunchedBackendProcess | null = null;
   const env = options.env ?? process.env;
   const channelSpec = options.channelSpec ?? resolveDesktopChannelSpec(env);
+  const workspaceDir = process.cwd();
 
   bindBackendQuitCleanup(app, () => backend);
 
@@ -304,11 +311,31 @@ export function registerAppLifecycle(options: AppLifecycleOptions = {}): void {
       return;
     }
 
+    const reclaimRuntime = options.reclaimRuntime ?? reclaimDesktopRuntime;
+    try {
+      reclaimRuntime(channelSpec, env, workspaceDir);
+    } catch (error) {
+      showBackendStartupFailure(error);
+      return;
+    }
+    const refreshedStatus = resolveRuntimeStatus(channelSpec, env, {
+      readRuntimeStatus: options.readRuntimeStatus,
+    });
+    const refreshedRouteUrl = liveRuntimeRouteUrl(refreshedStatus);
+    if (refreshedRouteUrl !== undefined) {
+      registerHostedDesktopLifecycle({
+        icon: options.icon,
+        routeUrl: refreshedRouteUrl,
+        title: options.title,
+      });
+      return;
+    }
+
     const startupOptions = resolveBackendStartupOptions(
       env,
-      process.cwd(),
+      workspaceDir,
       channelSpec,
-      { runtimeStatus },
+      { runtimeStatus: refreshedStatus },
     );
     startupOptions.icon = options.icon;
     startupOptions.title = options.title;
@@ -318,7 +345,7 @@ export function registerAppLifecycle(options: AppLifecycleOptions = {}): void {
         backend = launchBackendProcess(options);
         return backend;
       },
-      }).catch(showBackendStartupFailure);
+    }).catch(showBackendStartupFailure);
 
     bindHostedWindowLifecycle(
       app,
@@ -376,73 +403,6 @@ export function registerHostedDesktopLifecycle(
     }),
     { quitOnWindowAllClosed: true },
   );
-}
-
-function registerHostedBackendLivenessPoll(
-  window: BrowserWindow,
-  healthUrl: string,
-  probeBackendHealth: HostedBackendHealthProbe,
-  quitHostedApp: () => void,
-): void {
-  let consecutiveFailures = 0;
-  let hasClosed = false;
-  let hasLoaded = false;
-  let pendingTimeout: ReturnType<typeof setTimeout> | undefined;
-
-  const clearPendingTimeout = (): void => {
-    if (pendingTimeout !== undefined) {
-      clearTimeout(pendingTimeout);
-      pendingTimeout = undefined;
-    }
-  };
-
-  const scheduleNextProbe = (): void => {
-    if (hasClosed) {
-      return;
-    }
-    clearPendingTimeout();
-    pendingTimeout = setTimeout(() => {
-      pendingTimeout = undefined;
-      void runProbe();
-    }, HOSTED_BACKEND_POLL_GAP_MS);
-  };
-
-  const runProbe = async (): Promise<void> => {
-    if (hasClosed) {
-      return;
-    }
-
-    let isHealthy = false;
-    try {
-      isHealthy = await probeBackendHealth(healthUrl);
-    } catch {
-      isHealthy = false;
-    }
-
-    if (hasClosed) {
-      return;
-    }
-
-    consecutiveFailures = isHealthy ? 0 : consecutiveFailures + 1;
-    if (consecutiveFailures >= HOSTED_BACKEND_FAILURE_LIMIT) {
-      quitHostedApp();
-      return;
-    }
-    scheduleNextProbe();
-  };
-
-  window.webContents.on("did-finish-load", () => {
-    if (hasLoaded) {
-      return;
-    }
-    hasLoaded = true;
-    void runProbe();
-  });
-
-  window.on("closed", () => {
-    hasClosed = true;
-    clearPendingTimeout();
-  });
 }
 
 /**
@@ -583,13 +543,14 @@ export function registerDesktopLifecycleFromEnv(
     return;
   }
 
-  registerAppLifecycle({
-    channelSpec,
-    env,
-    icon: identity.icon,
-    readRuntimeStatus: options.readRuntimeStatus,
-    title: identity.title,
-  });
+    registerAppLifecycle({
+      channelSpec,
+      env,
+      icon: identity.icon,
+      readRuntimeStatus: options.readRuntimeStatus,
+      reclaimRuntime: options.reclaimRuntime,
+      title: identity.title,
+    });
 }
 
 registerDesktopLifecycleFromEnv();

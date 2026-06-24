@@ -10,28 +10,30 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 from threading import Thread
-from typing import TYPE_CHECKING, Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal
 
 import typer
 
 from transport_matters import __version__, env_keys
 from transport_matters.channel import ChannelSpec, activate_channel, resolve_channel_spec
 from transport_matters.desktop_event import build_backend_started_event
-from transport_matters.storage_roots import default_storage_root
 
-from .desktop_recovery import (
-    force_restart_desktop_runtime_or_exit,
-    recover_desktop_runtime_or_exit,
-    refuse_desktop_runtime_or_exit,
+from .desktop_launch_config import (
+    normalize_desktop_route as _normalize_route,
 )
+from .desktop_launch_config import (
+    resolve_desktop_storage_dir as _resolve_storage_dir,
+)
+from .desktop_launch_config import (
+    resolve_desktop_work_dir as _resolve_work_dir,
+)
+from .desktop_recovery import prepare_desktop_runtime_for_launch_or_exit
 from .desktop_runtime import (
     DesktopLivenessPolicy,
-    DesktopRuntimeDiscoveryError,
     DesktopRuntimeRecord,
     DesktopRuntimeStatus,
     desktop_log_path,
     desktop_record_path,
-    discover_desktop_runtime,
     write_desktop_record,
 )
 from .launch_runtime import preflight_session_store_or_exit
@@ -199,16 +201,38 @@ def run_desktop_launch(
     spawn_electron_func: Callable[[ElectronLaunch, dict[str, Any]], None] | None = None,
     serve_backend_func: Callable[[DesktopLaunchPlan, Callable[[], None] | None], None]
     | None = None,
+    force_restart: bool = False,
+    liveness_policy: DesktopLivenessPolicy | None = None,
 ) -> None:
     """Run the desktop backend server and open the hosted Electron viewer."""
-    activate_channel(channel)
+    channel_spec = activate_channel(channel)
+    normalized_route = _normalize_route(route)
+    resolved_cwd = _resolve_work_dir(work_dir)
+    resolved_storage = _resolve_storage_dir(storage_dir, channel=channel_spec.id, env=os.environ)
+    if not print_command:
+        runtime_status = prepare_desktop_runtime_for_launch_or_exit(
+            channel=channel_spec.id,
+            storage_dir=resolved_storage,
+            route=normalized_route,
+            cwd=resolved_cwd,
+            force_restart=force_restart,
+            liveness_policy=liveness_policy,
+        )
+        if runtime_status is not None:
+            _attach_existing_desktop(
+                status=runtime_status,
+                route=normalized_route,
+                resolve_electron_launch_func=resolve_electron_launch_func,
+                spawn_electron_func=spawn_electron_func,
+            )
+            return
     plan = prepare_desktop_launch(
-        channel=channel,
-        route=route,
-        work_dir=work_dir,
+        channel=channel_spec.id,
+        route=normalized_route,
+        work_dir=resolved_cwd,
         proxy_port=proxy_port,
         web_port=web_port,
-        storage_dir=storage_dir,
+        storage_dir=resolved_storage,
         debug=debug,
         allocate_port_pair_func=allocate_port_pair_func,
         launch_viewer=not print_command,
@@ -255,6 +279,30 @@ def _attach_existing_desktop(
     _spawn_or_exit(spawn_electron, launch, event)
 
 
+def run_desktop_reclaim(
+    *,
+    channel: str | None = None,
+    route: RouteName = "canvas",
+    work_dir: Path | None = None,
+    storage_dir: Path | None = None,
+    force_restart: bool = False,
+    liveness_policy: DesktopLivenessPolicy | None = None,
+) -> None:
+    """Reclaim the recorded runtime before an Electron owned backend launch."""
+    channel_spec = activate_channel(channel)
+    normalized_route = _normalize_route(route)
+    resolved_cwd = _resolve_work_dir(work_dir)
+    resolved_storage = _resolve_storage_dir(storage_dir, channel=channel_spec.id, env=os.environ)
+    prepare_desktop_runtime_for_launch_or_exit(
+        channel=channel_spec.id,
+        storage_dir=resolved_storage,
+        route=normalized_route,
+        cwd=resolved_cwd,
+        force_restart=force_restart,
+        liveness_policy=liveness_policy,
+    )
+
+
 def run_desktop_detached(
     *,
     channel: str | None = None,
@@ -273,27 +321,18 @@ def run_desktop_detached(
 ) -> None:
     """Start the detached backend, wait for readiness, open the viewer, and return."""
     channel_spec = activate_channel(channel)
-    normalized_route = cast("RouteName", _normalize_route(route))
+    normalized_route = _normalize_route(route)
     resolved_cwd = _resolve_work_dir(work_dir)
     resolved_storage = _resolve_storage_dir(storage_dir, channel=channel_spec.id, env=os.environ)
-    try:
-        runtime_status = discover_desktop_runtime(
-            channel=channel_spec.id,
-            storage_dir=resolved_storage,
-            route=normalized_route,
-            cwd=resolved_cwd,
-            liveness_policy=liveness_policy,
-        )
-    except DesktopRuntimeDiscoveryError as exc:
-        typer.secho(f"error: {exc.message}", fg=typer.colors.RED, err=True)
-        raise typer.Exit(1) from exc
-
-    if force_restart and runtime_status.state != "absent":
-        force_restart_desktop_runtime_or_exit(
-            runtime_status,
-            channel=channel_spec.id,
-        )
-    elif runtime_status.state == "live":
+    runtime_status = prepare_desktop_runtime_for_launch_or_exit(
+        channel=channel_spec.id,
+        storage_dir=resolved_storage,
+        route=normalized_route,
+        cwd=resolved_cwd,
+        force_restart=force_restart,
+        liveness_policy=liveness_policy,
+    )
+    if runtime_status is not None:
         _attach_existing_desktop(
             status=runtime_status,
             route=normalized_route,
@@ -301,12 +340,6 @@ def run_desktop_detached(
             spawn_electron_func=spawn_electron_func,
         )
         return
-    elif runtime_status.state == "stale":
-        recover_desktop_runtime_or_exit(runtime_status, channel=channel_spec.id, announce=False)
-    elif runtime_status.state == "not-serving":
-        recover_desktop_runtime_or_exit(runtime_status, channel=channel_spec.id, announce=True)
-    elif runtime_status.state in {"wedged", "unhealthy"}:
-        refuse_desktop_runtime_or_exit(runtime_status, channel=channel_spec.id)
 
     plan = prepare_desktop_launch(
         channel=channel_spec.id,
@@ -491,30 +524,6 @@ def _resolve_backend_ports(
     return resolved_proxy_port, resolved_web_port
 
 
-def _resolve_work_dir(work_dir: Path | None) -> Path:
-    resolved = (work_dir if work_dir is not None else Path.cwd()).expanduser().resolve()
-    if not resolved.exists():
-        msg = f"work directory does not exist: {resolved}"
-        raise typer.BadParameter(msg)
-    if not resolved.is_dir():
-        msg = f"work directory is not a directory: {resolved}"
-        raise typer.BadParameter(msg)
-    return resolved
-
-
-def _resolve_storage_dir(
-    storage_dir: Path | None,
-    *,
-    channel: str | None = None,
-    env: Mapping[str, str] | None = None,
-) -> Path:
-    return (
-        (storage_dir if storage_dir is not None else default_storage_root(channel, env=env))
-        .expanduser()
-        .resolve()
-    )
-
-
 def _build_desktop_backend_env(
     *,
     cwd: Path,
@@ -595,14 +604,6 @@ def resolve_electron_launch(
             f"or set {DESKTOP_ELECTRON_BIN_ENV}."
         )
     return ElectronLaunch(argv=(str(electron_bin), str(app_dir)), cwd=app_dir)
-
-
-def _normalize_route(route: str) -> str:
-    normalized = route.lower()
-    if normalized not in {"canvas", "canvas-lab"}:
-        msg = f"unsupported desktop route: {route}"
-        raise typer.BadParameter(msg)
-    return normalized
 
 
 def _resolve_or_exit(resolve_electron_launch: Callable[[], ElectronLaunch]) -> ElectronLaunch:

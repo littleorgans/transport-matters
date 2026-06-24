@@ -19,6 +19,7 @@
     "src/backendProcess.ts",
     "src/desktopRuntime.ts",
     "src/env.ts",
+    "src/hostedLiveness.ts",
     "src/main.ts",
     "src/packageSmoke.ts",
     "src/preload.cts",

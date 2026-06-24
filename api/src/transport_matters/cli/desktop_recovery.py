@@ -7,7 +7,49 @@ from typing import NoReturn
 
 import typer
 
-from .desktop_runtime import DesktopRuntimeStatus, stop_desktop_record
+from .desktop_runtime import (
+    DesktopLivenessPolicy,
+    DesktopRuntimeDiscoveryError,
+    DesktopRuntimeStatus,
+    RouteName,
+    discover_desktop_runtime,
+    stop_desktop_record,
+)
+
+
+def prepare_desktop_runtime_for_launch_or_exit(
+    *,
+    channel: str,
+    storage_dir: Path,
+    route: RouteName,
+    cwd: Path,
+    force_restart: bool = False,
+    liveness_policy: DesktopLivenessPolicy | None = None,
+) -> DesktopRuntimeStatus | None:
+    try:
+        status = discover_desktop_runtime(
+            channel=channel,
+            storage_dir=storage_dir,
+            route=route,
+            cwd=cwd,
+            liveness_policy=liveness_policy,
+        )
+    except DesktopRuntimeDiscoveryError as exc:
+        typer.secho(f"error: {exc.message}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(1) from exc
+
+    if force_restart and status.state != "absent":
+        force_restart_desktop_runtime_or_exit(status, channel=channel)
+    elif status.state == "live":
+        return status
+    elif status.state == "stale":
+        recover_desktop_runtime_or_exit(status, channel=channel, announce=False)
+    elif status.state in {"not-serving", "wedged"}:
+        recover_desktop_runtime_or_exit(status, channel=channel, announce=True)
+    elif status.state == "unhealthy":
+        refuse_desktop_runtime_or_exit(status, channel=channel)
+
+    return None
 
 
 def recover_desktop_runtime_or_exit(
@@ -17,10 +59,11 @@ def recover_desktop_runtime_or_exit(
     announce: bool,
 ) -> None:
     if announce:
+        reason = _recovery_reason(status)
         typer.secho(
             "warning: recorded desktop runtime for "
             f"channel {channel} has pid {status.pid}, but {_runtime_url(status)} "
-            "refused connections after liveness retries; restarting it.",
+            f"{reason}; restarting it.",
             fg=typer.colors.YELLOW,
             err=True,
         )
@@ -78,3 +121,11 @@ def _stop_record_or_exit(status: DesktopRuntimeStatus, *, action: str) -> None:
 
 def _runtime_url(status: DesktopRuntimeStatus) -> str:
     return status.health_url or status.api_base_url or status.record_path
+
+
+def _recovery_reason(status: DesktopRuntimeStatus) -> str:
+    if status.state == "not-serving":
+        return "refused connections after liveness retries"
+    if status.state == "wedged":
+        return "did not answer after liveness retries"
+    return f"failed liveness checks ({status.reason or status.state})"
