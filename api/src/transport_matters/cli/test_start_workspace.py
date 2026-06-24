@@ -6,10 +6,9 @@ from typer.testing import CliRunner
 from transport_matters.cli import (
     WorkspaceLock,
     main,
-    run_root,
-    workspace_id,
     workspace_root,
 )
+from transport_matters.workspace import run_root, workspace_id
 
 from ._helpers import _which_all
 

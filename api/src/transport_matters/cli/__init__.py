@@ -16,10 +16,9 @@ Module layout:
   launch_runtime.py — shared launch plumbing
   __init__.py     — typer app, command registration, and re-exports
 
-Re-exports (`SIGNAL_EXIT`, `ProcessSupervisor`, `port_in_use`,
-`wait_for_port_ready`, `print_banner`, `run_children`) stay at
-package scope so existing imports and most test monkeypatch paths
-remain valid.
+Package scope keeps only the CLI app and compatibility seams that current
+callers import or patch. Import implementation helpers from their owning
+modules.
 """
 
 from __future__ import annotations
@@ -42,13 +41,12 @@ if TYPE_CHECKING:
 from transport_matters import __version__, env_keys
 from transport_matters.captured_run import default_claude_run_dependencies
 from transport_matters.channel import activate_channel
-from transport_matters.lock import WorkspaceLock, WorkspaceLocked
-from transport_matters.manifest import Manifest
-from transport_matters.manifest import write as manifest_write
-from transport_matters.supervisor import SIGNAL_EXIT, ProcessSupervisor
-from transport_matters.workspace import run_root, workspace_id, workspace_root
+from transport_matters.lock import WorkspaceLock
+from transport_matters.supervisor import SIGNAL_EXIT
+from transport_matters.workspace import workspace_root
 
-from .banner import print_banner, print_client_banner
+from .banner import print_banner as _print_banner
+from .banner import print_client_banner
 from .channel_cmd import channel_app
 from .codex_cmd import run_codex
 from .db_cmd import db_app
@@ -80,11 +78,13 @@ from .launch_options import (
     WebPortOption,
     WorkDirOption,
 )
-from .net import port_in_use, wait_for_port_ready
+from .net import port_in_use
 from .paths import resolve_paths
-from .ports import PortAllocationError, allocate_port_pair
-from .prompt import inject_system_prompt, user_supplied_system_prompt
-from .runner import BindFailure, run_children, run_client_with_retry
+from .ports import allocate_port_pair
+from .prompt import inject_system_prompt as _inject_system_prompt
+from .prompt import user_supplied_system_prompt as _user_supplied_system_prompt
+from .runner import BindFailure, run_children
+from .runner import run_client_with_retry as _run_client_with_retry
 from .start_cmd import run_start
 from .tail_cmd import run_tail
 from .trust import resolve_codex_ca_certificate
@@ -92,25 +92,11 @@ from .trust import resolve_codex_ca_certificate
 __all__ = [
     "SIGNAL_EXIT",
     "BindFailure",
-    "Manifest",
-    "PortAllocationError",
-    "ProcessSupervisor",
     "WorkspaceLock",
-    "WorkspaceLocked",
     "allocate_port_pair",
-    "inject_system_prompt",
-    "list_instances",
     "main",
-    "manifest_write",
     "port_in_use",
-    "print_banner",
-    "require_addon",
     "run_children",
-    "run_client_with_retry",
-    "run_root",
-    "user_supplied_system_prompt",
-    "wait_for_port_ready",
-    "workspace_id",
     "workspace_root",
 ]
 
@@ -135,7 +121,7 @@ def _split_passthrough(ctx: typer.Context) -> list[str]:
     return passthrough
 
 
-def require_addon() -> Traversable:
+def _require_addon() -> Traversable:
     """Locate the packaged mitmproxy addon or exit with a repair hint."""
     addon_traversable = files("transport_matters") / "addon.py"
     if not addon_traversable.is_file():
@@ -153,18 +139,15 @@ def require_addon() -> Traversable:
     return addon_traversable
 
 
-_require_addon = require_addon
-
-
 def _claude_run_dependencies() -> CapturedRunDependencies:
     return default_claude_run_dependencies(
-        require_addon=require_addon,
+        require_addon=_require_addon,
         which=shutil.which,
         get_scripts_dir=sysconfig.get_path,
         port_in_use=port_in_use,
         allocate_port_pair=allocate_port_pair,
-        inject_system_prompt=inject_system_prompt,
-        user_supplied_system_prompt=user_supplied_system_prompt,
+        inject_system_prompt=_inject_system_prompt,
+        user_supplied_system_prompt=_user_supplied_system_prompt,
     )
 
 
@@ -309,8 +292,8 @@ def claude(
         allocate_port_pair=dependencies.allocate_port_pair,
         inject_system_prompt=dependencies.inject_system_prompt,
         user_supplied_system_prompt=dependencies.user_supplied_system_prompt,
-        print_banner=print_banner,
-        run_client_with_retry=run_client_with_retry,
+        print_banner=_print_banner,
+        run_client_with_retry=_run_client_with_retry,
     )
 
 
@@ -366,7 +349,7 @@ def codex(
         allocate_port_pair=dependencies.allocate_port_pair,
         resolve_codex_ca_certificate=resolve_codex_ca_certificate,
         print_client_banner=print_client_banner,
-        run_client_with_retry=run_client_with_retry,
+        run_client_with_retry=_run_client_with_retry,
     )
 
 
@@ -539,7 +522,7 @@ def paths(
     cls=PlainCommand,
     context_settings={"help_option_names": ["-h", "--help"]},
 )
-def list_instances(
+def _list_instances(
     as_json: Annotated[
         bool,
         typer.Option("--json", help="Emit JSON instead of aligned text."),
