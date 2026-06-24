@@ -5,17 +5,20 @@ import {
   shouldPanNotDrag,
   subscribeCanvasGestureStore,
 } from "../../keybindings/gestures";
-import { panViewport, zoomViewportAt } from "../reducers/layoutState";
 import type { CanvasViewport } from "../types";
+import {
+  KEYBOARD_PAN_STEP,
+  KEYBOARD_ZOOM_IN,
+  KEYBOARD_ZOOM_OUT,
+  panViewport,
+  WHEEL_ZOOM_FACTOR,
+  zoomViewportAt,
+} from "../viewport";
 
 export interface CanvasViewportActions {
   setViewport(viewport: CanvasViewport): void;
 }
 
-const WHEEL_ZOOM_FACTOR = 0.92;
-const KEYBOARD_PAN_STEP = 64;
-const KEYBOARD_ZOOM_IN = 1.1;
-const KEYBOARD_ZOOM_OUT = 0.9;
 // How long after the last zoom wheel tick before pane transitions are re-enabled. Long enough to
 // bridge the gap between wheel events in one continuous scroll, short enough to feel immediate.
 const ZOOM_IDLE_MS = 120;

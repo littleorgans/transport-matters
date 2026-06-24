@@ -6,6 +6,7 @@ import type {
   ViewportBounds,
   WorldRect,
 } from "../types";
+import { clampScale } from "../viewport";
 
 export const DEFAULT_CANVAS_VIEWPORT: CanvasViewport = Object.freeze({
   panX: 0,
@@ -13,8 +14,6 @@ export const DEFAULT_CANVAS_VIEWPORT: CanvasViewport = Object.freeze({
   scale: 1,
 });
 
-const MIN_SCALE = 0.45;
-const MAX_SCALE = 1.8;
 const Z_STEP = 1;
 
 // How long a pane stays mounted in the "closing" state before removeNode unmounts it. The exit
@@ -29,10 +28,6 @@ export function createInitialEngineLayoutState(): EngineLayoutState {
     order: [],
     focusedPaneId: null,
   };
-}
-
-export function clampScale(scale: number): number {
-  return Math.min(MAX_SCALE, Math.max(MIN_SCALE, scale));
 }
 
 export function nextPaneZ(nodes: Record<PaneId, PaneNode>): number {
@@ -154,34 +149,6 @@ export function normalizeLayoutOrder(
 
 export function setViewport(state: EngineLayoutState, viewport: CanvasViewport): EngineLayoutState {
   return { ...state, viewport: { ...viewport, scale: clampScale(viewport.scale) } };
-}
-
-export function panViewport(
-  viewport: CanvasViewport,
-  deltaX: number,
-  deltaY: number,
-): CanvasViewport {
-  return {
-    ...viewport,
-    panX: viewport.panX + deltaX,
-    panY: viewport.panY + deltaY,
-  };
-}
-
-export function zoomViewportAt(
-  viewport: CanvasViewport,
-  factor: number,
-  screenX: number,
-  screenY: number,
-): CanvasViewport {
-  const nextScale = clampScale(viewport.scale * factor);
-  const worldX = (screenX - viewport.panX) / viewport.scale;
-  const worldY = (screenY - viewport.panY) / viewport.scale;
-  return {
-    panX: screenX - worldX * nextScale,
-    panY: screenY - worldY * nextScale,
-    scale: nextScale,
-  };
 }
 
 export const FRAME_FRACTION = 0.8;
