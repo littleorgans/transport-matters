@@ -33,6 +33,7 @@ from transport_matters.captured_run_models import (
     CapturedRunSpawnSpec,
     CapturedRunWebRuntime,
 )
+from transport_matters.cli.launch_runtime import require_web_port
 from transport_matters.lock import WorkspaceLock
 from transport_matters.workspace import run_root
 
@@ -64,7 +65,6 @@ __all__ = [
     "build_claude_captured_invocation",
     "default_claude_run_dependencies",
     "prepare_captured_run",
-    "require_web_port",
     "run_captured_run_on_local_tty",
 ]
 
@@ -306,13 +306,6 @@ def prepare_captured_run(
             wslock.__exit__(None, None, None)
         ctx.resource_stack.close()
         raise
-
-
-def require_web_port(web_port: int | None) -> int:
-    if web_port is None:
-        msg = "standalone harness captured runs require an embedded web port"
-        raise ValueError(msg)
-    return web_port
 
 
 def _raise_prepare_outcome(outcome: LaunchBindFailureOutcome | LaunchExitOutcome) -> None:

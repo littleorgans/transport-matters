@@ -178,6 +178,14 @@ def resolve_launch_ports(
     return proxy_port, web_port, proxy_pinned, web_pinned
 
 
+def require_web_port(web_port: int | None) -> int:
+    """Return the embedded web port required by standalone harness launches."""
+    if web_port is None:
+        msg = "standalone harness captured runs require an embedded web port"
+        raise ValueError(msg)
+    return web_port
+
+
 def resolve_storage_dir(*, storage_dir: Path | None, working_dir: Path, run_id: str) -> Path:
     """Resolve the storage root path for the launch without creating it.
 
