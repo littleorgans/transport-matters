@@ -95,6 +95,7 @@ async function flushTasks(turns = 3): Promise<void> {
 function absentRuntimeStatus() {
   return {
     channel: "stable",
+    cwd: null,
     defaultRouteUrl: null,
     proxyPort: null,
     state: "absent" as const,
@@ -105,9 +106,21 @@ function absentRuntimeStatus() {
 function wedgedRuntimeStatus() {
   return {
     channel: "stable",
+    cwd: "/tmp/workspace",
     defaultRouteUrl: null,
     proxyPort: 9900,
     state: "wedged" as const,
+    webPort: 9901,
+  };
+}
+
+function liveRuntimeStatus(cwd: string) {
+  return {
+    channel: "stable",
+    cwd,
+    defaultRouteUrl: "http://127.0.0.1:9901/canvas",
+    proxyPort: 9900,
+    state: "live" as const,
     webPort: 9901,
   };
 }
@@ -140,6 +153,48 @@ describe("desktop direct relaunch reclaim", () => {
     const readRuntimeStatus = vi
       .fn()
       .mockReturnValueOnce(wedgedRuntimeStatus())
+      .mockReturnValueOnce(absentRuntimeStatus());
+    const reclaimRuntime = vi.fn(() => {
+      events.push("reclaim");
+    });
+    launchBackendProcess.mockImplementationOnce(() => {
+      events.push("launch");
+      return {
+        child: backendChild,
+        launch: {
+          args: [],
+          command: "transport-matters",
+          cwd: "/tmp/workspace",
+          env: {},
+        },
+      };
+    });
+
+    const { registerAppLifecycle } = await import("./main.js");
+
+    appWhenReady.mockResolvedValue(undefined);
+    registerAppLifecycle({
+      env: { TRANSPORT_MATTERS_CHANNEL: "stable" },
+      readRuntimeStatus,
+      reclaimRuntime,
+    });
+    await flushPromiseQueue();
+    await flushTasks();
+
+    expect(events).toEqual(["reclaim", "launch"]);
+    expect(reclaimRuntime).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "stable" }),
+      { TRANSPORT_MATTERS_CHANNEL: "stable" },
+      process.cwd(),
+    );
+    expect(launchBackendProcess).toHaveBeenCalledOnce();
+  });
+
+  it("reclaims a live runtime serving a different workdir before spawning", async () => {
+    const events: string[] = [];
+    const readRuntimeStatus = vi
+      .fn()
+      .mockReturnValueOnce(liveRuntimeStatus("/tmp/other-workspace"))
       .mockReturnValueOnce(absentRuntimeStatus());
     const reclaimRuntime = vi.fn(() => {
       events.push("reclaim");

@@ -46,9 +46,10 @@ function createBackendFixture(): LaunchedBackendProcess {
   };
 }
 
-function createLiveRuntimeStatus() {
+function createLiveRuntimeStatus(cwd = process.cwd()) {
   return {
     channel: "stable",
+    cwd,
     defaultRouteUrl: null,
     proxyPort: 9900,
     state: "live" as const,
@@ -358,9 +359,9 @@ describe("desktop main process", () => {
     expect(
       resolveBackendStartupOptions(
         { TRANSPORT_MATTERS_PROXY_PORT: "9910" },
-        "/tmp/workspace",
-        undefined,
-        { runtimeStatus: createLiveRuntimeStatus() },
+          "/tmp/workspace",
+          undefined,
+          { runtimeStatus: createLiveRuntimeStatus("/tmp/workspace") },
       ),
     ).toEqual({
       env: {
@@ -498,7 +499,7 @@ describe("desktop main process", () => {
 
     appWhenReady.mockResolvedValue(undefined);
     registerDesktopLifecycleFromEnv({}, {
-      readRuntimeStatus: createLiveRuntimeStatus,
+      readRuntimeStatus: () => createLiveRuntimeStatus(),
     });
     await flushPromiseQueue();
 

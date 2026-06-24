@@ -41,6 +41,14 @@ def prepare_desktop_runtime_for_launch_or_exit(
     if force_restart and status.state != "absent":
         force_restart_desktop_runtime_or_exit(status, channel=channel)
     elif status.state == "live":
+        if not _serves_requested_work_dir(status, cwd):
+            recover_desktop_runtime_or_exit(
+                status,
+                channel=channel,
+                announce=True,
+                reason=_work_dir_switch_reason(status, cwd),
+            )
+            return None
         return status
     elif status.state == "stale":
         recover_desktop_runtime_or_exit(status, channel=channel, announce=False)
@@ -57,13 +65,14 @@ def recover_desktop_runtime_or_exit(
     *,
     channel: str,
     announce: bool,
+    reason: str | None = None,
 ) -> None:
     if announce:
-        reason = _recovery_reason(status)
+        recovery_reason = reason or _recovery_reason(status)
         typer.secho(
             "warning: recorded desktop runtime for "
             f"channel {channel} has pid {status.pid}, but {_runtime_url(status)} "
-            f"{reason}; restarting it.",
+            f"{recovery_reason}; restarting it.",
             fg=typer.colors.YELLOW,
             err=True,
         )
@@ -129,3 +138,16 @@ def _recovery_reason(status: DesktopRuntimeStatus) -> str:
     if status.state == "wedged":
         return "did not answer after liveness retries"
     return f"failed liveness checks ({status.reason or status.state})"
+
+
+def _serves_requested_work_dir(status: DesktopRuntimeStatus, cwd: Path) -> bool:
+    if status.cwd is None:
+        return False
+    return Path(status.cwd).expanduser().resolve() == cwd.expanduser().resolve()
+
+
+def _work_dir_switch_reason(status: DesktopRuntimeStatus, cwd: Path) -> str:
+    return (
+        f"serves workdir {status.cwd or '<unknown>'} while requested workdir is "
+        f"{cwd.expanduser().resolve()}"
+    )

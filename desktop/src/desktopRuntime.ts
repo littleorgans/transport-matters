@@ -15,6 +15,7 @@ export type DesktopRuntimeState =
 
 export interface DesktopRuntimeStatus {
   channel: string;
+  cwd: string | null;
   defaultRouteUrl: string | null;
   proxyPort: number | null;
   state: DesktopRuntimeState;
@@ -109,6 +110,7 @@ export function parseDesktopRuntimeStatus(
   const runtime = payload.runtime;
   return {
     channel: requireString(runtime.channel),
+    cwd: optionalString(runtime.cwd),
     defaultRouteUrl: optionalString(runtime.defaultRouteUrl),
     proxyPort: optionalPort(runtime.proxyPort),
     state: requireState(runtime.state),
