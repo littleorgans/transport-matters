@@ -12,15 +12,14 @@ import type {
   RuntimeTemplateSummary,
   RuntimeTemplateVendor,
   SpaceSummary,
-  WorktreeSummary,
 } from "../../types";
 import type { SessionSummary } from "../api/sessionClient";
 import {
   CAPTURED_RUN_PROVIDERS,
   harnessLabel,
-  locatorTail,
   type SpawnSessionDescriptor,
 } from "../model/paneRecords";
+import { buildSpaceRows, buildWorktreeRows } from "./workdirRows";
 
 export const LAUNCHER_SCOPES = [
   "root",
@@ -93,7 +92,9 @@ export function deriveFetchStatus(
 
 /** A leaf effect dispatched out to the canvas; scope nav is handled internally. */
 export type LauncherCommand =
-  | { kind: "spawn"; harness: HarnessName; runtimeTemplate?: string }
+  // `worktreeId` targets THIS spawn at a specific worktree (the → drill-in from a
+  // worktree row), overriding the canvas default. Absent = spawn into the default.
+  | { kind: "spawn"; harness: HarnessName; runtimeTemplate?: string; worktreeId?: string }
   | { kind: "reset-view" }
   | { kind: "focus-picker" }
   | { kind: "goto"; path: string }
@@ -144,6 +145,20 @@ export function interactionFor(action: RowAction): Interaction {
   }
 }
 
+/**
+ * The action + lifecycle the → (advance) gesture drives. A row's optional `advance`
+ * override lets ↵ and → diverge (e.g. ↵ sets the worktree default while → drills
+ * into per-spawn agents); without one, the primary action's `advance` lifecycle is
+ * used (the unchanged default). Null when the row is inert.
+ */
+export function advanceGesture(
+  row: CommandRow,
+): { action: RowAction; lifecycle: Lifecycle } | null {
+  const action = row.advance ?? row.action;
+  if (!action) return null;
+  return { action, lifecycle: interactionFor(action).advance };
+}
+
 export interface CommandRow {
   /** Stable, unique id; also the combobox item value. */
   value: string;
@@ -158,13 +173,14 @@ export interface CommandRow {
   /** Status/skeleton rows are inert (not highlightable, no action). */
   disabled?: boolean;
   action?: RowAction;
+  /** Overrides the → (advance) gesture when it must diverge from `action` (see advanceGesture). */
+  advance?: RowAction;
 }
 
 const GROUP_DOMAINS = "Domains";
 const GROUP_AGENTS = "Agents";
 const GROUP_CANVAS = "Canvas";
 const GROUP_SETTINGS = "Settings";
-const GROUP_WORKDIR = "Workdir";
 const GROUP_SESSIONS = "Sessions";
 
 const VENDOR_LABELS: Record<RuntimeTemplateVendor, string> = {
@@ -203,15 +219,33 @@ export function recommendedSubtitle(template: RuntimeTemplateSummary): string | 
   return parts.length > 0 ? parts.join(" · ") : undefined;
 }
 
-/** The spawnable agent rows: native (always present, always first) then specialists. */
-function agentSpawnRows(templates: RuntimeTemplateSummary[]): CommandRow[] {
+/** Build a spawn command; `worktreeId` pins it to a worktree, omitted keys keep the default path. */
+function spawnCommand(
+  harness: HarnessName,
+  worktreeId?: string,
+  runtimeTemplate?: string,
+): LauncherCommand {
+  return {
+    kind: "spawn",
+    harness,
+    ...(runtimeTemplate === undefined ? {} : { runtimeTemplate }),
+    ...(worktreeId === undefined ? {} : { worktreeId }),
+  };
+}
+
+/**
+ * The spawnable agent rows: native (always present, always first) then specialists.
+ * `worktreeId` targets every spawn at that worktree (the → drill-in); undefined
+ * spawns into the canvas default.
+ */
+function agentSpawnRows(templates: RuntimeTemplateSummary[], worktreeId?: string): CommandRow[] {
   const rows: CommandRow[] = CAPTURED_RUN_PROVIDERS.map((harness) => ({
     value: `agent:native:${harness}`,
     title: harnessLabel(harness),
     subtitle: "Native",
     group: GROUP_AGENTS,
     railSeed: `native:${harness}`,
-    action: { kind: "command", command: { kind: "spawn", harness } },
+    action: { kind: "command", command: spawnCommand(harness, worktreeId) },
   }));
 
   for (const template of templates) {
@@ -229,7 +263,7 @@ function agentSpawnRows(templates: RuntimeTemplateSummary[]): CommandRow[] {
           ? undefined
           : {
               kind: "command",
-              command: { kind: "spawn", harness, runtimeTemplate: template.name },
+              command: spawnCommand(harness, worktreeId, template.name),
             },
     });
   }
@@ -240,8 +274,9 @@ function agentSpawnRows(templates: RuntimeTemplateSummary[]): CommandRow[] {
 export function buildAgentRows(
   templates: RuntimeTemplateSummary[],
   status: FetchStatus,
+  worktreeId?: string,
 ): CommandRow[] {
-  return [...agentSpawnRows(templates), ...agentsStatusRows(status)];
+  return [...agentSpawnRows(templates, worktreeId), ...agentsStatusRows(status)];
 }
 
 /** The quiet status/skeleton/retry rows that make the four states legible. */
@@ -354,105 +389,6 @@ export function buildSettingsRows(
       };
     }),
   ];
-}
-
-/** Subtitle for a worktree row: its root path. */
-function worktreeSubtitle(worktree: WorktreeSummary): string {
-  return worktree.path;
-}
-
-/** Title for a worktree row: the branch, else "main worktree", else the path tail. */
-function worktreeTitle(worktree: WorktreeSummary): string {
-  if (worktree.branch) return worktree.branch;
-  return worktree.isPrimary ? "main worktree" : locatorTail(worktree.path);
-}
-
-/**
- * Workdir scope: one row per detected Space (R7). Rows are titled by the project
- * label (never the bare word "Space"), so they never read like the Settings
- * "Canvas gesture modifier: Space" row. A single-worktree Space selects its lone
- * worktree directly; a multi-worktree Space descends into the worktree sub-scope.
- */
-export function buildSpaceRows(
-  spaces: SpaceSummary[],
-  activeWorktreeId: string | null,
-): CommandRow[] {
-  if (spaces.length === 0) {
-    return [
-      {
-        value: "status:workdir-empty",
-        title: "No spaces detected yet",
-        subtitle: "Open a project directory to capture a Space",
-        group: GROUP_WORKDIR,
-        disabled: true,
-      },
-    ];
-  }
-  return spaces.map((space): CommandRow => {
-    const single = space.worktrees.length === 1 ? space.worktrees[0] : undefined;
-    const rooted = single && single.worktreeId === activeWorktreeId;
-    return {
-      value: `space:${space.spaceId}`,
-      title: space.label,
-      subtitle: single ? worktreeSubtitle(single) : `${space.worktrees.length} worktrees`,
-      group: GROUP_WORKDIR,
-      trailing: rooted ? "Current" : space.kind === "repo" ? "repo" : "dir",
-      action: single
-        ? {
-            kind: "command",
-            command: {
-              kind: "select-worktree",
-              spaceId: space.spaceId,
-              worktreeId: single.worktreeId,
-            },
-          }
-        : { kind: "enter", scope: "worktree", param: space.spaceId },
-    };
-  });
-}
-
-/** Worktree sub-scope: one row per worktree of the Space named by `spaceId` (the nav param). */
-export function buildWorktreeRows(
-  spaces: SpaceSummary[],
-  spaceId: string | undefined,
-  activeWorktreeId: string | null,
-): CommandRow[] {
-  const space = spaces.find((candidate) => candidate.spaceId === spaceId);
-  if (!space) {
-    return [
-      {
-        value: "status:worktree-missing",
-        title: "Space no longer available",
-        group: GROUP_WORKDIR,
-        disabled: true,
-      },
-    ];
-  }
-  return space.worktrees.map(
-    (worktree): CommandRow => ({
-      value: `worktree:${worktree.worktreeId}`,
-      title: worktreeTitle(worktree),
-      subtitle: worktreeSubtitle(worktree),
-      group: GROUP_WORKDIR,
-      trailing:
-        worktree.worktreeId === activeWorktreeId
-          ? "Current"
-          : worktree.missing
-            ? "Missing"
-            : undefined,
-      disabled: worktree.missing,
-      action: worktree.missing
-        ? undefined
-        : {
-            kind: "command",
-            command: {
-              kind: "select-worktree",
-              spaceId: space.spaceId,
-              worktreeId: worktree.worktreeId,
-            },
-          },
-    }),
-  );
 }
 
 /** The spawn descriptor a session row threads to the EXISTING transcript handler. */
@@ -603,7 +539,9 @@ export function buildScopeRows(
     case "root":
       return query.trim().length === 0 ? buildDomainRows() : buildFlatSearchRows(inputs);
     case "agents":
-      return buildAgentRows(templates, agentsStatus);
+      // `param` (set when the scope was entered from a worktree row's → drill-in)
+      // pins every spawn at that worktree; undefined keeps the canvas-default path.
+      return buildAgentRows(templates, agentsStatus, param);
     case "canvas":
       return buildCanvasRows();
     case "settings":

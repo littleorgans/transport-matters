@@ -1,5 +1,5 @@
 import { type KeyboardEvent, useCallback, useEffect } from "react";
-import { type CommandRow, interactionFor, type Lifecycle } from "./commandModel";
+import { advanceGesture, type CommandRow, type Lifecycle, type RowAction } from "./commandModel";
 
 interface LauncherInputKeysArgs {
   open: boolean;
@@ -7,7 +7,7 @@ interface LauncherInputKeysArgs {
   query: string;
   highlighted: string | undefined;
   rowByValue: Map<string, CommandRow>;
-  applyGesture: (row: CommandRow, lifecycle: Lifecycle) => void;
+  applyGesture: (row: CommandRow, action: RowAction, lifecycle: Lifecycle) => void;
   canBack: boolean;
   back: () => void;
 }
@@ -52,12 +52,10 @@ export function useLauncherInputKeys({
       const caret = event.currentTarget.selectionStart ?? 0;
       if (event.key === "ArrowRight" && caret >= query.length) {
         const row = highlighted ? rowByValue.get(highlighted) : undefined;
-        if (row?.action) {
-          const lifecycle = interactionFor(row.action).advance;
-          if (lifecycle !== "none") {
-            event.preventDefault();
-            applyGesture(row, lifecycle);
-          }
+        const advance = row ? advanceGesture(row) : null;
+        if (row && advance && advance.lifecycle !== "none") {
+          event.preventDefault();
+          applyGesture(row, advance.action, advance.lifecycle);
         }
         return;
       }

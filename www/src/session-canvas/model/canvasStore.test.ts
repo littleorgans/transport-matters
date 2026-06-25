@@ -570,5 +570,46 @@ describe("canvasStore", () => {
       resetCanvasStoreForTests();
       expect(() => useCanvasStore.getState().addCapturedRun("claude")).toThrow(/worktree/i);
     });
+
+    it("a per-spawn worktreeId targets two worktrees as coexisting panes, leaving the default untouched", () => {
+      resetCanvasStoreForTests();
+      useCanvasStore.getState().initializeCanvas({
+        owner: "local",
+        workspaceHash: null,
+        spaceId: "space-1",
+        worktreeId: "wt-default",
+        canvasId: null,
+        harness: null,
+        runId: null,
+      });
+
+      const paneA = useCanvasStore.getState().addCapturedRun("claude", undefined, "wt-a");
+      const paneB = useCanvasStore.getState().addCapturedRun("codex", undefined, "wt-b");
+
+      const refA = useCanvasStore.getState().panes[paneA]?.contentRef;
+      const refB = useCanvasStore.getState().panes[paneB]?.contentRef;
+      expect(refA).toMatchObject({ kind: "captured-run", provider: "claude", worktreeId: "wt-a" });
+      expect(refB).toMatchObject({ kind: "captured-run", provider: "codex", worktreeId: "wt-b" });
+      // Two distinct, coexisting panes, no toggling of a single global default.
+      expect(paneA).not.toBe(paneB);
+      expect(useCanvasStore.getState().defaultWorktreeId).toBe("wt-default");
+    });
+
+    it("falls back to the canvas default worktree when no per-spawn target is given", () => {
+      resetCanvasStoreForTests();
+      useCanvasStore.getState().initializeCanvas({
+        owner: "local",
+        workspaceHash: null,
+        spaceId: "space-1",
+        worktreeId: "wt-default",
+        canvasId: null,
+        harness: null,
+        runId: null,
+      });
+
+      const paneId = useCanvasStore.getState().addCapturedRun("claude");
+      const ref = useCanvasStore.getState().panes[paneId]?.contentRef;
+      expect(ref).toMatchObject({ kind: "captured-run", worktreeId: "wt-default" });
+    });
   });
 });

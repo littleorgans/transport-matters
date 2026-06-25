@@ -83,7 +83,9 @@ function useCanvasCommandHandler(): (command: LauncherCommand) => void {
             // (plain/legacy /canvas, defaultWorktreeId === null): a captured run
             // can't resolve a cwd. Surface it as a non-fatal error instead of
             // letting it bubble out of the event handler and crash the surface.
-            addCapturedRun(command.harness, command.runtimeTemplate);
+            // command.worktreeId (set by the launcher's per-spawn drill-in) targets
+            // a specific worktree without re-rooting the canvas default.
+            addCapturedRun(command.harness, command.runtimeTemplate, command.worktreeId);
           } catch (error) {
             console.error("Failed to spawn captured run:", error);
           }

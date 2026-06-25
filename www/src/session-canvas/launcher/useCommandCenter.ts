@@ -93,9 +93,7 @@ function useLauncherActionInterpreter({
   );
 
   return useCallback(
-    (row: CommandRow, lifecycle: Lifecycle) => {
-      const action = row.action;
-      if (!action) return;
+    (row: CommandRow, action: RowAction, lifecycle: Lifecycle) => {
       switch (lifecycle) {
         case "descend":
           if (action.kind === "enter") {
@@ -292,7 +290,9 @@ export function useCommandCenter({
   const selectValue = useCallback(
     (value: string | undefined) => {
       const row = value ? rowByValue.get(value) : undefined;
-      if (row?.action) applyGesture(row, interactionFor(row.action).enter);
+      // ↵/click always drives the PRIMARY action's enter lifecycle; → (advance) is
+      // handled separately in useLauncherInputKeys via advanceGesture.
+      if (row?.action) applyGesture(row, row.action, interactionFor(row.action).enter);
     },
     [rowByValue, applyGesture],
   );

@@ -63,7 +63,10 @@ interface CanvasStoreModel extends CanvasModel {
 }
 
 interface CanvasStoreState extends CanvasStoreModel {
-  addCapturedRun(provider: HarnessName, runtimeTemplate?: string): PaneId;
+  // `worktreeId` pins this spawn to a specific worktree (the launcher's per-spawn
+  // drill-in); omitted falls back to the canvas default. Either way the default is
+  // left untouched, so runs in different worktrees coexist as isolated panes.
+  addCapturedRun(provider: HarnessName, runtimeTemplate?: string, worktreeId?: string): PaneId;
   closePane(paneId: PaneId): void;
   closeDockedPane(paneId: PaneId): void;
   dropCapturedRunPane(runKey: string): void;
@@ -133,17 +136,13 @@ export const useCanvasStore = create<CanvasStoreState>()(
     (set, get) => ({
       ...createInitialCanvasModel(INITIAL_LAUNCH_CONTEXT),
 
-      addCapturedRun(provider, runtimeTemplate) {
-        const worktreeId = get().defaultWorktreeId;
-        if (worktreeId === null) {
+      addCapturedRun(provider, runtimeTemplate, worktreeId) {
+        // Per-spawn target wins over the canvas default; neither mutates the default.
+        const target = worktreeId ?? get().defaultWorktreeId;
+        if (target === null) {
           throw new Error("Cannot spawn a captured run without a rooted worktree");
         }
-        const ref = createCapturedRunRef(
-          provider,
-          worktreeId,
-          harnessLabel(provider),
-          runtimeTemplate,
-        );
+        const ref = createCapturedRunRef(provider, target, harnessLabel(provider), runtimeTemplate);
         return get().spawnPane(ref, { focus: true });
       },
 
