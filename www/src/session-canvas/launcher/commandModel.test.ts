@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
-import type { RuntimeTemplateSummary, SpaceSummary } from "../../types";
+import type { RuntimeTemplateSummary, SpaceSummary, WorktreeSummary } from "../../types";
 import { makeSessionSummary } from "../testUtils";
 import {
+  advanceGesture,
   buildAgentRows,
   buildScopeRows,
   buildSessionsRows,
@@ -176,6 +177,39 @@ describe("buildAgentRows — Native is always present and first", () => {
       "agent:native:codex",
     ]);
   });
+
+  it("omits worktreeId from spawn commands when no per-spawn target is given", () => {
+    const rows = buildAgentRows([research], "populated");
+    const native = rows.find((row) => row.value === "agent:native:claude");
+    expect(native?.action).toEqual({
+      kind: "command",
+      command: { kind: "spawn", harness: "claude" },
+    });
+    const specialist = rows.find((row) => row.value === "agent:template:research");
+    expect(specialist?.action).toEqual({
+      kind: "command",
+      command: { kind: "spawn", harness: "claude", runtimeTemplate: "research" },
+    });
+  });
+
+  it("threads a per-spawn worktreeId onto every spawnable row's spawn command", () => {
+    const rows = buildAgentRows([research], "populated", "wt-feat");
+    const native = rows.find((row) => row.value === "agent:native:claude");
+    expect(native?.action).toEqual({
+      kind: "command",
+      command: { kind: "spawn", harness: "claude", worktreeId: "wt-feat" },
+    });
+    const specialist = rows.find((row) => row.value === "agent:template:research");
+    expect(specialist?.action).toEqual({
+      kind: "command",
+      command: {
+        kind: "spawn",
+        harness: "claude",
+        runtimeTemplate: "research",
+        worktreeId: "wt-feat",
+      },
+    });
+  });
 });
 
 describe("interactionFor", () => {
@@ -215,6 +249,61 @@ describe("interactionFor", () => {
       expect(interactionFor(action)).toEqual(expected);
     });
   }
+});
+
+describe("advanceGesture resolves the → gesture action and lifecycle", () => {
+  it("falls back to the primary action's advance lifecycle when no override is set", () => {
+    const scopeRow = {
+      value: "domain:settings",
+      title: "Settings",
+      group: "Domains",
+      action: { kind: "enter", scope: "settings" },
+    } as const;
+    expect(advanceGesture(scopeRow)).toEqual({
+      action: { kind: "enter", scope: "settings" },
+      lifecycle: "descend",
+    });
+  });
+
+  it("reports the dead → as 'none' for a plain command row (e.g. select-worktree)", () => {
+    const commandRow = {
+      value: "worktree:wt",
+      title: "main",
+      group: "Workdir",
+      action: {
+        kind: "command",
+        command: { kind: "select-worktree", spaceId: "s", worktreeId: "wt" },
+      },
+    } as const;
+    expect(advanceGesture(commandRow)?.lifecycle).toBe("none");
+  });
+
+  it("uses the advance override so → drills into spawn options while ↵ keeps the primary action", () => {
+    const worktreeRow = {
+      value: "worktree:wt-feat",
+      title: "feat/x",
+      group: "Workdir",
+      action: {
+        kind: "command",
+        command: { kind: "select-worktree", spaceId: "s", worktreeId: "wt-feat" },
+      },
+      advance: { kind: "enter", scope: "agents", param: "wt-feat" },
+    } as const;
+    expect(advanceGesture(worktreeRow)).toEqual({
+      action: { kind: "enter", scope: "agents", param: "wt-feat" },
+      lifecycle: "descend",
+    });
+  });
+
+  it("returns null for an inert row with no action or override", () => {
+    const disabledRow = {
+      value: "status:x",
+      title: "…",
+      group: "Workdir",
+      disabled: true,
+    } as const;
+    expect(advanceGesture(disabledRow)).toBeNull();
+  });
 });
 
 describe("NavFrame stack", () => {
@@ -440,6 +529,33 @@ describe("Workdir scope — Space rows (R7)", () => {
     });
   });
 
+  it("a single-worktree Space → drills into per-spawn agent options for that worktree", () => {
+    const rows = buildScopeRows("workdir", baseInputs({ spaces: [plainSpace] }), "");
+    expect(rows[0]?.advance).toEqual({ kind: "enter", scope: "agents", param: "wt-only" });
+  });
+
+  it("a single-worktree Space whose worktree is missing offers no spawnable target", () => {
+    const goneWorktree: WorktreeSummary = {
+      worktreeId: "wt-gone",
+      spaceId: "space-dir",
+      path: "/p/scratch",
+      branch: null,
+      isPrimary: true,
+      missing: true,
+    };
+    const rows = buildScopeRows(
+      "workdir",
+      baseInputs({ spaces: [{ ...plainSpace, worktrees: [goneWorktree] }] }),
+      "",
+    );
+    // Inert: no ↵ select-worktree and no → spawn drill-in, so the launcher never
+    // posts an unavailable worktree_id the backend would reject.
+    expect(rows[0]?.disabled).toBe(true);
+    expect(rows[0]?.trailing).toBe("Missing");
+    expect(rows[0]?.action).toBeUndefined();
+    expect(rows[0]?.advance).toBeUndefined();
+  });
+
   it("shows a quiet placeholder when no spaces are detected", () => {
     const rows = buildScopeRows("workdir", baseInputs({ spaces: [] }), "");
     expect(rows).toHaveLength(1);
@@ -464,6 +580,18 @@ describe("Worktree sub-scope rows", () => {
     });
   });
 
+  it("each worktree row keeps ↵=set-default and gives → a drill-into-spawn affordance", () => {
+    const rows = buildScopeRows("worktree", baseInputs({ spaces: [repoSpace] }), "", "space-repo");
+    // ↵ (run) still re-roots / sets the default spawn target.
+    expect(rows[1]?.action).toEqual({
+      kind: "command",
+      command: { kind: "select-worktree", spaceId: "space-repo", worktreeId: "wt-feat" },
+    });
+    // → (enter) drills into agent spawn options targeted at THIS worktree.
+    expect(rows[0]?.advance).toEqual({ kind: "enter", scope: "agents", param: "wt-main" });
+    expect(rows[1]?.advance).toEqual({ kind: "enter", scope: "agents", param: "wt-feat" });
+  });
+
   it("disables a missing worktree and surfaces a fallback for an unknown space", () => {
     const missing: SpaceSummary = {
       ...repoSpace,
@@ -472,9 +600,19 @@ describe("Worktree sub-scope rows", () => {
     const rows = buildScopeRows("worktree", baseInputs({ spaces: [missing] }), "", "space-repo");
     expect(rows[0]?.disabled).toBe(true);
     expect(rows[0]?.action).toBeUndefined();
+    expect(rows[0]?.advance).toBeUndefined();
 
     const unknown = buildScopeRows("worktree", baseInputs({ spaces: [] }), "", "nope");
     expect(unknown[0]?.value).toBe("status:worktree-missing");
+  });
+
+  it("entering the agents scope with a worktree param targets every spawn at that worktree", () => {
+    const rows = buildScopeRows("agents", baseInputs({ templates: [research] }), "", "wt-feat");
+    const native = rows.find((row) => row.value === "agent:native:claude");
+    expect(native?.action).toEqual({
+      kind: "command",
+      command: { kind: "spawn", harness: "claude", worktreeId: "wt-feat" },
+    });
   });
 });
 

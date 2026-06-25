@@ -41,7 +41,8 @@ describe("CanvasSurface", () => {
     resetCanvasStoreForTests(launch);
     installMockTransport(() => jsonResponse({ items: [] }));
     const addCapturedRun = vi.fn(
-      (provider: HarnessName, _runtimeTemplate?: string): PaneId => `captured:${provider}`,
+      (provider: HarnessName, _runtimeTemplate?: string, _worktreeId?: string): PaneId =>
+        `captured:${provider}`,
     );
     useCanvasStore.setState({ addCapturedRun });
 
@@ -60,9 +61,12 @@ describe("CanvasSurface", () => {
     expect(screen.getByText("Claude")).toBeInTheDocument();
 
     // ↵ on the auto-highlighted first native spawns it through the canvas handler.
+    // A root/Agents-scope spawn carries no per-spawn worktree, so worktreeId is undefined.
     fireEvent.keyDown(screen.getByRole("combobox"), { key: "Enter" });
 
-    await waitFor(() => expect(addCapturedRun).toHaveBeenCalledWith("claude", undefined));
+    await waitFor(() =>
+      expect(addCapturedRun).toHaveBeenCalledWith("claude", undefined, undefined),
+    );
   });
 
   it("closes the command center on Escape from a sub-scope", async () => {
