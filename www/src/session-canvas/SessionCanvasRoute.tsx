@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { getRun, type RunView } from "../api";
+import { useMeta } from "../hooks/useMeta";
 import { KeybindingEngineProvider } from "../keybindings/engine";
 import { CanvasSurface } from "./components/CanvasSurface";
 import { useLaunchSession } from "./hooks/useLaunchSession";
@@ -16,7 +17,9 @@ export function SessionCanvasRoute() {
   const launch = useMemo(() => parseCanvasLaunchContext(search), [search]);
   const stress = useMemo(() => isStressCanvas(search), [search]);
   const initializeCanvas = useCanvasStore((state) => state.initializeCanvas);
+  const adoptDefaultWorktree = useCanvasStore((state) => state.adoptDefaultWorktree);
   const spawnOrFocusTranscript = useCanvasStore((state) => state.spawnOrFocusTranscript);
+  const { meta } = useMeta();
   const [capturedRunReconciliation, setCapturedRunReconciliation] =
     useState<CapturedRunReconciliation>(() =>
       hasRememberedCapturedRuns() ? "pending" : "released",
@@ -32,6 +35,15 @@ export function SessionCanvasRoute() {
   useEffect(() => {
     initializeCanvas(launch);
   }, [initializeCanvas, launch]);
+
+  // The desktop default launch carries no worktree in its URL, so seed the canvas
+  // default spawn target from the backend's resolved launch worktree (meta). An
+  // explicit URL worktree (worktree switch) owns the default and is left alone.
+  useEffect(() => {
+    if (launch.worktreeId !== null) return;
+    if (!meta?.worktreeId) return;
+    adoptDefaultWorktree(meta.spaceId, meta.worktreeId);
+  }, [launch.worktreeId, meta?.spaceId, meta?.worktreeId, adoptDefaultWorktree]);
 
   useEffect(() => {
     if (resolved) spawnOrFocusTranscript(resolved);

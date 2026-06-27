@@ -8,11 +8,52 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from transport_matters import config
+from transport_matters.api.v1 import meta as meta_module
 from transport_matters.main import create_app
+from transport_matters.test_run_manager import resolved_worktree
 from transport_matters.workspace import workspace_id
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
+
+    from transport_matters.space.models import ResolvedWorktree
+
+
+class _FakePoolConnection:
+    async def __aenter__(self) -> object:
+        return object()
+
+    async def __aexit__(self, *_args: object) -> None:
+        return None
+
+
+class _FakePool:
+    def connection(self) -> _FakePoolConnection:
+        return _FakePoolConnection()
+
+
+def _install_cwd_store(
+    monkeypatch: pytest.MonkeyPatch,
+    resolved: ResolvedWorktree | Exception,
+) -> None:
+    """Stub the meta endpoint's cwd -> worktree resolution.
+
+    Pass a ``ResolvedWorktree`` for the happy path or an ``Exception`` to assert
+    the best-effort fallback (meta stays 200 with null space/worktree).
+    """
+
+    class Store:
+        def __init__(self, *_args: object, **_kwargs: object) -> None:
+            pass
+
+        async def resolve_session_cwd(self, cwd: str, *, owner: str = "local") -> ResolvedWorktree:
+            assert owner == "local"
+            if isinstance(resolved, Exception):
+                raise resolved
+            return resolved
+
+    monkeypatch.setattr(meta_module, "SpaceStore", Store, raising=False)
+    monkeypatch.setattr(meta_module, "optional_session_pool", lambda _request: _FakePool())
 
 
 @pytest.fixture(autouse=True)
@@ -42,6 +83,8 @@ class TestMeta:
             "cwd",
             "workspace_id",
             "run_id",
+            "space_id",
+            "worktree_id",
             "harnesses",
             "transcript_denylist",
         }
@@ -145,6 +188,35 @@ class TestMeta:
         assert data["run_id"] == "run-current"
         assert cwd.name == "workspace"
         assert data["workspace_id"] == f"{wid.slug}/{wid.hash}"
+
+    async def test_space_and_worktree_null_without_session_store(self, client: AsyncClient) -> None:
+        # The test app runs no lifespan, so app.state.session_pool is unset. Meta must
+        # stay usable and report no default worktree rather than failing the launch.
+        data = (await client.get("/api/meta")).json()
+        assert data["space_id"] is None
+        assert data["worktree_id"] is None
+
+    async def test_space_and_worktree_resolved_from_cwd(
+        self, client: AsyncClient, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        # With a session store the launch cwd resolves to its Space + primary worktree,
+        # so the canvas has a default spawn target (POST /v1/runs requires one).
+        resolved = resolved_worktree(tmp_path)
+        _install_cwd_store(monkeypatch, resolved)
+        data = (await client.get("/api/meta")).json()
+        assert data["space_id"] == str(resolved.space_id)
+        assert data["worktree_id"] == str(resolved.worktree_id)
+
+    async def test_space_and_worktree_null_when_resolution_fails(
+        self, client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Resolution is best-effort: a store error must not 500 the launch.
+        _install_cwd_store(monkeypatch, RuntimeError("boom"))
+        response = await client.get("/api/meta")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["space_id"] is None
+        assert data["worktree_id"] is None
 
     async def test_harnesses_expose_current_capabilities(self, client: AsyncClient) -> None:
         response = await client.get("/api/meta")
