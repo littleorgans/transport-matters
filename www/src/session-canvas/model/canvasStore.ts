@@ -67,6 +67,10 @@ interface CanvasStoreState extends CanvasStoreModel {
   // drill-in); omitted falls back to the canvas default. Either way the default is
   // left untouched, so runs in different worktrees coexist as isolated panes.
   addCapturedRun(provider: HarnessName, runtimeTemplate?: string, worktreeId?: string): PaneId;
+  // Seed the default spawn target from the backend's resolved launch worktree
+  // (`GET /api/meta`) when the launch URL carried none. A no-op once a default
+  // exists, so an explicit URL worktree (worktree switch) is never overridden.
+  adoptDefaultWorktree(spaceId: string | null, worktreeId: string): void;
   closePane(paneId: PaneId): void;
   closeDockedPane(paneId: PaneId): void;
   dropCapturedRunPane(runKey: string): void;
@@ -144,6 +148,16 @@ export const useCanvasStore = create<CanvasStoreState>()(
         }
         const ref = createCapturedRunRef(provider, target, harnessLabel(provider), runtimeTemplate);
         return get().spawnPane(ref, { focus: true });
+      },
+
+      adoptDefaultWorktree(spaceId, worktreeId) {
+        set((state) =>
+          // An explicit URL worktree (set by initializeCanvas) owns the default;
+          // only fill the gap when none has been resolved yet. Idempotent.
+          state.defaultWorktreeId !== null
+            ? {}
+            : { ...state, spaceId: state.spaceId ?? spaceId, defaultWorktreeId: worktreeId },
+        );
       },
 
       closePane(paneId) {
@@ -242,12 +256,14 @@ export const useCanvasStore = create<CanvasStoreState>()(
           set(createInitialCanvasModel(launch));
         } else {
           // Same canvas (initial mount / re-init): keep the already-hydrated panes and
-          // only refresh the launch-derived identity fields.
+          // only refresh the launch-derived identity fields. A worktree-less launch URL
+          // (the desktop default launch) keeps any worktree already adopted from meta,
+          // so a re-init never strips the default spawn target back to null.
           set((state) => ({
             ...state,
             canvasId,
-            spaceId: launch.spaceId,
-            defaultWorktreeId: launch.worktreeId,
+            spaceId: launch.spaceId ?? state.spaceId,
+            defaultWorktreeId: launch.worktreeId ?? state.defaultWorktreeId,
             launch,
             workspaceHash: launch.workspaceHash,
           }));

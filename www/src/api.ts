@@ -353,6 +353,11 @@ export interface Meta {
   harnesses: HarnessDescriptor[];
   workspaceId: string;
   runId?: string | null;
+  // The launch cwd's resolved Space + primary worktree; the canvas seeds its
+  // default spawn target from this. Null when the backend could not resolve one
+  // (no/degraded session store).
+  spaceId: string | null;
+  worktreeId: string | null;
   transcriptDenylist: TranscriptDenyRule[];
 }
 
@@ -382,6 +387,8 @@ export async function fetchMeta(runId?: string): Promise<Meta> {
     harnesses: HarnessDescriptor[];
     workspace_id: string;
     run_id: string | null;
+    space_id?: string | null;
+    worktree_id?: string | null;
     transcript_denylist?: TranscriptDenyRule[];
   }>(path, undefined, "Failed to fetch meta");
   return {
@@ -392,6 +399,8 @@ export async function fetchMeta(runId?: string): Promise<Meta> {
     harnesses: raw.harnesses,
     workspaceId: raw.workspace_id,
     runId: raw.run_id,
+    spaceId: raw.space_id ?? null,
+    worktreeId: raw.worktree_id ?? null,
     transcriptDenylist: raw.transcript_denylist ?? [],
   };
 }
@@ -446,9 +455,10 @@ export async function fetchWorktrees(spaceId: string, refresh = false): Promise<
  */
 export async function createCapturedRun(
   harness: HarnessName,
-  // Worktree root the run is captured under (Slice 4 contract: POST /v1/runs takes
-  // worktreeId; the CLI resolves the cwd internally). Omitted → backend resolves
-  // its launch worktree.
+  // Worktree the run is captured under. REQUIRED by `POST /v1/runs` (the Spaces
+  // rekey made worktreeId mandatory; the backend no longer falls back to a launch
+  // worktree). Callers resolve it from the canvas default (seeded from
+  // `GET /api/meta`'s worktreeId) or an explicit per-spawn target.
   worktreeId?: string,
   // When false the bridge stays silent on the harness OSC color queries
   // (api: osc_color_responder); true is the terminal-faithful default.

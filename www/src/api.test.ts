@@ -123,9 +123,29 @@ describe("fetchMeta", () => {
       harnesses,
       runId: "run-123",
       workspaceId: "workspace/hash",
+      // Absent in this payload -> mapped to null (degraded/no-DB backend).
+      spaceId: null,
+      worktreeId: null,
       transcriptDenylist: [],
     });
     expect(fetchMock).toHaveBeenCalledWith("/api/meta");
+  });
+
+  it("maps the resolved launch space and worktree through", async () => {
+    stubFetch({
+      channel: "stable",
+      channel_badge: null,
+      channel_label: "Stable",
+      cwd: "/tmp/workspace",
+      harnesses: [],
+      run_id: null,
+      space_id: "space-1",
+      worktree_id: "wt-1",
+    });
+
+    const meta = await fetchMeta();
+    expect(meta.spaceId).toBe("space-1");
+    expect(meta.worktreeId).toBe("wt-1");
   });
 });
 

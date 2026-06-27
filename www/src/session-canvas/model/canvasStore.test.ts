@@ -612,4 +612,65 @@ describe("canvasStore", () => {
       expect(ref).toMatchObject({ kind: "captured-run", worktreeId: "wt-default" });
     });
   });
+
+  describe("adoptDefaultWorktree (meta seeding)", () => {
+    const WORKTREELESS_LAUNCH = {
+      owner: "local" as const,
+      workspaceHash: null,
+      spaceId: null,
+      worktreeId: null,
+      canvasId: null,
+      harness: null,
+      runId: null,
+    };
+
+    it("seeds the default spawn target when the launch URL carried none", () => {
+      resetCanvasStoreForTests();
+      // Mirrors the desktop mount order: initializeCanvas (worktree-less URL) then adopt.
+      useCanvasStore.getState().initializeCanvas(WORKTREELESS_LAUNCH);
+      expect(useCanvasStore.getState().defaultWorktreeId).toBeNull();
+
+      useCanvasStore.getState().adoptDefaultWorktree("space-meta", "wt-meta");
+
+      const state = useCanvasStore.getState();
+      expect(state.defaultWorktreeId).toBe("wt-meta");
+      expect(state.spaceId).toBe("space-meta");
+      // The spawn that previously threw now roots on the adopted worktree.
+      const paneId = state.addCapturedRun("claude");
+      expect(useCanvasStore.getState().panes[paneId]?.contentRef).toMatchObject({
+        kind: "captured-run",
+        worktreeId: "wt-meta",
+      });
+    });
+
+    it("never overrides an explicit URL worktree", () => {
+      resetCanvasStoreForTests();
+      useCanvasStore.getState().initializeCanvas({
+        owner: "local",
+        workspaceHash: null,
+        spaceId: "space-url",
+        worktreeId: "wt-url",
+        canvasId: null,
+        harness: null,
+        runId: null,
+      });
+
+      useCanvasStore.getState().adoptDefaultWorktree("space-meta", "wt-meta");
+
+      const state = useCanvasStore.getState();
+      expect(state.defaultWorktreeId).toBe("wt-url");
+      expect(state.spaceId).toBe("space-url");
+    });
+
+    it("a worktree-less re-init of the same canvas keeps the adopted default", () => {
+      resetCanvasStoreForTests();
+      useCanvasStore.getState().adoptDefaultWorktree("space-meta", "wt-meta");
+
+      // The desktop default launch re-runs initializeCanvas with a worktree-less URL;
+      // a re-init must not strip the adopted default back to null.
+      useCanvasStore.getState().initializeCanvas(WORKTREELESS_LAUNCH);
+
+      expect(useCanvasStore.getState().defaultWorktreeId).toBe("wt-meta");
+    });
+  });
 });
