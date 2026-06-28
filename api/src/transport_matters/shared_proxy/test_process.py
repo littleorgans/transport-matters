@@ -1,0 +1,275 @@
+from __future__ import annotations
+
+import json
+import signal
+from typing import TYPE_CHECKING, cast
+
+if TYPE_CHECKING:
+    import subprocess
+    from pathlib import Path
+
+    import pytest
+
+from transport_matters.shared_proxy import process as process_module
+from transport_matters.shared_proxy.process import SupervisorSharedProxyProcess
+from transport_matters.supervisor_core import ProcessSupervisor
+from transport_matters.supervisor_models import ManagedProcess
+
+
+class _FakePopen:
+    def __init__(self, *, pid: int) -> None:
+        self.pid = pid
+
+    def poll(self) -> int | None:
+        return None
+
+
+class _RecordingSupervisor(ProcessSupervisor):
+    def __init__(self, *, pid: int, events: list[str] | None = None) -> None:
+        super().__init__()
+        self.pid = pid
+        self.events = events if events is not None else []
+        self.argv: list[str] | None = None
+        self.env: dict[str, str] | None = None
+        self.log_path: Path | None = None
+
+    def spawn(
+        self,
+        name: str,
+        argv: list[str],
+        *,
+        env: dict[str, str] | None = None,
+        cwd: Path | None = None,
+        log_path: Path | None = None,
+        foreground: bool = False,
+        pty: bool = False,
+    ) -> ManagedProcess:
+        self.events.append("spawn")
+        self.argv = argv
+        self.env = env
+        self.log_path = log_path
+        return ManagedProcess(
+            name=name,
+            popen=cast("subprocess.Popen[bytes]", _FakePopen(pid=self.pid)),
+            log_path=log_path,
+            process_group=self.pid,
+        )
+
+
+def test_start_writes_pid_file_and_terminate_removes_it(tmp_path: Path) -> None:
+    supervisor = _RecordingSupervisor(pid=2222)
+    shared_proxy = _make_process(tmp_path, supervisor=supervisor)
+
+    shared_proxy.start()
+
+    record = _read_pid_file(tmp_path)
+    assert record == {
+        "pid": 2222,
+        "control_socket": str(_control_socket(tmp_path)),
+        "process_name": process_module.SHARED_PROXY_PROCESS_NAME,
+    }
+
+    shared_proxy.terminate()
+
+    assert not _pid_file(tmp_path).exists()
+
+
+def test_start_reaps_matching_prior_process_before_spawn(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    stale_pid = 1111
+    new_pid = 2222
+    events: list[str] = []
+    _write_pid_file(tmp_path, pid=stale_pid)
+    _stub_liveness(monkeypatch, stale_pid=stale_pid)
+    monkeypatch.setattr(
+        process_module,
+        "_read_process_command",
+        lambda pid: _matching_command(tmp_path) if pid == stale_pid else None,
+    )
+
+    def fake_terminate(pid: int, *, grace_seconds: float) -> None:
+        assert grace_seconds == 2.0
+        events.append(f"terminate:{pid}")
+
+    monkeypatch.setattr(process_module, "_terminate_prior_process", fake_terminate)
+    supervisor = _RecordingSupervisor(pid=new_pid, events=events)
+    shared_proxy = _make_process(tmp_path, supervisor=supervisor)
+
+    shared_proxy.start()
+
+    assert events == [f"terminate:{stale_pid}", "spawn"]
+    assert _read_pid_file(tmp_path)["pid"] == new_pid
+
+
+def test_start_unlinks_dead_pid_file_without_kill(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _write_pid_file(tmp_path, pid=1111)
+    monkeypatch.setattr(process_module, "is_pid_alive", lambda pid: False)
+
+    def fail_terminate(pid: int, *, grace_seconds: float) -> None:
+        raise AssertionError("dead pid must not be signaled")
+
+    monkeypatch.setattr(process_module, "_terminate_prior_process", fail_terminate)
+    supervisor = _RecordingSupervisor(pid=2222)
+    shared_proxy = _make_process(tmp_path, supervisor=supervisor)
+
+    shared_proxy.start()
+
+    assert supervisor.events == ["spawn"]
+    assert _read_pid_file(tmp_path)["pid"] == 2222
+
+
+def test_start_refuses_to_kill_non_matching_live_pid(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    stale_pid = 1111
+    _write_pid_file(tmp_path, pid=stale_pid)
+    _stub_liveness(monkeypatch, stale_pid=stale_pid)
+    monkeypatch.setattr(process_module, "_read_process_command", lambda pid: "/bin/sleep 60")
+
+    def fail_terminate(pid: int, *, grace_seconds: float) -> None:
+        raise AssertionError("non matching pid must not be signaled")
+
+    monkeypatch.setattr(process_module, "_terminate_prior_process", fail_terminate)
+    supervisor = _RecordingSupervisor(pid=2222)
+    shared_proxy = _make_process(tmp_path, supervisor=supervisor)
+
+    shared_proxy.start()
+
+    assert supervisor.events == ["spawn"]
+    assert _read_pid_file(tmp_path)["pid"] == 2222
+
+
+def test_terminate_prior_process_exits_gracefully_without_sigkill(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pid = 1111
+    signals: list[tuple[str, int, object]] = []
+    _stub_process_group(monkeypatch, process_group=pid)
+    _stub_liveness_sequence(monkeypatch, [False])
+    _stub_monotonic(monkeypatch, [0.0, 0.0])
+    monkeypatch.setattr("transport_matters.shared_proxy.process.time.sleep", lambda seconds: None)
+    _stub_signal_sends(monkeypatch, signals)
+
+    process_module._terminate_prior_process(pid, grace_seconds=0.5)
+
+    assert signals == [("killpg", pid, signal.SIGTERM)]
+
+
+def test_terminate_prior_process_escalates_when_pid_stays_alive(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pid = 1111
+    signals: list[tuple[str, int, object]] = []
+    _stub_process_group(monkeypatch, process_group=pid)
+    _stub_liveness_sequence(monkeypatch, [True])
+    _stub_monotonic(monkeypatch, [0.0, 1.0])
+    monkeypatch.setattr("transport_matters.shared_proxy.process.time.sleep", lambda seconds: None)
+    _stub_signal_sends(monkeypatch, signals)
+
+    process_module._terminate_prior_process(pid, grace_seconds=0.5)
+
+    assert signals == [
+        ("killpg", pid, signal.SIGTERM),
+        ("killpg", pid, signal.SIGKILL),
+    ]
+
+
+def test_terminate_prior_process_uses_single_pid_when_not_group_leader(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pid = 1111
+    signals: list[tuple[str, int, object]] = []
+    _stub_process_group(monkeypatch, process_group=pid + 1)
+    _stub_liveness_sequence(monkeypatch, [False])
+    _stub_monotonic(monkeypatch, [0.0, 0.0])
+    monkeypatch.setattr("transport_matters.shared_proxy.process.time.sleep", lambda seconds: None)
+    _stub_signal_sends(monkeypatch, signals)
+
+    process_module._terminate_prior_process(pid, grace_seconds=0.5)
+
+    assert signals == [("kill", pid, signal.SIGTERM)]
+
+
+def _make_process(tmp_path: Path, *, supervisor: ProcessSupervisor) -> SupervisorSharedProxyProcess:
+    return SupervisorSharedProxyProcess(
+        control_socket=_control_socket(tmp_path),
+        runtime_dir=tmp_path,
+        supervisor=supervisor,
+        python_executable="/usr/bin/python3",
+        env={},
+        accept_probe_timeout_s=0.1,
+    )
+
+
+def _write_pid_file(tmp_path: Path, *, pid: int) -> None:
+    _pid_file(tmp_path).write_text(
+        json.dumps(
+            {
+                "pid": pid,
+                "control_socket": str(_control_socket(tmp_path)),
+                "process_name": process_module.SHARED_PROXY_PROCESS_NAME,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+def _read_pid_file(tmp_path: Path) -> dict[str, object]:
+    return cast("dict[str, object]", json.loads(_pid_file(tmp_path).read_text()))
+
+
+def _stub_liveness(monkeypatch: pytest.MonkeyPatch, *, stale_pid: int) -> None:
+    monkeypatch.setattr(process_module, "is_pid_alive", lambda pid: pid == stale_pid)
+
+
+def _stub_liveness_sequence(monkeypatch: pytest.MonkeyPatch, values: list[bool]) -> None:
+    remaining = iter(values)
+
+    def fake_is_pid_alive(pid: int) -> bool:
+        return next(remaining)
+
+    monkeypatch.setattr(process_module, "is_pid_alive", fake_is_pid_alive)
+
+
+def _stub_monotonic(monkeypatch: pytest.MonkeyPatch, values: list[float]) -> None:
+    remaining = iter(values)
+    monkeypatch.setattr(
+        "transport_matters.shared_proxy.process.time.monotonic", lambda: next(remaining)
+    )
+
+
+def _stub_process_group(monkeypatch: pytest.MonkeyPatch, *, process_group: int) -> None:
+    monkeypatch.setattr(
+        "transport_matters.shared_proxy.process.os.getpgid", lambda pid: process_group
+    )
+
+
+def _stub_signal_sends(
+    monkeypatch: pytest.MonkeyPatch, signals: list[tuple[str, int, object]]
+) -> None:
+    monkeypatch.setattr(
+        "transport_matters.shared_proxy.process.os.killpg",
+        lambda pid, signum: signals.append(("killpg", pid, signum)),
+    )
+    monkeypatch.setattr(
+        "transport_matters.shared_proxy.process.os.kill",
+        lambda pid, signum: signals.append(("kill", pid, signum)),
+    )
+
+
+def _matching_command(tmp_path: Path) -> str:
+    return (
+        "/usr/bin/python3 -m transport_matters.shared_proxy.subprocess "
+        f"--control-socket {_control_socket(tmp_path)}"
+    )
+
+
+def _pid_file(tmp_path: Path) -> Path:
+    return tmp_path / "shared-proxy.pid"
+
+
+def _control_socket(tmp_path: Path) -> Path:
+    return tmp_path / "shared-proxy.sock"
