@@ -32,15 +32,17 @@ def _patch_live_desktop_runtime(
     monkeypatch: pytest.MonkeyPatch,
     *,
     channel: str = "preview",
+    cwd: Path | None = None,
 ) -> None:
     monkeypatch.setattr("transport_matters.desktop_runtime.is_pid_alive", lambda _pid: True)
     monkeypatch.setattr(
         "transport_matters.desktop_runtime._probe_desktop_health",
         lambda *_args, **_kwargs: DesktopHealthProbeResult(status="live"),
     )
+    meta = SimpleNamespace(channel=channel, cwd=str(cwd) if cwd is not None else None)
     monkeypatch.setattr(
-        "transport_matters.desktop_runtime._read_runtime_meta_channel",
-        lambda *_args, **_kwargs: channel,
+        "transport_matters.desktop_runtime._read_runtime_meta",
+        lambda *_args, **_kwargs: meta,
     )
 
 
@@ -70,7 +72,7 @@ def test_run_desktop_detached_live_runtime_attaches_without_backend(
         cwd=workspace,
         version="test",
     )
-    _patch_live_desktop_runtime(monkeypatch)
+    _patch_live_desktop_runtime(monkeypatch, cwd=workspace)
     electron = ElectronLaunch(argv=("/bin/electron",), cwd=tmp_path)
     spawned: list[tuple[ElectronLaunch, dict[str, Any]]] = []
 
@@ -107,10 +109,10 @@ def test_run_desktop_detached_reclaims_live_different_workdir_before_start(
         pid=7654,
         proxy_port=9900,
         web_port=9901,
-        cwd=old_workspace,
+        cwd=new_workspace,
         version="test",
     )
-    _patch_live_desktop_runtime(monkeypatch)
+    _patch_live_desktop_runtime(monkeypatch, cwd=old_workspace)
     kill_calls = _patch_record_stop(monkeypatch)
     electron = ElectronLaunch(argv=("/bin/electron",), cwd=tmp_path)
     popen_calls: list[dict[str, Any]] = []
@@ -159,7 +161,7 @@ def test_run_desktop_launch_live_runtime_attaches_without_serving(
         cwd=workspace,
         version="test",
     )
-    _patch_live_desktop_runtime(monkeypatch)
+    _patch_live_desktop_runtime(monkeypatch, cwd=workspace)
     electron = ElectronLaunch(argv=("/bin/electron",), cwd=tmp_path)
     spawned: list[tuple[ElectronLaunch, dict[str, Any]]] = []
 
@@ -193,11 +195,12 @@ def test_run_desktop_launch_reclaims_live_different_workdir_before_serving(
         pid=7654,
         proxy_port=9900,
         web_port=9901,
-        cwd=old_workspace,
+        cwd=new_workspace,
         version="test",
     )
-    _patch_live_desktop_runtime(monkeypatch)
+    _patch_live_desktop_runtime(monkeypatch, cwd=old_workspace)
     kill_calls = _patch_record_stop(monkeypatch)
+    attached: list[tuple[ElectronLaunch, dict[str, Any]]] = []
     served: list[Any] = []
 
     run_desktop_launch(
@@ -207,10 +210,12 @@ def test_run_desktop_launch_reclaims_live_different_workdir_before_serving(
         web_port=9901,
         storage_dir=storage,
         resolve_electron_launch_func=lambda: ElectronLaunch(argv=("/bin/electron",), cwd=tmp_path),
+        spawn_electron_func=lambda launch, event: attached.append((launch, event)),
         serve_backend_func=lambda plan, _on_ready: served.append(plan),
     )
 
     assert kill_calls == [(7654, signal.SIGTERM)]
+    assert attached == []
     assert len(served) == 1
     assert served[0].event["cwd"] == str(new_workspace.resolve())
     assert served[0].env["TRANSPORT_MATTERS_CWD"] == str(new_workspace.resolve())
@@ -445,8 +450,8 @@ def test_run_desktop_detached_transient_timeout_retries_then_attaches(
         lambda *_args, **_kwargs: probe_results.pop(0),
     )
     monkeypatch.setattr(
-        "transport_matters.desktop_runtime._read_runtime_meta_channel",
-        lambda *_args, **_kwargs: "preview",
+        "transport_matters.desktop_runtime._read_runtime_meta",
+        lambda *_args, **_kwargs: SimpleNamespace(channel="preview", cwd=None),
     )
     kill_calls: list[tuple[int, int]] = []
     monkeypatch.setattr(
