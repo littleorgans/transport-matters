@@ -81,6 +81,12 @@ class DesktopHealthProbeResult:
 
 
 @dataclass(frozen=True, slots=True)
+class DesktopRuntimeLiveMeta:
+    channel: str | None
+    cwd: str | None
+
+
+@dataclass(frozen=True, slots=True)
 class DesktopRuntimeRecord:
     schema_version: int = field(default=_SCHEMA_VERSION, init=False)
     channel: str
@@ -252,8 +258,8 @@ def discover_desktop_runtime(
             reason=reason,
         )
 
-    meta_channel = _read_runtime_meta_channel(record.web_port, timeout_s=policy.per_probe_timeout_s)
-    if meta_channel is not None and meta_channel != channel:
+    meta = _read_runtime_meta(record.web_port, timeout_s=policy.per_probe_timeout_s)
+    if meta is not None and meta.channel is not None and meta.channel != channel:
         return _status_from_record(
             record,
             state="unhealthy",
@@ -263,6 +269,9 @@ def discover_desktop_runtime(
             cwd=resolved_cwd,
             reason="channel_mismatch",
         )
+    live_cwd: Path | None = None
+    if meta is not None and meta.cwd is not None:
+        live_cwd = Path(meta.cwd).expanduser().resolve()
 
     return _status_from_record(
         record,
@@ -272,6 +281,7 @@ def discover_desktop_runtime(
         route=route,
         cwd=resolved_cwd,
         reason=None,
+        live_cwd=live_cwd,
     )
 
 
@@ -588,8 +598,14 @@ def _status_from_record(
     route: RouteName,
     cwd: Path,
     reason: str | None,
+    live_cwd: Path | None = None,
 ) -> DesktopRuntimeStatus:
-    runtime_cwd = Path(record.cwd).expanduser().resolve() if record.cwd is not None else cwd
+    if live_cwd is not None:
+        runtime_cwd = live_cwd
+    elif record.cwd is not None:
+        runtime_cwd = Path(record.cwd).expanduser().resolve()
+    else:
+        runtime_cwd = cwd
     runtime_storage = (
         Path(record.storage_dir).expanduser().resolve()
         if record.storage_dir is not None
@@ -622,7 +638,7 @@ def _status_from_record(
     )
 
 
-def _read_runtime_meta_channel(web_port: int, *, timeout_s: float) -> str | None:
+def _read_runtime_meta(web_port: int, *, timeout_s: float) -> DesktopRuntimeLiveMeta | None:
     url = f"{loopback_http_url(web_port)}/api/meta"
     try:
         with urllib.request.urlopen(url, timeout=max(timeout_s, 0.05)) as response:
@@ -632,4 +648,8 @@ def _read_runtime_meta_channel(web_port: int, *, timeout_s: float) -> str | None
     if not isinstance(payload, dict):
         return None
     channel = payload.get("channel")
-    return channel if isinstance(channel, str) else None
+    cwd = payload.get("cwd")
+    return DesktopRuntimeLiveMeta(
+        channel=channel if isinstance(channel, str) else None,
+        cwd=cwd if isinstance(cwd, str) else None,
+    )

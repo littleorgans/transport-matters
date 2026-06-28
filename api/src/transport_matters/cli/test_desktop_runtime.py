@@ -6,6 +6,7 @@ import json
 import os
 import re
 import signal
+from types import SimpleNamespace
 from typing import TYPE_CHECKING
 
 import pytest
@@ -290,10 +291,15 @@ def test_discover_desktop_runtime_reports_live_payload(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _write_preview_record(tmp_path, pid=1234)
+    live_workspace = tmp_path / "live-workspace"
     monkeypatch.setattr("transport_matters.desktop_runtime.is_pid_alive", lambda _pid: True)
     monkeypatch.setattr(
         "transport_matters.desktop_runtime._probe_desktop_health",
         lambda *_args, **_kwargs: DesktopHealthProbeResult(status="live"),
+    )
+    monkeypatch.setattr(
+        "transport_matters.desktop_runtime._read_runtime_meta",
+        lambda *_args, **_kwargs: SimpleNamespace(channel="preview", cwd=str(live_workspace)),
     )
 
     status = discover_desktop_runtime(
@@ -305,6 +311,7 @@ def test_discover_desktop_runtime_reports_live_payload(
 
     payload = desktop_runtime_status_to_json(status)["runtime"]
     assert payload["state"] == "live"
+    assert payload["cwd"] == str(live_workspace.resolve())
     assert payload["apiBaseUrl"] == "http://127.0.0.1:8798"
     assert payload["healthUrl"] == "http://127.0.0.1:8798/health"
     assert str(payload["defaultRouteUrl"]).startswith("http://127.0.0.1:8798/canvas?")
