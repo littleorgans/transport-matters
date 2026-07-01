@@ -17,6 +17,12 @@ vi.mock("../../api", () => ({
 }));
 
 const store = useCanvasLabStore.getState;
+const LAB_WORKTREE_ID = "wt-lab";
+
+function resetLabWithWorktree(): void {
+  resetCanvasLabStoreForTests();
+  store().setDefaultWorktree("space-lab", LAB_WORKTREE_ID);
+}
 
 function labelOf(paneId: string): string | undefined {
   const ref = store().contentRefs[paneId];
@@ -49,7 +55,7 @@ async function reloadLab(): Promise<void> {
 describe("canvasLabStore persistence adapter", () => {
   beforeEach(() => {
     localStorage.clear();
-    resetCanvasLabStoreForTests();
+    resetLabWithWorktree();
     resetCapturedRunStoreForTests();
     createCapturedRunMock.mockReset();
     terminateRunMock.mockReset();
@@ -77,6 +83,7 @@ describe("canvasLabStore persistence adapter", () => {
     store().addCapturedRun("claude"); // Claude-2
 
     await reloadLab();
+    store().setDefaultWorktree("space-lab", LAB_WORKTREE_ID);
     store().addCapturedRun("claude"); // must be Claude-3, counter survived the reload
 
     const labels = capturedPaneIds(store().contentRefs)
@@ -165,7 +172,7 @@ describe("canvasLabStore persistence adapter", () => {
       kind: "terminal",
       owner: "local",
       label: "Terminal-1",
-      worktreeId: "lab",
+      worktreeId: LAB_WORKTREE_ID,
     });
     expect(store().docked.map((entry) => entry.paneId)).toEqual(["lab-2"]);
   });
@@ -250,7 +257,12 @@ describe("canvasLabStore persistence adapter", () => {
         version: CANVAS_LAB_STORAGE_VERSION,
         state: {
           contentRefs: {
-            "lab-1": { kind: "terminal", owner: "local", label: "Terminal-1", worktreeId: "lab" },
+            "lab-1": {
+              kind: "terminal",
+              owner: "local",
+              label: "Terminal-1",
+              worktreeId: LAB_WORKTREE_ID,
+            },
           },
           paneRects: {
             "lab-1": { x: 0, y: 0, width: 360, height: 280 },
@@ -270,7 +282,7 @@ describe("canvasLabStore persistence adapter", () => {
       kind: "terminal",
       owner: "local",
       label: "Terminal-1",
-      worktreeId: "lab",
+      worktreeId: LAB_WORKTREE_ID,
     });
     expect(store().contentRefs["lab-2"]).toBeUndefined();
     expect(store().nextPaneIndex).toBe(2);

@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { LayoutCanvas, type PaneId } from "../../engine";
 import { CANVAS_LAYOUT_MARGIN, listLayouts } from "../../engine/layout";
+import { useMeta } from "../../hooks/useMeta";
+import type { HarnessName } from "../../types";
 import { AmbientBackdrop } from "../components/AmbientBackdrop";
 import { CanvasDropHint } from "../components/CanvasDropHint";
 import { CanvasDropTargetOverlay } from "../components/CanvasDropTargetOverlay";
@@ -16,6 +18,7 @@ import { useCanvasDropTargets } from "../dnd/useCanvasDropTargets";
 import { useReorderSettle } from "../dnd/useReorderSettle";
 import { openPaneIds } from "../model/layoutPlanning";
 import type { PaneContentRef, ViewerProps } from "../model/paneRecords";
+import { type CanvasLaunchContext, parseCanvasLaunchContext } from "../route";
 import {
   bodyDragForRef,
   renderPaneContent,
@@ -42,6 +45,335 @@ const SortablePane = createSortablePaneAdapter({
   readWorldScale: () => useCanvasLabStore.getState().layout.viewport.scale,
   useLiftDisabled: (paneId) => useCanvasLabStore((state) => state.expandedPaneId === paneId),
 });
+
+type CanvasLabStoreSnapshot = ReturnType<typeof useCanvasLabStore.getState>;
+
+function useCanvasLabLaunch(): CanvasLaunchContext {
+  const search = typeof window === "undefined" ? "" : window.location.search;
+  const launch = useMemo(() => parseCanvasLaunchContext(search), [search]);
+  const adoptDefaultWorktree = useCanvasLabStore((state) => state.adoptDefaultWorktree);
+  const setDefaultWorktree = useCanvasLabStore((state) => state.setDefaultWorktree);
+  const labSpaceId = useCanvasLabStore((state) => state.spaceId);
+  const defaultWorktreeId = useCanvasLabStore((state) => state.defaultWorktreeId);
+  const { meta } = useMeta();
+
+  useEffect(() => {
+    if (launch.worktreeId !== null) {
+      setDefaultWorktree(launch.spaceId, launch.worktreeId);
+      return;
+    }
+    if (!meta?.worktreeId) return;
+    adoptDefaultWorktree(meta.spaceId, meta.worktreeId);
+  }, [
+    launch.spaceId,
+    launch.worktreeId,
+    meta?.spaceId,
+    meta?.worktreeId,
+    adoptDefaultWorktree,
+    setDefaultWorktree,
+  ]);
+
+  return useMemo<CanvasLaunchContext>(
+    () => ({
+      ...launch,
+      spaceId: launch.spaceId ?? labSpaceId,
+      worktreeId: launch.worktreeId ?? defaultWorktreeId,
+    }),
+    [launch, labSpaceId, defaultWorktreeId],
+  );
+}
+
+function useCanvasLabSpawnHandlers(
+  addTerminal: CanvasLabStoreSnapshot["addTerminal"],
+  addCapturedRun: CanvasLabStoreSnapshot["addCapturedRun"],
+): {
+  handleAddCapturedRun(provider: HarnessName): void;
+  handleAddTerminal(): void;
+} {
+  const handleAddTerminal = useCallback(() => {
+    try {
+      addTerminal();
+    } catch (error) {
+      console.error("Failed to add terminal:", error);
+    }
+  }, [addTerminal]);
+
+  const handleAddCapturedRun = useCallback(
+    (provider: HarnessName) => {
+      try {
+        addCapturedRun(provider);
+      } catch (error) {
+        console.error("Failed to spawn captured run:", error);
+      }
+    },
+    [addCapturedRun],
+  );
+
+  return { handleAddCapturedRun, handleAddTerminal };
+}
+
+interface CanvasLabPaneRendererOptions {
+  closePane: CanvasLabStoreSnapshot["closePane"];
+  contentRefs: CanvasLabStoreSnapshot["contentRefs"];
+  expandedPane: string | null;
+  expandPane: CanvasLabStoreSnapshot["expandPane"];
+  focusPane: CanvasLabStoreSnapshot["focusPane"];
+  focusedPaneId: string | null;
+  framedPane: string | null;
+  framePane: CanvasLabStoreSnapshot["framePane"];
+  labLaunch: CanvasLaunchContext;
+  minimizePane: CanvasLabStoreSnapshot["minimizePane"];
+}
+
+function useCanvasLabPaneRenderer({
+  closePane,
+  contentRefs,
+  expandedPane,
+  expandPane,
+  focusPane,
+  focusedPaneId,
+  framedPane,
+  framePane,
+  labLaunch,
+  minimizePane,
+}: CanvasLabPaneRendererOptions): (paneId: string) => React.ReactNode {
+  return useCallback(
+    (paneId: string) => {
+      // Real content dispatches through the shared viewer registry, so a new viewer is a
+      // registry entry, not a branch here. The lab stubs stay local because they prove layouts.
+      const ref = contentRefs[paneId];
+      const demoIsRuler = paneIndexOf(paneId) % 2 === 1;
+      return (
+        <PaneChrome
+          badge={ref ? ref.kind : demoIsRuler ? "ruler" : "card"}
+          compact
+          expanded={expandedPane === paneId}
+          focused={focusedPaneId === paneId}
+          onClose={() => closePane(paneId)}
+          onExpand={() => expandPane(paneId)}
+          onFrame={() => framePane(paneId)}
+          onHeaderDoubleClick={(event) => (event.shiftKey ? expandPane(paneId) : framePane(paneId))}
+          onMinimize={() => minimizePane(paneId)}
+          state={framedPane === paneId ? "framed" : "default"}
+          title={ref ? titleForRef(ref) : paneId}
+          titleId={titleIdForPane(paneId)}
+        >
+          {ref ? (
+            renderPaneContent(
+              labContentProps(paneId, ref, focusedPaneId, closePane, focusPane, labLaunch),
+            )
+          ) : demoIsRuler ? (
+            <LabRulerPane paneId={paneId} />
+          ) : (
+            <LabCardPane paneId={paneId} />
+          )}
+        </PaneChrome>
+      );
+    },
+    [
+      closePane,
+      contentRefs,
+      expandedPane,
+      expandPane,
+      focusPane,
+      focusedPaneId,
+      framedPane,
+      framePane,
+      labLaunch,
+      minimizePane,
+    ],
+  );
+}
+
+interface CanvasLabCommandBarProps {
+  activeStrategyId: string;
+  claudeInstalled: boolean;
+  codexInstalled: boolean;
+  fitToContent: boolean;
+  onAddCapturedRun(provider: HarnessName): void;
+  onAddPane(): void;
+  onAddTerminal(): void;
+  onOrganize(): void;
+  onSetFitToContent(on: boolean): void;
+  onSetStrategy(strategyId: string): void;
+  onSetTextShadow(on: boolean): void;
+  paneCount: number;
+  textShadow: boolean;
+}
+
+function CanvasLabCommandBar({
+  activeStrategyId,
+  claudeInstalled,
+  codexInstalled,
+  fitToContent,
+  onAddCapturedRun,
+  onAddPane,
+  onAddTerminal,
+  onOrganize,
+  onSetFitToContent,
+  onSetStrategy,
+  onSetTextShadow,
+  paneCount,
+  textShadow,
+}: CanvasLabCommandBarProps) {
+  const strategies = useMemo(() => listLayouts(), []);
+
+  return (
+    <div
+      aria-label="Canvas lab controls"
+      className="canvas-command-bar canvas-command-bar--lab"
+      role="toolbar"
+    >
+      <div className="canvas-command-bar__identity">
+        <span>Canvas lab</span>
+        <span>{paneCount} panes</span>
+      </div>
+      <CommandBarSections
+        primary={
+          <>
+            <RouteSwitcher />
+            <button className="canvas-button" onClick={onAddPane} type="button">
+              Add pane
+            </button>
+            <button className="canvas-button" onClick={onOrganize} type="button">
+              Organize
+            </button>
+            <button className="canvas-button" onClick={onAddTerminal} type="button">
+              Add terminal
+            </button>
+            {claudeInstalled ? (
+              <button
+                className="canvas-button"
+                onClick={() => onAddCapturedRun("claude")}
+                type="button"
+              >
+                Spawn Claude
+              </button>
+            ) : null}
+            {codexInstalled ? (
+              <button
+                className="canvas-button"
+                onClick={() => onAddCapturedRun("codex")}
+                type="button"
+              >
+                Spawn Codex
+              </button>
+            ) : null}
+            <ThemeCycleButton />
+          </>
+        }
+        secondary={
+          <>
+            <label className="canvas-lab-toggle">
+              <input
+                checked={fitToContent}
+                onChange={(event) => onSetFitToContent(event.target.checked)}
+                type="checkbox"
+              />
+              Fit to content
+            </label>
+            <label className="canvas-lab-toggle">
+              <input
+                checked={textShadow}
+                onChange={(event) => onSetTextShadow(event.target.checked)}
+                type="checkbox"
+              />
+              Text shadow
+            </label>
+            <OscColorReplyToggle />
+            <select
+              aria-label="Layout strategy"
+              onChange={(event) => onSetStrategy(event.target.value)}
+              value={activeStrategyId}
+            >
+              {strategies.map((strategy) => (
+                <option key={strategy.id} value={strategy.id}>
+                  {strategy.label}
+                </option>
+              ))}
+            </select>
+            <ControlsPanel />
+            <SceneParamControls />
+          </>
+        }
+        secondaryLabel="Layout"
+      />
+    </div>
+  );
+}
+
+function useCanvasLabChromeHidden(): boolean {
+  const [chromeHidden, setChromeHidden] = useState(false);
+
+  // Tab toggles the command bar so the whole viewport reads as canvas. preventDefault
+  // stops focus traversal; this is an experimental cockpit shortcut.
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Tab" || event.metaKey || event.ctrlKey || event.altKey) return;
+      event.preventDefault();
+      setChromeHidden((hidden) => !hidden);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
+  return chromeHidden;
+}
+
+function useCanvasLabDnd(
+  stageRef: React.RefObject<HTMLDivElement | null>,
+  commitReorder: CanvasLabStoreSnapshot["commitReorder"],
+  spawnPane: CanvasLabStoreSnapshot["spawnPane"],
+  dockPane: CanvasLabStoreSnapshot["dockPane"],
+  restorePaneAtIndex: CanvasLabStoreSnapshot["restorePaneAtIndex"],
+) {
+  const dndDeps = useMemo(
+    () => ({
+      getLayout: () => useCanvasLabStore.getState().layout,
+      contentRefFor: (paneId: string) => useCanvasLabStore.getState().contentRefs[paneId],
+      titleFor: (paneId: string) => {
+        const ref = useCanvasLabStore.getState().contentRefs[paneId];
+        return ref ? titleForRef(ref) : paneId;
+      },
+      commitReorder,
+      getSurfaceOrigin: () => {
+        const rect = stageRef.current?.getBoundingClientRect();
+        return rect ? { left: rect.left, top: rect.top } : { left: 0, top: 0 };
+      },
+      getExpandedPaneId: () => useCanvasLabStore.getState().expandedPaneId,
+    }),
+    [commitReorder, stageRef],
+  );
+  const { dropHint, dismissDropHint } = useCanvasDropTargets(stageRef, {
+    getLayout: () => useCanvasLabStore.getState().layout,
+    contentRefFor: (paneId) => useCanvasLabStore.getState().contentRefs[paneId],
+    titleFor: (paneId) => {
+      const ref = useCanvasLabStore.getState().contentRefs[paneId];
+      return ref ? titleForRef(ref) : paneId;
+    },
+    spawnPane,
+    dockPane,
+    restorePaneAtIndex,
+  });
+
+  return { dismissDropHint, dndDeps, dropHint };
+}
+
+function useCanvasLabResize(
+  stageRef: React.RefObject<HTMLDivElement | null>,
+  setBounds: CanvasLabStoreSnapshot["setBounds"],
+): void {
+  // Plan in world units that match the visible stage; re-plan on resize.
+  useEffect(() => {
+    const element = stageRef.current;
+    if (!element) return;
+    const measure = () => setBounds({ width: element.clientWidth, height: element.clientHeight });
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [setBounds, stageRef]);
+}
 
 export function CanvasLabRoute() {
   const layout = useCanvasLabStore((state) => state.layout);
@@ -80,55 +412,26 @@ export function CanvasLabRoute() {
   // not installed never offers a launch that would fail.
   const claudeInstalled = useCapabilitiesStore((state) => harnessInstalled(state, "claude"));
   const codexInstalled = useCapabilitiesStore((state) => harnessInstalled(state, "codex"));
+  const labLaunch = useCanvasLabLaunch();
+  const { handleAddCapturedRun, handleAddTerminal } = useCanvasLabSpawnHandlers(
+    addTerminal,
+    addCapturedRun,
+  );
 
   const stageRef = useRef<HTMLDivElement>(null);
   const { reorderActive, markReorderActive, finishReorder } = useReorderSettle();
-  const dndDeps = useMemo(
-    () => ({
-      getLayout: () => useCanvasLabStore.getState().layout,
-      contentRefFor: (paneId: string) => useCanvasLabStore.getState().contentRefs[paneId],
-      titleFor: (paneId: string) => {
-        const ref = useCanvasLabStore.getState().contentRefs[paneId];
-        return ref ? titleForRef(ref) : paneId;
-      },
-      commitReorder,
-      getSurfaceOrigin: () => {
-        const rect = stageRef.current?.getBoundingClientRect();
-        return rect ? { left: rect.left, top: rect.top } : { left: 0, top: 0 };
-      },
-      getExpandedPaneId: () => useCanvasLabStore.getState().expandedPaneId,
-    }),
-    [commitReorder],
+  const { dismissDropHint, dndDeps, dropHint } = useCanvasLabDnd(
+    stageRef,
+    commitReorder,
+    spawnPane,
+    dockPane,
+    restorePaneAtIndex,
   );
   const sortablePaneIds = useMemo(
     () => openPaneIds(layout).filter((paneId) => paneId !== expandedPane),
     [layout, expandedPane],
   );
-  const { dropHint, dismissDropHint } = useCanvasDropTargets(stageRef, {
-    getLayout: () => useCanvasLabStore.getState().layout,
-    contentRefFor: (paneId) => useCanvasLabStore.getState().contentRefs[paneId],
-    titleFor: (paneId) => {
-      const ref = useCanvasLabStore.getState().contentRefs[paneId];
-      return ref ? titleForRef(ref) : paneId;
-    },
-    spawnPane,
-    dockPane,
-    restorePaneAtIndex,
-  });
-  const strategies = useMemo(() => listLayouts(), []);
-  const [chromeHidden, setChromeHidden] = useState(false);
-
-  // Tab toggles the command bar so the whole viewport reads as canvas (the bar floats over the top
-  // pane row). preventDefault stops focus traversal; this is an experimental cockpit shortcut.
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Tab" || event.metaKey || event.ctrlKey || event.altKey) return;
-      event.preventDefault();
-      setChromeHidden((hidden) => !hidden);
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
+  const chromeHidden = useCanvasLabChromeHidden();
 
   // Reload restore is owned by the lab store's own persistence: the persisted record set rehydrates the
   // canvas (open panes) and the dock (every kind) synchronously at store creation, through the one
@@ -140,71 +443,23 @@ export function CanvasLabRoute() {
     useCapabilitiesStore.getState().ensureLoaded();
   }, []);
 
-  // Plan in world units that match the visible stage; re-plan on resize.
-  useEffect(() => {
-    const element = stageRef.current;
-    if (!element) return;
-    const measure = () => setBounds({ width: element.clientWidth, height: element.clientHeight });
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, [setBounds]);
+  useCanvasLabResize(stageRef, setBounds);
 
   const paneCount = Object.keys(layout.nodes).length;
 
-  // Stable across viewport-only renders so the memoized PaneLayer skips the pane subtree on pan/zoom.
-  // Re-created only when focus, framing, or the close/frame actions change (the things it reads).
   const focusedPaneId = layout.focusedPaneId;
-  const renderPane = useCallback(
-    (paneId: string) => {
-      // Real content (terminal, future fixtures) dispatches through the shared viewer registry, so a
-      // new viewer is a registry entry, not a branch here. The lab's card/ruler stubs read the lab
-      // store directly (they prove layouts, not content), so they stay lab-local.
-      const ref = contentRefs[paneId];
-      const demoIsRuler = paneIndexOf(paneId) % 2 === 1;
-      return (
-        <PaneChrome
-          badge={ref ? ref.kind : demoIsRuler ? "ruler" : "card"}
-          compact
-          expanded={expandedPane === paneId}
-          focused={focusedPaneId === paneId}
-          onClose={() => closePane(paneId)}
-          // Every pane can minimize ([-]) into the dock; only the side effect differs by kind (the
-          // captured-run policy keeps its run alive, plain panes just park their ref). Universal
-          // chrome, no per-kind gate.
-          onMinimize={() => minimizePane(paneId)}
-          onExpand={() => expandPane(paneId)}
-          onFrame={() => framePane(paneId)}
-          onHeaderDoubleClick={(event) => (event.shiftKey ? expandPane(paneId) : framePane(paneId))}
-          state={framedPane === paneId ? "framed" : "default"}
-          // Content panes show their viewer title (e.g. "Claude", "Codex", "Terminal"); demo
-          // card/ruler stubs keep the raw pane id. The compact header keeps it to one line.
-          title={ref ? titleForRef(ref) : paneId}
-          titleId={titleIdForPane(paneId)}
-        >
-          {ref ? (
-            renderPaneContent(labContentProps(paneId, ref, focusedPaneId, closePane, focusPane))
-          ) : demoIsRuler ? (
-            <LabRulerPane paneId={paneId} />
-          ) : (
-            <LabCardPane paneId={paneId} />
-          )}
-        </PaneChrome>
-      );
-    },
-    [
-      contentRefs,
-      minimizePane,
-      closePane,
-      focusPane,
-      expandPane,
-      framePane,
-      framedPane,
-      expandedPane,
-      focusedPaneId,
-    ],
-  );
+  const renderPane = useCanvasLabPaneRenderer({
+    closePane,
+    contentRefs,
+    expandedPane,
+    expandPane,
+    focusPane,
+    focusedPaneId,
+    framedPane,
+    framePane,
+    labLaunch,
+    minimizePane,
+  });
 
   return (
     <main
@@ -217,86 +472,21 @@ export function CanvasLabRoute() {
     >
       <AmbientBackdrop />
       {chromeHidden ? null : (
-        <div
-          aria-label="Canvas lab controls"
-          className="canvas-command-bar canvas-command-bar--lab"
-          role="toolbar"
-        >
-          <div className="canvas-command-bar__identity">
-            <span>Canvas lab</span>
-            <span>{paneCount} panes</span>
-          </div>
-          <CommandBarSections
-            primary={
-              <>
-                <RouteSwitcher />
-                <button className="canvas-button" onClick={addPane} type="button">
-                  Add pane
-                </button>
-                <button className="canvas-button" onClick={organize} type="button">
-                  Organize
-                </button>
-                <button className="canvas-button" onClick={addTerminal} type="button">
-                  Add terminal
-                </button>
-                {claudeInstalled ? (
-                  <button
-                    className="canvas-button"
-                    onClick={() => addCapturedRun("claude")}
-                    type="button"
-                  >
-                    Spawn Claude
-                  </button>
-                ) : null}
-                {codexInstalled ? (
-                  <button
-                    className="canvas-button"
-                    onClick={() => addCapturedRun("codex")}
-                    type="button"
-                  >
-                    Spawn Codex
-                  </button>
-                ) : null}
-                <ThemeCycleButton />
-              </>
-            }
-            secondary={
-              <>
-                <label className="canvas-lab-toggle">
-                  <input
-                    checked={fitToContent}
-                    onChange={(event) => setFitToContent(event.target.checked)}
-                    type="checkbox"
-                  />
-                  Fit to content
-                </label>
-                <label className="canvas-lab-toggle">
-                  <input
-                    checked={textShadow}
-                    onChange={(event) => setTextShadow(event.target.checked)}
-                    type="checkbox"
-                  />
-                  Text shadow
-                </label>
-                <OscColorReplyToggle />
-                <select
-                  aria-label="Layout strategy"
-                  onChange={(event) => setStrategy(event.target.value)}
-                  value={activeStrategyId}
-                >
-                  {strategies.map((strategy) => (
-                    <option key={strategy.id} value={strategy.id}>
-                      {strategy.label}
-                    </option>
-                  ))}
-                </select>
-                <ControlsPanel />
-                <SceneParamControls />
-              </>
-            }
-            secondaryLabel="Layout"
-          />
-        </div>
+        <CanvasLabCommandBar
+          activeStrategyId={activeStrategyId}
+          claudeInstalled={claudeInstalled}
+          codexInstalled={codexInstalled}
+          fitToContent={fitToContent}
+          onAddCapturedRun={handleAddCapturedRun}
+          onAddPane={addPane}
+          onAddTerminal={handleAddTerminal}
+          onOrganize={organize}
+          onSetFitToContent={setFitToContent}
+          onSetStrategy={setStrategy}
+          onSetTextShadow={setTextShadow}
+          paneCount={paneCount}
+          textShadow={textShadow}
+        />
       )}
       <div className="canvas-lab-stage" ref={stageRef}>
         {dropHint === null ? null : (
@@ -355,6 +545,7 @@ function labContentProps(
   focusedPaneId: string | null,
   closePane: (paneId: string) => void,
   focusPane: (paneId: string) => void,
+  launch: CanvasLaunchContext,
 ): ViewerProps {
   return {
     pane: {
@@ -369,17 +560,9 @@ function labContentProps(
     canvas: {
       id: "canvas-lab",
       owner: "local",
-      workspaceHash: null,
+      workspaceHash: launch.workspaceHash,
       focusedPaneId,
-      launch: {
-        owner: "local",
-        workspaceHash: null,
-        spaceId: null,
-        worktreeId: null,
-        canvasId: null,
-        harness: null,
-        runId: null,
-      },
+      launch,
       launchStatus: "unavailable",
       launchSessionId: null,
     },

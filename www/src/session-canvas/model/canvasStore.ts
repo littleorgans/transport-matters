@@ -51,6 +51,7 @@ import {
   type SpawnSessionDescriptor,
 } from "./paneRecords";
 import { createCapturedRunRef, createPaneRecord, normalizeRef, titleForSession } from "./spawn";
+import { adoptDefaultWorktreePatch, requireWorktreeId } from "./worktreeDefaults";
 
 interface CanvasStoreModel extends CanvasModel {
   activeStrategyId: string;
@@ -142,22 +143,15 @@ export const useCanvasStore = create<CanvasStoreState>()(
 
       addCapturedRun(provider, runtimeTemplate, worktreeId) {
         // Per-spawn target wins over the canvas default; neither mutates the default.
-        const target = worktreeId ?? get().defaultWorktreeId;
-        if (target === null) {
-          throw new Error("Cannot spawn a captured run without a rooted worktree");
-        }
+        const target = requireWorktreeId(worktreeId ?? get().defaultWorktreeId);
         const ref = createCapturedRunRef(provider, target, harnessLabel(provider), runtimeTemplate);
         return get().spawnPane(ref, { focus: true });
       },
 
       adoptDefaultWorktree(spaceId, worktreeId) {
-        set((state) =>
-          // An explicit URL worktree (set by initializeCanvas) owns the default;
-          // only fill the gap when none has been resolved yet. Idempotent.
-          state.defaultWorktreeId !== null
-            ? {}
-            : { ...state, spaceId: state.spaceId ?? spaceId, defaultWorktreeId: worktreeId },
-        );
+        // An explicit URL worktree (set by initializeCanvas) owns the default;
+        // only fill the gap when none has been resolved yet. Idempotent.
+        set((state) => adoptDefaultWorktreePatch(state, spaceId, worktreeId));
       },
 
       closePane(paneId) {
