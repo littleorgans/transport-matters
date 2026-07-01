@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FRONTEND_STORAGE_KEYS } from "../../stores/persistence";
 import type { HarnessCapability, HarnessName } from "../../types";
@@ -8,9 +8,20 @@ import { resetCanvasLabStoreForTests, useCanvasLabStore } from "./canvasLabStore
 import { CANVAS_LAB_STORAGE_VERSION } from "./canvasLabStore.persistence";
 import { resetCapabilitiesStoreForTests, useCapabilitiesStore } from "./capabilitiesStore";
 
+const { createCapturedRunMock, mockMeta, terminateRunMock } = vi.hoisted(() => ({
+  createCapturedRunMock: vi.fn(),
+  mockMeta: {
+    value: { spaceId: "space-meta" as string | null, worktreeId: "wt-meta" as string | null },
+  },
+  terminateRunMock: vi.fn(),
+}));
+
 vi.mock("../../api", () => ({
-  createCapturedRun: vi.fn(),
-  terminateRun: vi.fn(),
+  createCapturedRun: createCapturedRunMock,
+  terminateRun: terminateRunMock,
+}));
+vi.mock("../../hooks/useMeta", () => ({
+  useMeta: () => ({ meta: mockMeta.value, isLoading: false }),
 }));
 vi.mock("../../ambient/createAmbientBackground");
 
@@ -34,6 +45,7 @@ function seedCapabilities(installed: Record<HarnessName, boolean>): void {
 }
 
 const SEED_RECT = { x: 48, y: 48, width: 360, height: 280 } as const;
+const LAB_WORKTREE_ID = "wt-lab";
 
 function capturedRef(runKey: string, label: string) {
   return {
@@ -42,7 +54,7 @@ function capturedRef(runKey: string, label: string) {
     provider: "claude",
     runKey,
     label,
-    worktreeId: "lab",
+    worktreeId: LAB_WORKTREE_ID,
   } as const;
 }
 
@@ -63,9 +75,15 @@ function seedPersistedLab(
 }
 
 function resetLabStores(): void {
+  vi.restoreAllMocks();
   resetCanvasLabStoreForTests();
   resetCapabilitiesStoreForTests();
   resetCapturedRunStoreForTests();
+  createCapturedRunMock.mockReset();
+  createCapturedRunMock.mockResolvedValue("run-lab");
+  terminateRunMock.mockReset();
+  mockMeta.value = { spaceId: "space-meta", worktreeId: "wt-meta" };
+  window.history.pushState({}, "", "/canvas-lab");
 }
 
 describe("CanvasLabRoute captured-run spawn buttons", () => {
@@ -113,6 +131,64 @@ describe("CanvasLabRoute captured-run spawn buttons", () => {
     expect(screen.getByRole("button", { name: "Spawn Codex" })).toBeInTheDocument();
   });
 
+  it("spawns with the backend meta worktree when the lab URL has no worktree", async () => {
+    seedCapabilities({ claude: true, codex: true });
+    render(<CanvasLabRoute />);
+    await waitFor(() => expect(useCanvasLabStore.getState().defaultWorktreeId).toBe("wt-meta"));
+
+    fireEvent.click(screen.getByRole("button", { name: "Spawn Claude" }));
+
+    await waitFor(() =>
+      expect(createCapturedRunMock).toHaveBeenCalledWith(
+        "claude",
+        "wt-meta",
+        true,
+        undefined,
+        false,
+      ),
+    );
+    const captured = Object.values(useCanvasLabStore.getState().contentRefs).filter(
+      (ref) => ref.kind === "captured-run",
+    );
+    expect(captured).toHaveLength(1);
+    expect(captured[0]).toMatchObject({ provider: "claude", worktreeId: "wt-meta" });
+  });
+
+  it("lets an explicit lab worktree query win over backend meta", async () => {
+    seedCapabilities({ claude: true, codex: true });
+    window.history.pushState({}, "", "/canvas-lab?space_id=space-url&worktree_id=wt-url");
+    render(<CanvasLabRoute />);
+    await waitFor(() => expect(useCanvasLabStore.getState().defaultWorktreeId).toBe("wt-url"));
+
+    fireEvent.click(screen.getByRole("button", { name: "Spawn Codex" }));
+
+    await waitFor(() =>
+      expect(createCapturedRunMock).toHaveBeenCalledWith("codex", "wt-url", true, undefined, false),
+    );
+    const captured = Object.values(useCanvasLabStore.getState().contentRefs).filter(
+      (ref) => ref.kind === "captured-run",
+    );
+    expect(captured).toHaveLength(1);
+    expect(captured[0]).toMatchObject({ provider: "codex", worktreeId: "wt-url" });
+  });
+
+  it("blocks lab captured-run spawn before a sentinel POST when no worktree is available", () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    mockMeta.value = { spaceId: null, worktreeId: null };
+    seedCapabilities({ claude: true, codex: true });
+    render(<CanvasLabRoute />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Spawn Claude" }));
+
+    expect(createCapturedRunMock).not.toHaveBeenCalled();
+    expect(
+      Object.values(useCanvasLabStore.getState().contentRefs).filter(
+        (ref) => ref.kind === "captured-run",
+      ),
+    ).toEqual([]);
+    expect(errorSpy).toHaveBeenCalledWith("Failed to spawn captured run:", expect.any(Error));
+  });
+
   it("restores a persisted open captured-run pane onto the canvas after a reload", async () => {
     // After S3 a browser reload rehydrates the lab store's own record set: a previously-open captured
     // pane comes back ON THE CANVAS at its key carrying its label, and re-attaches to its kept runId
@@ -158,7 +234,12 @@ describe("CanvasLabRoute captured-run spawn buttons", () => {
         docked: [
           {
             paneId: "lab-1",
-            ref: { kind: "terminal", owner: "local", label: "Terminal-1", worktreeId: "lab" },
+            ref: {
+              kind: "terminal",
+              owner: "local",
+              label: "Terminal-1",
+              worktreeId: LAB_WORKTREE_ID,
+            },
           },
           { paneId: "lab-2", ref: null },
           { paneId: "claude:k1", ref: capturedRef("claude:k1", "Claude-1") },

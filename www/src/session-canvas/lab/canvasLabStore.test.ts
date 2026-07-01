@@ -8,14 +8,25 @@ import {
 } from "./canvasLabStore";
 
 const store = useCanvasLabStore.getState;
+const LAB_WORKTREE_ID = "wt-lab";
+
+function resetLabWithWorktree(): void {
+  resetCanvasLabStoreForTests();
+  store().setDefaultWorktree("space-lab", LAB_WORKTREE_ID);
+}
 
 describe("canvasLabStore terminals", () => {
   // Each spawned terminal gets a monotonic per-type label (Terminal-1, Terminal-2, ...).
   const terminalRef = (n: number) =>
-    ({ kind: "terminal", owner: "local", label: `Terminal-${n}`, worktreeId: "lab" }) as const;
+    ({
+      kind: "terminal",
+      owner: "local",
+      label: `Terminal-${n}`,
+      worktreeId: LAB_WORKTREE_ID,
+    }) as const;
 
   it("spawns a pane that carries a terminal content ref", () => {
-    resetCanvasLabStoreForTests();
+    resetLabWithWorktree();
 
     store().addTerminal();
 
@@ -24,7 +35,7 @@ describe("canvasLabStore terminals", () => {
   });
 
   it("spawns multiple independent terminals alongside demo panes", () => {
-    resetCanvasLabStoreForTests();
+    resetLabWithWorktree();
 
     store().addTerminal(); // lab-1 (Terminal-1)
     store().addPane(); // lab-2 (demo card/ruler, no content ref)
@@ -35,7 +46,7 @@ describe("canvasLabStore terminals", () => {
   });
 
   it("dockPane parks a ref in the dock without touching the layout", () => {
-    resetCanvasLabStoreForTests();
+    resetLabWithWorktree();
     const ref = {
       kind: "resource",
       owner: "local",
@@ -52,7 +63,7 @@ describe("canvasLabStore terminals", () => {
   });
 
   it("commitReorder splices the order and replans", () => {
-    resetCanvasLabStoreForTests();
+    resetLabWithWorktree();
     store().addTerminal();
     store().addTerminal();
 
@@ -61,7 +72,7 @@ describe("canvasLabStore terminals", () => {
   });
 
   it("spawnPane opens a locator resource pane keyed by its registry pane id", () => {
-    resetCanvasLabStoreForTests();
+    resetLabWithWorktree();
     const ref = {
       kind: "resource",
       owner: "local",
@@ -79,7 +90,7 @@ describe("canvasLabStore terminals", () => {
   it("spawnPane dedupes to the existing pane and restores a docked one", () => {
     vi.useFakeTimers();
     try {
-      resetCanvasLabStoreForTests();
+      resetLabWithWorktree();
       const ref = {
         kind: "resource",
         owner: "local",
@@ -105,7 +116,7 @@ describe("canvasLabStore terminals", () => {
   it("forgets a pane's content ref once its close animation completes", () => {
     vi.useFakeTimers();
     try {
-      resetCanvasLabStoreForTests();
+      resetLabWithWorktree();
       store().addTerminal(); // lab-1 (Terminal-1)
       store().addTerminal(); // lab-2 (Terminal-2)
 
@@ -122,7 +133,7 @@ describe("canvasLabStore terminals", () => {
   it("labels spawned panes incrementally per type, monotonic and never reused on close", () => {
     vi.useFakeTimers();
     try {
-      resetCanvasLabStoreForTests();
+      resetLabWithWorktree();
       store().addTerminal(); // lab-1 Terminal-1
       store().addCapturedRun("claude"); // Claude-1
       store().addTerminal(); // lab-2 Terminal-2
@@ -151,7 +162,7 @@ describe("canvasLabStore terminals", () => {
   });
 
   it("spawns captured-run panes carrying the chosen provider on their content ref", () => {
-    resetCanvasLabStoreForTests();
+    resetLabWithWorktree();
 
     store().addCapturedRun("claude");
     store().addCapturedRun("codex");
@@ -175,7 +186,7 @@ describe("canvasLabStore terminals", () => {
 
 describe("canvasLabStore framing", () => {
   it("frames a pane (capturing the overview) and toggles back on a second call", () => {
-    resetCanvasLabStoreForTests();
+    resetLabWithWorktree();
     store().addPane(); // lab-1
     store().addPane(); // lab-2
     const overview = store().layout.viewport;
@@ -191,7 +202,7 @@ describe("canvasLabStore framing", () => {
   });
 
   it("switching frames keeps the original overview; unframe pans back out to it", () => {
-    resetCanvasLabStoreForTests();
+    resetLabWithWorktree();
     store().addPane(); // lab-1
     store().addPane(); // lab-2
     store().addPane(); // lab-3
@@ -213,7 +224,7 @@ describe("canvasLabStore framing", () => {
   });
 
   it("flies the camera on unframe when at or below the pane limit", () => {
-    resetCanvasLabStoreForTests();
+    resetLabWithWorktree();
     store().addPane(); // lab-1
     store().addPane(); // lab-2
     store().framePane("lab-1");
@@ -224,7 +235,7 @@ describe("canvasLabStore framing", () => {
   });
 
   it("snaps the camera (no fly) on unframe above the pane limit", () => {
-    resetCanvasLabStoreForTests();
+    resetLabWithWorktree();
     for (let index = 0; index <= UNFRAME_FLY_PANE_LIMIT; index += 1) store().addPane(); // limit + 1
     const overview = store().layout.viewport;
     store().framePane("lab-1");
@@ -236,14 +247,14 @@ describe("canvasLabStore framing", () => {
   });
 
   it("does not frame when only one pane is open", () => {
-    resetCanvasLabStoreForTests();
+    resetLabWithWorktree();
     store().addPane(); // lab-1 only
     store().framePane("lab-1");
     expect(framedPaneId(store().framing)).toBeNull();
   });
 
   it("organizes panes through the active strategy on add", () => {
-    resetCanvasLabStoreForTests();
+    resetLabWithWorktree();
     store().addPane();
     store().addPane();
     const rects = Object.values(store().layout.nodes).map((node) => node.rect);
@@ -258,7 +269,7 @@ describe("canvasLabStore close", () => {
   it("reflows the survivors into the gap but never refits the camera on close", () => {
     vi.useFakeTimers();
     try {
-      resetCanvasLabStoreForTests();
+      resetLabWithWorktree();
       // Enough panes that fit-to-content has zoomed the camera out: this is exactly the state where
       // a refit-on-close would move the camera and snap (the reported "zoom in then out").
       for (let index = 0; index < 24; index += 1) store().addPane();
@@ -280,7 +291,7 @@ describe("canvasLabStore close", () => {
   it("resets manual zoom-in when closing a pane", () => {
     vi.useFakeTimers();
     try {
-      resetCanvasLabStoreForTests();
+      resetLabWithWorktree();
       for (let index = 0; index < 24; index += 1) store().addPane();
       const fittedScale = store().layout.viewport.scale;
       expect(fittedScale).toBeLessThan(1);
@@ -296,7 +307,7 @@ describe("canvasLabStore close", () => {
       expect(store().layout.viewport.scale).toBeLessThan(zoomed.scale);
       expect(store().layout.viewport).not.toEqual(zoomed);
     } finally {
-      resetCanvasLabStoreForTests();
+      resetLabWithWorktree();
       vi.useRealTimers();
     }
   });
@@ -304,7 +315,7 @@ describe("canvasLabStore close", () => {
   it("closes a framed pane by leaving frame mode and restoring the overview", () => {
     vi.useFakeTimers();
     try {
-      resetCanvasLabStoreForTests();
+      resetLabWithWorktree();
       store().addPane(); // lab-1
       store().addPane(); // lab-2
       const overview = store().layout.viewport;
@@ -322,7 +333,7 @@ describe("canvasLabStore close", () => {
       expect(store().layout.viewport).toEqual(overview);
       expect(store().flying).toBe(true);
     } finally {
-      resetCanvasLabStoreForTests();
+      resetLabWithWorktree();
       vi.useRealTimers();
     }
   });
@@ -332,7 +343,7 @@ describe("canvasLabStore expand", () => {
   it("animates pane geometry while expanding and unexpanding", () => {
     vi.useFakeTimers();
     try {
-      resetCanvasLabStoreForTests();
+      resetLabWithWorktree();
       store().addPane(); // lab-1
       store().addPane(); // lab-2
       store().addPane(); // lab-3
@@ -353,7 +364,7 @@ describe("canvasLabStore expand", () => {
       expect(store().paneMotion).toBe(true);
       expect("fly" in store()).toBe(false);
     } finally {
-      resetCanvasLabStoreForTests();
+      resetLabWithWorktree();
       vi.useRealTimers();
     }
   });
@@ -361,7 +372,7 @@ describe("canvasLabStore expand", () => {
   it("resetView replans expanded panes back to the active strategy", () => {
     vi.useFakeTimers();
     try {
-      resetCanvasLabStoreForTests();
+      resetLabWithWorktree();
       store().addPane(); // lab-1
       store().addPane(); // lab-2
       store().addPane(); // lab-3
@@ -385,7 +396,7 @@ describe("canvasLabStore expand", () => {
         expect(store().layout.nodes[paneId]?.rect).toEqual(strategyRects[paneId]);
       }
     } finally {
-      resetCanvasLabStoreForTests();
+      resetLabWithWorktree();
       vi.useRealTimers();
     }
   });
@@ -393,7 +404,7 @@ describe("canvasLabStore expand", () => {
 
 describe("canvasLabStore setParam validation", () => {
   it("clamps a number param to its control range", () => {
-    resetCanvasLabStoreForTests();
+    resetLabWithWorktree();
     store().setParam("minW", 99999);
     expect(store().params.minW).toBe(640); // grid-fit minW max
     store().setParam("minW", 0);
@@ -401,19 +412,19 @@ describe("canvasLabStore setParam validation", () => {
   });
 
   it("ignores an unknown key", () => {
-    resetCanvasLabStoreForTests();
+    resetLabWithWorktree();
     store().setParam("bogus", 5);
     expect("bogus" in store().params).toBe(false);
   });
 
   it("ignores a value whose type does not match the control kind", () => {
-    resetCanvasLabStoreForTests();
+    resetLabWithWorktree();
     store().setParam("minW", "320"); // number control, string value
     expect(store().params.minW).toBe(320); // unchanged default
   });
 
   it("accepts a valid enum value and rejects an out-of-range one", () => {
-    resetCanvasLabStoreForTests();
+    resetLabWithWorktree();
     store().setParam("lastRow", "center");
     expect(store().params.lastRow).toBe("center");
     store().setParam("lastRow", "diagonal"); // not in options
@@ -423,7 +434,7 @@ describe("canvasLabStore setParam validation", () => {
 
 describe("canvasLabStore fit to content", () => {
   it("zooms the camera to fit the margin-padded grid frame", () => {
-    resetCanvasLabStoreForTests();
+    resetLabWithWorktree();
     for (let index = 0; index < 12; index += 1) store().addPane();
     store().setBounds({ width: 900, height: 1000 });
     // The selector picks 3x4 (gridW 1008 x gridH ~1134). The lab fits the frame — the grid padded by
@@ -433,7 +444,7 @@ describe("canvasLabStore fit to content", () => {
   });
 
   it("resets a stale zoom-out once the content fits again (no lingering slack)", () => {
-    resetCanvasLabStoreForTests();
+    resetLabWithWorktree();
     for (let index = 0; index < 12; index += 1) store().addPane();
     store().setBounds({ width: 900, height: 1000 }); // overflow -> scale < 1
     expect(store().layout.viewport.scale).toBeLessThan(1);

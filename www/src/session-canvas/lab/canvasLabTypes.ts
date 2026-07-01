@@ -28,6 +28,8 @@ export interface CanvasLabState {
   flying: boolean;
   paneMotion: boolean;
   nextPaneIndex: number;
+  spaceId: string | null;
+  defaultWorktreeId: string | null;
   /** Real content per pane (a viewer-registry ref). Demo card/ruler panes carry none. */
   contentRefs: Record<PaneId, PaneContentRef>;
   /** Locally minimized panes for THIS canvas, most-recent first. The dock's only source. */
@@ -38,6 +40,8 @@ export interface CanvasLabState {
   addPane(): void;
   addTerminal(): void;
   addCapturedRun(provider: HarnessName): void;
+  adoptDefaultWorktree(spaceId: string | null, worktreeId: string): void;
+  setDefaultWorktree(spaceId: string | null, worktreeId: string): void;
   /** Open (or focus/restore) a content pane at its registry pane id. Used by canvas file drops. */
   spawnPane(ref: PaneContentRef, options?: { focus?: boolean }): PaneId;
   /** Minimize ([-]): park the pane in the dock and remove it. Generic, runs the kind's onMinimize hook (captured keeps its run alive). */

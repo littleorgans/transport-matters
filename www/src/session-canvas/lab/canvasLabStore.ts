@@ -31,6 +31,11 @@ import {
 } from "../model/paneAffordances";
 import { type CanvasPaneRef, harnessLabel, type PaneContentRef } from "../model/paneRecords";
 import { createCapturedRunRef } from "../model/spawn";
+import {
+  adoptDefaultWorktreePatch,
+  defaultWorktreePatch,
+  requireWorktreeId,
+} from "../model/worktreeDefaults";
 import { paneIdForRef } from "../viewers/registry";
 import {
   DEFAULT_BOUNDS,
@@ -43,8 +48,6 @@ import type { CanvasLabState } from "./canvasLabTypes";
 
 const FRAME_MS = 320;
 const INITIAL_DEMO_PANE_COUNT = 4;
-/** Demo worktree root for the lab's terminal panes (R3: terminal refs are worktree-rooted). */
-const LAB_WORKTREE_ID = "lab";
 
 export { framedPaneId, UNFRAME_FLY_PANE_LIMIT } from "../model/paneAffordances";
 
@@ -61,6 +64,8 @@ type CanvasLabValues = Pick<
   | "flying"
   | "paneMotion"
   | "nextPaneIndex"
+  | "spaceId"
+  | "defaultWorktreeId"
   | "contentRefs"
   | "docked"
   | "paneCounters"
@@ -79,6 +84,8 @@ function createEmptyCanvasLabValues(): CanvasLabValues {
     flying: false,
     paneMotion: false,
     nextPaneIndex: 0,
+    spaceId: null,
+    defaultWorktreeId: null,
     contentRefs: {},
     docked: [],
     paneCounters: {},
@@ -140,6 +147,7 @@ export const useCanvasLabStore = create<CanvasLabState>()(
       },
 
       addTerminal() {
+        const worktreeId = requireWorktreeId(get().defaultWorktreeId);
         set((state) => {
           const index = state.nextPaneIndex + 1;
           const { label, counters } = labelFor(state.paneCounters, "Terminal");
@@ -150,16 +158,25 @@ export const useCanvasLabStore = create<CanvasLabState>()(
               kind: "terminal",
               owner: "local",
               label,
-              worktreeId: LAB_WORKTREE_ID,
+              worktreeId,
             }),
           };
         });
       },
 
       addCapturedRun(provider) {
+        const worktreeId = requireWorktreeId(get().defaultWorktreeId);
         const { label, counters } = labelFor(get().paneCounters, harnessLabel(provider));
         set({ paneCounters: counters });
-        get().spawnPane(createCapturedRunRef(provider, LAB_WORKTREE_ID, label), { focus: true });
+        get().spawnPane(createCapturedRunRef(provider, worktreeId, label), { focus: true });
+      },
+
+      adoptDefaultWorktree(spaceId, worktreeId) {
+        set((state) => adoptDefaultWorktreePatch(state, spaceId, worktreeId));
+      },
+
+      setDefaultWorktree(spaceId, worktreeId) {
+        set((state) => defaultWorktreePatch(state, spaceId, worktreeId));
       },
 
       dockPane(ref) {

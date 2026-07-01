@@ -13,11 +13,17 @@ vi.mock("../../api", () => ({
 }));
 
 const store = useCanvasLabStore.getState;
+const LAB_WORKTREE_ID = "wt-lab";
+
+function resetLabWithWorktree(): void {
+  resetCanvasLabStoreForTests();
+  store().setDefaultWorktree("space-lab", LAB_WORKTREE_ID);
+}
 
 describe("canvasLabStore captured runs", () => {
   beforeEach(() => {
     localStorage.clear();
-    resetCanvasLabStoreForTests();
+    resetLabWithWorktree();
     resetCapturedRunStoreForTests();
     createCapturedRunMock.mockReset();
     terminateRunMock.mockReset();
@@ -32,6 +38,16 @@ describe("canvasLabStore captured runs", () => {
     // Distinct pane ids => distinct run keys => the two panes own independent runs.
     expect(ids[0]).not.toBe(ids[1]);
     for (const id of ids) expect(id.startsWith("claude:")).toBe(true);
+  });
+
+  it("refuses spawnable panes when no rooted worktree is available", () => {
+    resetCanvasLabStoreForTests();
+
+    expect(() => store().addCapturedRun("claude")).toThrow(/rooted worktree/i);
+    expect(() => store().addTerminal()).toThrow(/rooted worktree/i);
+
+    expect(capturedPaneIds(store().contentRefs)).toEqual([]);
+    expect(store().contentRefs).toEqual({});
   });
 
   it("minimizePane docks a captured pane and keeps its run alive (no stop)", () => {
@@ -65,7 +81,7 @@ describe("canvasLabStore captured runs", () => {
         provider: "claude",
         runKey: paneId,
         label: "Claude-1",
-        worktreeId: "lab",
+        worktreeId: LAB_WORKTREE_ID,
       });
     } finally {
       vi.useRealTimers();
@@ -75,7 +91,7 @@ describe("canvasLabStore captured runs", () => {
   it("restorePaneAtIndex restores the docked pane into the order slot the drop chose", () => {
     vi.useFakeTimers();
     try {
-      resetCanvasLabStoreForTests();
+      resetLabWithWorktree();
       store().addTerminal(); // lab-1
       store().addTerminal(); // lab-2
       store().addTerminal(); // lab-3
@@ -96,7 +112,7 @@ describe("canvasLabStore captured runs", () => {
   it("restorePaneAtIndex clamps an out-of-range index to the tail", () => {
     vi.useFakeTimers();
     try {
-      resetCanvasLabStoreForTests();
+      resetLabWithWorktree();
       store().addTerminal(); // lab-1
       store().addTerminal(); // lab-2
       store().minimizePane("lab-1");
@@ -133,7 +149,7 @@ describe("canvasLabStore captured runs", () => {
         provider: "claude",
         runKey: paneId,
         label: "Claude-1",
-        worktreeId: "lab",
+        worktreeId: LAB_WORKTREE_ID,
       });
       expect(store().layout.nodes[paneId]).toBeDefined();
       expect(store().docked).toEqual([]);
