@@ -17,7 +17,7 @@ export function defaultWorktreePatch(
   worktreeId: string,
 ): Partial<WorktreeDefaultState> {
   return {
-    spaceId: spaceId ?? state.spaceId,
+    spaceId: state.spaceId ?? spaceId,
     defaultWorktreeId: worktreeId,
   };
 }

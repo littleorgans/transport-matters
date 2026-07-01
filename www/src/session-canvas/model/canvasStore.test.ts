@@ -662,6 +662,25 @@ describe("canvasStore", () => {
       expect(state.spaceId).toBe("space-url");
     });
 
+    it("keeps an explicit URL space when meta seeds the missing worktree", () => {
+      resetCanvasStoreForTests();
+      useCanvasStore.getState().initializeCanvas({
+        owner: "local",
+        workspaceHash: null,
+        spaceId: "space-url",
+        worktreeId: null,
+        canvasId: null,
+        harness: null,
+        runId: null,
+      });
+
+      useCanvasStore.getState().adoptDefaultWorktree("space-meta", "wt-meta");
+
+      const state = useCanvasStore.getState();
+      expect(state.defaultWorktreeId).toBe("wt-meta");
+      expect(state.spaceId).toBe("space-url");
+    });
+
     it("a worktree-less re-init of the same canvas keeps the adopted default", () => {
       resetCanvasStoreForTests();
       useCanvasStore.getState().adoptDefaultWorktree("space-meta", "wt-meta");
