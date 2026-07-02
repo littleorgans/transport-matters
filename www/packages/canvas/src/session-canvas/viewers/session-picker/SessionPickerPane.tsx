@@ -43,7 +43,7 @@ export function SessionPickerPane({ canvas, actions }: ViewerProps<PickerPaneRef
         )
       }
     >
-      <legend className="sr-only">Session picker</legend>
+      <legend className="canvas-picker__sr-only">Session picker</legend>
       <div className="canvas-picker__summary" aria-live="polite">
         <span>{sessions.length} sessions</span>
         {pendingLabel ? <span>{pendingLabel}</span> : null}

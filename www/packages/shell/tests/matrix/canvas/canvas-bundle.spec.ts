@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { seedCanvasExchangePane, setupCanvasApis } from "../../visual/fixtures";
 
 test.use({ reducedMotion: "reduce" });
 
@@ -59,6 +60,51 @@ test("the canvas bundle carries its own reset environment", async ({ page }) => 
   expect(environment.bodyMargin).toBe("0px");
   expect(environment.shellBoxSizing).toBe("border-box");
   expect(environment.hiddenProbeDisplay).toBe("none");
+});
+
+// The engine's structural CSS must ship inside the canvas bundle. On the
+// shared origin the inspector's Tailwind pass generated the engine's
+// utility classes; standalone they are owned CSS (engine/react/
+// pane-frame.css). Without position:absolute, panes stack in static flow
+// (each renders at planned y + the previous pane's height); without the
+// full-height body, pane content does not fill the planned rect. Dock
+// restore drives the same replan path spawns use (planSpawnedPaneLayout).
+test("dock-restore replans a packed grid with full-height panes", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await setupCanvasApis(page);
+  await seedCanvasExchangePane(page);
+  await page.goto("/canvas");
+  await expect(page.locator(".canvas-route-shell")).toBeVisible();
+
+  const dockChip = page.getByRole("button", { name: /Minimized panes/ });
+  await expect(async () => {
+    await page.getByRole("button", { name: "Minimize Session picker" }).click();
+    await expect(dockChip).toBeVisible({ timeout: 1500 });
+  }).toPass({ timeout: 15000 });
+  await dockChip.click();
+  await page.getByRole("menuitem", { name: "Session picker", exact: true }).click();
+
+  await expect(page.locator("[data-pane-frame='true']")).toHaveCount(2);
+  await expect(async () => {
+    const geometry = await page.evaluate(() =>
+      [...document.querySelectorAll("[data-pane-frame='true']")].map((frame) => {
+        const rect = frame.getBoundingClientRect();
+        const body = frame.querySelector(".pane-frame__body")?.getBoundingClientRect();
+        return { x: rect.x, y: rect.y, w: rect.width, h: rect.height, bodyH: body?.height ?? 0 };
+      }),
+    );
+    expect(geometry).toHaveLength(2);
+    const [a, b] = geometry;
+    if (!a || !b) throw new Error("expected two frames");
+    // Packed into one row: equal y, side by side, no overlap.
+    expect(Math.abs(a.y - b.y)).toBeLessThan(2);
+    const [left, right] = a.x < b.x ? [a, b] : [b, a];
+    expect(right.x).toBeGreaterThanOrEqual(left.x + left.w);
+    // The gesture body fills the planned rect (the h-full replacement).
+    for (const frame of geometry) {
+      expect(Math.abs(frame.bodyH - frame.h)).toBeLessThan(2);
+    }
+  }).toPass({ timeout: 10000 });
 });
 
 // Desktop smoke: the desktop shell loads this same bundle at /canvas

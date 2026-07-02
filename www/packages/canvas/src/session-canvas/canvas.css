@@ -164,6 +164,21 @@
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
+/* Visually-hidden fieldset legend (was the Tailwind sr-only utility when the
+   inspector's Tailwind pass covered the shared origin; the canvas bundle is
+   Tailwind-free). Mirrors .launcher__sr-only. */
+.canvas-picker__sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
 .canvas-picker {
   display: flex;
   height: 100%;
