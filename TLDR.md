@@ -69,8 +69,8 @@ See [PROJECT.md](./PROJECT.md) for more.
 
 ## WWW workspace naming
 
-`www/` now has three meanings during the separation work:
+`www/` has three meanings after the separation:
 
 - `www/packages/` is the pnpm workspace source package tree.
-- `www/packages/shell/` is the retired single Vite app, now a dev shell package that still emits one bundle in Phase 3.
-- `api/src/transport_matters/www/` is the built browser bundle embedded in the Python package and served at `/`.
+- `www/packages/shell/` is the dev-only composer: one origin serving both products for development. It ships in no production bundle.
+- `api/src/transport_matters/www/` is the built inspector bundle embedded in the Python package and served at `/`. Its sibling `api/src/transport_matters/canvas/` is the built canvas bundle, served at `/canvas` plus the `/canvas-lab` page.

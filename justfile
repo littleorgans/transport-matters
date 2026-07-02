@@ -5,7 +5,8 @@ repo_root := justfile_directory()
 api_dir := repo_root / "api"
 desktop_dir := repo_root / "desktop"
 shell_dir := repo_root / "www/packages/shell"
-shell_package := "@tm/shell"
+inspector_package := "@tm/inspector"
+canvas_package := "@tm/canvas"
 desktop_package := "transport-matters-desktop"
 python_version_file := api_dir / ".python-version"
 version_file := api_dir / "src/transport_matters/_version.py"
@@ -54,7 +55,8 @@ dev client directory=dev_target_dir:
 
 build: js-install
     cd "{{desktop_dir}}" && just build
-    cd "{{shell_dir}}" && just build
+    pnpm --filter {{inspector_package}} build
+    pnpm --filter {{canvas_package}} build
     cd "{{api_dir}}" && just build
 
 clean:
@@ -72,7 +74,8 @@ install:
 install-local:
     rm -f "{{version_file}}"
     pnpm install
-    pnpm --filter {{shell_package}} build
+    pnpm --filter {{inspector_package}} build
+    pnpm --filter {{canvas_package}} build
     # Desktop must be set up too, or `transport-matters desktop` has no Electron app:
     # build compiles dist/main.js; electron:install fetches the Electron binary
     # (pnpm does not run electron's own postinstall, hence the explicit script).
@@ -84,7 +87,8 @@ install-local:
 [no-exit-message]
 channel-restart channel="preview" *desktop_args:
     pnpm install
-    pnpm --filter {{shell_package}} build
+    pnpm --filter {{inspector_package}} build
+    pnpm --filter {{canvas_package}} build
     pnpm --filter {{desktop_package}} build
     pnpm --filter {{desktop_package}} electron:install
     uv run --project "{{api_dir}}" transport-matters channel stop {{channel}}

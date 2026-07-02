@@ -1,0 +1,16 @@
+/* Structural pane-frame primitives owned by the engine: every consumer
+   positions panes absolutely inside the world (the planner emits world
+   rects applied as x/y transforms, so static flow must not stack frames)
+   and stretches the gesture body to the planned rect. These were Tailwind
+   utilities ("absolute outline-none", "h-full") when the engine lived
+   under the shell's single bundle — the inspector's Tailwind pass
+   generated them globally. The canvas bundle is Tailwind-free, so the
+   engine owns them as plain CSS. */
+[data-pane-frame="true"] {
+  position: absolute;
+  outline: none;
+}
+
+.pane-frame__body {
+  height: 100%;
+}

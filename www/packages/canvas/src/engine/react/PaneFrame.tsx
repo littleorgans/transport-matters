@@ -1,6 +1,7 @@
 import { useDrag } from "@use-gesture/react";
 import { motion, type Transition, useReducedMotion } from "framer-motion";
 import { useRef, useState } from "react";
+import "./pane-frame.css";
 import { shouldPanNotDrag } from "../../keybindings/gestures";
 import { roundWorldPoint } from "../layout/geometry";
 import { CLOSE_DELAY_MS } from "../reducers/layoutState";
@@ -157,7 +158,6 @@ export function PaneFrame({
     <motion.div
       aria-labelledby={titleId}
       aria-selected={focused}
-      className="absolute outline-none"
       data-pane-body-drag={bodyDrag ? "true" : "false"}
       data-pane-frame="true"
       data-pane-id={node.paneId}
@@ -193,7 +193,7 @@ export function PaneFrame({
     >
       <div
         {...gestureProps}
-        className="h-full"
+        className="pane-frame__body"
         onPointerDown={(event: React.PointerEvent<HTMLDivElement>) => {
           (dndPointerDown as React.PointerEventHandler<HTMLDivElement> | undefined)?.(event);
           gestureProps.onPointerDown?.(event);

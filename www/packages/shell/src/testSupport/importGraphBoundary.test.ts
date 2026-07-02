@@ -62,6 +62,7 @@ describe("inspector-canvas import graph boundary", () => {
       "@tm/core/testing",
       "@tm/core/types/ir",
       "@tm/host",
+      "@tm/host/styles.css",
       "@tm/inspector",
       "@tm/inspector/inspector.css",
       "@tm/inspector/storageKeys",

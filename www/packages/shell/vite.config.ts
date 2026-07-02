@@ -1,34 +1,16 @@
-import { execSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { searchForWorkspaceRoot } from "vite";
 import { defineConfig } from "vitest/config";
+import { resolveVersion } from "../../vite.shared";
 
 export const DEV_API_BASE_URL_ENV = "TRANSPORT_MATTERS_DEV_API_BASE_URL";
 
 const packageRoot = path.dirname(fileURLToPath(import.meta.url));
 const workspaceRoot = searchForWorkspaceRoot(packageRoot);
 const shellSrcRoot = path.resolve(packageRoot, "src");
-
-// Single source of truth is the git tag (same source hatch-vcs uses for
-// the Python wheel). TRANSPORT_MATTERS_VERSION wins when set explicitly (e.g. from
-// scripts/release.sh or a hermetic build). Otherwise, derive from `git describe`.
-// Final fallback is "dev" so the dev server works outside a git checkout.
-function resolveVersion(): string {
-  const envVersion = process.env.TRANSPORT_MATTERS_VERSION;
-  if (envVersion && envVersion.length > 0) return envVersion.replace(/^v/, "");
-  try {
-    const described = execSync("git describe --tags --always --dirty", {
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"],
-    }).trim();
-    return described.replace(/^v/, "") || "dev";
-  } catch {
-    return "dev";
-  }
-}
 
 export function resolveDevApiProxyTarget(env: NodeJS.ProcessEnv = process.env): string | undefined {
   const rawTarget = env[DEV_API_BASE_URL_ENV]?.trim();
@@ -57,20 +39,35 @@ export function buildDevServerProxy(env: NodeJS.ProcessEnv = process.env) {
   };
 }
 
+// The dev-only composer. No production outDir: `vite build` (the Playwright
+// preview/perf path) emits to the local dist/, never into the Python package.
+// The inspector and canvas packages own the two production bundles.
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   define: {
     __TRANSPORT_MATTERS_VERSION__: JSON.stringify(resolveVersion()),
+  },
+  resolve: {
+    // Pin the product entries to their src/ lazy entries so the dev shell
+    // keeps composing source even if a product's exports map ever repoints
+    // at built output. Exact-match regexes: subpath imports (for example
+    // @tm/canvas/storageKeys) still resolve through the exports maps.
+    alias: [
+      {
+        find: /^@tm\/inspector$/,
+        replacement: path.resolve(packageRoot, "../inspector/src/index.ts"),
+      },
+      {
+        find: /^@tm\/canvas$/,
+        replacement: path.resolve(packageRoot, "../canvas/src/index.ts"),
+      },
+    ],
   },
   server: {
     fs: {
       allow: [workspaceRoot],
     },
     proxy: buildDevServerProxy(),
-  },
-  build: {
-    outDir: path.resolve(workspaceRoot, "api/src/transport_matters/www"),
-    emptyOutDir: true,
   },
   test: {
     globals: true,

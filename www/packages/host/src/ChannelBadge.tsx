@@ -1,5 +1,4 @@
 import { useMeta } from "@tm/core";
-import "./channel-badge.css";
 
 export function ChannelBadge() {
   const { meta } = useMeta();

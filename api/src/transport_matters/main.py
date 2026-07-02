@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
@@ -100,6 +101,39 @@ def _looks_like_asset_path(path: str) -> bool:
     from pathlib import Path
 
     return "." in Path(path).name or path.startswith("assets/")
+
+
+def mount_frontend_bundles(app: FastAPI) -> None:
+    """Serve the two SPA bundles: canvas at /canvas (plus the /canvas-lab
+    page), inspector at / as the catch-all.
+
+    Mount order matters: Starlette matches routes in registration order, so
+    the canvas mount and the /canvas-lab page route must precede the "/"
+    catch-all or the inspector SPA fallback swallows them.
+    """
+    package_dir = Path(__file__).parent
+    canvas_dir = package_dir / "canvas"
+    www_dir = package_dir / "www"
+
+    if canvas_dir.exists():
+        canvas_index = canvas_dir / "index.html"
+
+        async def canvas_page() -> FileResponse:
+            return FileResponse(canvas_index)
+
+        # Two explicit page routes ahead of the mount. Bare /canvas because
+        # Mount("/canvas") only matches with the trailing-slash boundary and
+        # the desktop shell loads exactly /canvas (rendererUrlForPort).
+        # /canvas-lab because it is a canvas SPA page (RouteSwitcher and the
+        # launcher navigate to it; the desktop shell whitelists it) that sits
+        # outside the /canvas mount path. Both pages resolve their assets
+        # absolutely under /canvas/ thanks to the bundle's base.
+        app.add_api_route("/canvas", canvas_page, include_in_schema=False)
+        app.add_api_route("/canvas-lab", canvas_page, include_in_schema=False)
+        app.mount("/canvas", SpaStaticFiles(directory=canvas_dir, html=True), name="canvas")
+
+    if www_dir.exists():
+        app.mount("/", SpaStaticFiles(directory=www_dir, html=True), name="www")
 
 
 async def _start_session_store(
@@ -303,9 +337,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         tags=["runtime-templates"],
     )
 
-    www_dir = Path(__file__).parent / "www"
-    if www_dir.exists():
-        app.mount("/", SpaStaticFiles(directory=www_dir, html=True), name="www")
+    mount_frontend_bundles(app)
 
     return app
 
