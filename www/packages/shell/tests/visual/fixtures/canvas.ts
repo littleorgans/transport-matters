@@ -1,5 +1,5 @@
 import type { Page, Route } from "@playwright/test";
-import { CANVAS_STORAGE_KEYS } from "@tm/canvas";
+import { CANVAS_STORAGE_KEYS } from "@tm/canvas/storageKeys";
 import { mockExchangeDetails } from "./details";
 import { mockExchanges, mockVisualRunId } from "./exchanges";
 

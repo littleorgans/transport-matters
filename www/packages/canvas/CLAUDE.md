@@ -15,9 +15,10 @@ proactive overlay editing ahead of the request. Served at `/canvas`
   list the other). The exchange viewer is the Ark fork
   (`ArkExchangeViewer`), not the inspector's `ExchangeDetail` — locked
   decision, do not reach back.
-- Public surface is the `exports` map: `.` (the two routes, the theme
-  store and `clearThemeTokens` for the shell's composition test,
-  `CANVAS_STORAGE_KEYS`), `./index.css`, and
+- Public surface is the `exports` map: `.` (the two routes, plus the
+  theme store and `clearThemeTokens` for the shell's composition test),
+  `./index.css`, `./storageKeys` (css-free leaf so Node-side test
+  transforms like Playwright never pull the component graph), and
   `./ambient/createAmbientBackground` (exposed so the shell's
   composition test can mock the WebGL boundary). Everything else is
   internal; deep imports fail the boundary test.

@@ -1,5 +1,5 @@
 import { expect, type Page, test } from "@playwright/test";
-import { CANVAS_STORAGE_KEYS } from "@tm/canvas";
+import { CANVAS_STORAGE_KEYS } from "@tm/canvas/storageKeys";
 import { seedCanvasExchangePane, setupCanvasApis } from "../visual/fixtures";
 import { pressMod } from "./keyboard";
 

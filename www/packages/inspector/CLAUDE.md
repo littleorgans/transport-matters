@@ -11,9 +11,10 @@ the live request, edit in flight, release. Served at `/`.
   suite: the import-graph boundary test (zero inspector to canvas edges,
   either direction) and the dep-lint test (neither product's package.json
   may list the other).
-- Public surface is the `exports` map: `.` (the `App` entry plus
-  `INSPECTOR_STORAGE_KEYS`) and `./inspector.css`. Everything else is
-  internal; deep imports fail the boundary test.
+- Public surface is the `exports` map: `.` (the `App` entry),
+  `./inspector.css`, and `./storageKeys` (css-free leaf so Node-side test
+  transforms like Playwright never pull the component graph). Everything
+  else is internal; deep imports fail the boundary test.
 
 ## Owned concerns
 

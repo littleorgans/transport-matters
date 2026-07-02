@@ -64,8 +64,10 @@ describe("inspector-canvas import graph boundary", () => {
       "@tm/host",
       "@tm/inspector",
       "@tm/inspector/inspector.css",
+      "@tm/inspector/storageKeys",
       "@tm/canvas",
       "@tm/canvas/index.css",
+      "@tm/canvas/storageKeys",
       "@tm/canvas/ambient/createAmbientBackground",
     ]) {
       expect(

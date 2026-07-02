@@ -1,8 +1,7 @@
 /**
  * @tm/inspector — the Tailwind web product: exchange list and detail,
- * breakpoint arm/pause/edit/release. The shell lazy-loads `App`;
- * `INSPECTOR_STORAGE_KEYS` is public so the shell can assert the two
- * products' localStorage registries never collide.
+ * breakpoint arm/pause/edit/release. The shell lazy-loads `App`. The
+ * localStorage registry lives on the css-free `./storageKeys` subpath so
+ * Node-side test transforms (Playwright) never pull the component graph.
  */
 export { App } from "./app";
-export { INSPECTOR_STORAGE_KEYS } from "./stores/persistence";

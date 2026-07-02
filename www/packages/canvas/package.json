@@ -5,8 +5,9 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./ambient/createAmbientBackground": "./src/ambient/createAmbientBackground.ts",
     "./index.css": "./src/index.css",
-    "./ambient/createAmbientBackground": "./src/ambient/createAmbientBackground.ts"
+    "./storageKeys": "./src/session-canvas/persistence/storageKeys.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit"
