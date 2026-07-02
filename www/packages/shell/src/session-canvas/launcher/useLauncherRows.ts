@@ -1,7 +1,8 @@
 import { createListCollection } from "@ark-ui/react/combobox";
+import type { SpaceSummary } from "@tm/core";
+import type { CanvasGestureModifier } from "@tm/core/keybindings";
+import type { RuntimeTemplateSummary } from "@tm/core/types/runtimeTemplates";
 import { type Dispatch, type SetStateAction, useEffect, useMemo } from "react";
-import type { CanvasGestureModifier } from "../../keybindings/gestureModifier";
-import type { RuntimeTemplateSummary, SpaceSummary } from "../../types";
 import type { SessionSummary } from "../api/sessionClient";
 import {
   buildScopeRows,

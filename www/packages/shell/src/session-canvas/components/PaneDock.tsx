@@ -1,3 +1,4 @@
+import { truncateMiddle } from "@tm/core";
 import {
   type DragEvent,
   type SyntheticEvent,
@@ -8,7 +9,6 @@ import {
 } from "react";
 import type { PaneId } from "../../engine";
 import { useDockKeybindings } from "../../keybindings/engine";
-import { truncateMiddle } from "../../lib/formatting";
 import { clearActiveDockDrag, PANE_REF_MIME, setActiveDockDrag } from "../dnd/dockDragSource";
 import { clearDropTarget } from "../dnd/dropTargetStore";
 import type { DockedPane } from "../model/paneRecords";

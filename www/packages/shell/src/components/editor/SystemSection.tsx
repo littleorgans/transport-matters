@@ -1,9 +1,10 @@
+import { truncatePreview } from "@tm/core";
+import type { SystemPart } from "@tm/core/types/ir";
+import type { Override } from "@tm/core/types/overrides";
 import { useCollapsibleSet } from "../../hooks/useCollapsibleSet";
 import { useEditableOverride } from "../../hooks/useEditableOverride";
-import { truncatePreview } from "../../lib/formatting";
 import { systemTarget } from "../../lib/overrideTargets";
 import { useUIStore } from "../../stores/uiStore";
-import type { Override, SystemPart } from "../../types";
 import { CompositeEditableRow, MasterBar, SECTION_TONE, SizeDelta } from "../detail/atoms";
 import { noopOverride, overrideCountLabel } from "./overrideUtils";
 import { TextOverrideEditor } from "./TextOverrideEditor";

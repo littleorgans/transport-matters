@@ -1,5 +1,5 @@
+import { displayModel } from "@tm/core";
 import { useEffect, useState } from "react";
-import { displayModel } from "../../lib/formatting";
 
 interface PausedHeaderProps {
   flowId: string;

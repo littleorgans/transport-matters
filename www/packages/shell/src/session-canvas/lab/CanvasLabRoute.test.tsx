@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import type { HarnessCapability, HarnessName } from "@tm/core/types/capabilities";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FRONTEND_STORAGE_KEYS } from "../../stores/persistence";
-import type { HarnessCapability, HarnessName } from "../../types";
 import { resetCapturedRunStoreForTests, useCapturedRunStore } from "../model/capturedRunStore";
 import { CanvasLabRoute } from "./CanvasLabRoute";
 import { resetCanvasLabStoreForTests, useCanvasLabStore } from "./canvasLabStore";
@@ -16,11 +16,10 @@ const { createCapturedRunMock, mockMeta, terminateRunMock } = vi.hoisted(() => (
   terminateRunMock: vi.fn(),
 }));
 
-vi.mock("../../api", () => ({
+vi.mock("@tm/core", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@tm/core")>()),
   createCapturedRun: createCapturedRunMock,
   terminateRun: terminateRunMock,
-}));
-vi.mock("../../hooks/useMeta", () => ({
   useMeta: () => ({ meta: mockMeta.value, isLoading: false }),
 }));
 vi.mock("../../ambient/createAmbientBackground");

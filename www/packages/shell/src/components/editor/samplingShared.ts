@@ -1,5 +1,5 @@
+import type { SamplingParams } from "@tm/core/types/ir";
 import { providerExtrasTarget, samplingTarget } from "../../lib/overrideTargets";
-import type { SamplingParams } from "../../types";
 
 export type ThinkingMode = "off" | "adaptive" | "enabled";
 export type DisplayMode = "summarized" | "omitted";

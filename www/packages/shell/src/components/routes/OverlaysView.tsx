@@ -1,8 +1,7 @@
+import { formatRelativeAge, pluralize, useMeta } from "@tm/core";
+import type { Override, OverrideKind } from "@tm/core/types/overrides";
 import { useEffect, useRef, useState } from "react";
-import { useMeta } from "../../hooks/useMeta";
-import { formatRelativeAge, pluralize } from "../../lib/formatting";
 import { type Overlay, UNKNOWN_CWD, useOverlaysStore } from "../../stores/overlaysStore";
-import type { Override, OverrideKind } from "../../types";
 import { RouteAtmosphere, RouteBackdrop } from "./RouteAtmosphere";
 
 const RESOLVING_CWD_LABEL = "resolving workspace\u2026";

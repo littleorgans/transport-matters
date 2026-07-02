@@ -1,6 +1,7 @@
+import type { SpaceId, WorktreeId } from "@tm/core";
+import { isRecord } from "@tm/core";
+import type { HarnessName } from "@tm/core/types/capabilities";
 import type { EngineLayoutState, PaneId } from "../../engine";
-import { isRecord } from "../../lib/isRecord";
-import type { HarnessName, SpaceId, WorktreeId } from "../../types";
 import type { CanvasLaunchContext } from "../route";
 
 /** Display label for a managed harness / captured-run provider (window title, banners). */

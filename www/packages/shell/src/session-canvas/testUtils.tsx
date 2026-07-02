@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render } from "@testing-library/react";
-import { type ApiTransport, resetApiTransport, setApiTransport } from "../api";
-import type { HarnessName } from "../types";
+import { type ApiTransport, resetApiTransport, setApiTransport } from "@tm/core";
+import type { HarnessName } from "@tm/core/types/capabilities";
 import type { SessionSummary } from "./api/sessionClient";
 import { type CapturedRunKey, useCapturedRunStore } from "./model/capturedRunStore";
 import type { PaneContentRef } from "./model/paneRecords";

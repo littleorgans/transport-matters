@@ -1,6 +1,6 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
+import type { ExchangeTrack, IndexEntry } from "@tm/core/types/exchanges";
 import { useMemo, useRef, useState } from "react";
-import type { ExchangeTrack, IndexEntry } from "../types";
 import { ExchangeTurnCard } from "./ExchangeTurnCard";
 import { projectAnchoredRows } from "./exchangeListRows";
 import { Toggle } from "./Toggle";

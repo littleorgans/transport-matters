@@ -1,5 +1,5 @@
+import type { CanvasGestureModifier } from "@tm/core/keybindings";
 import { type SetStateAction, useCallback, useMemo, useRef, useState } from "react";
-import type { CanvasGestureModifier } from "../../keybindings/gestureModifier";
 import {
   type CommandRow,
   createRootNavFrame,

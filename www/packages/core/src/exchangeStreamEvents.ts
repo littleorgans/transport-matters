@@ -1,8 +1,21 @@
 import type { QueryClient } from "@tanstack/react-query";
-import { MAX_ENTRIES } from "../api";
-import { exchangeKey, exchangesKey, turnContentKey } from "../lib/queryKeys";
-import { useUIStore } from "../stores/uiStore";
-import type { CodexTurnListSummary, IndexEntry, PausedFlow, SpawnAnchor } from "../types";
+import { exchangeKey, exchangesKey, turnContentKey } from "./queryKeys";
+import { MAX_ENTRIES } from "./transport";
+import type { CodexTurnListSummary } from "./types/codex";
+import type { IndexEntry, PausedFlow, SpawnAnchor } from "./types/exchanges";
+
+/**
+ * Side-effect port for the exchange stream. The parsers below are pure; every
+ * read of or effect on host UI state goes through this five-member port. The
+ * host (the product's `useExchangeStream`) binds it to its own store.
+ */
+export interface StreamSideEffects {
+  getForwardingFlowId(): string | null;
+  getPausedFlow(): PausedFlow | null;
+  getSelectedId(): string | null;
+  bumpForwardingActivity(): void;
+  setForwardingFlowId(id: string | null): void;
+}
 
 export interface ExchangeStreamEventContext {
   runId: string;
@@ -10,6 +23,7 @@ export interface ExchangeStreamEventContext {
   setPausedFlow: (flow: PausedFlow | null) => void;
   clearPausedFlow: () => void;
   setSelectedId: (id: string | null) => void;
+  sideEffects: StreamSideEffects;
 }
 
 function isValidPausedEvent(data: Record<string, unknown>): data is {
@@ -147,10 +161,10 @@ function parseSpawnAnchor(value: unknown): SpawnAnchor | null {
   };
 }
 
-function bumpForwardingActivity(data: Record<string, unknown>) {
+function applyForwardingActivity(data: Record<string, unknown>, sideEffects: StreamSideEffects) {
   const flowId = typeof data.flow_id === "string" ? data.flow_id : null;
-  if (flowId && flowId === useUIStore.getState().forwardingFlowId) {
-    useUIStore.getState().bumpForwardingActivity();
+  if (flowId && flowId === sideEffects.getForwardingFlowId()) {
+    sideEffects.bumpForwardingActivity();
   }
 }
 
@@ -186,7 +200,7 @@ function applyPausedTokensEvent(
   context: ExchangeStreamEventContext,
 ) {
   if (!isValidPausedTokensEvent(data)) return;
-  const current = useUIStore.getState().pausedFlow;
+  const current = context.sideEffects.getPausedFlow();
   if (current && current.flow_id === data.flow_id) {
     context.setPausedFlow({ ...current, tokens_before: data.tokens_before });
   }
@@ -256,13 +270,14 @@ function applyExchangeEvent(data: Record<string, unknown>, context: ExchangeStre
   if (entry.run_id !== null && entry.run_id !== context.runId) return;
   upsertExchangeCache(context.queryClient, context.runId, entry);
 
-  const { forwardingFlowId, pausedFlow } = useUIStore.getState();
+  const forwardingFlowId = context.sideEffects.getForwardingFlowId();
   if (forwardingFlowId && data.flow_id === forwardingFlowId) {
     context.setSelectedId(entry.id);
+    const pausedFlow = context.sideEffects.getPausedFlow();
     if (!pausedFlow || pausedFlow.flow_id === forwardingFlowId) {
       context.clearPausedFlow();
     } else {
-      useUIStore.getState().setForwardingFlowId(null);
+      context.sideEffects.setForwardingFlowId(null);
     }
   }
 }
@@ -277,7 +292,7 @@ function applyExchangeDeletedEvent(
     prev.filter((entry) => entry.id !== data.id),
   );
   dropExchangeDetail(context.queryClient, context.runId, data.id);
-  if (useUIStore.getState().selectedId === data.id) {
+  if (context.sideEffects.getSelectedId() === data.id) {
     context.setSelectedId(null);
   }
 }
@@ -286,7 +301,7 @@ function applyParsedExchangeStreamEvent(
   data: Record<string, unknown>,
   context: ExchangeStreamEventContext,
 ) {
-  bumpForwardingActivity(data);
+  applyForwardingActivity(data, context.sideEffects);
   if (data.type === "paused") applyPausedEvent(data, context);
   if (data.type === "paused_tokens") applyPausedTokensEvent(data, context);
   if (data.type === "exchange") applyExchangeEvent(data, context);

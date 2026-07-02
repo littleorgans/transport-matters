@@ -9,9 +9,9 @@
  * blocks as greyed-out rows.
  */
 
+import { blockSummary } from "@tm/core";
+import type { ContentBlock, Message } from "@tm/core/types/ir";
 import { ColorizedPre } from "../../lib/colorizeLine";
-import { blockSummary } from "../../lib/contentBlocks";
-import type { ContentBlock, Message } from "../../types";
 
 // Block type markers are intentionally uniform: a single .chip
 // colour across every kind so scanning reads as a quiet index,

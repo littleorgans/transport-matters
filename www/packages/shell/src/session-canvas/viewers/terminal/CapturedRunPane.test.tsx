@@ -45,7 +45,8 @@ const { createCapturedRunMock, terminateRunMock } = vi.hoisted(() => ({
 
 vi.mock("@xterm/xterm", () => ({ Terminal: MockTerminal }));
 vi.mock("@xterm/addon-fit", () => ({ FitAddon: MockFitAddon }));
-vi.mock("../../../api", () => ({
+vi.mock("@tm/core", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@tm/core")>()),
   createCapturedRun: createCapturedRunMock,
   terminateRun: terminateRunMock,
 }));

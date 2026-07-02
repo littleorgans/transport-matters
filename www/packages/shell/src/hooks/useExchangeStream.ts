@@ -1,18 +1,33 @@
 import { useQueryClient } from "@tanstack/react-query";
+import {
+  apiUrl,
+  applyExchangeStreamEvent,
+  exchangesPrefix,
+  type StreamSideEffects,
+} from "@tm/core";
 import { useEffect, useRef, useState } from "react";
-import { apiUrl } from "../api";
-import { exchangesPrefix } from "../lib/queryKeys";
 import { useUIStore } from "../stores/uiStore";
-import { applyExchangeStreamEvent } from "./exchangeStreamEvents";
 
 export type UseExchangeStreamOptions = {
   runId: string | null;
   baseUrl?: string;
 };
 
+// Binds the core stream primitive's side-effect port to the product uiStore.
+// Reads go through getState() at event time, so the object can be a module
+// constant without going stale.
+const uiStoreSideEffects: StreamSideEffects = {
+  getForwardingFlowId: () => useUIStore.getState().forwardingFlowId,
+  getPausedFlow: () => useUIStore.getState().pausedFlow,
+  getSelectedId: () => useUIStore.getState().selectedId,
+  bumpForwardingActivity: () => useUIStore.getState().bumpForwardingActivity(),
+  setForwardingFlowId: (id) => useUIStore.getState().setForwardingFlowId(id),
+};
+
 /**
  * Browser SSE pump. EventSource construction stays here; shared event
- * application lives in exchangeStreamEvents.
+ * application lives in the core exchange-stream primitive, wired to the
+ * uiStore through `StreamSideEffects`.
  */
 export function useExchangeStream({ runId, baseUrl }: UseExchangeStreamOptions): {
   connected: boolean;
@@ -47,6 +62,7 @@ export function useExchangeStream({ runId, baseUrl }: UseExchangeStreamOptions):
         setPausedFlow,
         clearPausedFlow,
         setSelectedId,
+        sideEffects: uiStoreSideEffects,
       });
 
     return () => source.close();

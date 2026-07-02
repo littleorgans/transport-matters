@@ -1,6 +1,6 @@
 import { act, screen } from "@testing-library/react";
+import { queryClient } from "@tm/core";
 import { afterEach, describe, expect, it } from "vitest";
-import { queryClient } from "@/lib/queryClient";
 import { installMockTransport, jsonResponse, restoreTransport } from "@/session-canvas/testUtils";
 import { type MountedWindowChrome, mountWindowChrome } from "./mountWindowChrome";
 

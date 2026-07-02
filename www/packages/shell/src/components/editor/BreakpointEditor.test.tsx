@@ -1,12 +1,14 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { exchangeKey } from "@tm/core";
+import type { PausedFlow } from "@tm/core/types/exchanges";
+import type { InternalRequest } from "@tm/core/types/ir";
+import type { Override } from "@tm/core/types/overrides";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as api from "../../api";
-import { exchangeKey } from "../../lib/queryKeys";
 import { useOverlaysStore } from "../../stores/overlaysStore";
 import { useUIStore } from "../../stores/uiStore";
-import type { InternalRequest, Override, PausedFlow } from "../../types";
 import { BreakpointEditor } from "./BreakpointEditor";
 
 vi.mock("../../api", () => ({

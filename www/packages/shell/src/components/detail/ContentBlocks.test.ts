@@ -1,5 +1,5 @@
+import type { Message, TextBlock } from "@tm/core/types/ir";
 import { describe, expect, it } from "vitest";
-import type { Message, TextBlock } from "../../types";
 import { countContentBlocks } from "./ContentBlocks";
 
 function text(t: string): TextBlock {

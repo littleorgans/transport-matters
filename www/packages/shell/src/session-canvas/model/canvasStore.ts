@@ -1,3 +1,4 @@
+import type { HarnessName } from "@tm/core/types/capabilities";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import {
@@ -13,7 +14,6 @@ import {
   type WorldRect,
 } from "../../engine";
 import { type LayoutParams, seedParams } from "../../engine/layout";
-import type { HarnessName } from "../../types";
 import { canvasCacheKey, importLegacyCanvasCache } from "../persistence/canvasCacheStorage";
 import { type CanvasLaunchContext, defaultCanvasId, parseCanvasLaunchContext } from "../route";
 import { PICKER_PANE_ID, paneIdForRef, titleForRef } from "../viewers/registry";

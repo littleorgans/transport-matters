@@ -1,6 +1,7 @@
+import type { SamplingParams } from "@tm/core/types/ir";
+import type { Override } from "@tm/core/types/overrides";
 import { useSyncedLocalValue } from "../../hooks/useSyncedLocalValue";
 import { hasOverride } from "../../lib/overrides";
-import type { Override, SamplingParams } from "../../types";
 import { SAMPLING_TARGETS, samplingValuesEqual } from "./samplingShared";
 
 interface UseSamplingOverridesArgs {

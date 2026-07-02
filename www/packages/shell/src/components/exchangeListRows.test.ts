@@ -1,6 +1,11 @@
+import type {
+  ExchangeTrack,
+  ExchangeTrackStub,
+  IndexEntry,
+  SpawnAnchor,
+} from "@tm/core/types/exchanges";
 import { describe, expect, it, vi } from "vitest";
 import { buildExchangeTrackTree } from "../hooks/useExchanges";
-import type { ExchangeTrack, ExchangeTrackStub, IndexEntry, SpawnAnchor } from "../types";
 import { makeEntry } from "./__test-utils__/exchangeList";
 import { type ExchangeListRow, projectAnchoredRows } from "./exchangeListRows";
 

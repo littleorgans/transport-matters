@@ -1,4 +1,4 @@
-import type { HarnessName } from "../../types";
+import type { HarnessName } from "@tm/core/types/capabilities";
 import { paneIdForRef, viewerIdForRef } from "../viewers/registry";
 import { createCapturedRunKey } from "./capturedRunStore";
 import type {

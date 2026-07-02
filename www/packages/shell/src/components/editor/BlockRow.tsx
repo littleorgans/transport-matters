@@ -1,9 +1,10 @@
+import { blockSummary } from "@tm/core";
+import type { ContentBlock } from "@tm/core/types/ir";
+import type { Override } from "@tm/core/types/overrides";
 import { useEditableOverride } from "../../hooks/useEditableOverride";
 import { ColorizedPre } from "../../lib/colorizeLine";
-import { blockSummary } from "../../lib/contentBlocks";
 import { overrideValue } from "../../lib/overrides";
 import { messageBlockTarget, toolResultTarget } from "../../lib/overrideTargets";
-import type { ContentBlock, Override } from "../../types";
 import { CompositeEditableRow, SizeDelta } from "../detail/atoms";
 import { TextOverrideEditor } from "./TextOverrideEditor";
 

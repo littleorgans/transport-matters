@@ -4,9 +4,16 @@
   "version": "0.1.0",
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./keybindings": "./src/keybindings/index.ts",
+    "./types/*": "./src/types/*.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@tanstack/react-query": "^5.97.0",
+    "react": "^19.2.5",
+    "zustand": "^5.0.12"
   }
 }

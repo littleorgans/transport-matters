@@ -1,6 +1,6 @@
+import { exchangeKey } from "@tm/core";
+import type { PausedFlow } from "@tm/core/types/exchanges";
 import { describe, expect, it } from "vitest";
-import { exchangeKey } from "../../lib/queryKeys";
-import type { PausedFlow } from "../../types";
 import { getExchangeDetailQueryKey, getReleasedFlowCompletion } from "./BreakpointEditorActions";
 
 const pausedFlow = {

@@ -1,10 +1,11 @@
+import type { ContentBlock, InternalRequest, Message } from "@tm/core/types/ir";
+import type { OverrideAuditEntry } from "@tm/core/types/overrides";
 import {
   parseMessageTarget,
   parseSystemIndex,
   parseToolName,
   parseToolResultId,
 } from "../../lib/overrideTargets";
-import type { ContentBlock, InternalRequest, Message, OverrideAuditEntry } from "../../types";
 
 /**
  * Structured diff between the original request IR and the curated IR the

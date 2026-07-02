@@ -1,8 +1,10 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
+import type { ExchangeDetail } from "@tm/core/types/exchanges";
+import type { InternalRequest, InternalResponse } from "@tm/core/types/ir";
+import type { OverrideAudit } from "@tm/core/types/overrides";
 import { beforeEach, describe, expect, it } from "vitest";
 import { useUIStore } from "../../stores/uiStore";
-import type { ExchangeDetail, InternalRequest, InternalResponse, OverrideAudit } from "../../types";
 import { InspectTab } from "./InspectTab";
 
 function makeRequest(overrides: Partial<InternalRequest> = {}): InternalRequest {

@@ -1,9 +1,9 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { resolveKeybindingPlatform } from "@tm/core/keybindings";
+import type { HarnessName } from "@tm/core/types/capabilities";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PaneId } from "../../engine";
 import { KeybindingEngineProvider } from "../../keybindings/engine";
-import { resolveKeybindingPlatform } from "../../keybindings/platform";
-import type { HarnessName } from "../../types";
 import { resetCanvasStoreForTests, useCanvasStore } from "../model/canvasStore";
 import type { CanvasLaunchContext } from "../route";
 import {

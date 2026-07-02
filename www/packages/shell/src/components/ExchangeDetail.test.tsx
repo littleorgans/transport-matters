@@ -14,7 +14,8 @@ const mockMeta = {
 };
 
 // vi.mock is hoisted — factory must not reference module-level vars
-vi.mock("../api", () => ({
+vi.mock("@tm/core", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@tm/core")>()),
   fetchExchange: vi.fn().mockResolvedValue({
     entry: {
       id: "exchange-001",
@@ -44,11 +45,11 @@ vi.mock("../api", () => ({
     turn: null,
     transport_diagnostics: [],
   }),
-  fetchOverrides: vi.fn().mockResolvedValue({ overrides: [], enabled: true }),
+  useMeta: () => ({ meta: mockMeta, isLoading: false }),
 }));
 
-vi.mock("../hooks/useMeta", () => ({
-  useMeta: () => ({ meta: mockMeta, isLoading: false }),
+vi.mock("../api", () => ({
+  fetchOverrides: vi.fn().mockResolvedValue({ overrides: [], enabled: true }),
 }));
 
 vi.mock("../lib/exportInspect", () => ({
@@ -87,7 +88,7 @@ describe("ExchangeDetail", () => {
   });
 
   it("renders Codex turn telemetry as a provider-specific header row", async () => {
-    const { fetchExchange } = await import("../api");
+    const { fetchExchange } = await import("@tm/core");
     vi.mocked(fetchExchange).mockResolvedValueOnce({
       entry: {
         id: "exchange-codex-header",
@@ -166,7 +167,7 @@ describe("ExchangeDetail", () => {
   });
 
   it("same-id re-render uses query cache — fetchExchange called once", async () => {
-    const { fetchExchange } = await import("../api");
+    const { fetchExchange } = await import("@tm/core");
     const qc = makeClient();
 
     const { rerender } = render(
@@ -195,7 +196,7 @@ describe("ExchangeDetail", () => {
   });
 
   it("different id triggers a new fetch", async () => {
-    const { fetchExchange } = await import("../api");
+    const { fetchExchange } = await import("@tm/core");
     const qc = makeClient();
 
     const { rerender } = render(
@@ -214,7 +215,7 @@ describe("ExchangeDetail", () => {
   });
 
   it("renders a transport tab when transport artifacts exist", async () => {
-    const { fetchExchange } = await import("../api");
+    const { fetchExchange } = await import("@tm/core");
     vi.mocked(fetchExchange).mockResolvedValueOnce({
       entry: {
         id: "exchange-transport",
@@ -412,7 +413,7 @@ describe("ExchangeDetail", () => {
   });
 
   it("renders open Codex turns from turn status without inventing terminal events", async () => {
-    const { fetchExchange } = await import("../api");
+    const { fetchExchange } = await import("@tm/core");
     vi.mocked(fetchExchange).mockResolvedValueOnce({
       entry: {
         id: "exchange-open",
@@ -527,7 +528,7 @@ describe("ExchangeDetail", () => {
   });
 
   it("shows a repaired timeline for legacy Codex exchanges repaired on read", async () => {
-    const { fetchExchange } = await import("../api");
+    const { fetchExchange } = await import("@tm/core");
     vi.mocked(fetchExchange).mockResolvedValueOnce({
       entry: {
         id: "exchange-legacy",
@@ -666,7 +667,7 @@ describe("ExchangeDetail", () => {
   });
 
   it("renders inspect fullscreen controls and invokes download", async () => {
-    const { fetchExchange } = await import("../api");
+    const { fetchExchange } = await import("@tm/core");
     const inspectDetail = {
       entry: {
         id: "exchange-fullscreen",

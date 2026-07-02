@@ -1,4 +1,4 @@
-import type { Override } from "../../types";
+import type { Override } from "@tm/core/types/overrides";
 
 export type OverrideHandler = (batch: Override[]) => void;
 

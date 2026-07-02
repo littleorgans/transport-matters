@@ -1,8 +1,8 @@
 import { Combobox } from "@ark-ui/react/combobox";
 import { Portal } from "@ark-ui/react/portal";
+import { agentRailStyle } from "@tm/core";
+import type { CanvasGestureModifier } from "@tm/core/keybindings";
 import { useEffect, useRef } from "react";
-import type { CanvasGestureModifier } from "../../keybindings/gestureModifier";
-import { agentRailStyle } from "../../lib/agentPalette";
 import { useCanvasStore } from "../model/canvasStore";
 import { type CommandRow, LAUNCHER_DOMAIN_COUNT, type LauncherCommand } from "./commandModel";
 import { FirstRunHint } from "./FirstRunHint";

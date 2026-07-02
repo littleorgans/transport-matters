@@ -1,6 +1,6 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
+import type { ExchangeDetail } from "@tm/core/types/exchanges";
 import { afterEach, describe, expect, it } from "vitest";
-import type { ExchangeDetail } from "../../../types";
 import {
   installMockTransport,
   jsonResponse,

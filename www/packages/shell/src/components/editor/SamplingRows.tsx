@@ -1,4 +1,4 @@
-import type { SamplingParams } from "../../types";
+import type { SamplingParams } from "@tm/core/types/ir";
 import { HelpBubble } from "../HelpBubble";
 import {
   type DisplayMode,

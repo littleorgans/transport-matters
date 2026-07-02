@@ -1,7 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
-import { fetchTurnContent } from "../api";
-import { turnContentKey } from "../lib/queryKeys";
-import type { TurnContent } from "../types";
+import { fetchTurnContent, turnContentKey } from "@tm/core";
+import type { TurnContent } from "@tm/core/types/exchanges";
 
 export function useTurnContent(runId: string | null, id: string) {
   return useQuery<TurnContent>({

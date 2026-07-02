@@ -4,19 +4,18 @@
  * editor sections, no breakpoint or override machinery, no store imports.
  */
 
-import type { ReactElement } from "react";
-import { blockKey } from "../../../lib/contentBlocks";
+import { blockKey } from "@tm/core";
+import type { CodexDerivedArtifactsState, CodexSemanticEvent } from "@tm/core/types/codex";
+import type { ExchangeDetail } from "@tm/core/types/exchanges";
 import type {
-  CodexDerivedArtifactsState,
-  CodexSemanticEvent,
   ContentBlock,
-  ExchangeDetail,
   InternalRequest,
   InternalResponse,
   Message,
   SystemPart,
   ToolDef,
-} from "../../../types";
+} from "@tm/core/types/ir";
+import type { ReactElement } from "react";
 import { TranscriptBlock } from "../transcript-chat/TranscriptMessage";
 import { CopyButton } from "./primitives/CopyButton";
 import { JsonTree } from "./primitives/JsonTree";

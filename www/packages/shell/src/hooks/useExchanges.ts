@@ -1,7 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { useMemo } from "react";
-import { fetchExchanges, MAX_ENTRIES } from "../api";
-import { exchangesKey } from "../lib/queryKeys";
+import { exchangesKey, fetchExchanges, MAX_ENTRIES } from "@tm/core";
 import type {
   ExchangeTrack,
   ExchangeTrackStub,
@@ -9,7 +7,8 @@ import type {
   SpawnAnchor,
   TrackRole,
   TrackStatus,
-} from "../types";
+} from "@tm/core/types/exchanges";
+import { useMemo } from "react";
 
 const EMPTY_TRACK_STUBS: ExchangeTrackStub[] = [];
 

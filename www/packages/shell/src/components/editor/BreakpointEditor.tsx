@@ -1,9 +1,9 @@
+import { useMeta } from "@tm/core";
+import type { PausedFlow } from "@tm/core/types/exchanges";
 import { useState } from "react";
 import { useFullscreen } from "../../hooks/useFullscreen";
-import { useMeta } from "../../hooks/useMeta";
 import { UNKNOWN_CWD, useOverlaysStore } from "../../stores/overlaysStore";
 import { useUIStore } from "../../stores/uiStore";
-import type { PausedFlow } from "../../types";
 import { FullscreenOverlay } from "../FullscreenOverlay";
 import { useBreakpointEditorActions } from "./BreakpointEditorActions";
 import { BreakpointEditorPanes } from "./BreakpointEditorPanes";

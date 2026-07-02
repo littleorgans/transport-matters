@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
+import type { SamplingParams } from "@tm/core/types/ir";
+import type { Override } from "@tm/core/types/overrides";
 import { vi } from "vitest";
-import type { Override, SamplingParams } from "../../types";
 import { SamplingSection } from "./SamplingSection";
 
 // Pristine reference the editor passes through as ``originalSampling``.

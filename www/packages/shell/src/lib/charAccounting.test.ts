@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import type { ContentBlock, InternalRequest, ToolDef } from "@tm/core/types/ir";
 import { describe, expect, it } from "vitest";
-import type { ContentBlock, InternalRequest, ToolDef } from "../types";
 import { canonicalBlockJson, canonicalJson, countCharsParts, toolChars } from "./charAccounting";
 
 interface NumberCase {

@@ -1,8 +1,12 @@
-import { isEditableTarget, isInteractiveTarget } from "../lib/domFocus";
+import {
+  type CanvasGestureModifier,
+  DEFAULT_CANVAS_GESTURE_MODIFIER,
+  isEditableTarget,
+  isInteractiveTarget,
+} from "@tm/core/keybindings";
 import { useKeymapStore } from "../stores/keymapStore";
-import { type CanvasGestureModifier, DEFAULT_CANVAS_GESTURE_MODIFIER } from "./gestureModifier";
 
-export { type CanvasGestureModifier, DEFAULT_CANVAS_GESTURE_MODIFIER } from "./gestureModifier";
+export { type CanvasGestureModifier, DEFAULT_CANVAS_GESTURE_MODIFIER } from "@tm/core/keybindings";
 
 export interface CanvasGestureSnapshot {
   modifier: CanvasGestureModifier;

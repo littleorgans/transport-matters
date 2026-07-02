@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { ContentBlock, ToolResultBlock } from "../types";
 import { blockKey, blockSummary } from "./contentBlocks";
+import type { ContentBlock, ToolResultBlock } from "./types/ir";
 
 function toolResult(overrides: Partial<ToolResultBlock> = {}): ToolResultBlock {
   return {

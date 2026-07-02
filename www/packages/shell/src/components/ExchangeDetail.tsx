@@ -1,13 +1,18 @@
 import { useQuery } from "@tanstack/react-query";
+import {
+  displayCwd,
+  displayModel,
+  exchangeKey,
+  fetchExchange,
+  formatClockTime,
+  useMeta,
+} from "@tm/core";
+import type { ExchangeDetail as ExchangeDetailPayload } from "@tm/core/types/exchanges";
+import type { TransportDiagnostic } from "@tm/core/types/transport";
 import { startTransition, useDeferredValue, useEffect, useState } from "react";
-import { fetchExchange } from "../api";
 import { useFullscreen } from "../hooks/useFullscreen";
-import { useMeta } from "../hooks/useMeta";
 import { downloadInspectHtml } from "../lib/exportInspect";
-import { displayCwd, displayModel, formatClockTime } from "../lib/formatting";
-import { exchangeKey } from "../lib/queryKeys";
 import { useUIStore } from "../stores/uiStore";
-import type { ExchangeDetail as ExchangeDetailPayload, TransportDiagnostic } from "../types";
 import { CodexTransportPanel } from "./detail/CodexTransportPanel";
 import { InspectTab } from "./detail/InspectTab";
 import { JsonView } from "./detail/JsonView";

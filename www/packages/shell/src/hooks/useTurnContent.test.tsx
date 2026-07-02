@@ -1,6 +1,6 @@
 import { renderHook, waitFor } from "@testing-library/react";
+import { turnContentKey } from "@tm/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { turnContentKey } from "../lib/queryKeys";
 import { makeWrapper } from "./useExchangeStream.testSupport";
 import { useTurnContent } from "./useTurnContent";
 

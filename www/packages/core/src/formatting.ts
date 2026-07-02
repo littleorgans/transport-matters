@@ -1,4 +1,4 @@
-import type { UsageStats } from "../types";
+import type { UsageStats } from "./types/ir";
 
 export const PREVIEW_MAX = 220;
 

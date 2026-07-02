@@ -36,6 +36,32 @@ describe("session-canvas import graph boundary", () => {
       ),
     ).toThrow(/Unresolvable local import/u);
   });
+
+  it("fails closed for deep package imports outside the exports map", () => {
+    // core/src/transport.ts exists on disk, but @tm/core exports only ".",
+    // "./keybindings", and "./types/*". Reaching it must throw, not resolve.
+    for (const specifier of ["@tm/core/transport", "@tm/core/src/transport", "@tm/shell"]) {
+      expect(() =>
+        resolveLocalSpecifier(
+          path.join(SESSION_CANVAS_ROOT, "viewers", "FuturePane.tsx"),
+          specifier,
+          SRC_ROOT,
+        ),
+      ).toThrow(/Unresolvable local import/u);
+    }
+  });
+
+  it("resolves the entrypoints the exports maps declare", () => {
+    for (const specifier of ["@tm/core", "@tm/core/keybindings", "@tm/core/types/ir", "@tm/host"]) {
+      expect(
+        resolveLocalSpecifier(
+          path.join(SESSION_CANVAS_ROOT, "viewers", "FuturePane.tsx"),
+          specifier,
+          SRC_ROOT,
+        ),
+      ).not.toBeNull();
+    }
+  });
 });
 
 function isProductionSource(file: string): boolean {

@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
+import type { Message } from "@tm/core/types/ir";
+import type { Override } from "@tm/core/types/overrides";
 import { describe, expect, it, vi } from "vitest";
-import type { Message, Override } from "../../types";
 import { MessagesSection } from "./MessagesSection";
 
 const messages: Message[] = [

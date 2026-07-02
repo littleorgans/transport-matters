@@ -1,4 +1,4 @@
-import { apiUrl, requestApiJson } from "../../api";
+import { apiUrl, requestApiJson } from "@tm/core";
 
 export interface TranscriptTextPart {
   type: "text";

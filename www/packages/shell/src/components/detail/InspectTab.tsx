@@ -1,24 +1,25 @@
+import { blockKey } from "@tm/core";
+import type {
+  CodexDerivedArtifactsDiagnostic,
+  CodexDerivedArtifactsState,
+} from "@tm/core/types/codex";
+import type { ExchangeDetail } from "@tm/core/types/exchanges";
+import type {
+  ContentBlock,
+  InternalRequest,
+  InternalResponse,
+  Message,
+  SystemPart,
+  ToolDef,
+} from "@tm/core/types/ir";
+import type { Override, OverrideAuditEntry } from "@tm/core/types/overrides";
 import { useCollapsibleSet } from "../../hooks/useCollapsibleSet";
-import { blockKey } from "../../lib/contentBlocks";
 import {
   messageBlockTarget,
   systemTarget,
   toolResultTarget,
   toolTarget,
 } from "../../lib/overrideTargets";
-import type {
-  CodexDerivedArtifactsDiagnostic,
-  CodexDerivedArtifactsState,
-  ContentBlock,
-  ExchangeDetail,
-  InternalRequest,
-  InternalResponse,
-  Message,
-  Override,
-  OverrideAuditEntry,
-  SystemPart,
-  ToolDef,
-} from "../../types";
 import { MessagesSection } from "../editor/MessagesSection";
 import { SystemSection } from "../editor/SystemSection";
 import { ToolsSection } from "../editor/ToolsSection";

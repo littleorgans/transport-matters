@@ -1,5 +1,6 @@
+import type { SpaceSummary, WorktreeSummary } from "@tm/core";
+import type { RuntimeTemplateSummary } from "@tm/core/types/runtimeTemplates";
 import { describe, expect, it } from "vitest";
-import type { RuntimeTemplateSummary, SpaceSummary, WorktreeSummary } from "../../types";
 import { makeSessionSummary } from "../testUtils";
 import {
   advanceGesture,

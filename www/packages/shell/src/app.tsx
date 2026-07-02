@@ -1,13 +1,13 @@
+import { useMeta } from "@tm/core";
+import type { ExchangeTrackStub, PausedFlow } from "@tm/core/types/exchanges";
 import { useEffect, useMemo } from "react";
 import { exchangeListSessionKey } from "./components/ExchangeList";
 import { useBreakpoint } from "./hooks/useBreakpoint";
 import { useExchangeStream } from "./hooks/useExchangeStream";
 import { useExchanges } from "./hooks/useExchanges";
-import { useMeta } from "./hooks/useMeta";
 import { useRouteHotkeys } from "./hooks/useRouteHotkeys";
 import { RouteLayout } from "./routeLayout";
 import { useUIStore } from "./stores/uiStore";
-import type { ExchangeTrackStub, PausedFlow } from "./types";
 
 const EMPTY_COLLAPSED_TRACK_IDS: string[] = [];
 

@@ -1,9 +1,10 @@
+import type { ToolDef } from "@tm/core/types/ir";
+import type { Override } from "@tm/core/types/overrides";
 import { useEffect, useMemo, useState } from "react";
 import { useEditableOverride } from "../../hooks/useEditableOverride";
 import { toolChars } from "../../lib/charAccounting";
 import { hasOverride, overrideValue } from "../../lib/overrides";
 import { toolTarget } from "../../lib/overrideTargets";
-import type { Override, ToolDef } from "../../types";
 import { SizeDelta } from "../detail/atoms";
 import { Toggle } from "../Toggle";
 import { noopOverride, overrideCountLabel } from "./overrideUtils";

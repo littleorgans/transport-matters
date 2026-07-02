@@ -1,4 +1,4 @@
-import { isRecord } from "../lib/isRecord";
+import { isRecord } from "@tm/core";
 
 /**
  * Legacy sceneId remap for scene collapses that keep the same schema version.

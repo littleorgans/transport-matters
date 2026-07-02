@@ -1,4 +1,4 @@
-import type { ExchangeTrack, IndexEntry } from "../types";
+import type { ExchangeTrack, IndexEntry } from "@tm/core/types/exchanges";
 
 export interface OrphanAnchorMeta {
   orphanAnchor: true;

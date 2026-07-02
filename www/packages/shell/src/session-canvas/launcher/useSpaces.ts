@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
-import { fetchSpaces } from "../../api";
-import type { SpaceSummary } from "../../types";
+import type { SpaceSummary } from "@tm/core";
+import { fetchSpaces } from "@tm/core";
 
 /**
  * Fetches detected Spaces for the Workdir launcher scope. Sticky like the

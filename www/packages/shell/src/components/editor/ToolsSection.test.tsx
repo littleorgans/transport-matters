@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
+import type { ToolDef } from "@tm/core/types/ir";
 import { describe, expect, it, vi } from "vitest";
-import type { ToolDef } from "../../types";
 import { ToolsSection } from "./ToolsSection";
 
 function makeTool(overrides: Partial<ToolDef> & { name: string }): ToolDef {

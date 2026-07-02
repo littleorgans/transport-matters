@@ -1,4 +1,4 @@
-import type { IndexEntry, ResStats } from "../../types";
+import type { IndexEntry, ResStats } from "@tm/core/types/exchanges";
 
 export const legacyClaudeRes: ResStats = {
   stop_reason: "end_turn",

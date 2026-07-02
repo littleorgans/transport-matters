@@ -1,7 +1,8 @@
+import { createFrontendPersistStorage } from "@tm/core";
+import type { Override } from "@tm/core/types/overrides";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import type { Override } from "../types";
-import { createFrontendPersistStorage, FRONTEND_STORAGE_KEYS } from "./persistence";
+import { FRONTEND_STORAGE_KEYS } from "./persistence";
 
 /**
  * Overlays are persistent, declarative transforms the user wants applied

@@ -1,4 +1,4 @@
-import type { ExchangeDetail } from "../../../src/types";
+import type { ExchangeDetail } from "@tm/core/types/exchanges";
 import { mockExchanges } from "./exchanges";
 
 // Exchange detail payloads.

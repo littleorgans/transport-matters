@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
+import type { TransportHttpArtifacts } from "@tm/core/types/transport";
 import { describe, expect, it } from "vitest";
-import type { TransportHttpArtifacts } from "../../types";
 import { CodexTransportPanel } from "./CodexTransportPanel";
 
 function httpTransport(overrides: Partial<TransportHttpArtifacts> = {}): TransportHttpArtifacts {

@@ -1,8 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
+import { exchangeKey, fetchExchange } from "@tm/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fetchExchange } from "../api";
-import { exchangeKey } from "../lib/queryKeys";
 import {
   detailResStats,
   makeExchangeDetail,
@@ -10,11 +9,9 @@ import {
 } from "./__test-utils__/exchangeDetail";
 import { ExchangeDetail } from "./ExchangeDetail";
 
-vi.mock("../api", () => ({
+vi.mock("@tm/core", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@tm/core")>()),
   fetchExchange: vi.fn(),
-}));
-
-vi.mock("../hooks/useMeta", () => ({
   useMeta: () => ({
     meta: {
       channel: "stable",

@@ -1,5 +1,5 @@
+import { isRecord } from "@tm/core";
 import { normalizeLayoutOrder } from "../../engine";
-import { isRecord } from "../../lib/isRecord";
 import { FRONTEND_STORAGE_KEYS } from "../../stores/persistence";
 import { isPaneContentRef, type PaneContentRef } from "../model/paneRecords";
 import type { RebuiltCanvasState } from "../persistence/canvasPanePersistence";

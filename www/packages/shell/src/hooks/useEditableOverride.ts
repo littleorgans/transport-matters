@@ -1,6 +1,6 @@
+import type { Override, OverrideKind } from "@tm/core/types/overrides";
 import { useLayoutEffect, useRef, useState } from "react";
 import { hasOverride, overrideValue } from "../lib/overrides";
-import type { Override, OverrideKind } from "../types";
 import { useSyncedLocalValue } from "./useSyncedLocalValue";
 
 interface UseEditableOverrideOptions {

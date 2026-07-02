@@ -1,6 +1,6 @@
+import { fetchCapabilities } from "@tm/core";
+import type { HarnessCapability, HarnessName } from "@tm/core/types/capabilities";
 import { create } from "zustand";
-import { fetchCapabilities } from "../../api";
-import type { HarnessCapability, HarnessName } from "../../types";
 
 // Single source of managed harness install state for the lab. The capability probe
 // (GET /api/capabilities) is stable for a process lifetime, so this store fetches

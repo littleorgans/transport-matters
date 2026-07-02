@@ -1,6 +1,6 @@
+import type { ExchangeTrackStub, IndexEntry, SpawnAnchor } from "@tm/core/types/exchanges";
 import { describe, expect, it } from "vitest";
 import { makeEntry } from "../components/__test-utils__/exchangeList";
-import type { ExchangeTrackStub, IndexEntry, SpawnAnchor } from "../types";
 import { buildExchangeTrackTree } from "./useExchanges";
 
 function spawnAnchor(exchangeId: string, toolUseId: string, order: number): SpawnAnchor {

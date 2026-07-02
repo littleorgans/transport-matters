@@ -1,5 +1,6 @@
+import type { ExchangeDetail } from "@tm/core/types/exchanges";
+import type { InternalRequest } from "@tm/core/types/ir";
 import { describe, expect, it } from "vitest";
-import type { ExchangeDetail, InternalRequest } from "../types";
 import {
   buildExportFilename,
   buildExportHtml,

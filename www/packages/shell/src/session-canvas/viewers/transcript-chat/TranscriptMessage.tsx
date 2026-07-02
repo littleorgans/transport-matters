@@ -1,6 +1,5 @@
-import { blockKey, blockSummary } from "../../../lib/contentBlocks";
-import { formatClockTime } from "../../../lib/formatting";
-import type { ContentBlock } from "../../../types";
+import { blockKey, blockSummary, formatClockTime } from "@tm/core";
+import type { ContentBlock } from "@tm/core/types/ir";
 import type { TranscriptMessageModel } from "../../stream/mapIrToChat";
 
 export interface TranscriptMessageProps {

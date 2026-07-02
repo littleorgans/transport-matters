@@ -1,5 +1,5 @@
-import { isRecord } from "../../lib/isRecord";
-import type { ContentBlock, ImageBlock, UnknownBlock } from "../../types";
+import { isRecord } from "@tm/core";
+import type { ContentBlock, ImageBlock, UnknownBlock } from "@tm/core/types/ir";
 import type { SessionEventView } from "../api/sessionEvents";
 
 export interface TranscriptMessageModel {

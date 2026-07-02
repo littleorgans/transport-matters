@@ -1,7 +1,7 @@
 import { QueryClientProvider } from "@tanstack/react-query";
+import { queryClient } from "@tm/core";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { queryClient } from "@/lib/queryClient";
 import { ChannelBadge } from "./ChannelBadge";
 import { WindowDragRegion } from "./WindowDragRegion";
 

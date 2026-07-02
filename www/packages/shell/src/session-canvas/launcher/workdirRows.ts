@@ -3,7 +3,7 @@
 // of their inputs; depends on commandModel only for row types (erased at runtime,
 // so the runtime dependency stays one-way: commandModel → workdirRows).
 
-import type { SpaceSummary, WorktreeSummary } from "../../types";
+import type { SpaceSummary, WorktreeSummary } from "@tm/core";
 import { locatorTail } from "../model/paneRecords";
 import type { CommandRow } from "./commandModel";
 

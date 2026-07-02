@@ -1,6 +1,6 @@
 import { fireEvent, screen } from "@testing-library/react";
+import type { Override } from "@tm/core/types/overrides";
 import { describe, expect, it } from "vitest";
-import type { Override } from "../../types";
 import { clickThinking, renderSection } from "./SamplingSection.testSupport";
 
 describe("SamplingSection thinking mode transitions", () => {

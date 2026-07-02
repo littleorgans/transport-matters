@@ -1,12 +1,12 @@
-import { describe, expect, it } from "vitest";
 import type {
   ContentBlock,
   InternalRequest,
   Message,
-  OverrideAuditEntry,
   SamplingParams,
   ToolDef,
-} from "../../types";
+} from "@tm/core/types/ir";
+import type { OverrideAuditEntry } from "@tm/core/types/overrides";
+import { describe, expect, it } from "vitest";
 import {
   detectMessageMutations,
   detectMessageMutationsStructural,

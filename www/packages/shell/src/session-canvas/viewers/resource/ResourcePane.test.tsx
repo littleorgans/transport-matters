@@ -1,8 +1,8 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
+import { resetApiTransport, setApiTransport } from "@tm/core";
 import type { ReactElement } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { resetApiTransport, setApiTransport } from "../../../api";
 import type { PaneRecord, ViewerProps } from "../../model/paneRecords";
 import { PROVENANCE_LABEL } from "../placeholder/provenance";
 import { ResourcePane, type ResourcePaneRef } from "./ResourcePane";

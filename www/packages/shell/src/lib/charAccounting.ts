@@ -1,5 +1,5 @@
-import type { ContentBlock, InternalRequest, ToolDef } from "../types";
-import { isRecord } from "./isRecord";
+import { isRecord } from "@tm/core";
+import type { ContentBlock, InternalRequest, ToolDef } from "@tm/core/types/ir";
 
 export interface CharBreakdown {
   system: number;

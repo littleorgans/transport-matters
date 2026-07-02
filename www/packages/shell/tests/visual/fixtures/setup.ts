@@ -1,6 +1,6 @@
 import type { Page, Route } from "@playwright/test";
+import type { IndexEntry } from "@tm/core/types/exchanges";
 import { FRONTEND_STORAGE_KEYS } from "../../../src/stores/persistence";
-import type { IndexEntry } from "../../../src/types";
 import { mockExchangeDetails } from "./details";
 import { mockExchanges, mockVisualRunId } from "./exchanges";
 import { mockPausedFlow } from "./pausedFlow";

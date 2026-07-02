@@ -1,4 +1,4 @@
-import { useMeta } from "@/hooks/useMeta";
+import { useMeta } from "@tm/core";
 import "./channel-badge.css";
 
 export function ChannelBadge() {
