@@ -5,8 +5,10 @@ the live request, edit in flight, release. Served at `/`.
 
 ## Boundaries
 
-- Depends on `@tm/core` only (plus npm UI deps). `@tm/host` chrome is
-  mounted by the composing entry point, not imported here.
+- Depends on `@tm/core` and `@tm/host` (plus npm UI deps). The package
+  owns its production entry (`index.html` + `src/main.tsx`): it mounts
+  the host chrome, imports `@tm/host/styles.css`, and builds into
+  `api/src/transport_matters/www/` at base `/`.
 - **Never imports `@tm/canvas`.** Enforced two ways in the shell's test
   suite: the import-graph boundary test (zero inspector to canvas edges,
   either direction) and the dep-lint test (neither product's package.json

@@ -111,16 +111,26 @@ jobs:
       - name: Unit tests
         run: pnpm --filter @tm/shell test
 
-      - name: Build
-        run: pnpm --filter @tm/shell build
+      - name: Build both product bundles
+        run: |
+          pnpm --filter @tm/inspector build
+          pnpm --filter @tm/canvas build
 
-      # Hand the built bundle off to the `package` job so it can embed
-      # it in the wheel without re-running pnpm.
-      - name: Upload www bundle
+      # Hand the built bundles off to the `package` job so it can embed
+      # them in the wheel without re-running pnpm.
+      - name: Upload www (inspector) bundle
         uses: actions/upload-artifact@v6
         with:
           name: www-bundle
           path: api/src/transport_matters/www/
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Upload canvas bundle
+        uses: actions/upload-artifact@v6
+        with:
+          name: canvas-bundle
+          path: api/src/transport_matters/canvas/
           if-no-files-found: error
           retention-days: 1
 
@@ -157,6 +167,13 @@ jobs:
 
       - name: Behavioral e2e (chromium)
         run: pnpm --filter @tm/shell exec playwright test --project=chromium
+
+      # The production topology in a real browser: each project builds its
+      # product bundle and serves it with `vite preview` at its production
+      # base (inspector at /, canvas at /canvas), catching per-entry CSS,
+      # host chrome, and theme bootstrap regressions the dev shell hides.
+      - name: Bundle matrix (inspector at /, canvas at /canvas)
+        run: pnpm --filter @tm/shell exec playwright test --project=matrix-inspector --project=matrix-canvas
 
   # ------------------------------------------------------------------- #
   # Desktop never ran in CI, so a broken Electron preload shipped green: #
@@ -215,7 +232,7 @@ jobs:
 
   # ------------------------------------------------------------------- #
   # Prove the release chain on every push: build the wheel, install it #
-  # in a clean venv, run the CLI, assert the www/ bundle is embedded.  #
+  # in a clean venv, run the CLI, assert both bundles are embedded.    #
   # Without this job there is a gap between "CI green" and "tag push   #
   # will release cleanly". With it, `git push --tags` is mechanical.   #
   # ------------------------------------------------------------------- #
@@ -230,38 +247,56 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
 
-      - name: Download www bundle
+      - name: Download www (inspector) bundle
         uses: actions/download-artifact@v7
         with:
           name: www-bundle
           path: /tmp/www-bundle
 
-      - name: Stage www bundle into the package
+      - name: Download canvas bundle
+        uses: actions/download-artifact@v7
+        with:
+          name: canvas-bundle
+          path: /tmp/canvas-bundle
+
+      - name: Stage frontend bundles into the package
         run: |
-          mkdir -p api/src/transport_matters/www
-          # upload-artifact@v4 preserves the LCA of the uploaded paths.
-          # Handle both possible layouts: flat (index.html at artifact
-          # root) or nested (www/index.html at artifact root). Either
-          # gives us the same result after staging.
-          if [ -f /tmp/www-bundle/index.html ]; then
-            cp -r /tmp/www-bundle/. api/src/transport_matters/www/
-          elif [ -f /tmp/www-bundle/www/index.html ]; then
-            cp -r /tmp/www-bundle/www/. api/src/transport_matters/www/
-          else
-            echo "::error::www bundle artifact has unexpected structure"
-            find /tmp/www-bundle -type f
-            exit 1
-          fi
-          if [ ! -f api/src/transport_matters/www/index.html ]; then
-            echo "::error::staging did not produce api/src/transport_matters/www/index.html"
-            exit 1
-          fi
-          ls -lh api/src/transport_matters/www/
+          for bundle in www canvas; do
+            mkdir -p "api/src/transport_matters/$bundle"
+            # upload-artifact@v4 preserves the LCA of the uploaded paths.
+            # Handle both possible layouts: flat (index.html at artifact
+            # root) or nested ($bundle/index.html at artifact root). Either
+            # gives us the same result after staging.
+            if [ -f "/tmp/$bundle-bundle/index.html" ]; then
+              cp -r "/tmp/$bundle-bundle/." "api/src/transport_matters/$bundle/"
+            elif [ -f "/tmp/$bundle-bundle/$bundle/index.html" ]; then
+              cp -r "/tmp/$bundle-bundle/$bundle/." "api/src/transport_matters/$bundle/"
+            else
+              echo "::error::$bundle bundle artifact has unexpected structure"
+              find "/tmp/$bundle-bundle" -type f
+              exit 1
+            fi
+            if [ ! -f "api/src/transport_matters/$bundle/index.html" ]; then
+              echo "::error::staging did not produce api/src/transport_matters/$bundle/index.html"
+              exit 1
+            fi
+            ls -lh "api/src/transport_matters/$bundle/"
+          done
 
       - name: Install uv
         uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
+
+      # The two-directory serving topology against the REAL staged bundles:
+      # /canvas and /canvas-lab serve the canvas SPA, / catch-all serves the
+      # inspector, missing assets 404 instead of falling back to the wrong
+      # SPA's index.html. The backend-test job skips these (no bundles).
+      - name: Static serving integration (two real bundles)
+        working-directory: api
+        run: |
+          uv sync --locked --dev
+          uv run pytest tests/integration/test_static_bundles.py -q
 
       - name: Build wheel + sdist
         working-directory: api
@@ -279,12 +314,14 @@ jobs:
           /tmp/smoke/bin/transport-matters claude --help > /dev/null
           /tmp/smoke/bin/transport-matters doctor --help > /dev/null
 
-      - name: Confirm embedded www/ inside the wheel
+      - name: Confirm embedded bundles inside the wheel
         working-directory: api
         run: |
           wheel=$(ls dist/transport_matters-*.whl | head -1)
-          if ! python -m zipfile -l "$wheel" | grep -q 'transport_matters/www/index.html'; then
-            echo "::error::wheel $wheel does not contain transport_matters/www/index.html"
-            python -m zipfile -l "$wheel"
-            exit 1
-          fi
+          for bundle in www canvas; do
+            if ! python -m zipfile -l "$wheel" | grep -q "transport_matters/$bundle/index.html"; then
+              echo "::error::wheel $wheel does not contain transport_matters/$bundle/index.html"
+              python -m zipfile -l "$wheel"
+              exit 1
+            fi
+          done

@@ -6,9 +6,13 @@ proactive overlay editing ahead of the request. Served at `/canvas`
 
 ## Boundaries
 
-- Depends on `@tm/core` only (plus npm UI deps: Ark, dnd-kit,
-  framer-motion, xterm, tinykeys). `@tm/host` chrome is mounted by the
-  composing entry point, not imported here.
+- Depends on `@tm/core` and `@tm/host` (plus npm UI deps: Ark, dnd-kit,
+  framer-motion, xterm, tinykeys). The package owns its production entry
+  (`index.html` + `src/main.tsx`): it mounts the host chrome, imports
+  `@tm/host/styles.css`, runs `bootstrapThemeTokens()`, and builds into
+  `api/src/transport_matters/canvas/` at base `/canvas`. `src/app.tsx`
+  forks `/canvas` vs `/canvas-lab` inside the bundle; the API serves both
+  pages from this bundle.
 - **Never imports `@tm/inspector`.** Enforced two ways in the shell's
   test suite: the import-graph boundary test (zero edges either
   direction) and the dep-lint test (neither product's package.json may
