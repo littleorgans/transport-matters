@@ -11,12 +11,40 @@ from transport_matters.codex.protocol import (
     CODEX_REFUSAL_TYPE,
 )
 
+# provider_data key stamped onto Messages/SystemParts whose wire item was
+# preserved raw. Carries the item's index in the original `input` array so the
+# serializer can re-pair each surviving item with exactly its own raw entry.
+# Synthetic (never on the wire): the serializer strips it before emitting.
+WIRE_INDEX_KEY = "tm_wire_index"
+
+# provider_extras marker set by the parser whenever it stamped preserved input
+# items. Its presence switches reconciliation from the legacy positional
+# heuristics to exact stamp matching, where a leftover preserved entry means
+# the operator deleted the owning item. The serializer pops it before emit.
+PRESERVED_INPUT_STAMPED_KEY = "input_item_raw_stamped"
+
 
 @dataclass(slots=True)
 class SerializedInputItem:
     kind: str
     payload: dict[str, Any]
     original_index: int | None = None
+    wire_index: int | None = None
+
+
+def stamp_wire_index(provider_data: dict[str, Any] | None, index: int) -> dict[str, Any]:
+    stamped = dict(provider_data or {})
+    stamped[WIRE_INDEX_KEY] = index
+    return stamped
+
+
+def wire_index_from_provider_data(provider_data: object) -> int | None:
+    if not isinstance(provider_data, dict):
+        return None
+    value = provider_data.get(WIRE_INDEX_KEY)
+    if isinstance(value, int) and not isinstance(value, bool):
+        return value
+    return None
 
 
 def parse_preserved_input_item_raw(raw: object) -> list[dict[str, Any]]:
@@ -39,7 +67,13 @@ def parse_preserved_input_item_raw(raw: object) -> list[dict[str, Any]]:
 def apply_preserved_input_items(
     items: list[SerializedInputItem],
     preserved_input: list[dict[str, Any]],
+    *,
+    stamped: bool = False,
 ) -> None:
+    if stamped:
+        _apply_stamped_preserved_input(items, preserved_input)
+        return
+
     pending_by_kind: dict[str, list[dict[str, Any]]] = {}
     for entry in preserved_input:
         kind = input_item_kind(entry["raw"])
@@ -65,6 +99,47 @@ def apply_preserved_input_items(
             "Codex serializer could not reconcile preserved raw input item "
             f"at index {leftover['index']}"
         )
+
+
+def _apply_stamped_preserved_input(
+    items: list[SerializedInputItem],
+    preserved_input: list[dict[str, Any]],
+) -> None:
+    """Exact-identity reconciliation for requests parsed with wire-index stamps.
+
+    Every preserved entry's owning Message/SystemPart was stamped with its wire
+    index at parse time, so matching is by index first. Items that lost their
+    stamp (an edit rebuilt the Message wholesale) fall back to the legacy kind
+    heuristics over the remaining entries. A leftover entry means the operator
+    deleted the owning item in the editor; it is dropped rather than treated as
+    a serializer fault.
+    """
+    pending_by_index = {entry["index"]: entry for entry in preserved_input}
+    fallback_items: list[SerializedInputItem] = []
+    for item in items:
+        if item.wire_index is None:
+            fallback_items.append(item)
+            continue
+        entry = pending_by_index.pop(item.wire_index, None)
+        if entry is None:
+            continue
+        item.payload = _merge_input_item_raw(item.kind, entry["raw"], item.payload)
+        item.original_index = entry["index"]
+
+    pending_by_kind: dict[str, list[dict[str, Any]]] = {}
+    for entry in sorted(pending_by_index.values(), key=lambda entry: entry["index"]):
+        kind = input_item_kind(entry["raw"])
+        pending_by_kind.setdefault(kind, []).append(entry)
+
+    for item in fallback_items:
+        candidates = pending_by_kind.get(item.kind)
+        if not candidates:
+            continue
+        raw_entry = _pop_matching_preserved_input(item.kind, item.payload, candidates)
+        if raw_entry is None:
+            continue
+        item.payload = _merge_input_item_raw(item.kind, raw_entry["raw"], item.payload)
+        item.original_index = raw_entry["index"]
 
 
 def input_item_kind(raw: object) -> str:
@@ -101,7 +176,11 @@ def looks_like_input_item(raw: object) -> bool:
     )
 
 
-def materialize_input_items(items: list[SerializedInputItem]) -> list[dict[str, Any]]:
+def materialize_input_items(
+    items: list[SerializedInputItem],
+    *,
+    allow_gaps: bool = False,
+) -> list[dict[str, Any]]:
     positioned: dict[int, dict[str, Any]] = {}
     unpositioned: list[dict[str, Any]] = []
 
@@ -124,6 +203,10 @@ def materialize_input_items(items: list[SerializedInputItem]) -> list[dict[str, 
             result.append(positioned[index])
             continue
         if cursor >= len(unpositioned):
+            # Deleting a preserved item leaves a hole in the wire index space;
+            # in stamped mode that hole is expected and simply collapses.
+            if allow_gaps:
+                continue
             raise ValueError("Codex serializer could not materialize input ordering")
         result.append(unpositioned[cursor])
         cursor += 1

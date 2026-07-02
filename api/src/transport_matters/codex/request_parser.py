@@ -4,6 +4,10 @@ import json
 from collections.abc import Callable
 from typing import Any
 
+from transport_matters.codex.preserved_raw import (
+    PRESERVED_INPUT_STAMPED_KEY,
+    stamp_wire_index,
+)
 from transport_matters.codex.protocol import (
     CODEX_IMAGE_TYPE,
     CODEX_INPUT_TEXT_TYPES,
@@ -70,6 +74,7 @@ def parse_codex_request(raw_body: bytes) -> InternalRequest:
     }
     if input_item_raw:
         extras["input_item_raw"] = input_item_raw
+        extras[PRESERVED_INPUT_STAMPED_KEY] = True
 
     return InternalRequest(
         model=normalise_model(str(data.get("model", "unknown")), CODEX_MODEL_PREFIX),
@@ -110,36 +115,58 @@ def _parse_input(
 
     for index, item in enumerate(items):
         if not isinstance(item, dict):
-            messages.append(Message(role="user", content=[UnknownBlock(raw={"value": item})]))
+            messages.append(
+                _stamp_message(
+                    Message(role="user", content=[UnknownBlock(raw={"value": item})]), index
+                )
+            )
             preserved_raw.append({"index": index, "raw": item})
             continue
 
         item_type = item.get("type")
         if item_type == "message" or "role" in item:
             added_system, added_messages, keep_raw = _parse_message_item(item)
+            if keep_raw:
+                added_system = [_stamp_system_part(part, index) for part in added_system]
+                added_messages = [_stamp_message(message, index) for message in added_messages]
+                preserved_raw.append({"index": index, "raw": item})
             system.extend(added_system)
             messages.extend(added_messages)
-            if keep_raw:
-                preserved_raw.append({"index": index, "raw": item})
             continue
         if item_type == "function_call":
-            messages.append(_parse_function_call(item))
+            message = _parse_function_call(item)
             if set(item) - {"type", "call_id", "name", "arguments"}:
+                message = _stamp_message(message, index)
                 preserved_raw.append({"index": index, "raw": item})
+            messages.append(message)
             continue
         if item_type in CODEX_TOOL_OUTPUT_ITEM_TYPES:
-            messages.append(_parse_function_call_output(item))
+            message = _parse_function_call_output(item)
             if _should_preserve_tool_output_raw(item):
+                message = _stamp_message(message, index)
                 preserved_raw.append({"index": index, "raw": item})
+            messages.append(message)
             continue
         if item_type == "reasoning":
             messages.append(_parse_reasoning_item(item))
             continue
 
-        messages.append(Message(role="assistant", content=[UnknownBlock(raw=item)]))
+        messages.append(
+            _stamp_message(Message(role="assistant", content=[UnknownBlock(raw=item)]), index)
+        )
         preserved_raw.append({"index": index, "raw": item})
 
     return system, messages, preserved_raw
+
+
+def _stamp_message(message: Message, index: int) -> Message:
+    return message.model_copy(
+        update={"provider_data": stamp_wire_index(message.provider_data, index)}
+    )
+
+
+def _stamp_system_part(part: SystemPart, index: int) -> SystemPart:
+    return part.model_copy(update={"provider_data": stamp_wire_index(part.provider_data, index)})
 
 
 def _should_preserve_tool_output_raw(item: dict[str, Any]) -> bool:
@@ -159,6 +186,13 @@ def _parse_message_item(
 
     if role in {"system", "developer"}:
         system, keep_raw = _parse_system_message_item(item, raw_content)
+        if not system:
+            # No parsable text parts: keep the whole item as an unknown-block
+            # message so the preserved raw entry retains a stamped owner and
+            # the item stays visible in the editor and re-emits verbatim.
+            # Without an owner, stamped reconciliation would misread the
+            # leftover entry as an operator deletion and drop the bytes.
+            return [], [Message(role=str(role), content=[UnknownBlock(raw=item)])], keep_raw
         return system, [], keep_raw
 
     if role == "assistant":

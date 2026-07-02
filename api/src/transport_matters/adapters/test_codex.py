@@ -18,7 +18,7 @@ from transport_matters.ir import (
     ToolResultBlock,
     ToolUseBlock,
 )
-from transport_matters.overrides import apply_overrides
+from transport_matters.overrides import Override, apply_overrides
 
 
 def _fixture_raw() -> bytes:
@@ -492,9 +492,28 @@ def test_outbound_request_edits_later_turn_fixture_without_reconciliation_error(
     assert developer_content[0]["text"] == "Keep the summary to two words."
 
 
-def test_outbound_request_raises_when_preserved_raw_items_cannot_be_reconciled() -> None:
+def test_outbound_request_honors_deleting_preserved_messages_when_stamped() -> None:
+    """Parsed IRs carry wire-index stamps, so dropping messages whose raw was
+    preserved is honored as an operator deletion instead of raising."""
     adapter = CodexAdapter()
     ir = adapter.inbound_request(_fixture_raw())
+
+    result = json.loads(
+        adapter.outbound_request(ir.model_copy(update={"messages": ir.messages[:3]})).decode()
+    )
+
+    payload = _fixture_payload()
+    fixture_input = cast("list[dict[str, object]]", payload["input"])
+    assert result["input"] == fixture_input[:3]
+
+
+def test_outbound_request_raises_when_unstamped_preserved_raw_cannot_be_reconciled() -> None:
+    """Legacy IRs without the parser's stamp marker keep the strict guard:
+    an unreconciled preserved entry is a serializer fault, not a deletion."""
+    adapter = CodexAdapter()
+    ir = adapter.inbound_request(_fixture_raw())
+    extras = dict(ir.provider_extras)
+    extras.pop("input_item_raw_stamped")
 
     with pytest.raises(
         ValueError,
@@ -504,6 +523,7 @@ def test_outbound_request_raises_when_preserved_raw_items_cannot_be_reconciled()
             ir.model_copy(
                 update={
                     "messages": ir.messages[:3],
+                    "provider_extras": extras,
                 }
             )
         )
@@ -610,3 +630,156 @@ def test_outbound_request_updates_refusal_text_without_emitting_text_key() -> No
             "annotations": [],
         }
     ]
+
+
+def _agent_home_fixture_raw() -> bytes:
+    fixture = (
+        Path(__file__).resolve().parents[3]
+        / "tests"
+        / "fixtures"
+        / "codex_response_create_agent_home.json"
+    )
+    return fixture.read_bytes()
+
+
+def _agent_home_fixture_payload() -> dict[str, object]:
+    payload = json.loads(_agent_home_fixture_raw())
+    assert isinstance(payload, dict)
+    return cast("dict[str, object]", payload)
+
+
+def test_outbound_request_round_trips_agent_home_fixture() -> None:
+    """Newer Codex CLIs stamp metadata passthrough on every input message, so
+    every message is preserved raw. The unedited round trip must re-emit the
+    wire verbatim, including the multi-part developer message as one item."""
+    payload = _agent_home_fixture_payload()
+    adapter = CodexAdapter()
+
+    ir = adapter.inbound_request(json.dumps(payload).encode())
+    result = json.loads(adapter.outbound_request(ir).decode())
+
+    assert result == payload
+
+
+def test_edit_deleting_trailing_preserved_message_serializes() -> None:
+    """Toggling off a preserved message's only block drops the whole message
+    in sanitize; the serializer must treat the leftover preserved raw entry as
+    an operator deletion, not a reconciliation failure."""
+    adapter = CodexAdapter()
+    ir = adapter.inbound_request(_agent_home_fixture_raw())
+
+    curated_ir, _ = apply_overrides(
+        [Override(kind="message_block_toggle", target="msg:1:blk:0", value=False)],
+        ir,
+    )
+    result = json.loads(adapter.outbound_request(curated_ir).decode())
+
+    payload = _agent_home_fixture_payload()
+    fixture_input = cast("list[dict[str, object]]", payload["input"])
+    assert result["input"] == [fixture_input[0], fixture_input[1]]
+
+
+def test_edit_deleting_leading_preserved_message_keeps_survivor_raw_pairing() -> None:
+    """Deleting the first user message must not re-pair the surviving user
+    message with the deleted message's preserved raw (FIFO cross-contamination):
+    the survivor keeps its own metadata passthrough and content."""
+    adapter = CodexAdapter()
+    ir = adapter.inbound_request(_agent_home_fixture_raw())
+
+    curated_ir, _ = apply_overrides(
+        [
+            Override(kind="message_block_toggle", target="msg:0:blk:0", value=False),
+            Override(kind="message_block_toggle", target="msg:0:blk:1", value=False),
+        ],
+        ir,
+    )
+    result = json.loads(adapter.outbound_request(curated_ir).decode())
+
+    payload = _agent_home_fixture_payload()
+    fixture_input = cast("list[dict[str, object]]", payload["input"])
+    assert result["input"] == [fixture_input[0], fixture_input[2]]
+
+
+def test_edit_text_of_preserved_message_round_trips_metadata() -> None:
+    """A plain text edit keeps every preserved message reconciled and re-emits
+    the metadata passthrough on each item."""
+    adapter = CodexAdapter()
+    ir = adapter.inbound_request(_agent_home_fixture_raw())
+
+    curated_ir, _ = apply_overrides(
+        [Override(kind="message_text", target="msg:1:blk:0", value="What time is edited")],
+        ir,
+    )
+    result = json.loads(adapter.outbound_request(curated_ir).decode())
+
+    payload = _agent_home_fixture_payload()
+    fixture_input = cast("list[dict[str, object]]", payload["input"])
+    edited_last = cast("dict[str, object]", json.loads(json.dumps(fixture_input[2])))
+    cast("list[dict[str, object]]", edited_last["content"])[0]["text"] = "What time is edited"
+    assert result["input"] == [fixture_input[0], fixture_input[1], edited_last]
+
+
+def test_edit_deleting_all_preserved_system_parts_serializes() -> None:
+    """Toggling off every part of a preserved developer message drops the
+    message; its leftover preserved raw entry is an operator deletion."""
+    adapter = CodexAdapter()
+    ir = adapter.inbound_request(_agent_home_fixture_raw())
+
+    # system[0] is the instructions part; system[1:3] are the developer parts.
+    curated_ir, _ = apply_overrides(
+        [
+            Override(kind="system_part_toggle", target="system:1", value=False),
+            Override(kind="system_part_toggle", target="system:2", value=False),
+        ],
+        ir,
+    )
+    result = json.loads(adapter.outbound_request(curated_ir).decode())
+
+    payload = _agent_home_fixture_payload()
+    fixture_input = cast("list[dict[str, object]]", payload["input"])
+    assert result["input"] == [fixture_input[1], fixture_input[2]]
+
+
+def _unparsable_developer_payload() -> dict[str, object]:
+    return {
+        "type": "response.create",
+        "model": "gpt-5.5",
+        "input": [
+            {
+                "role": "developer",
+                "content": [{"type": "input_audio", "audio": {"format": "wav"}}],
+            },
+            {"role": "user", "content": [{"type": "input_text", "text": "hello"}]},
+        ],
+        "tools": [],
+    }
+
+
+def test_round_trips_system_item_with_no_parsable_text_parts() -> None:
+    """A preserved developer item whose content yields no text parts must keep
+    an owner in the IR and re-emit verbatim, not vanish as a phantom deletion."""
+    payload = _unparsable_developer_payload()
+    adapter = CodexAdapter()
+
+    ir = adapter.inbound_request(json.dumps(payload).encode())
+    result = json.loads(adapter.outbound_request(ir).decode())
+
+    assert result == payload
+
+
+def test_edit_elsewhere_keeps_unparsable_system_item() -> None:
+    """Editing another message must not disturb the opaque developer item."""
+    payload = _unparsable_developer_payload()
+    adapter = CodexAdapter()
+    ir = adapter.inbound_request(json.dumps(payload).encode())
+
+    curated_ir, _ = apply_overrides(
+        [Override(kind="message_text", target="msg:1:blk:0", value="hello edited")],
+        ir,
+    )
+    result = json.loads(adapter.outbound_request(curated_ir).decode())
+
+    fixture_input = cast("list[dict[str, object]]", payload["input"])
+    assert result["input"][0] == fixture_input[0]
+    edited = cast("dict[str, object]", result["input"][1])
+    assert cast("list[dict[str, object]]", edited["content"])[0]["text"] == "hello edited"
