@@ -2,7 +2,7 @@ import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { useThemeStore } from "../stores/themeStore";
 import { presetTheme } from "../theme/presets";
-import { clearThemeTokens, useThemeTokens } from "./useThemeTokens";
+import { bootstrapThemeTokens, clearThemeTokens, useThemeTokens } from "./useThemeTokens";
 
 const rootStyle = () => document.documentElement.style;
 
@@ -19,6 +19,15 @@ afterEach(() => {
 });
 
 describe("useThemeTokens", () => {
+  it("can bootstrap tokens synchronously before a canvas route paints", () => {
+    useThemeStore.setState({ theme: openWater });
+
+    bootstrapThemeTokens();
+
+    expect(rootStyle().getPropertyValue("--color-accent")).not.toBe("");
+    expect(rootStyle().getPropertyValue("--pane-blur")).toBe("blur(18px) saturate(120%)");
+  });
+
   it("writes all seven tokens when a theme is active", () => {
     useThemeStore.setState({ theme: openWater });
     renderHook(() => useThemeTokens());

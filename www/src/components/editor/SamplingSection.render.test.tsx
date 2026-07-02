@@ -1,6 +1,16 @@
-import { screen, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { fireEvent, render, screen, within } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+import type { SamplingParams } from "../../types";
+import { SamplingSection } from "./SamplingSection";
 import { renderSection } from "./SamplingSection.testSupport";
+
+const BASE_SAMPLING: SamplingParams = {
+  max_tokens: 1024,
+  temperature: 0.7,
+  top_p: null,
+  top_k: null,
+  stop_sequences: [],
+};
 
 describe("SamplingSection render", () => {
   it("renders current sampling values from props", () => {
@@ -22,6 +32,29 @@ describe("SamplingSection render", () => {
     renderSection({ sampling: { stop_sequences: ["END", "STOP"] } });
 
     expect(screen.getByLabelText("Stop sequences")).toHaveValue("END, STOP");
+  });
+
+  it("resets stop sequence edits when upstream arrays have the same joined text", () => {
+    const onOverride = vi.fn();
+    const props = {
+      originalSampling: BASE_SAMPLING,
+      providerExtras: {},
+      originalProviderExtras: {},
+      overrides: [],
+      onOverride,
+    };
+    const { rerender } = render(
+      <SamplingSection {...props} sampling={{ ...BASE_SAMPLING, stop_sequences: ["a", "b"] }} />,
+    );
+
+    const input = screen.getByLabelText("Stop sequences");
+    fireEvent.change(input, { target: { value: "dirty" } });
+
+    rerender(
+      <SamplingSection {...props} sampling={{ ...BASE_SAMPLING, stop_sequences: ["a, b"] }} />,
+    );
+
+    expect(input).toHaveValue("a, b");
   });
 
   it("shows off selected when provider_extras has no thinking key", () => {

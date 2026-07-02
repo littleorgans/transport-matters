@@ -1,8 +1,9 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { isRecord } from "../lib/isRecord";
 import { normalizeLegacyTheme } from "../theme/migrate";
 import { presetTheme, presetThemes } from "../theme/presets";
-import { isRecord, type ThemeDefinition } from "../theme/types";
+import type { ThemeDefinition } from "../theme/types";
 import { createFrontendPersistStorage, FRONTEND_STORAGE_KEYS } from "./persistence";
 
 /**

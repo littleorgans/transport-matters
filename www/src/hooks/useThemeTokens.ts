@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useLayoutEffect } from "react";
 import { useThemeStore } from "../stores/themeStore";
 import { applyThemeTokens } from "../theme/theme";
 
@@ -19,24 +19,37 @@ const THEME_TOKEN_NAMES = [
 ] as const;
 
 export const clearThemeTokens = (): void => {
+  if (typeof document === "undefined") return;
   const root = document.documentElement.style;
   for (const name of THEME_TOKEN_NAMES) {
     root.removeProperty(name);
   }
 };
 
+export const bootstrapThemeTokens = (): void => {
+  if (typeof document === "undefined") return;
+  const theme = useThemeStore.getState().theme;
+  if (theme) {
+    applyThemeTokens(theme.settings);
+  } else {
+    clearThemeTokens();
+  }
+};
+
 /**
  * Keeps the :root theme tokens in sync with the active theme. Mount once at
- * the app root. Inline values win over the stylesheet defaults; clearing the
- * theme removes them so the defaults show through again.
+ * the canvas route boundary. Inline values win over the stylesheet defaults;
+ * clearing the theme removes them so the defaults show through again.
  */
 export function useThemeTokens(): void {
   const theme = useThemeStore((state) => state.theme);
-  useEffect(() => {
+  useLayoutEffect(() => {
+    if (typeof document === "undefined") return;
     if (theme) {
       applyThemeTokens(theme.settings);
     } else {
       clearThemeTokens();
     }
+    return clearThemeTokens;
   }, [theme]);
 }

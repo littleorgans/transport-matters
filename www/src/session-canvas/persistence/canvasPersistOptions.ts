@@ -1,6 +1,7 @@
 import type { PersistOptions } from "zustand/middleware";
 import type { EngineLayoutState, PaneId } from "../../engine";
 import { type LayoutParams, seedParams } from "../../engine/layout";
+import { isRecord } from "../../lib/isRecord";
 import { createFrontendPersistStorage } from "../../stores/persistence";
 import { INITIAL_STRATEGY_ID } from "../model/layoutPlanning";
 import type { CanvasPaneRef, DockedPane } from "../model/paneRecords";
@@ -114,5 +115,5 @@ function mergePersistedExtras<State extends PersistableCanvasState>(
 }
 
 function isPersistedExtras(value: unknown): value is PersistedCanvasExtras {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
+  return isRecord(value);
 }

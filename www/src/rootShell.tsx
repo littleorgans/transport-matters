@@ -1,6 +1,4 @@
 import { lazy, Suspense, useMemo } from "react";
-import { ChannelBadge } from "./components/ChannelBadge";
-import { useThemeTokens } from "./hooks/useThemeTokens";
 import { selectRootRoute } from "./session-canvas/route";
 
 /**
@@ -18,26 +16,20 @@ const CanvasLabRoute = lazy(() =>
     default: CanvasLabRoute,
   })),
 );
-const LegacyApp = lazy(() => import("./app").then(({ App }) => ({ default: App })));
+const InspectorApp = lazy(() => import("./app").then(({ App }) => ({ default: App })));
 
 const routeComponents = {
   canvas: SessionCanvasRoute,
   "canvas-lab": CanvasLabRoute,
-  legacy: LegacyApp,
+  inspector: InspectorApp,
 } as const;
 
 export function RootShell() {
-  useThemeTokens();
   const route = useMemo(() => selectRootRoute(window.location.pathname), []);
   const RouteComponent = routeComponents[route];
   return (
-    <>
-      <ChannelBadge />
-      <Suspense
-        fallback={<div className="min-h-screen bg-canvas text-txt">Loading Transport Matters</div>}
-      >
-        <RouteComponent />
-      </Suspense>
-    </>
+    <Suspense fallback={<div>Loading Transport Matters</div>}>
+      <RouteComponent />
+    </Suspense>
   );
 }

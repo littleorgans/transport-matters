@@ -10,8 +10,8 @@ import {
 describe("session canvas route", () => {
   it("selects the canvas only for the real canvas path", () => {
     expect(selectRootRoute("/canvas")).toBe("canvas");
-    expect(selectRootRoute("/")).toBe("legacy");
-    expect(selectRootRoute("/legacy")).toBe("legacy");
+    expect(selectRootRoute("/")).toBe("inspector");
+    expect(selectRootRoute("/inspector")).toBe("inspector");
   });
 
   it("parses launch context from query params", () => {

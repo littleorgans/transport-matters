@@ -178,10 +178,3 @@ export const cloneThemeDefinition = (theme: ThemeDefinition): ThemeDefinition =>
   ...theme,
   settings: cloneThemeSettings(theme.settings),
 });
-
-/**
- * Narrows an unknown to a plain object (excludes arrays and null). Shared by
- * the theme validation and migration seams so the guard has a single owner.
- */
-export const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);

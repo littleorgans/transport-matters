@@ -1,4 +1,5 @@
 import type { EngineLayoutState, PaneId } from "../../engine";
+import { isRecord } from "../../lib/isRecord";
 import type { HarnessName, SpaceId, WorktreeId } from "../../types";
 import type { CanvasLaunchContext } from "../route";
 
@@ -18,10 +19,6 @@ export function harnessLabel(provider: HarnessName): string {
 
 export function locatorTail(locator: string): string {
   return locator.split("/").filter(Boolean).at(-1) ?? locator;
-}
-
-export function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function isOptionalString(value: unknown): value is string | undefined {

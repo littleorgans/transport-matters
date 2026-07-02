@@ -8,7 +8,13 @@ import {
 } from "../../engine";
 import { registerLayout } from "../../engine/layout";
 import { planLayout } from "./layoutPlanning";
-import { emptyFraming, finalizePaneDismissal } from "./paneAffordances";
+import {
+  closeDockedPaneWithLifecycle,
+  emptyFraming,
+  finalizePaneDismissal,
+} from "./paneAffordances";
+import { registerLifecycle } from "./paneLifecycle";
+import type { DockedPane, PaneContentRef } from "./paneRecords";
 
 // Deterministic row-of-squares strategy so dismissal tests do not depend on
 // gridFit math: pane i sits at x = i * 110.
@@ -91,5 +97,48 @@ describe("finalizePaneDismissal camera", () => {
     // compare against the post-clamp stored viewport (the engine clamps scale)
     expect(plan.layout.viewport).toEqual(state.layout.viewport);
     expect(plan.fly).toBe("none");
+  });
+});
+
+describe("closeDockedPaneWithLifecycle", () => {
+  const terminalRef: PaneContentRef = {
+    kind: "terminal",
+    owner: "local",
+    label: "Terminal",
+    worktreeId: "wt-test",
+  };
+
+  it("removes from the latest docked snapshot after the close lifecycle runs", () => {
+    let docked: DockedPane[] = [{ paneId: "a", ref: terminalRef }];
+    registerLifecycle("terminal", {
+      onClose() {
+        docked = [...docked, { paneId: "late", ref: null }];
+      },
+    });
+
+    closeDockedPaneWithLifecycle(
+      () => docked,
+      (update) => {
+        docked = update(docked);
+      },
+      "a",
+    );
+
+    expect(docked.map((entry) => entry.paneId)).toEqual(["late"]);
+    registerLifecycle("terminal", {});
+  });
+
+  it("keeps close-disabled dock entries", () => {
+    let docked: DockedPane[] = [{ paneId: "protected", ref: null, closeDisabled: true }];
+
+    closeDockedPaneWithLifecycle(
+      () => docked,
+      (update) => {
+        docked = update(docked);
+      },
+      "protected",
+    );
+
+    expect(docked).toEqual([{ paneId: "protected", ref: null, closeDisabled: true }]);
   });
 });

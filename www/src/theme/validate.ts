@@ -1,3 +1,4 @@
+import { isRecord } from "../lib/isRecord";
 import { normalizeLegacyTheme } from "./migrate";
 import type { AmbientSceneRegistry, SceneParamId, ThemePhotoLookup } from "./types";
 import {
@@ -10,7 +11,6 @@ import {
   cloneThemeDefinition,
   type ImportErrorCause,
   type ImportResult,
-  isRecord,
   type OklchAccent,
   SHADOW_IDS,
   type ShadowId,

@@ -224,6 +224,17 @@ describe("canvasLabStore captured runs", () => {
     }
   });
 
+  it("closeDockedPane preserves close-disabled dock entries", () => {
+    useCanvasLabStore.setState({
+      docked: [{ paneId: "protected", ref: null, closeDisabled: true }],
+    });
+
+    store().closeDockedPane("protected");
+
+    expect(store().docked).toEqual([{ paneId: "protected", ref: null, closeDisabled: true }]);
+    expect(terminateRunMock).not.toHaveBeenCalled();
+  });
+
   it("minimizes and restores a non-captured pane (null ref) through the generic dock path", () => {
     vi.useFakeTimers();
     try {

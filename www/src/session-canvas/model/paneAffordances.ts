@@ -111,6 +111,27 @@ export function stripPaneFlyIntent(
   return stateTransition;
 }
 
+export function commitPaneAffordanceTransition(
+  transition: PaneAffordanceTransition | null,
+  commit: (transition: PaneAffordanceStateTransition) => void,
+  onFly?: (intent: PaneFlyIntent) => void,
+): void {
+  if (!transition) return;
+  onFly?.(transition.fly);
+  commit(stripPaneFlyIntent(transition));
+}
+
+export function closeDockedPaneWithLifecycle(
+  readDocked: () => readonly DockedPane[],
+  writeDocked: (update: (docked: readonly DockedPane[]) => DockedPane[]) => void,
+  paneId: PaneId,
+): void {
+  const entry = readDocked().find((candidate) => candidate.paneId === paneId);
+  if (!entry || entry.closeDisabled === true) return;
+  invokeDockedPaneCloseLifecycle(entry);
+  writeDocked((docked) => removeDockedPane(docked, paneId));
+}
+
 export function planAffordanceLayout(
   state: PaneAffordancePlanningState,
   fitToContent = state.fitToContent,
@@ -303,7 +324,7 @@ export function invokeDockedPaneRestoreLifecycle(entry: DockedPane): void {
   resolvePaneLifecycle(entry.ref).onRestore?.(entry.ref);
 }
 
-export function invokeDockedPaneCloseLifecycle(entry: DockedPane): void {
+function invokeDockedPaneCloseLifecycle(entry: DockedPane): void {
   if (!entry.ref) return;
   resolvePaneLifecycle(entry.ref).onClose?.(entry.ref);
 }

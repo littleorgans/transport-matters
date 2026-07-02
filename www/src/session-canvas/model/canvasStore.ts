@@ -21,10 +21,11 @@ import { createCanvasStorePersistOptions } from "./canvasStore.persistence";
 import { planExpandLayout } from "./expandLayout";
 import { DEFAULT_BOUNDS, INITIAL_STRATEGY_ID } from "./layoutPlanning";
 import {
+  closeDockedPaneWithLifecycle,
+  commitPaneAffordanceTransition,
   dismissPane,
   emptyFraming,
   type FramingState,
-  invokeDockedPaneCloseLifecycle,
   invokeDockedPaneRestoreLifecycle,
   type PaneDismissalPlan,
   type PaneDismissMode,
@@ -166,10 +167,11 @@ export const useCanvasStore = create<CanvasStoreState>()(
       },
 
       closeDockedPane(paneId) {
-        const entry = get().docked.find((docked) => docked.paneId === paneId);
-        if (!entry || entry.closeDisabled) return;
-        invokeDockedPaneCloseLifecycle(entry);
-        set((state) => ({ ...state, docked: removeDockedPane(state.docked, paneId) }));
+        closeDockedPaneWithLifecycle(
+          () => get().docked,
+          (update) => set((state) => ({ docked: update(state.docked) })),
+          paneId,
+        );
       },
 
       dropCapturedRunPane(runKey) {
@@ -207,9 +209,7 @@ export const useCanvasStore = create<CanvasStoreState>()(
       },
 
       expandPane(paneId) {
-        const transition = planPaneExpand(get(), paneId, planExpandLayout);
-        if (!transition) return;
-        set(stripPaneFlyIntent(transition));
+        commitPaneAffordanceTransition(planPaneExpand(get(), paneId, planExpandLayout), set);
       },
 
       focusPane(paneId) {
@@ -221,9 +221,7 @@ export const useCanvasStore = create<CanvasStoreState>()(
       },
 
       framePane(paneId) {
-        const transition = planPaneFrame(get(), paneId);
-        if (!transition) return;
-        set(stripPaneFlyIntent(transition));
+        commitPaneAffordanceTransition(planPaneFrame(get(), paneId), set);
       },
 
       initializeCanvas(launch) {
@@ -385,15 +383,11 @@ export const useCanvasStore = create<CanvasStoreState>()(
       },
 
       unexpand() {
-        const transition = planPaneUnexpand(get(), planExpandLayout);
-        if (!transition) return;
-        set(stripPaneFlyIntent(transition));
+        commitPaneAffordanceTransition(planPaneUnexpand(get(), planExpandLayout), set);
       },
 
       unframe() {
-        const transition = planPaneUnframe(get());
-        if (!transition) return;
-        set(stripPaneFlyIntent(transition));
+        commitPaneAffordanceTransition(planPaneUnframe(get()), set);
       },
     }),
     // The persist options are the 2nd arg to persist(), outside the (set, get)

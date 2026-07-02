@@ -12,9 +12,10 @@ import { sanitizeParam, seedParams } from "../../engine/layout";
 import { useCapturedRunStore } from "../model/capturedRunStore";
 import { planExpandLayout } from "../model/expandLayout";
 import {
+  closeDockedPaneWithLifecycle,
+  commitPaneAffordanceTransition,
   dismissPane,
   emptyFraming,
-  invokeDockedPaneCloseLifecycle,
   invokeDockedPaneRestoreLifecycle,
   type PaneDismissalPlan,
   type PaneDismissMode,
@@ -253,10 +254,11 @@ export const useCanvasLabStore = create<CanvasLabState>()(
         // Close/kill a docked pane in place, no restore. It is already off the canvas, so there is no
         // node teardown: just run its onClose hook (captured-run -> stopRun, POST /terminate; plain panes have
         // none, same seam as an on-canvas close) and drop the dock entry.
-        const entry = get().docked.find((docked) => docked.paneId === paneId);
-        if (!entry) return;
-        invokeDockedPaneCloseLifecycle(entry);
-        set((state) => ({ docked: removeDockedPane(state.docked, paneId) }));
+        closeDockedPaneWithLifecycle(
+          () => get().docked,
+          (update) => set((state) => ({ docked: update(state.docked) })),
+          paneId,
+        );
       },
 
       focusPane(paneId) {
@@ -316,31 +318,27 @@ export const useCanvasLabStore = create<CanvasLabState>()(
       },
 
       expandPane(paneId) {
-        const transition = planPaneExpand(get(), paneId, planExpandLayout);
-        if (!transition) return;
-        startFlyForIntent(transition.fly);
-        set(stripPaneFlyIntent(transition));
+        commitPaneAffordanceTransition(
+          planPaneExpand(get(), paneId, planExpandLayout),
+          set,
+          startFlyForIntent,
+        );
       },
 
       unexpand() {
-        const transition = planPaneUnexpand(get(), planExpandLayout);
-        if (!transition) return;
-        startFlyForIntent(transition.fly);
-        set(stripPaneFlyIntent(transition));
+        commitPaneAffordanceTransition(
+          planPaneUnexpand(get(), planExpandLayout),
+          set,
+          startFlyForIntent,
+        );
       },
 
       framePane(paneId) {
-        const transition = planPaneFrame(get(), paneId);
-        if (!transition) return;
-        startFlyForIntent(transition.fly);
-        set(stripPaneFlyIntent(transition));
+        commitPaneAffordanceTransition(planPaneFrame(get(), paneId), set, startFlyForIntent);
       },
 
       unframe() {
-        const transition = planPaneUnframe(get());
-        if (!transition) return;
-        startFlyForIntent(transition.fly);
-        set(stripPaneFlyIntent(transition));
+        commitPaneAffordanceTransition(planPaneUnframe(get()), set, startFlyForIntent);
       },
 
       resetView() {

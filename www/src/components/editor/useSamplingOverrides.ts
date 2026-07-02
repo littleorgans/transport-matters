@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useSyncedLocalValue } from "../../hooks/useSyncedLocalValue";
 import { hasOverride } from "../../lib/overrides";
 import type { Override, SamplingParams } from "../../types";
 import { SAMPLING_TARGETS, samplingValuesEqual } from "./samplingShared";
@@ -28,29 +28,21 @@ export function useSamplingOverrides({
   overrides,
   onOverride,
 }: UseSamplingOverridesArgs) {
-  const [localMaxTokens, setLocalMaxTokens] = useState(String(sampling.max_tokens));
-  const [localTemp, setLocalTemp] = useState(
+  const [localMaxTokens, setLocalMaxTokens] = useSyncedLocalValue(String(sampling.max_tokens));
+  const [localTemp, setLocalTemp] = useSyncedLocalValue(
     sampling.temperature == null ? "" : String(sampling.temperature),
   );
-  const [localTopP, setLocalTopP] = useState(sampling.top_p == null ? "" : String(sampling.top_p));
-  const [localTopK, setLocalTopK] = useState(sampling.top_k == null ? "" : String(sampling.top_k));
-  const [localStopSeqs, setLocalStopSeqs] = useState(sampling.stop_sequences.join(", "));
-
-  useEffect(() => {
-    setLocalMaxTokens(String(sampling.max_tokens));
-  }, [sampling.max_tokens]);
-  useEffect(() => {
-    setLocalTemp(sampling.temperature == null ? "" : String(sampling.temperature));
-  }, [sampling.temperature]);
-  useEffect(() => {
-    setLocalTopP(sampling.top_p == null ? "" : String(sampling.top_p));
-  }, [sampling.top_p]);
-  useEffect(() => {
-    setLocalTopK(sampling.top_k == null ? "" : String(sampling.top_k));
-  }, [sampling.top_k]);
-  useEffect(() => {
-    setLocalStopSeqs(sampling.stop_sequences.join(", "));
-  }, [sampling.stop_sequences]);
+  const [localTopP, setLocalTopP] = useSyncedLocalValue(
+    sampling.top_p == null ? "" : String(sampling.top_p),
+  );
+  const [localTopK, setLocalTopK] = useSyncedLocalValue(
+    sampling.top_k == null ? "" : String(sampling.top_k),
+  );
+  const stopSequenceText = sampling.stop_sequences.join(", ");
+  const [localStopSeqs, setLocalStopSeqs] = useSyncedLocalValue(
+    stopSequenceText,
+    JSON.stringify(sampling.stop_sequences),
+  );
 
   const isFieldModified = (field: keyof SamplingParams): boolean =>
     hasOverride(overrides, "sampling_set", SAMPLING_TARGETS[field]);

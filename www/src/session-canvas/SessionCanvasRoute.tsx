@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { getRun, type RunView } from "../api";
 import { useMeta } from "../hooks/useMeta";
+import { useThemeTokens } from "../hooks/useThemeTokens";
 import { KeybindingEngineProvider } from "../keybindings/engine";
 import { CanvasSurface } from "./components/CanvasSurface";
 import { useLaunchSession } from "./hooks/useLaunchSession";
@@ -13,6 +14,7 @@ type CapturedRunReconciliation = "pending" | "released";
 const CAPTURED_RUN_RECONCILIATION_TIMEOUT_MS = 3_000;
 
 export function SessionCanvasRoute() {
+  useThemeTokens();
   const search = typeof window === "undefined" ? "" : window.location.search;
   const launch = useMemo(() => parseCanvasLaunchContext(search), [search]);
   const stress = useMemo(() => isStressCanvas(search), [search]);

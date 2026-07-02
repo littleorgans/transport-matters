@@ -1,6 +1,7 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { hasOverride, overrideValue } from "../lib/overrides";
 import type { Override, OverrideKind } from "../types";
+import { useSyncedLocalValue } from "./useSyncedLocalValue";
 
 interface UseEditableOverrideOptions {
   originalValue: string;
@@ -26,13 +27,8 @@ export function useEditableOverride({
   const isModified = textOverride !== undefined;
 
   const [expanded, setExpanded] = useState(initialExpanded ?? false);
-  const [localText, setLocalText] = useState(textOverride ?? originalValue);
+  const [localText, setLocalText] = useSyncedLocalValue(textOverride ?? originalValue);
   const textRef = useRef<HTMLTextAreaElement>(null);
-
-  // Sync local state when override changes externally (e.g. reset)
-  useEffect(() => {
-    setLocalText(textOverride ?? originalValue);
-  }, [textOverride, originalValue]);
 
   // Auto-size textarea. useLayoutEffect runs synchronously after DOM
   // commit and before paint, so the textarea hits its correct height
