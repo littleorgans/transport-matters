@@ -1,5 +1,4 @@
-import { useCallback, useState } from "react";
-import { useFullscreenKeybindings } from "../keybindings/engine";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 interface UseFullscreenOptions {
   onClose?: () => void;
@@ -11,6 +10,14 @@ interface FullscreenState {
   closeFullscreen: () => void;
 }
 
+/**
+ * Inspector-owned fullscreen state with a window-level Escape fallback.
+ *
+ * The inspector renders outside any keybinding engine, so Escape handling
+ * is a plain window listener active only while fullscreen is open. The
+ * canvas has its own engine-registered variant in
+ * `session-canvas/hooks/useFullscreen.ts`.
+ */
 export function useFullscreen({ onClose }: UseFullscreenOptions = {}): FullscreenState {
   const [isFullscreen, setIsFullscreen] = useState(false);
 
@@ -21,7 +28,17 @@ export function useFullscreen({ onClose }: UseFullscreenOptions = {}): Fullscree
     onClose?.();
   }, [onClose]);
 
-  useFullscreenKeybindings({ close: closeFullscreen, isOpen: () => isFullscreen });
+  const closeRef = useRef(closeFullscreen);
+  closeRef.current = closeFullscreen;
+
+  useEffect(() => {
+    if (!isFullscreen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") closeRef.current();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [isFullscreen]);
 
   return {
     isFullscreen,

@@ -22,7 +22,7 @@ import {
 } from "@tm/core";
 import type { ExchangeDetail } from "@tm/core/types/exchanges";
 import { type ReactElement, useState } from "react";
-import { useFullscreen } from "../../../hooks/useFullscreen";
+import { useFullscreen } from "../../hooks/useFullscreen";
 import {
   ExchangeInspectPanel,
   ExchangeJsonPanel,
