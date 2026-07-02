@@ -110,6 +110,9 @@ importers:
       react:
         specifier: ^19.2.5
         version: 19.2.5
+      react-dom:
+        specifier: ^19.2.5
+        version: 19.2.5(react@19.2.5)
       tinykeys:
         specifier: ^4.0.0
         version: 4.0.0
