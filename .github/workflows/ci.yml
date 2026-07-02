@@ -82,38 +82,37 @@ jobs:
   frontend:
     name: frontend
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: www
     steps:
       - uses: actions/checkout@v5
 
       - name: Install pnpm
         uses: pnpm/action-setup@v5
-        with:
-          package_json_file: www/package.json
 
       - name: Install Node
         uses: actions/setup-node@v5
         with:
           node-version: 20
           cache: pnpm
-          cache-dependency-path: www/pnpm-lock.yaml
+          cache-dependency-path: pnpm-lock.yaml
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile --ignore-scripts
 
       - name: Lint (biome)
-        run: pnpm lint
+        run: pnpm --filter @tm/shell lint
 
       - name: Type check
-        run: pnpm typecheck
+        run: |
+          pnpm --filter @tm/shell typecheck
+          pnpm --filter @tm/core typecheck
+          pnpm --filter @tm/inspector typecheck
+          pnpm --filter @tm/canvas typecheck
 
       - name: Unit tests
-        run: pnpm test
+        run: pnpm --filter @tm/shell test
 
       - name: Build
-        run: pnpm build
+        run: pnpm --filter @tm/shell build
 
       # Hand the built bundle off to the `package` job so it can embed
       # it in the wheel without re-running pnpm.
@@ -137,32 +136,27 @@ jobs:
   frontend-e2e:
     name: frontend e2e
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: www
     steps:
       - uses: actions/checkout@v5
 
       - name: Install pnpm
         uses: pnpm/action-setup@v5
-        with:
-          package_json_file: www/package.json
 
       - name: Install Node
         uses: actions/setup-node@v5
         with:
           node-version: 20
           cache: pnpm
-          cache-dependency-path: www/pnpm-lock.yaml
+          cache-dependency-path: pnpm-lock.yaml
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile --ignore-scripts
 
       - name: Install Playwright chromium
-        run: pnpm exec playwright install --with-deps chromium
+        run: pnpm --filter @tm/shell exec playwright install --with-deps chromium
 
       - name: Behavioral e2e (chromium)
-        run: pnpm exec playwright test --project=chromium
+        run: pnpm --filter @tm/shell exec playwright test --project=chromium
 
   # ------------------------------------------------------------------- #
   # Desktop never ran in CI, so a broken Electron preload shipped green: #
@@ -175,35 +169,30 @@ jobs:
   desktop:
     name: desktop
     runs-on: ubuntu-22.04
-    defaults:
-      run:
-        working-directory: desktop
     steps:
       - uses: actions/checkout@v5
 
       - name: Install pnpm
         uses: pnpm/action-setup@v5
-        with:
-          package_json_file: desktop/package.json
 
       - name: Install Node
         uses: actions/setup-node@v5
         with:
           node-version: 20
           cache: pnpm
-          cache-dependency-path: desktop/pnpm-lock.yaml
+          cache-dependency-path: pnpm-lock.yaml
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile --ignore-scripts
 
       - name: Type check
-        run: pnpm typecheck
+        run: pnpm --filter transport-matters-desktop typecheck
 
       - name: Unit tests
-        run: pnpm test
+        run: pnpm --filter transport-matters-desktop test
 
       - name: Build (emits + asserts the CommonJS preload)
-        run: pnpm build
+        run: pnpm --filter transport-matters-desktop build
 
       # Electron needs a virtual display and GUI libraries to launch
       # headlessly. The packaged smoke loads the real sandboxed preload, so
@@ -222,7 +211,7 @@ jobs:
             libasound2
 
       - name: Package smoke under xvfb (proves the preload executes)
-        run: xvfb-run --auto-servernum --server-args="-screen 0 1280x900x24" pnpm package:smoke
+        run: xvfb-run --auto-servernum --server-args="-screen 0 1280x900x24" pnpm --filter transport-matters-desktop package:smoke
 
   # ------------------------------------------------------------------- #
   # Prove the release chain on every push: build the wheel, install it #

@@ -1,0 +1,11 @@
+{
+  "name": "@tm/host",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "dependencies": {
+    "@tanstack/react-query": "^5.97.0",
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5"
+  }
+}

@@ -1,0 +1,44 @@
+set shell := ["bash", "-cu"]
+
+default: dev
+
+# ------------- dev/build/run -------------
+
+dev:
+    pnpm dev
+
+build:
+    pnpm build
+
+start:
+    pnpm preview
+
+# ------------- quality gates -------------
+
+test:
+    pnpm test
+
+test-visual:
+    pnpm test:visual
+
+test-e2e:
+    pnpm test:e2e
+
+test-visual-update:
+    pnpm test:visual:update
+
+typecheck:
+    pnpm typecheck
+
+lint:
+    pnpm lint:fix
+
+format:
+    pnpm format
+
+check: format lint typecheck
+
+# ------------- utilities -------------
+
+clean:
+    pnpm clean

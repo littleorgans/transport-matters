@@ -66,3 +66,11 @@ restart.
 `transport-matters doctor` is the first command when something feels wrong.
 
 See [PROJECT.md](./PROJECT.md) for more.
+
+## WWW workspace naming
+
+`www/` now has three meanings during the separation work:
+
+- `www/packages/` is the pnpm workspace source package tree.
+- `www/packages/shell/` is the retired single Vite app, now a dev shell package that still emits one bundle in Phase 3.
+- `api/src/transport_matters/www/` is the built browser bundle embedded in the Python package and served at `/`.

@@ -36,7 +36,7 @@ command -v node >/dev/null || { echo "error: node not on PATH" >&2; exit 2; }
 command -v pnpm >/dev/null || { echo "error: pnpm not on PATH" >&2; exit 2; }
 
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
-www_dir="$repo_root/www"
+www_dir="$repo_root/www/packages/shell"
 [[ -d "$www_dir" ]] || { echo "error: $www_dir missing" >&2; exit 2; }
 
 channel="${TRANSPORT_MATTERS_CHANNEL:-stable}"
@@ -89,8 +89,8 @@ fi
 
 window_name="transport-matters-$client"
 api_cmd="cd $(shell_quote "$repo_root") && transport-matters $client --debug --proxy-port $proxy_port --web-port $web_port $(shell_quote "$target_path")"
-www_cmd="cd $(shell_quote "$www_dir") && TRANSPORT_MATTERS_DEV_API_BASE_URL=$(shell_quote "$dev_api_base_url") pnpm dev"
+www_cmd="cd $(shell_quote "$repo_root") && TRANSPORT_MATTERS_DEV_API_BASE_URL=$(shell_quote "$dev_api_base_url") pnpm --filter @tm/shell dev"
 
 tmux new-window -n "$window_name" -c "$repo_root" "$api_cmd"
-tmux split-window -v -p 20 -t "$window_name" -c "$www_dir" "$www_cmd"
+tmux split-window -v -p 20 -t "$window_name" -c "$repo_root" "$www_cmd"
 tmux select-pane -t "$window_name".0

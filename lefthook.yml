@@ -1,42 +1,40 @@
-# EXAMPLE USAGE:
-#
-#   Refer for explanation to following link:
-#   https://lefthook.dev/configuration/
-#
-# pre-push:
-#   jobs:
-#     - name: packages audit
-#       tags:
-#         - frontend
-#         - security
-#       run: yarn audit
-#
-#     - name: gems audit
-#       tags:
-#         - backend
-#         - security
-#       run: bundle audit
-#
-# pre-commit:
-#   parallel: true
-#   jobs:
-#     - run: yarn eslint {staged_files}
-#       glob: "*.{js,ts,jsx,tsx}"
-#
-#     - name: rubocop
-#       glob: "*.rb"
-#       exclude:
-#         - config/application.rb
-#         - config/routes.rb
-#       run: bundle exec rubocop --force-exclusion {all_files}
-#
-#     - name: govet
-#       files: git ls-files -m
-#       glob: "*.go"
-#       run: go vet {files}
-#
-#     - script: "hello.js"
-#       runner: node
-#
-#     - script: "hello.go"
-#       runner: go run
+pre-commit:
+  parallel: true
+  commands:
+    lint:
+      glob: "www/packages/**/*.{ts,tsx,js,jsx,json,css}"
+      run: |
+        bash -c '
+          set -euo pipefail
+          files=()
+          for file in "$@"; do
+            case "$file" in
+              www/packages/shell/*) files+=("${file#www/packages/shell/}") ;;
+              www/packages/host/*) files+=("../host/${file#www/packages/host/}") ;;
+              www/packages/core/*) files+=("../core/${file#www/packages/core/}") ;;
+              www/packages/inspector/*) files+=("../inspector/${file#www/packages/inspector/}") ;;
+              www/packages/canvas/*) files+=("../canvas/${file#www/packages/canvas/}") ;;
+            esac
+          done
+          if [ "${#files[@]}" -gt 0 ]; then
+            cd www/packages/shell
+            pnpm biome check --no-errors-on-unmatched --files-ignore-unknown=true "${files[@]}"
+          fi
+        ' -- {staged_files}
+    typecheck:
+      glob: "www/packages/**/*.{ts,tsx}"
+      run: |
+        pnpm --filter @tm/shell typecheck
+        pnpm --filter @tm/core typecheck
+        pnpm --filter @tm/inspector typecheck
+        pnpm --filter @tm/canvas typecheck
+
+commit-msg:
+  commands:
+    conventional:
+      run: |
+        msg=$(cat {1})
+        if ! echo "$msg" | grep -qE '^(feat|fix|chore|docs|style|refactor|perf|test|build|ci|revert)(\(.+\))?!?:'; then
+          echo "Commit message must follow conventional commits: type(scope): description"
+          exit 1
+        fi

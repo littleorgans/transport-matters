@@ -1,0 +1,7 @@
+packages:
+  - "www/packages/*"
+  - "desktop"
+ignoredBuiltDependencies:
+  - lefthook
+onlyBuiltDependencies:
+  - electron

@@ -1,2 +1,2 @@
 proxy: cd api && just proxy
-www: cd www && just dev
+www: cd www/packages/shell && just dev
