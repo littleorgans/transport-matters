@@ -26,6 +26,7 @@ node_modules/
 
 # Vite build output (served by the Python addon)
 api/src/transport_matters/www/
+api/src/transport_matters/canvas/
 
 # Testing
 .pytest_cache/
@@ -67,6 +68,6 @@ TLDR.md
 review-slice-*.md
 
 # post-P3 workspace-root build outputs
-www/*.tsbuildinfo
+*.tsbuildinfo
 www/playwright-report/
 www/test-results/

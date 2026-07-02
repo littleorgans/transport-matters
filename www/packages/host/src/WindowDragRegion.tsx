@@ -1,4 +1,3 @@
-import "./window-drag-region.css";
 import { isDesktopHost } from "@tm/core";
 
 export interface WindowDragRegionProps {

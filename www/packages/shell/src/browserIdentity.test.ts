@@ -17,9 +17,14 @@ const BROWSER_IDENTITY_SURFACES = [
   "www/packages/core/package.json",
   "www/packages/core/src",
   "www/packages/inspector/package.json",
+  "www/packages/inspector/index.html",
+  "www/packages/inspector/vite.config.ts",
   "www/packages/inspector/src",
   "www/packages/canvas/package.json",
+  "www/packages/canvas/index.html",
+  "www/packages/canvas/vite.config.ts",
   "www/packages/canvas/src",
+  "www/vite.shared.ts",
 ] as const;
 
 const OLD_SLUG = ["mani", "cure"].join("");

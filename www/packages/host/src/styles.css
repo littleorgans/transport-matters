@@ -1,0 +1,5 @@
+/* The host chrome stylesheet. Entry points import "@tm/host/styles.css";
+   components stay CSS-import-free so every bundle pulls host styles once,
+   through one explicit path. */
+@import "./window-drag-region.css";
+@import "./channel-badge.css";

@@ -2,13 +2,14 @@ pre-commit:
   parallel: true
   commands:
     lint:
-      glob: "www/packages/**/*.{ts,tsx,js,jsx,json,css}"
+      glob: "www/**/*.{ts,tsx,js,jsx,json,css}"
       run: |
         bash -c '
           set -euo pipefail
           files=()
           for file in "$@"; do
             case "$file" in
+              www/vite.shared.ts) files+=("../../vite.shared.ts") ;;
               www/packages/shell/*) files+=("${file#www/packages/shell/}") ;;
               www/packages/host/*) files+=("../host/${file#www/packages/host/}") ;;
               www/packages/core/*) files+=("../core/${file#www/packages/core/}") ;;

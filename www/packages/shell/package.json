@@ -15,9 +15,9 @@
     "test:visual": "playwright test --project=visual",
     "test:visual:update": "playwright test --project=visual --update-snapshots",
     "test:visual:ui": "playwright test --project=visual --ui",
-    "lint": "biome check . ../host ../core ../inspector ../canvas",
-    "lint:fix": "biome check --write . ../host ../core ../inspector ../canvas",
-    "format": "biome format --write . ../host ../core ../inspector ../canvas",
+    "lint": "biome check . ../host ../core ../inspector ../canvas ../../vite.shared.ts",
+    "lint:fix": "biome check --write . ../host ../core ../inspector ../canvas ../../vite.shared.ts",
+    "format": "biome format --write . ../host ../core ../inspector ../canvas ../../vite.shared.ts",
     "typecheck": "tsc -b --noEmit"
   },
   "dependencies": {
