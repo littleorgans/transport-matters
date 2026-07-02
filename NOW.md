@@ -12,8 +12,8 @@ discipline this imposes: **API-first, the UI is one client of two.** The directo
 human ⌘K palette are twin clients of one control plane (verbs: **observe / launch / manage /
 prompt**); anything the UI can do, the director must do programmatically. No UI-only logic.
 
-Full vision + the decision lens: `~/.mdx/projects/transport-matters-north-star.md`. Apply it
-to everything below.
+Full vision + the decision lens: [NORTHSTAR.md](./NORTHSTAR.md). Apply it to everything
+below.
 
 ## Landed in the current branch
 
