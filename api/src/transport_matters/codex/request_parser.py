@@ -186,6 +186,13 @@ def _parse_message_item(
 
     if role in {"system", "developer"}:
         system, keep_raw = _parse_system_message_item(item, raw_content)
+        if not system:
+            # No parsable text parts: keep the whole item as an unknown-block
+            # message so the preserved raw entry retains a stamped owner and
+            # the item stays visible in the editor and re-emits verbatim.
+            # Without an owner, stamped reconciliation would misread the
+            # leftover entry as an operator deletion and drop the bytes.
+            return [], [Message(role=str(role), content=[UnknownBlock(raw=item)])], keep_raw
         return system, [], keep_raw
 
     if role == "assistant":

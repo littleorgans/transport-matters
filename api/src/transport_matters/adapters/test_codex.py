@@ -738,3 +738,48 @@ def test_edit_deleting_all_preserved_system_parts_serializes() -> None:
     payload = _agent_home_fixture_payload()
     fixture_input = cast("list[dict[str, object]]", payload["input"])
     assert result["input"] == [fixture_input[1], fixture_input[2]]
+
+
+def _unparsable_developer_payload() -> dict[str, object]:
+    return {
+        "type": "response.create",
+        "model": "gpt-5.5",
+        "input": [
+            {
+                "role": "developer",
+                "content": [{"type": "input_audio", "audio": {"format": "wav"}}],
+            },
+            {"role": "user", "content": [{"type": "input_text", "text": "hello"}]},
+        ],
+        "tools": [],
+    }
+
+
+def test_round_trips_system_item_with_no_parsable_text_parts() -> None:
+    """A preserved developer item whose content yields no text parts must keep
+    an owner in the IR and re-emit verbatim, not vanish as a phantom deletion."""
+    payload = _unparsable_developer_payload()
+    adapter = CodexAdapter()
+
+    ir = adapter.inbound_request(json.dumps(payload).encode())
+    result = json.loads(adapter.outbound_request(ir).decode())
+
+    assert result == payload
+
+
+def test_edit_elsewhere_keeps_unparsable_system_item() -> None:
+    """Editing another message must not disturb the opaque developer item."""
+    payload = _unparsable_developer_payload()
+    adapter = CodexAdapter()
+    ir = adapter.inbound_request(json.dumps(payload).encode())
+
+    curated_ir, _ = apply_overrides(
+        [Override(kind="message_text", target="msg:1:blk:0", value="hello edited")],
+        ir,
+    )
+    result = json.loads(adapter.outbound_request(curated_ir).decode())
+
+    fixture_input = cast("list[dict[str, object]]", payload["input"])
+    assert result["input"][0] == fixture_input[0]
+    edited = cast("dict[str, object]", result["input"][1])
+    assert cast("list[dict[str, object]]", edited["content"])[0]["text"] == "hello edited"
