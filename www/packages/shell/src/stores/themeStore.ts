@@ -1,10 +1,10 @@
 import { createFrontendPersistStorage, isRecord } from "@tm/core";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { CANVAS_STORAGE_KEYS } from "../session-canvas/persistence/storageKeys";
 import { normalizeLegacyTheme } from "../theme/migrate";
 import { presetTheme, presetThemes } from "../theme/presets";
 import type { ThemeDefinition } from "../theme/types";
-import { FRONTEND_STORAGE_KEYS } from "./persistence";
 
 /**
  * The active theme. Null means unthemed: every surface falls back to the
@@ -119,7 +119,7 @@ export const useThemeStore = create<ThemeState>()(
       setLiveDayCycle: (value) => set({ liveDayCycle: value }),
     }),
     {
-      name: FRONTEND_STORAGE_KEYS.themeStore,
+      name: CANVAS_STORAGE_KEYS.themeStore,
       storage: createFrontendPersistStorage(),
       // The persisted store trusts its record verbatim (no re-validation on
       // load), so a stored theme on a collapsed scene id would reach the

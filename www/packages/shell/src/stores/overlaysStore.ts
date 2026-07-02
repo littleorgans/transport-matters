@@ -2,7 +2,7 @@ import { createFrontendPersistStorage } from "@tm/core";
 import type { Override } from "@tm/core/types/overrides";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { FRONTEND_STORAGE_KEYS } from "./persistence";
+import { INSPECTOR_STORAGE_KEYS } from "./persistence";
 
 /**
  * Overlays are persistent, declarative transforms the user wants applied
@@ -146,7 +146,7 @@ export const useOverlaysStore = create<OverlaysState>()(
       },
     }),
     {
-      name: FRONTEND_STORAGE_KEYS.overlaysStore,
+      name: INSPECTOR_STORAGE_KEYS.overlaysStore,
       storage: createFrontendPersistStorage(),
       partialize: (state) => ({
         overlays: state.overlays,

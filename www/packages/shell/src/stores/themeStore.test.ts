@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import { CANVAS_STORAGE_KEYS } from "../session-canvas/persistence/storageKeys";
 import { presetThemes } from "../theme/presets";
-import { FRONTEND_STORAGE_KEYS } from "./persistence";
 import { migrateThemeState, useThemeStore } from "./themeStore";
 
 const littleorgans = presetThemes[0];
@@ -53,7 +53,7 @@ describe("themeStore", () => {
     useThemeStore.getState().setSceneParam("dayProgress", 0.8);
 
     expect(useThemeStore.getState().theme?.settings.sceneParams.dayProgress).toBe(0.8);
-    const raw = localStorage.getItem(FRONTEND_STORAGE_KEYS.themeStore);
+    const raw = localStorage.getItem(CANVAS_STORAGE_KEYS.themeStore);
     expect(raw).toContain('"dayProgress":0.8');
   });
 
@@ -65,13 +65,13 @@ describe("themeStore", () => {
   it("liveDayCycle defaults on and persists as a runtime preference", () => {
     expect(useThemeStore.getState().liveDayCycle).toBe(true);
     useThemeStore.getState().setLiveDayCycle(false);
-    const raw = localStorage.getItem(FRONTEND_STORAGE_KEYS.themeStore);
+    const raw = localStorage.getItem(CANVAS_STORAGE_KEYS.themeStore);
     expect(raw).toContain('"liveDayCycle":false');
   });
 
   it("persists the full definition under the theme storage key", () => {
     useThemeStore.getState().setTheme(littleorgans);
-    const raw = localStorage.getItem(FRONTEND_STORAGE_KEYS.themeStore);
+    const raw = localStorage.getItem(CANVAS_STORAGE_KEYS.themeStore);
     expect(raw).not.toBeNull();
     const persisted = JSON.parse(raw ?? "{}") as { state: { theme: { id: string } | null } };
     expect(persisted.state.theme?.id).toBe("littleorgans");

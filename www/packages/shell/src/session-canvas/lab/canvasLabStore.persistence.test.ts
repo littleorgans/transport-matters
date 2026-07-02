@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { resolveLayout } from "../../engine/layout";
-import { FRONTEND_STORAGE_KEYS } from "../../stores/persistence";
 import { resetCapturedRunStoreForTests, useCapturedRunStore } from "../model/capturedRunStore";
+import { CANVAS_STORAGE_KEYS } from "../persistence/storageKeys";
 import { titleForRef } from "../viewers/registry";
 import { resetCanvasLabStoreForTests, useCanvasLabStore } from "./canvasLabStore";
 import { CANVAS_LAB_STORAGE_VERSION } from "./canvasLabStore.persistence";
@@ -42,13 +42,12 @@ function titleOf(paneId: string): string {
 // storage, so restore the snapshot afterwards), then rehydrate both stores from storage — exactly the
 // page-load path. Captured-run bindings (runId/minimized) compose from their own persisted store.
 async function reloadLab(): Promise<void> {
-  const labRaw = localStorage.getItem(FRONTEND_STORAGE_KEYS.canvasLabStore);
-  const capturedRaw = localStorage.getItem(FRONTEND_STORAGE_KEYS.capturedRunStore);
+  const labRaw = localStorage.getItem(CANVAS_STORAGE_KEYS.canvasLabStore);
+  const capturedRaw = localStorage.getItem(CANVAS_STORAGE_KEYS.capturedRunStore);
   resetCanvasLabStoreForTests();
   resetCapturedRunStoreForTests();
-  if (labRaw !== null) localStorage.setItem(FRONTEND_STORAGE_KEYS.canvasLabStore, labRaw);
-  if (capturedRaw !== null)
-    localStorage.setItem(FRONTEND_STORAGE_KEYS.capturedRunStore, capturedRaw);
+  if (labRaw !== null) localStorage.setItem(CANVAS_STORAGE_KEYS.canvasLabStore, labRaw);
+  if (capturedRaw !== null) localStorage.setItem(CANVAS_STORAGE_KEYS.capturedRunStore, capturedRaw);
   await useCapturedRunStore.persist.rehydrate();
   await useCanvasLabStore.persist.rehydrate();
 }
@@ -229,9 +228,9 @@ describe("canvasLabStore persistence adapter", () => {
     localStorage.clear();
     resetCanvasLabStoreForTests();
     resetCapturedRunStoreForTests();
-    localStorage.removeItem(FRONTEND_STORAGE_KEYS.canvasLabStore);
+    localStorage.removeItem(CANVAS_STORAGE_KEYS.canvasLabStore);
     localStorage.setItem(
-      FRONTEND_STORAGE_KEYS.capturedRunStore,
+      CANVAS_STORAGE_KEYS.capturedRunStore,
       JSON.stringify({
         version: 3,
         state: { runs: { "claude:k1": { provider: "claude", runId: "run-1" } } },
@@ -253,7 +252,7 @@ describe("canvasLabStore persistence adapter", () => {
     localStorage.clear();
     resetCanvasLabStoreForTests();
     localStorage.setItem(
-      FRONTEND_STORAGE_KEYS.canvasLabStore,
+      CANVAS_STORAGE_KEYS.canvasLabStore,
       JSON.stringify({
         version: CANVAS_LAB_STORAGE_VERSION,
         state: {

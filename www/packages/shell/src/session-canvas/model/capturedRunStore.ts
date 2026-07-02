@@ -2,7 +2,7 @@ import { createCapturedRun, createFrontendPersistStorage, terminateRun } from "@
 import type { HarnessName } from "@tm/core/types/capabilities";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { FRONTEND_STORAGE_KEYS } from "../../stores/persistence";
+import { CANVAS_STORAGE_KEYS } from "../persistence/storageKeys";
 
 export type CapturedRunKey = string;
 
@@ -250,7 +250,7 @@ export const useCapturedRunStore = create<CapturedRunState>()(
       },
     }),
     {
-      name: FRONTEND_STORAGE_KEYS.capturedRunStore,
+      name: CANVAS_STORAGE_KEYS.capturedRunStore,
       storage: createFrontendPersistStorage(),
       version: CAPTURED_RUN_STORAGE_VERSION,
       migrate: (persisted) => {

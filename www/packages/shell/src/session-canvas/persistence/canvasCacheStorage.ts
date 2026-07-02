@@ -1,12 +1,12 @@
 import { createJSONStorage, type PersistStorage } from "zustand/middleware";
-import { FRONTEND_STORAGE_KEYS } from "../../stores/persistence";
+import { CANVAS_STORAGE_KEYS } from "./storageKeys";
 
 /** The bare key the pre-Spaces build persisted its single canvas under. */
-export const LEGACY_CANVAS_CACHE_KEY = FRONTEND_STORAGE_KEYS.canvasStore;
+export const LEGACY_CANVAS_CACHE_KEY = CANVAS_STORAGE_KEYS.canvasStore;
 
 /** localStorage key for one canvas's cached layout, namespaced by canvasId. */
 export function canvasCacheKey(canvasId: string): string {
-  return `${FRONTEND_STORAGE_KEYS.canvasStore}:${canvasId}`;
+  return `${CANVAS_STORAGE_KEYS.canvasStore}:${canvasId}`;
 }
 
 /**

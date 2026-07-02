@@ -1,8 +1,8 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { HarnessCapability, HarnessName } from "@tm/core/types/capabilities";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { FRONTEND_STORAGE_KEYS } from "../../stores/persistence";
 import { resetCapturedRunStoreForTests, useCapturedRunStore } from "../model/capturedRunStore";
+import { CANVAS_STORAGE_KEYS } from "../persistence/storageKeys";
 import { CanvasLabRoute } from "./CanvasLabRoute";
 import { resetCanvasLabStoreForTests, useCanvasLabStore } from "./canvasLabStore";
 import { CANVAS_LAB_STORAGE_VERSION } from "./canvasLabStore.persistence";
@@ -64,11 +64,11 @@ function seedPersistedLab(
   runs: Record<string, { provider: HarnessName; runId: string; minimized?: boolean }>,
 ): void {
   localStorage.setItem(
-    FRONTEND_STORAGE_KEYS.canvasLabStore,
+    CANVAS_STORAGE_KEYS.canvasLabStore,
     JSON.stringify({ version: CANVAS_LAB_STORAGE_VERSION, state: labState }),
   );
   localStorage.setItem(
-    FRONTEND_STORAGE_KEYS.capturedRunStore,
+    CANVAS_STORAGE_KEYS.capturedRunStore,
     JSON.stringify({ version: 4, state: { runs, oscColorReplies: true } }),
   );
 }
@@ -377,7 +377,7 @@ describe("CanvasLabRoute harness color replies", () => {
   it("rehydrates the core field instead of lab-local state", async () => {
     seedCapabilities({ claude: true, codex: true });
     localStorage.setItem(
-      FRONTEND_STORAGE_KEYS.capturedRunStore,
+      CANVAS_STORAGE_KEYS.capturedRunStore,
       JSON.stringify({ version: 4, state: { runs: {}, oscColorReplies: false } }),
     );
 

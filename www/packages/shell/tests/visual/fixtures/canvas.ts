@@ -1,5 +1,5 @@
 import type { Page, Route } from "@playwright/test";
-import { FRONTEND_STORAGE_KEYS } from "../../../src/stores/persistence";
+import { CANVAS_STORAGE_KEYS } from "../../../src/session-canvas/persistence/storageKeys";
 import { mockExchangeDetails } from "./details";
 import { mockExchanges, mockVisualRunId } from "./exchanges";
 
@@ -123,7 +123,7 @@ export async function seedCanvasExchangePane(
       // Slice 6 namespaces the canvas cache by canvasId; /canvas with no launch
       // params resolves to the "direct-local" canvas, so seed THAT key directly
       // (the bare legacy key is only the one-time import source).
-      storageKey: `${FRONTEND_STORAGE_KEYS.canvasStore}:direct-local`,
+      storageKey: `${CANVAS_STORAGE_KEYS.canvasStore}:direct-local`,
       runId: mockVisualRunId,
       exchangeId,
       expanded,

@@ -2,8 +2,8 @@ import { createFrontendPersistStorage } from "@tm/core";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   dismissedPanelKey,
-  FRONTEND_STORAGE_KEYS,
   hasDismissedPanel,
+  INSPECTOR_STORAGE_KEYS,
   markPanelDismissed,
 } from "./persistence";
 
@@ -11,12 +11,11 @@ beforeEach(() => {
   localStorage.clear();
 });
 
-describe("frontend persistence", () => {
-  it("keeps the Transport Matters storage keys stable", () => {
-    expect(FRONTEND_STORAGE_KEYS.uiStore).toBe("transport-matters-ui");
-    expect(FRONTEND_STORAGE_KEYS.overlaysStore).toBe("transport-matters-overlays");
-    expect(FRONTEND_STORAGE_KEYS.capturedRunStore).toBe("transport-matters-captured-run");
-    expect(FRONTEND_STORAGE_KEYS.dismissedPanelPrefix).toBe("transport-matters.panel.dismissed.");
+describe("inspector persistence", () => {
+  it("keeps the inspector storage keys stable", () => {
+    expect(INSPECTOR_STORAGE_KEYS.uiStore).toBe("transport-matters-ui");
+    expect(INSPECTOR_STORAGE_KEYS.overlaysStore).toBe("transport-matters-overlays");
+    expect(INSPECTOR_STORAGE_KEYS.dismissedPanelPrefix).toBe("transport-matters.panel.dismissed.");
     expect(dismissedPanelKey("intro")).toBe("transport-matters.panel.dismissed.intro");
   });
 

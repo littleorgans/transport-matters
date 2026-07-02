@@ -6,7 +6,7 @@ import {
 } from "@tm/core/keybindings";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { FRONTEND_STORAGE_KEYS } from "./persistence";
+import { CANVAS_STORAGE_KEYS } from "../session-canvas/persistence/storageKeys";
 
 export {
   CANVAS_GESTURE_MODIFIERS,
@@ -45,7 +45,7 @@ export const useKeymapStore = create<KeymapState>()(
       setCanvasGestureModifier: (modifier) => set({ canvasGestureModifier: modifier }),
     }),
     {
-      name: FRONTEND_STORAGE_KEYS.keymapStore,
+      name: CANVAS_STORAGE_KEYS.keymapStore,
       storage: createFrontendPersistStorage(),
       // `migrate` handles older versions; `merge` validates every load, including
       // corrupted current-version payloads, so unknown values reset to Shift.

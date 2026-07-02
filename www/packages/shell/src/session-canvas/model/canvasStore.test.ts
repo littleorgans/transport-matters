@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { PaneId, WorldRect } from "../../engine";
 import { resolveLayout, roundWorldRect } from "../../engine/layout";
-import { FRONTEND_STORAGE_KEYS } from "../../stores/persistence";
+import { CANVAS_STORAGE_KEYS } from "../persistence/storageKeys";
 import { makeCapturedRunRef, makeSessionSummary, rememberCapturedRun } from "../testUtils";
 import { PICKER_PANE_ID } from "../viewers/registry";
 import { resetCanvasStoreForTests, useCanvasStore } from "./canvasStore";
@@ -299,7 +299,7 @@ describe("canvasStore", () => {
     resetCanvasStoreForTests();
     const runKey = "claude:rehydrated";
     localStorage.setItem(
-      FRONTEND_STORAGE_KEYS.capturedRunStore,
+      CANVAS_STORAGE_KEYS.capturedRunStore,
       JSON.stringify({
         version: 3,
         state: { runs: { [runKey]: { provider: "claude", runId: "run-rehydrated" } } },

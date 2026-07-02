@@ -1,11 +1,12 @@
-export const FRONTEND_STORAGE_KEYS = {
+/**
+ * Inspector-owned localStorage key registry plus dismissed-panel helpers.
+ * The canvas keeps its own registry in `session-canvas/persistence/
+ * storageKeys.ts`; both products share one origin, so a shell-level test
+ * asserts the two registries never collide.
+ */
+export const INSPECTOR_STORAGE_KEYS = {
   uiStore: "transport-matters-ui",
-  themeStore: "transport-matters-theme",
   overlaysStore: "transport-matters-overlays",
-  capturedRunStore: "transport-matters-captured-run",
-  canvasStore: "transport-matters-canvas",
-  canvasLabStore: "transport-matters-canvas-lab",
-  keymapStore: "transport-matters-keymap",
   dismissedPanelPrefix: "transport-matters.panel.dismissed.",
 } as const;
 
@@ -18,7 +19,7 @@ function getAvailableStorage(): Storage | null {
 }
 
 export function dismissedPanelKey(id: string): string {
-  return `${FRONTEND_STORAGE_KEYS.dismissedPanelPrefix}${id}`;
+  return `${INSPECTOR_STORAGE_KEYS.dismissedPanelPrefix}${id}`;
 }
 
 export function hasDismissedPanel(id: string): boolean {

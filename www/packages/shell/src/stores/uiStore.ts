@@ -2,7 +2,7 @@ import { createFrontendPersistStorage } from "@tm/core";
 import type { PausedFlow } from "@tm/core/types/exchanges";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { FRONTEND_STORAGE_KEYS } from "./persistence";
+import { INSPECTOR_STORAGE_KEYS } from "./persistence";
 
 /**
  * Four lenses on the same exchange stream.
@@ -86,7 +86,7 @@ export const useUIStore = create<UIState>()(
         }),
     }),
     {
-      name: FRONTEND_STORAGE_KEYS.uiStore,
+      name: INSPECTOR_STORAGE_KEYS.uiStore,
       storage: createFrontendPersistStorage(),
       partialize: (state) => ({
         activeRoute: state.activeRoute,

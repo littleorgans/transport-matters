@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { FRONTEND_STORAGE_KEYS } from "../../stores/persistence";
+import { CANVAS_STORAGE_KEYS } from "../persistence/storageKeys";
 import {
   CAPTURED_RUN_SPAWN_CONCURRENCY,
   createCapturedRunKey,
@@ -56,7 +56,7 @@ describe("capturedRunStore", () => {
 
     expect(store().oscColorReplies).toBe(false);
     expect(
-      JSON.parse(localStorage.getItem(FRONTEND_STORAGE_KEYS.capturedRunStore) as string).state
+      JSON.parse(localStorage.getItem(CANVAS_STORAGE_KEYS.capturedRunStore) as string).state
         .oscColorReplies,
     ).toBe(false);
   });
@@ -82,7 +82,7 @@ describe("capturedRunStore", () => {
 
     expect(store().bypassPermissions).toBe(true);
     expect(
-      JSON.parse(localStorage.getItem(FRONTEND_STORAGE_KEYS.capturedRunStore) as string).state
+      JSON.parse(localStorage.getItem(CANVAS_STORAGE_KEYS.capturedRunStore) as string).state
         .bypassPermissions,
     ).toBe(true);
 
@@ -200,7 +200,7 @@ describe("capturedRunStore", () => {
     createCapturedRunMock.mockResolvedValue("run-1");
     await store().ensureRun("claude:k1", "claude");
 
-    const raw = localStorage.getItem(FRONTEND_STORAGE_KEYS.capturedRunStore);
+    const raw = localStorage.getItem(CANVAS_STORAGE_KEYS.capturedRunStore);
     expect(raw).not.toBeNull();
     expect(JSON.parse(raw as string).state.runs).toEqual({
       "claude:k1": { provider: "claude", runId: "run-1" },
@@ -271,7 +271,7 @@ describe("capturedRunStore", () => {
     });
     // The flag rides on the persisted record, so a reload can dock the run instead of reopening it.
     expect(
-      JSON.parse(localStorage.getItem(FRONTEND_STORAGE_KEYS.capturedRunStore) as string).state.runs[
+      JSON.parse(localStorage.getItem(CANVAS_STORAGE_KEYS.capturedRunStore) as string).state.runs[
         "claude:k1"
       ].minimized,
     ).toBe(true);
@@ -363,7 +363,7 @@ describe("capturedRunStore", () => {
     // must migrate it cleanly: runs survive and, with no flag, each is treated as open on reload (the
     // S1 behavior) rather than lost or wrongly docked.
     localStorage.setItem(
-      FRONTEND_STORAGE_KEYS.capturedRunStore,
+      CANVAS_STORAGE_KEYS.capturedRunStore,
       JSON.stringify({
         version: 2,
         state: { runs: { "claude:k1": { provider: "claude", runId: "run-1" } } },
@@ -379,7 +379,7 @@ describe("capturedRunStore", () => {
 
   it("rehydrates the core OSC color replies toggle", async () => {
     localStorage.setItem(
-      FRONTEND_STORAGE_KEYS.capturedRunStore,
+      CANVAS_STORAGE_KEYS.capturedRunStore,
       JSON.stringify({ version: 4, state: { runs: {}, oscColorReplies: false } }),
     );
 

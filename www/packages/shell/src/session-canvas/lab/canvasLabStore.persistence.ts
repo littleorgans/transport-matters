@@ -1,15 +1,15 @@
 import { isRecord } from "@tm/core";
 import { normalizeLayoutOrder } from "../../engine";
-import { FRONTEND_STORAGE_KEYS } from "../../stores/persistence";
 import { isPaneContentRef, type PaneContentRef } from "../model/paneRecords";
 import type { RebuiltCanvasState } from "../persistence/canvasPanePersistence";
 import { createCanvasPersistOptions } from "../persistence/canvasPersistOptions";
+import { CANVAS_STORAGE_KEYS } from "../persistence/storageKeys";
 import type { CanvasLabState } from "./canvasLabTypes";
 
 export const CANVAS_LAB_STORAGE_VERSION = 2;
 
 export const canvasLabPersistOptions = createCanvasPersistOptions<CanvasLabState, PaneContentRef>({
-  name: FRONTEND_STORAGE_KEYS.canvasLabStore,
+  name: CANVAS_STORAGE_KEYS.canvasLabStore,
   version: CANVAS_LAB_STORAGE_VERSION,
   isContentRef: isPaneContentRef,
   getContentRefs: (state) => state.contentRefs,

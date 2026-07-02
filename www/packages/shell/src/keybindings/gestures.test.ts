@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { CANVAS_STORAGE_KEYS } from "../session-canvas/persistence/storageKeys";
 import { useKeymapStore } from "../stores/keymapStore";
-import { FRONTEND_STORAGE_KEYS } from "../stores/persistence";
 import {
   CANVAS_GESTURE_SURFACE_ATTRIBUTE,
   getCanvasGestureSnapshot,
@@ -107,7 +107,7 @@ describe("canvas gesture store", () => {
     const surface = canvasGestureSurface();
     useKeymapStore.setState({ canvasGestureModifier: "Shift" });
     localStorage.setItem(
-      FRONTEND_STORAGE_KEYS.keymapStore,
+      CANVAS_STORAGE_KEYS.keymapStore,
       JSON.stringify({ state: { canvasGestureModifier: "Space" }, version: 1 }),
     );
 

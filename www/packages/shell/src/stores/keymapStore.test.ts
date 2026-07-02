@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import { CANVAS_STORAGE_KEYS } from "../session-canvas/persistence/storageKeys";
 import { DEFAULT_CANVAS_GESTURE_MODIFIER, migrateKeymapState, useKeymapStore } from "./keymapStore";
-import { FRONTEND_STORAGE_KEYS } from "./persistence";
 
 function persistCanvasGestureModifier(value: unknown, version = 1): void {
   localStorage.setItem(
-    FRONTEND_STORAGE_KEYS.keymapStore,
+    CANVAS_STORAGE_KEYS.keymapStore,
     JSON.stringify({
       state: { canvasGestureModifier: value },
       version,
@@ -25,7 +25,7 @@ describe("keymapStore", () => {
   it("persists the selected canvas gesture modifier under the keymap storage key", () => {
     useKeymapStore.getState().setCanvasGestureModifier("Space");
 
-    const raw = localStorage.getItem(FRONTEND_STORAGE_KEYS.keymapStore);
+    const raw = localStorage.getItem(CANVAS_STORAGE_KEYS.keymapStore);
     expect(raw).not.toBeNull();
     const persisted = JSON.parse(raw ?? "{}") as {
       state?: { canvasGestureModifier?: string };
