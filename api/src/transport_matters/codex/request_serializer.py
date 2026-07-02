@@ -4,12 +4,15 @@ import json
 from typing import Any
 
 from transport_matters.codex.preserved_raw import (
+    PRESERVED_INPUT_STAMPED_KEY,
+    WIRE_INDEX_KEY,
     SerializedInputItem,
     apply_preserved_input_items,
     input_item_kind,
     looks_like_input_item,
     materialize_input_items,
     parse_preserved_input_item_raw,
+    wire_index_from_provider_data,
 )
 from transport_matters.codex.protocol import (
     CODEX_IMAGE_TYPE,
@@ -41,6 +44,9 @@ from transport_matters.provider_data import restore_provider_data
 def serialize_codex_request(ir: InternalRequest) -> bytes:
     extras = dict(ir.provider_extras)
     preserved_input = parse_preserved_input_item_raw(extras.pop("input_item_raw", []))
+    # Internal marker, never emitted: switches reconciliation to exact
+    # wire-index stamps so operator deletions are honored (see preserved_raw).
+    stamped = bool(extras.pop(PRESERVED_INPUT_STAMPED_KEY, False))
 
     data: dict[str, Any] = dict(extras)
     # Only emit the WS envelope `type: "response.create"` field if the inbound
@@ -52,7 +58,9 @@ def serialize_codex_request(ir: InternalRequest) -> bytes:
         data["type"] = str(data["type"])
     data["model"] = denormalise_model(ir.model, CODEX_MODEL_PREFIX)
 
-    instructions, input_items = _serialize_input(ir.system, ir.messages, preserved_input)
+    instructions, input_items = _serialize_input(
+        ir.system, ir.messages, preserved_input, stamped=stamped
+    )
     if instructions is not None:
         data["instructions"] = instructions
     data["input"] = input_items
@@ -82,6 +90,8 @@ def _serialize_input(
     system: list[SystemPart],
     messages: list[Message],
     preserved_input: list[dict[str, Any]],
+    *,
+    stamped: bool,
 ) -> tuple[str | None, list[dict[str, Any]]]:
     instruction_parts: list[str] = []
     items: list[SerializedInputItem] = []
@@ -90,25 +100,43 @@ def _serialize_input(
         provider_data = dict(part.provider_data) if isinstance(part.provider_data, dict) else {}
         role = provider_data.get("role")
         if role in {"system", "developer"}:
+            wire_index = wire_index_from_provider_data(provider_data)
             content: dict[str, Any] = {"type": CODEX_INPUT_TEXT_TYPE, "text": part.text}
             for key, value in provider_data.items():
-                if key != "role":
+                if key not in {"role", WIRE_INDEX_KEY}:
                     content[key] = value
+            # Parts stamped with the same wire index came from one input
+            # message; regroup them so the multi-part message round-trips as
+            # a single item instead of splintering into one item per part.
+            previous = items[-1] if items else None
+            if (
+                wire_index is not None
+                and previous is not None
+                and previous.kind == f"message:{role}"
+                and previous.wire_index == wire_index
+            ):
+                previous.payload["content"].append(content)
+                continue
             items.append(
                 SerializedInputItem(
                     kind=f"message:{role}",
                     payload={"role": role, "content": [content]},
+                    wire_index=wire_index,
                 )
             )
             continue
         instruction_parts.append(part.text)
 
     for message in messages:
-        items.extend(_serialize_message(message))
+        message_items = _serialize_message(message)
+        wire_index = wire_index_from_provider_data(message.provider_data)
+        for item in message_items:
+            item.wire_index = wire_index
+        items.extend(message_items)
 
-    apply_preserved_input_items(items, preserved_input)
+    apply_preserved_input_items(items, preserved_input, stamped=stamped)
     instructions = "\n\n".join(part for part in instruction_parts if part) or None
-    return instructions, materialize_input_items(items)
+    return instructions, materialize_input_items(items, allow_gaps=stamped)
 
 
 def _serialize_message(message: Message) -> list[SerializedInputItem]:
