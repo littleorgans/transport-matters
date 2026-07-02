@@ -122,14 +122,14 @@ export function commitPaneAffordanceTransition(
 }
 
 export function closeDockedPaneWithLifecycle(
-  docked: readonly DockedPane[],
+  readDocked: () => readonly DockedPane[],
+  writeDocked: (update: (docked: readonly DockedPane[]) => DockedPane[]) => void,
   paneId: PaneId,
-  options: { allowClose?: (entry: DockedPane) => boolean } = {},
-): DockedPane[] | null {
-  const entry = docked.find((candidate) => candidate.paneId === paneId);
-  if (!entry || options.allowClose?.(entry) === false) return null;
+): void {
+  const entry = readDocked().find((candidate) => candidate.paneId === paneId);
+  if (!entry || entry.closeDisabled === true) return;
   invokeDockedPaneCloseLifecycle(entry);
-  return removeDockedPane(docked, paneId);
+  writeDocked((docked) => removeDockedPane(docked, paneId));
 }
 
 export function planAffordanceLayout(
@@ -324,7 +324,7 @@ export function invokeDockedPaneRestoreLifecycle(entry: DockedPane): void {
   resolvePaneLifecycle(entry.ref).onRestore?.(entry.ref);
 }
 
-export function invokeDockedPaneCloseLifecycle(entry: DockedPane): void {
+function invokeDockedPaneCloseLifecycle(entry: DockedPane): void {
   if (!entry.ref) return;
   resolvePaneLifecycle(entry.ref).onClose?.(entry.ref);
 }

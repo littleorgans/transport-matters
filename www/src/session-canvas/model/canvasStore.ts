@@ -167,11 +167,11 @@ export const useCanvasStore = create<CanvasStoreState>()(
       },
 
       closeDockedPane(paneId) {
-        const docked = closeDockedPaneWithLifecycle(get().docked, paneId, {
-          allowClose: (entry) => entry.closeDisabled !== true,
-        });
-        if (docked === null) return;
-        set({ docked });
+        closeDockedPaneWithLifecycle(
+          () => get().docked,
+          (update) => set((state) => ({ docked: update(state.docked) })),
+          paneId,
+        );
       },
 
       dropCapturedRunPane(runKey) {

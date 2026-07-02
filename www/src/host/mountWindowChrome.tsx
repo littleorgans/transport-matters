@@ -5,10 +5,16 @@ import { queryClient } from "../lib/queryClient";
 import { ChannelBadge } from "./ChannelBadge";
 import { WindowDragRegion } from "./WindowDragRegion";
 
-export function mountWindowChrome(): HTMLElement {
+export interface MountedWindowChrome {
+  host: HTMLElement;
+  unmount(): void;
+}
+
+export function mountWindowChrome(): MountedWindowChrome {
   const host = document.createElement("div");
   document.body.prepend(host);
-  createRoot(host).render(
+  const root = createRoot(host);
+  root.render(
     <StrictMode>
       <QueryClientProvider client={queryClient}>
         <WindowDragRegion />
@@ -16,5 +22,11 @@ export function mountWindowChrome(): HTMLElement {
       </QueryClientProvider>
     </StrictMode>,
   );
-  return host;
+  return {
+    host,
+    unmount() {
+      root.unmount();
+      host.remove();
+    },
+  };
 }

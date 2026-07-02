@@ -1,7 +1,14 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { importSpecifiers, isInside, relativeTo, sourceFiles } from "../testSupport/importGraph";
+import {
+  importSpecifiers,
+  isInside,
+  isTestSupportSource,
+  relativeTo,
+  resolveLocalSpecifier,
+  sourceFiles,
+} from "../testSupport/importGraph";
 
 const SESSION_CANVAS_ROOT = path.dirname(fileURLToPath(import.meta.url));
 const SRC_ROOT = path.resolve(SESSION_CANVAS_ROOT, "..");
@@ -24,23 +31,27 @@ describe("session-canvas import graph boundary", () => {
 
     expect(violations).toEqual(KNOWN_CANVAS_TO_INSPECTOR_IMPORTS);
   });
+
+  it("fails closed for unresolved local aliases", () => {
+    expect(() =>
+      resolveLocalSpecifier(
+        path.join(SESSION_CANVAS_ROOT, "viewers", "FuturePane.tsx"),
+        "@tm/components/FutureInspector",
+        SRC_ROOT,
+      ),
+    ).toThrow(/Unresolvable local import/u);
+  });
 });
 
 function isProductionSource(file: string): boolean {
-  return !/\.(test|testSupport)\.tsx?$/u.test(file);
+  return !isTestSupportSource(file);
 }
 
 function inspectorImportViolation(file: string, specifier: string): string | null {
-  const target = resolveLocalSpecifier(file, specifier);
+  const target = resolveLocalSpecifier(file, specifier, SRC_ROOT);
   if (target === null) return null;
   if (!isInside(target, INSPECTOR_COMPONENTS_ROOT)) return null;
   return `${relativeTo(SRC_ROOT, file)} -> ${stripSourceExtension(relativeTo(SRC_ROOT, target))}`;
-}
-
-function resolveLocalSpecifier(file: string, specifier: string): string | null {
-  if (specifier.startsWith(".")) return path.resolve(path.dirname(file), specifier);
-  if (specifier.startsWith("@/")) return path.resolve(SRC_ROOT, specifier.slice(2));
-  return null;
 }
 
 function stripSourceExtension(file: string): string {

@@ -254,9 +254,11 @@ export const useCanvasLabStore = create<CanvasLabState>()(
         // Close/kill a docked pane in place, no restore. It is already off the canvas, so there is no
         // node teardown: just run its onClose hook (captured-run -> stopRun, POST /terminate; plain panes have
         // none, same seam as an on-canvas close) and drop the dock entry.
-        const docked = closeDockedPaneWithLifecycle(get().docked, paneId);
-        if (docked === null) return;
-        set({ docked });
+        closeDockedPaneWithLifecycle(
+          () => get().docked,
+          (update) => set((state) => ({ docked: update(state.docked) })),
+          paneId,
+        );
       },
 
       focusPane(paneId) {

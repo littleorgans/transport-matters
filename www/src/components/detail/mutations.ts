@@ -128,21 +128,22 @@ export function detectMessageMutations(
   audit: OverrideAuditEntry[] | undefined,
 ): MessageBlockMutation[] {
   return detectAppliedAuditMutations<MessageBlockMutation>(audit, (entry) => {
-    const parsed = parseMessageTarget(entry.target);
-    if (parsed === null) return null;
     if (entry.kind === "message_block_toggle") {
+      const parsed = parseMessageTarget(entry.target);
+      if (parsed === null) return null;
       // Same as system_part_toggle: applied + disable is the only
       // structurally relevant case (enable is a noop on the server).
       return { msgIdx: parsed.msgIdx, blkIdx: parsed.blkIdx, kind: "disabled" };
     }
-    return entry.kind === "message_text" && entry.curated_value !== null
-      ? {
-          msgIdx: parsed.msgIdx,
-          blkIdx: parsed.blkIdx,
-          kind: "edited",
-          curatedText: entry.curated_value,
-        }
-      : null;
+    if (entry.kind !== "message_text" || entry.curated_value === null) return null;
+    const parsed = parseMessageTarget(entry.target);
+    if (parsed === null) return null;
+    return {
+      msgIdx: parsed.msgIdx,
+      blkIdx: parsed.blkIdx,
+      kind: "edited",
+      curatedText: entry.curated_value,
+    };
   });
 }
 

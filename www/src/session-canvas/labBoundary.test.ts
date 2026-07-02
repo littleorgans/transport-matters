@@ -6,6 +6,7 @@ import {
   importSpecifiers,
   isInside,
   relativeTo,
+  resolveLocalSpecifier,
   sourceFile,
   sourceFiles,
 } from "../testSupport/importGraph";
@@ -47,13 +48,8 @@ describe("session-canvas lab boundary", () => {
 });
 
 function targetsLab(file: string, specifier: string): boolean {
-  if (specifier.startsWith(".")) {
-    return isInside(path.resolve(path.dirname(file), specifier), LAB_ROOT);
-  }
-  if (specifier.startsWith("@/")) {
-    return isInside(path.resolve(SRC_ROOT, specifier.slice(2)), LAB_ROOT);
-  }
-  return specifier === "session-canvas/lab" || specifier.startsWith("session-canvas/lab/");
+  const target = resolveLocalSpecifier(file, specifier, SRC_ROOT);
+  return target !== null && isInside(target, LAB_ROOT);
 }
 
 function labLegacyViolations(file: string): string[] {

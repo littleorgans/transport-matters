@@ -20,9 +20,8 @@ if (selectRootRoute(window.location.pathname) === "inspector") {
   queryClient.prefetchQuery({ queryKey: ["meta"], queryFn: () => fetchMeta() });
 }
 
-// Window chrome, not app UI: the drag strip mounts in its own host BEFORE #root, so every
-// app surface out-hit-tests it by plain DOM order and no app element ever needs a z-index
-// to clear it. Its only job is feeding the OS app-region map, which ignores paint order.
+// Host chrome, not app UI: mounted before #root so the drag strip stays beneath app
+// hit-testing by DOM order while the pointer-inert channel badge can paint above both.
 mountWindowChrome();
 
 // biome-ignore lint/style/noNonNullAssertion: The entry point exists

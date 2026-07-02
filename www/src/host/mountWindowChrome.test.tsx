@@ -1,7 +1,8 @@
-import { screen } from "@testing-library/react";
+import { act, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
+import { queryClient } from "../lib/queryClient";
 import { installMockTransport, jsonResponse, restoreTransport } from "../session-canvas/testUtils";
-import { mountWindowChrome } from "./mountWindowChrome";
+import { type MountedWindowChrome, mountWindowChrome } from "./mountWindowChrome";
 
 function previewMeta() {
   return {
@@ -16,7 +17,14 @@ function previewMeta() {
 }
 
 describe("mountWindowChrome", () => {
+  let chrome: MountedWindowChrome | null = null;
+
   afterEach(() => {
+    act(() => {
+      chrome?.unmount();
+    });
+    chrome = null;
+    queryClient.clear();
     restoreTransport();
     document.body.innerHTML = "";
     delete window.transportMattersDesktop;
@@ -29,10 +37,27 @@ describe("mountWindowChrome", () => {
     root.id = "root";
     document.body.append(root);
 
-    const host = mountWindowChrome();
+    chrome = mountWindowChrome();
 
-    expect(document.body.firstElementChild).toBe(host);
+    expect(document.body.firstElementChild).toBe(chrome.host);
     expect(await screen.findByText("PREVIEW")).toHaveAccessibleName("Preview channel");
-    expect(host.querySelector(".window-drag-region")).toHaveAttribute("aria-hidden", "true");
+    expect(chrome.host.querySelector(".window-drag-region")).toHaveAttribute("aria-hidden", "true");
+  });
+
+  it("does not reuse cached meta between mounted chrome roots", async () => {
+    window.transportMattersDesktop = { appName: "Transport Matters", platform: "darwin" };
+    installMockTransport(() =>
+      jsonResponse({
+        ...previewMeta(),
+        channel: "stable",
+        channel_badge: null,
+        channel_label: "Stable",
+      }),
+    );
+
+    chrome = mountWindowChrome();
+
+    await expect(screen.findByText("PREVIEW", {}, { timeout: 100 })).rejects.toThrow();
+    expect(screen.queryByText("PREVIEW")).toBeNull();
   });
 });

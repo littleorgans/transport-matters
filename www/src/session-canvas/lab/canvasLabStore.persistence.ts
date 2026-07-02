@@ -1,4 +1,5 @@
 import { normalizeLayoutOrder } from "../../engine";
+import { isRecord } from "../../lib/isRecord";
 import { FRONTEND_STORAGE_KEYS } from "../../stores/persistence";
 import { isPaneContentRef, type PaneContentRef } from "../model/paneRecords";
 import type { RebuiltCanvasState } from "../persistence/canvasPanePersistence";
@@ -43,6 +44,6 @@ function mergeCanvasLabState(
 }
 
 function isPaneCounters(value: unknown): value is Record<string, number> {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
+  if (!isRecord(value)) return false;
   return Object.values(value).every((count) => typeof count === "number");
 }

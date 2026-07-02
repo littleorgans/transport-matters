@@ -38,7 +38,11 @@ export function useSamplingOverrides({
   const [localTopK, setLocalTopK] = useSyncedLocalValue(
     sampling.top_k == null ? "" : String(sampling.top_k),
   );
-  const [localStopSeqs, setLocalStopSeqs] = useSyncedLocalValue(sampling.stop_sequences.join(", "));
+  const stopSequenceText = sampling.stop_sequences.join(", ");
+  const [localStopSeqs, setLocalStopSeqs] = useSyncedLocalValue(
+    stopSequenceText,
+    JSON.stringify(sampling.stop_sequences),
+  );
 
   const isFieldModified = (field: keyof SamplingParams): boolean =>
     hasOverride(overrides, "sampling_set", SAMPLING_TARGETS[field]);

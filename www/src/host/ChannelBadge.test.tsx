@@ -42,7 +42,7 @@ describe("ChannelBadge", () => {
     renderWithQuery(<ChannelBadge />);
 
     const badge = await screen.findByText("PREVIEW");
-    expect(badge).toHaveClass("channel-badge--amber");
+    expect(badge).toHaveStyle({ backgroundColor: "#f59e0b" });
     expect(badge).toHaveAccessibleName("Preview channel");
   });
 });

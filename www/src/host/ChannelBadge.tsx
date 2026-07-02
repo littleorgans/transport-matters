@@ -17,8 +17,9 @@ export function ChannelBadge() {
   return (
     <div
       aria-label={`${meta.channelLabel} channel`}
-      className="channel-badge channel-badge--amber"
+      className="channel-badge"
       role="status"
+      style={{ backgroundColor: badge.hex }}
     >
       {badge.text}
     </div>

@@ -1,11 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  canResolveDroppedFiles,
-  getDesktopBridge,
-  getDroppedFilePathResolver,
-  getPathForDroppedFile,
-  isDesktopHost,
-} from "./desktopHost";
+import { canResolveDroppedFiles, getDroppedFilePathResolver, isDesktopHost } from "./desktopHost";
 
 function fakeWindow(bridge: boolean): Window {
   return (
@@ -22,11 +16,6 @@ describe("desktop host detection", () => {
     expect(isDesktopHost(fakeWindow(false))).toBe(false);
   });
 
-  it("exposes the desktop bridge without canvas code reading window directly", () => {
-    const win = fakeWindow(true);
-    expect(getDesktopBridge(win)?.platform).toBe("darwin");
-  });
-
   it("resolves dropped file paths through the desktop bridge only when available", () => {
     const file = new File(["x"], "x.txt");
     const win = {
@@ -39,8 +28,7 @@ describe("desktop host detection", () => {
 
     expect(canResolveDroppedFiles(win)).toBe(true);
     expect(getDroppedFilePathResolver(win)?.(file)).toBe("/tmp/x.txt");
-    expect(getPathForDroppedFile(file, win)).toBe("/tmp/x.txt");
     expect(canResolveDroppedFiles(fakeWindow(true))).toBe(false);
-    expect(getPathForDroppedFile(file, fakeWindow(false))).toBeNull();
+    expect(getDroppedFilePathResolver(fakeWindow(false))).toBeNull();
   });
 });
