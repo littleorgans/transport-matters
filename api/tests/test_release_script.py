@@ -25,6 +25,20 @@ def _write_executable(path: Path, body: str) -> None:
     path.chmod(0o755)
 
 
+def _just_recipe_body(justfile: str, recipe_name: str) -> str:
+    marker = f"{recipe_name}:"
+    start = justfile.index(marker)
+    next_recipe = "\n".join(
+        line
+        for line in justfile[start + len(marker) :].splitlines()
+        if line and not line.startswith((" ", "\t", "#"))
+    )
+    if next_recipe:
+        end = justfile.index(next_recipe.splitlines()[0], start + len(marker))
+        return justfile[start:end]
+    return justfile[start:]
+
+
 def test_install_release_recipe_defaults_to_latest_and_supports_listing() -> None:
     justfile = ROOT_JUSTFILE.read_text()
 
@@ -40,16 +54,18 @@ def test_install_release_recipe_defaults_to_latest_and_supports_listing() -> Non
 
 def test_install_local_recipe_reinstalls_editable_worktree_without_version_file() -> None:
     justfile = ROOT_JUSTFILE.read_text()
+    install_local_recipe = _just_recipe_body(justfile, "install-local")
 
     assert "repo_root := justfile_directory()" in justfile
     assert 'api_dir := repo_root / "api"' in justfile
-    assert 'www_dir := repo_root / "www"' in justfile
-    assert "install-local:" in justfile
-    assert 'rm -f "{{version_file}}"' in justfile
-    assert 'cd "{{www_dir}}" && pnpm install && pnpm build' in justfile
+    assert 'shell_package := "@tm/shell"' in justfile
+    assert "install-local:" in install_local_recipe
+    assert 'rm -f "{{version_file}}"' in install_local_recipe
+    assert "pnpm install" in install_local_recipe
+    assert "pnpm --filter {{shell_package}} build" in install_local_recipe
     assert (
         'uv tool install --force --python "$(cat "{{python_version_file}}")" '
-        '--refresh-package transport-matters --editable "{{api_dir}}"' in justfile
+        '--refresh-package transport-matters --editable "{{api_dir}}"' in install_local_recipe
     )
     assert "tool-install-editable: install-local" in justfile
 

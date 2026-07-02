@@ -16,7 +16,7 @@
 #
 # Equivalent entry points:
 #   just release 0.2.2             # from repo root
-#   pnpm release 0.2.2             # from www/
+#   pnpm release 0.2.2             # from repo root
 #
 set -euo pipefail
 

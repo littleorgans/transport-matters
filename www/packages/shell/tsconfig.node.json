@@ -1,0 +1,7 @@
+{
+  "extends": "../../../tsconfig.bundler.json",
+  "include": [
+    "vite.config.ts",
+    "playwright.config.ts"
+  ]
+}

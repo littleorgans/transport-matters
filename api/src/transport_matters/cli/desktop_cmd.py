@@ -600,7 +600,7 @@ def resolve_electron_launch(
     electron_bin = _resolve_electron_binary(app_dir, env, which)
     if electron_bin is None:
         raise ElectronResolutionError(
-            "could not locate Electron. Run `cd desktop && pnpm install && pnpm build`, "
+            "could not locate Electron. Run `pnpm install && pnpm --filter transport-matters-desktop build`, "
             f"or set {DESKTOP_ELECTRON_BIN_ENV}."
         )
     return ElectronLaunch(argv=(str(electron_bin), str(app_dir)), cwd=app_dir)

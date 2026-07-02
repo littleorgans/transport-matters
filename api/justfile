@@ -42,7 +42,7 @@ migration-smoke:
 coverage:
     uv run python -m pytest --cov=transport_matters --cov-report=term-missing --cov-report=html
 
-# Build wheel + sdist into api/dist/. Run `cd ../www && pnpm build` first
+# Build wheel + sdist into api/dist/. Run `pnpm --dir .. --filter @tm/shell build` first
 # if you want the frontend bundle inside the wheel; vite writes it to
 # src/transport_matters/www/ which hatch includes via the artifacts glob.
 build:
@@ -55,7 +55,7 @@ build:
     @if unzip -l dist/transport_matters-*.whl | grep -q 'transport_matters/www/index.html'; then \
         echo "  ✓ www/ bundle embedded in wheel"; \
     else \
-        echo "  ! www/ bundle NOT in wheel; run 'cd ../www && pnpm build' first"; \
+        echo "  ! www/ bundle NOT in wheel; run 'pnpm --dir .. --filter @tm/shell build' first"; \
     fi
 
 # ------------- Quality Gates -------------

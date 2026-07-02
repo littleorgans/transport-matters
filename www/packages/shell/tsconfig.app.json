@@ -1,0 +1,28 @@
+{
+  "extends": [
+    "../../../tsconfig.base.json",
+    "../../../tsconfig.bundler.json"
+  ],
+  "compilerOptions": {
+    "lib": [
+      "ES2023",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    "jsx": "react-jsx",
+    "allowImportingTsExtensions": true,
+    "baseUrl": ".",
+    "paths": {
+      "@/host/*": [
+        "../host/src/*"
+      ],
+      "@/*": [
+        "./src/*"
+      ]
+    }
+  },
+  "include": [
+    "src",
+    "../host/src"
+  ]
+}

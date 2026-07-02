@@ -10,8 +10,10 @@ RELEASE_SURFACES = [
     "scripts/install.sh",
     "justfile",
     "api/justfile",
-    "www/package.json",
-    "www/vite.config.ts",
+    "package.json",
+    "pnpm-workspace.yaml",
+    "www/packages/shell/package.json",
+    "www/packages/shell/vite.config.ts",
 ]
 ACTIVE_BACKEND_SURFACES = [
     "api/.env.example",

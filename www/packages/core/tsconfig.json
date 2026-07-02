@@ -1,0 +1,9 @@
+{
+  "extends": [
+    "../../../tsconfig.base.json",
+    "../../../tsconfig.bundler.json"
+  ],
+  "include": [
+    "src"
+  ]
+}

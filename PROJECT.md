@@ -229,5 +229,5 @@ Repo specific invariants beyond the global agent rules:
 - Domain exceptions live in `exceptions.py` and are translated at the FastAPI
   layer. Always chain with `raise X from original`.
 
-The backend quality gate is `cd api && just ci`. The frontend quality gate is
-`cd www && pnpm lint && pnpm typecheck && pnpm test`.
+The backend quality gate is `cd api && just ci`. The repo root frontend and
+desktop quality gates are `just check`, `just test`, and `just build`.

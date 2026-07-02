@@ -68,30 +68,28 @@ jobs:
 
       - name: Install pnpm
         uses: pnpm/action-setup@v5
-        with:
-          package_json_file: www/package.json
 
       - name: Install Node
         uses: actions/setup-node@v5
         with:
           node-version: 20
           cache: pnpm
-          cache-dependency-path: www/pnpm-lock.yaml
+          cache-dependency-path: pnpm-lock.yaml
 
-      - name: Install www/ dependencies
-        working-directory: www
+      - name: Install JS dependencies
         run: pnpm install --frozen-lockfile --ignore-scripts
 
       - name: Gate on frontend checks
-        working-directory: www
         run: |
-          pnpm lint
-          pnpm typecheck
-          pnpm test
+          pnpm --filter @tm/shell lint
+          pnpm --filter @tm/shell typecheck
+          pnpm --filter @tm/core typecheck
+          pnpm --filter @tm/inspector typecheck
+          pnpm --filter @tm/canvas typecheck
+          pnpm --filter @tm/shell test
 
       - name: Build www/ bundle into api/src/transport_matters/www
-        working-directory: www
-        run: pnpm build
+        run: pnpm --filter @tm/shell build
 
       - name: Verify www/ landed inside the Python package
         run: |
