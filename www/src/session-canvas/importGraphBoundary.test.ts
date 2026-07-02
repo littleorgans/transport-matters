@@ -14,13 +14,8 @@ const SESSION_CANVAS_ROOT = path.dirname(fileURLToPath(import.meta.url));
 const SRC_ROOT = path.resolve(SESSION_CANVAS_ROOT, "..");
 const INSPECTOR_COMPONENTS_ROOT = path.join(SRC_ROOT, "components");
 
-const KNOWN_CANVAS_TO_INSPECTOR_IMPORTS = [
-  "session-canvas/viewers/resource/ProviderExchangeResourceViewer.tsx -> components/ExchangeDetail",
-  "session-canvas/viewers/transcript-chat/TranscriptMessage.tsx -> components/detail/ContentBlocks",
-];
-
 describe("session-canvas import graph boundary", () => {
-  it("pins the current canvas to inspector imports and rejects new ones", () => {
+  it("enforces zero canvas to inspector imports", () => {
     const violations = sourceFiles(SESSION_CANVAS_ROOT)
       .filter(isProductionSource)
       .flatMap((file) =>
@@ -29,7 +24,7 @@ describe("session-canvas import graph boundary", () => {
           .filter((violation): violation is string => violation !== null),
       );
 
-    expect(violations).toEqual(KNOWN_CANVAS_TO_INSPECTOR_IMPORTS);
+    expect(violations).toEqual([]);
   });
 
   it("fails closed for unresolved local aliases", () => {

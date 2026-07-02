@@ -1,5 +1,5 @@
-/* Provider-exchange viewer wrapper. ExchangeDetail brings its own styling; this
-   only gives it a full-height flex column inside the pane. Co-located; never
+/* Canvas-owned exchange viewer (ArkExchangeViewer). Read-only fork of the
+   inspector detail: same content, canvas presentation. Co-located; never
    edit index.css. */
 
 .canvas-exchange {
@@ -9,4 +9,419 @@
   flex: 1;
   flex-direction: column;
   overflow: hidden;
+  color: var(--color-txt);
+}
+
+.canvas-exchange--center {
+  align-items: center;
+  justify-content: center;
+}
+
+.canvas-exchange__error {
+  border: 1px solid var(--color-edge);
+  color: var(--color-rose);
+  font-size: 13px;
+  padding: 10px 16px;
+}
+
+/* ── Header ─────────────────────────────────────────────────────── */
+
+.canvas-exchange__header {
+  border-bottom: 1px solid var(--color-edge-subtle);
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--canvas-gap) / 2);
+  padding: var(--canvas-gap);
+}
+
+.canvas-exchange__identity {
+  align-items: baseline;
+  display: flex;
+  gap: var(--canvas-gap);
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.canvas-exchange__title {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.canvas-exchange__timestamp {
+  color: var(--color-txt-2);
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.canvas-exchange__cwd {
+  color: var(--color-txt-3);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.canvas-exchange__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: calc(var(--canvas-gap) / 2);
+}
+
+.canvas-exchange__chip {
+  border: 1px solid var(--color-edge);
+  color: var(--color-txt-2);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  padding: 4px 10px;
+  text-transform: uppercase;
+}
+
+.canvas-exchange__chip[data-tone="sage"] {
+  color: var(--color-sage);
+}
+
+.canvas-exchange__chip[data-tone="rose"] {
+  color: var(--color-rose);
+}
+
+.canvas-exchange__chip[data-tone="lavender"] {
+  color: var(--color-lavender);
+}
+
+.canvas-exchange__chip[data-tone="amber"] {
+  color: var(--color-amber);
+}
+
+.canvas-exchange__chip[data-tone="sky"] {
+  color: var(--color-sky);
+}
+
+/* ── Tabs ───────────────────────────────────────────────────────── */
+
+.canvas-exchange__tabs {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.canvas-exchange__tab-list {
+  border-bottom: 1px solid var(--color-edge);
+  display: flex;
+}
+
+.canvas-exchange__tab {
+  background: none;
+  border: none;
+  border-right: 1px solid var(--color-edge-subtle);
+  color: var(--color-txt-3);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 18px;
+  text-align: left;
+}
+
+.canvas-exchange__tab:hover:not([disabled]) {
+  color: var(--color-txt-2);
+}
+
+.canvas-exchange__tab[data-selected] {
+  background: var(--color-raised);
+  color: var(--color-txt);
+}
+
+.canvas-exchange__tab[disabled] {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.canvas-exchange__tab-label {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.canvas-exchange__tab-readout {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  min-height: 1em;
+  white-space: pre;
+}
+
+.canvas-exchange__tab-actions {
+  align-items: center;
+  display: flex;
+  flex: 1;
+  justify-content: flex-end;
+  padding-right: 8px;
+}
+
+.canvas-exchange__fullscreen-toggle {
+  line-height: 0;
+  padding: 6px 8px;
+}
+
+.canvas-exchange__fullscreen-icon {
+  height: 14px;
+  width: 14px;
+}
+
+.canvas-exchange__panel {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--canvas-gap);
+}
+
+/* ── Inspect fullscreen ─────────────────────────────────────────── */
+
+.canvas-exchange__fullscreen {
+  background: var(--color-canvas);
+  display: flex;
+  flex-direction: column;
+  inset: 0;
+  position: fixed;
+  z-index: 50;
+}
+
+.canvas-exchange__fullscreen-close {
+  position: absolute;
+  right: 16px;
+  top: 16px;
+  z-index: 1;
+}
+
+.canvas-exchange__fullscreen-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: calc(var(--canvas-gap) * 3) var(--canvas-gap) var(--canvas-gap);
+}
+
+/* ── Inspect panel ──────────────────────────────────────────────── */
+
+.canvas-exchange__inspect {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--canvas-gap) * 2);
+}
+
+.canvas-exchange__section {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--canvas-gap) / 2);
+}
+
+.canvas-exchange__section-title {
+  color: var(--color-label);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  margin: 0;
+  text-transform: uppercase;
+}
+
+.canvas-exchange__message {
+  border-left: 2px solid var(--color-edge-subtle);
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--canvas-gap) / 2);
+  padding-left: var(--canvas-gap);
+}
+
+.canvas-exchange__message[data-role="assistant"] {
+  border-left-color: var(--color-edge);
+}
+
+.canvas-exchange__message-role {
+  color: var(--color-txt-3);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.canvas-exchange__tool summary {
+  color: var(--color-txt-2);
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.canvas-exchange__tool-name {
+  font-family: var(--font-mono);
+  margin-right: 8px;
+}
+
+.canvas-exchange__tool-description {
+  color: var(--color-txt-3);
+  font-size: 12px;
+}
+
+.canvas-exchange__tool pre {
+  background: var(--color-well);
+  border: 1px solid var(--color-edge-subtle);
+  font-size: 12px;
+  margin: 6px 0 0;
+  overflow-x: auto;
+  padding: 10px;
+  white-space: pre-wrap;
+}
+
+/* ── Codex timeline ─────────────────────────────────────────────── */
+
+.canvas-exchange__events {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.canvas-exchange__event {
+  align-items: baseline;
+  display: flex;
+  font-size: 12px;
+  gap: var(--canvas-gap);
+}
+
+.canvas-exchange__event-seq {
+  color: var(--color-txt-3);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.canvas-exchange__event-kind {
+  font-family: var(--font-mono);
+}
+
+.canvas-exchange__event-source {
+  color: var(--color-txt-3);
+}
+
+.canvas-exchange__event-data summary {
+  color: var(--color-txt-3);
+  cursor: pointer;
+}
+
+.canvas-exchange__event-data pre {
+  background: var(--color-well);
+  border: 1px solid var(--color-edge-subtle);
+  font-size: 11px;
+  margin: 4px 0 0;
+  padding: 8px;
+  white-space: pre-wrap;
+}
+
+/* ── Transport panel ────────────────────────────────────────────── */
+
+.canvas-exchange__transport {
+  display: flex;
+  flex-direction: column;
+  gap: var(--canvas-gap);
+}
+
+.canvas-exchange__diagnostics {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--canvas-gap) / 2);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.canvas-exchange__diagnostic {
+  border: 1px solid var(--color-edge);
+  padding: 10px 14px;
+}
+
+.canvas-exchange__diagnostic[data-severity="error"] {
+  border-color: var(--color-rose);
+}
+
+.canvas-exchange__diagnostic[data-severity="warning"] {
+  border-color: var(--color-amber);
+}
+
+.canvas-exchange__diagnostic-header {
+  display: flex;
+  gap: 8px;
+}
+
+.canvas-exchange__diagnostic-severity {
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.canvas-exchange__diagnostic[data-severity="error"] .canvas-exchange__diagnostic-severity {
+  color: var(--color-rose);
+}
+
+.canvas-exchange__diagnostic[data-severity="warning"] .canvas-exchange__diagnostic-severity {
+  color: var(--color-amber);
+}
+
+.canvas-exchange__diagnostic[data-severity="info"] .canvas-exchange__diagnostic-severity {
+  color: var(--color-sky);
+}
+
+.canvas-exchange__diagnostic-code {
+  color: var(--color-txt-3);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.canvas-exchange__diagnostic-summary {
+  font-size: 13px;
+  font-weight: 500;
+  margin: 8px 0 0;
+}
+
+.canvas-exchange__diagnostic-detail {
+  color: var(--color-txt-2);
+  font-size: 12px;
+  margin: 4px 0 0;
+}
+
+.canvas-exchange__diagnostic-checks {
+  color: var(--color-txt-2);
+  font-size: 12px;
+  margin: 8px 0 0;
+  padding-left: 18px;
+}
+
+/* ── JSON panel ─────────────────────────────────────────────────── */
+
+.canvas-exchange__json {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--canvas-gap) / 2);
+}
+
+.canvas-exchange__json-toolbar {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.canvas-exchange__empty {
+  color: var(--color-txt-3);
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  margin: 0;
+  text-align: center;
+  text-transform: uppercase;
 }

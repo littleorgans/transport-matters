@@ -1,3 +1,4 @@
+export * from "./fixtures/canvas";
 export * from "./fixtures/details";
 export * from "./fixtures/exchanges";
 export * from "./fixtures/pausedFlow";

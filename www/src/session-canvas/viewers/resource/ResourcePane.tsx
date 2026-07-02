@@ -4,11 +4,11 @@ import { useLocalFileContent } from "../../hooks/useLocalFileContent";
 import { useResourceContent } from "../../hooks/useResourceContent";
 import { locatorTail, type PaneContentRef, type ViewerProps } from "../../model/paneRecords";
 import { ResourcePaneStateView } from "../placeholder/paneState";
+import { ArkExchangeViewer } from "./ArkExchangeViewer";
 import { BinaryResourceViewer } from "./BinaryResourceViewer";
 import { ImageResourceViewer } from "./ImageResourceViewer";
 import { JsonResourceViewer } from "./JsonResourceViewer";
 import { MarkdownResourceViewer } from "./MarkdownResourceViewer";
-import { ProviderExchangeResourceViewer } from "./ProviderExchangeResourceViewer";
 import { type ResourceView, resolveResourceContent } from "./resourceState";
 import { TextResourceViewer } from "./TextResourceViewer";
 
@@ -138,7 +138,7 @@ function ResourceBody({ view }: { view: ResourceView }): ReactElement {
       return <BinaryResourceViewer content={view.content} />;
     case "exchange":
       return (
-        <ProviderExchangeResourceViewer
+        <ArkExchangeViewer
           runId={view.content.runId}
           exchangeId={view.content.exchangeId}
           initialView={view.content.initialView}

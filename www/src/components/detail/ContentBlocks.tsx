@@ -10,7 +10,7 @@
  */
 
 import { ColorizedPre } from "../../lib/colorizeLine";
-import { truncatePreview } from "../../lib/formatting";
+import { blockSummary } from "../../lib/contentBlocks";
 import type { ContentBlock, Message } from "../../types";
 
 // Block type markers are intentionally uniform: a single .chip
@@ -21,37 +21,6 @@ import type { ContentBlock, Message } from "../../types";
 /** Total content blocks across all messages. Single source of truth for message counts. */
 export function countContentBlocks(messages: Message[]): number {
   return messages.reduce((sum, m) => sum + m.content.length, 0);
-}
-
-export function blockSummary(block: ContentBlock, maxPreview = 220): string {
-  switch (block.type) {
-    case "text": {
-      const trimmed = block.text.trim();
-      if (trimmed.length === 0) return "(empty)";
-      return truncatePreview(trimmed, maxPreview);
-    }
-    case "tool_use":
-      return `${block.name}  \u00b7  ${block.id}`;
-    case "tool_result":
-      return `\u2192 ${block.tool_use_id.slice(0, 8)}${block.is_error ? "  [error]" : ""}`;
-    case "thinking":
-      return `${block.text.length.toLocaleString()} chars of reasoning`;
-    case "image":
-      return "image";
-    case "unknown":
-      return "unknown block";
-  }
-}
-
-export function blockKey(block: ContentBlock, idx: number): string {
-  switch (block.type) {
-    case "tool_use":
-      return `tu-${block.id}`;
-    case "tool_result":
-      return `tr-${block.tool_use_id}`;
-    default:
-      return `${block.type}-${idx}`;
-  }
 }
 
 // ── Content block ──────────────────────────────────────────────────

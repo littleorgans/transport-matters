@@ -1,10 +1,10 @@
 import { useEditableOverride } from "../../hooks/useEditableOverride";
 import { ColorizedPre } from "../../lib/colorizeLine";
+import { blockSummary } from "../../lib/contentBlocks";
 import { overrideValue } from "../../lib/overrides";
 import { messageBlockTarget, toolResultTarget } from "../../lib/overrideTargets";
 import type { ContentBlock, Override } from "../../types";
 import { CompositeEditableRow, SizeDelta } from "../detail/atoms";
-import { blockSummary } from "../detail/ContentBlocks";
 import { TextOverrideEditor } from "./TextOverrideEditor";
 
 function blockSize(block: ContentBlock): number {

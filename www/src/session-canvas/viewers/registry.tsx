@@ -12,7 +12,7 @@ import {
   type ViewerRegistration,
 } from "../model/paneRecords";
 import { PlaceholderPane, type PlaceholderPaneRef } from "./placeholder/PlaceholderPane";
-import { ProviderExchangeResourceViewer } from "./resource/ProviderExchangeResourceViewer";
+import { ArkExchangeViewer } from "./resource/ArkExchangeViewer";
 import { ResourcePane } from "./resource/ResourcePane";
 import { SessionPickerPane } from "./session-picker/SessionPickerPane";
 import { TranscriptChatPane } from "./transcript-chat/TranscriptChatPane";
@@ -85,7 +85,7 @@ const registry: ViewerRegistration[] = [
     paneId: (ref) => `${EXCHANGE_PANE_PREFIX}${ref.runId}:${ref.exchangeId}`,
     title: (ref) => `Exchange ${ref.exchangeId.slice(0, 8)}`,
     render: (props) => (
-      <ProviderExchangeResourceViewer
+      <ArkExchangeViewer
         runId={props.pane.contentRef.runId}
         exchangeId={props.pane.contentRef.exchangeId}
         initialView={props.pane.contentRef.initialView}
