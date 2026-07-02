@@ -58,11 +58,13 @@ def test_install_local_recipe_reinstalls_editable_worktree_without_version_file(
 
     assert "repo_root := justfile_directory()" in justfile
     assert 'api_dir := repo_root / "api"' in justfile
-    assert 'shell_package := "@tm/shell"' in justfile
+    assert 'inspector_package := "@tm/inspector"' in justfile
+    assert 'canvas_package := "@tm/canvas"' in justfile
     assert "install-local:" in install_local_recipe
     assert 'rm -f "{{version_file}}"' in install_local_recipe
     assert "pnpm install" in install_local_recipe
-    assert "pnpm --filter {{shell_package}} build" in install_local_recipe
+    assert "pnpm --filter {{inspector_package}} build" in install_local_recipe
+    assert "pnpm --filter {{canvas_package}} build" in install_local_recipe
     assert (
         'uv tool install --force --python "$(cat "{{python_version_file}}")" '
         '--refresh-package transport-matters --editable "{{api_dir}}"' in install_local_recipe

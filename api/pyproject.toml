@@ -90,6 +90,7 @@ packages = ["src/transport_matters"]
 exclude = ["**/test_*.py", "**/conftest.py", "src/transport_matters/session/testing.py"]
 artifacts = [
     "src/transport_matters/www/**",
+    "src/transport_matters/canvas/**",
     "src/transport_matters/settings.example.toml",
     "src/transport_matters/channel-specs.json",
     "migrations/**",
