@@ -1,4 +1,4 @@
-import { act, screen } from "@testing-library/react";
+import { act, screen, waitFor } from "@testing-library/react";
 import { clearThemeTokens, useThemeStore } from "@tm/canvas";
 import {
   installMockTransport,
@@ -55,7 +55,13 @@ describe("RootShell", () => {
     cycleTheme();
 
     expect(useThemeStore.getState().theme?.id).toBe("open-water");
-    expect(document.documentElement.style.getPropertyValue("--color-accent")).not.toBe("");
+    // Tokens land through the route's layout effect; under full-suite CI
+    // load the committing render can trail the store write (same reasoning
+    // as findCanvasShell's generous timeout), so assert eventual
+    // application rather than the synchronous flush.
+    await waitFor(() => {
+      expect(document.documentElement.style.getPropertyValue("--color-accent")).not.toBe("");
+    });
     expect(document.documentElement.style.getPropertyValue("--pane-blur")).toBe(
       "blur(18px) saturate(120%)",
     );
@@ -82,13 +88,17 @@ describe("RootShell", () => {
     await findCanvasShell();
 
     cycleTheme(); // open-water
-    expect(document.documentElement.style.getPropertyValue("--pane-blur")).toBe(
-      "blur(18px) saturate(120%)",
-    );
+    await waitFor(() => {
+      expect(document.documentElement.style.getPropertyValue("--pane-blur")).toBe(
+        "blur(18px) saturate(120%)",
+      );
+    });
 
     cycleTheme(); // littleorgans
     cycleTheme(); // back to unthemed
     expect(useThemeStore.getState().theme).toBeNull();
-    expect(document.documentElement.style.getPropertyValue("--pane-blur")).toBe("");
+    await waitFor(() => {
+      expect(document.documentElement.style.getPropertyValue("--pane-blur")).toBe("");
+    });
   });
 });
