@@ -7,6 +7,7 @@
 import type { ReactElement } from "react";
 import { blockKey } from "../../../lib/contentBlocks";
 import type {
+  CodexDerivedArtifactsState,
   CodexSemanticEvent,
   ContentBlock,
   ExchangeDetail,
@@ -15,7 +16,6 @@ import type {
   Message,
   SystemPart,
   ToolDef,
-  TransportDiagnostic,
 } from "../../../types";
 import { TranscriptBlock } from "../transcript-chat/TranscriptMessage";
 import { CopyButton } from "./primitives/CopyButton";
@@ -50,9 +50,12 @@ export function ExchangeJsonPanel({
 export function ExchangeInspectPanel({ detail }: { detail: ExchangeDetail }): ReactElement {
   const originalRequest = detail.request_ir as unknown as InternalRequest | undefined;
   const curatedRequest = detail.request_curated_ir as unknown as InternalRequest | undefined;
-  // Original first so pre-mutation entries still appear; curated is the
-  // fallback for passthrough rows where request_ir is the only payload.
-  const baseRequest = originalRequest ?? curatedRequest;
+  // Curated first: when the pipeline or a breakpoint edit mutated the request,
+  // the inspect content must match what actually reached the provider (the
+  // request tab's default). The read-only fork carries no override diffing, so
+  // a curated note signals the mutation instead of greyed-out original rows.
+  const baseRequest = curatedRequest ?? originalRequest;
+  const isCurated = detail.request_curated_ir != null;
   const systemParts: SystemPart[] = baseRequest?.system ?? [];
   const messages: Message[] = baseRequest?.messages ?? [];
   const tools: ToolDef[] = baseRequest?.tools ?? [];
@@ -63,6 +66,14 @@ export function ExchangeInspectPanel({ detail }: { detail: ExchangeDetail }): Re
 
   return (
     <div className="canvas-exchange__inspect">
+      {isCurated && (
+        <p className="canvas-exchange__curated-note">
+          Showing the request as sent. The pipeline or a breakpoint edit mutated the original.
+        </p>
+      )}
+
+      <DerivedArtifactsSection state={detail.codex_derived_artifacts} />
+
       {showsCodexTimeline && detail.events != null && (
         <ExchangeSection title="timeline">
           <ol className="canvas-exchange__events">
@@ -170,7 +181,85 @@ function CodexEventRow({ event }: { event: CodexSemanticEvent }): ReactElement {
   );
 }
 
-function DiagnosticRow({ diagnostic }: { diagnostic: TransportDiagnostic }): ReactElement {
+/**
+ * Structural superset of TransportDiagnostic and
+ * CodexDerivedArtifactsDiagnostic, so one row renders both.
+ */
+interface DiagnosticLike {
+  severity: "info" | "warning" | "error";
+  code: string;
+  summary: string;
+  detail?: string | null;
+  operator_checks?: string[];
+}
+
+const DERIVED_ARTIFACTS_MESSAGES = {
+  migrated:
+    "Semantic timeline migrated from persisted sidecars and rebuilt from canonical transport during read.",
+  repaired: "Semantic timeline rebuilt from canonical transport during read.",
+  unavailable: "Semantic timeline unavailable. Showing backend derived-artifact diagnostics.",
+} as const;
+
+function derivedArtifactsLabel(state: CodexDerivedArtifactsState): string {
+  const repair = state.repair;
+  if (repair != null && repair.action !== "none") {
+    const statusBefore = repair.status_before.replaceAll("_", " ");
+    return repair.action === "migrated"
+      ? `migrated from ${statusBefore}`
+      : `repaired from ${statusBefore}`;
+  }
+  return state.status.replaceAll("_", " ");
+}
+
+/**
+ * Codex derived-artifacts state: missing, repaired, migrated, or inconsistent
+ * semantic timelines surface as operator warnings, mirroring the inspector's
+ * visibility rule (hidden when not applicable or when a supported state
+ * carries no repair and no diagnostics).
+ */
+function DerivedArtifactsSection({
+  state,
+}: {
+  state: CodexDerivedArtifactsState | null | undefined;
+}): ReactElement | null {
+  const repaired = state?.repair?.action != null && state.repair.action !== "none";
+  if (
+    state == null ||
+    state.status === "not_applicable" ||
+    (!repaired && (state.status === "supported" || state.diagnostics.length === 0))
+  ) {
+    return null;
+  }
+
+  const message =
+    state.repair?.action === "migrated"
+      ? DERIVED_ARTIFACTS_MESSAGES.migrated
+      : repaired
+        ? DERIVED_ARTIFACTS_MESSAGES.repaired
+        : DERIVED_ARTIFACTS_MESSAGES.unavailable;
+
+  return (
+    <section className="canvas-exchange__derived" data-status={state.status}>
+      <header className="canvas-exchange__derived-header">
+        <span className="canvas-exchange__derived-chip">timeline</span>
+        <span className="canvas-exchange__derived-count">
+          {state.diagnostics.length} diagnostic{state.diagnostics.length === 1 ? "" : "s"}
+        </span>
+        <span className="canvas-exchange__derived-label">{derivedArtifactsLabel(state)}</span>
+      </header>
+      <p className="canvas-exchange__derived-message">{message}</p>
+      {state.diagnostics.length > 0 && (
+        <ul className="canvas-exchange__diagnostics">
+          {state.diagnostics.map((diagnostic) => (
+            <DiagnosticRow diagnostic={diagnostic} key={diagnostic.code} />
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+function DiagnosticRow({ diagnostic }: { diagnostic: DiagnosticLike }): ReactElement {
   return (
     <li className="canvas-exchange__diagnostic" data-severity={diagnostic.severity}>
       <header className="canvas-exchange__diagnostic-header">
@@ -181,7 +270,7 @@ function DiagnosticRow({ diagnostic }: { diagnostic: TransportDiagnostic }): Rea
       {diagnostic.detail && (
         <p className="canvas-exchange__diagnostic-detail">{diagnostic.detail}</p>
       )}
-      {diagnostic.operator_checks.length > 0 && (
+      {diagnostic.operator_checks != null && diagnostic.operator_checks.length > 0 && (
         <ul className="canvas-exchange__diagnostic-checks">
           {diagnostic.operator_checks.map((check) => (
             <li key={check}>{check}</li>

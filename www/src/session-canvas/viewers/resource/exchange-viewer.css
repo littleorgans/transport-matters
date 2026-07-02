@@ -220,6 +220,79 @@
   gap: calc(var(--canvas-gap) * 2);
 }
 
+.canvas-exchange__curated-note {
+  border: 1px solid var(--color-edge);
+  color: var(--color-amber);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  margin: 0;
+  padding: 8px 12px;
+}
+
+/* ── Derived-artifacts diagnostics ──────────────────────────────── */
+
+.canvas-exchange__derived {
+  border: 1px solid var(--color-edge);
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--canvas-gap) / 2);
+  padding: 12px 14px;
+}
+
+.canvas-exchange__derived[data-status="inconsistent"] {
+  border-color: var(--color-rose);
+}
+
+.canvas-exchange__derived[data-status="migration_required"] {
+  border-color: var(--color-amber);
+}
+
+.canvas-exchange__derived-header {
+  align-items: baseline;
+  display: flex;
+  gap: 10px;
+}
+
+.canvas-exchange__derived-chip {
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.canvas-exchange__derived[data-status="inconsistent"] .canvas-exchange__derived-chip {
+  color: var(--color-rose);
+}
+
+.canvas-exchange__derived[data-status="migration_required"] .canvas-exchange__derived-chip {
+  color: var(--color-amber);
+}
+
+.canvas-exchange__derived[data-status="missing"] .canvas-exchange__derived-chip,
+.canvas-exchange__derived[data-status="supported"] .canvas-exchange__derived-chip {
+  color: var(--color-sky);
+}
+
+.canvas-exchange__derived-count {
+  color: var(--color-txt-3);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.canvas-exchange__derived-label {
+  color: var(--color-txt-3);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  margin-left: auto;
+  text-transform: uppercase;
+}
+
+.canvas-exchange__derived-message {
+  font-size: 13px;
+  font-weight: 500;
+  margin: 0;
+}
+
 .canvas-exchange__section {
   display: flex;
   flex-direction: column;

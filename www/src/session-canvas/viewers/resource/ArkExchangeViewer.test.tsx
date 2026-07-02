@@ -172,6 +172,72 @@ describe("ArkExchangeViewer render contract", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("shows the curated request as sent, with a curated signal, when the request was mutated", async () => {
+    await renderViewer(
+      makeDetail({
+        request_curated_ir: {
+          model: "claude-sonnet-4-5",
+          system: [{ type: "text", text: "You are a careful reviewer." }],
+          messages: [{ role: "user", content: [{ type: "text", text: "Curated capture ask." }] }],
+          tools: [],
+        },
+      } as unknown as Partial<ExchangeDetail>),
+    );
+    expect(screen.getByText("Curated capture ask.")).toBeInTheDocument();
+    expect(screen.queryByText("Review the capture path.")).not.toBeInTheDocument();
+    expect(screen.getByText(/as sent/i)).toBeInTheDocument();
+  });
+
+  it("shows no curated signal when the request was never mutated", async () => {
+    await renderViewer(makeDetail());
+    expect(screen.queryByText(/as sent/i)).not.toBeInTheDocument();
+  });
+
+  it("renders codex derived-artifacts diagnostics as operator warnings", async () => {
+    await renderViewer(
+      makeDetail({
+        codex_derived_artifacts: {
+          status: "missing",
+          diagnostics: [
+            {
+              severity: "warning",
+              code: "sidecar-missing",
+              summary: "Semantic sidecars were not persisted for this turn.",
+              detail: "Timeline rebuilt from canonical transport.",
+            },
+          ],
+          repair: null,
+        },
+      } as unknown as Partial<ExchangeDetail>),
+    );
+    expect(
+      screen.getByText("Semantic sidecars were not persisted for this turn."),
+    ).toBeInTheDocument();
+    expect(screen.getByText("missing")).toBeInTheDocument();
+  });
+
+  it("labels a repaired derived-artifacts state by its prior status", async () => {
+    await renderViewer(
+      makeDetail({
+        codex_derived_artifacts: {
+          status: "supported",
+          diagnostics: [],
+          repair: { action: "repaired", status_before: "inconsistent" },
+        },
+      } as unknown as Partial<ExchangeDetail>),
+    );
+    expect(screen.getByText("repaired from inconsistent")).toBeInTheDocument();
+  });
+
+  it("hides the derived-artifacts section when the state carries no signal", async () => {
+    await renderViewer(
+      makeDetail({
+        codex_derived_artifacts: { status: "supported", diagnostics: [], repair: null },
+      } as unknown as Partial<ExchangeDetail>),
+    );
+    expect(screen.queryByText(/semantic timeline/i)).not.toBeInTheDocument();
+  });
+
   it("renders the fetch error body when the exchange is missing", async () => {
     installMockTransport(() => jsonResponse({ error: "not found" }, 404));
     renderWithQuery(<ArkExchangeViewer exchangeId="gone" initialView={null} runId={RUN_ID} />);
