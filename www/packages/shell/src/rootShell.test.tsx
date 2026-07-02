@@ -1,16 +1,15 @@
 import { act, screen } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { clearThemeTokens } from "./hooks/useThemeTokens";
-import { RootShell } from "./rootShell";
+import { clearThemeTokens, useThemeStore } from "@tm/canvas";
 import {
   installMockTransport,
   jsonResponse,
   renderWithQuery,
   restoreTransport,
-} from "./session-canvas/testUtils";
-import { useThemeStore } from "./stores/themeStore";
+} from "@tm/core/testing";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { RootShell } from "./rootShell";
 
-vi.mock("./ambient/createAmbientBackground");
+vi.mock("@tm/canvas/ambient/createAmbientBackground");
 
 // The canvas route loads through React.lazy; under full-suite load the chunk can
 // outlive findBy's 1s default, so wait generously for the canvas shell to paint.

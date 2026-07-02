@@ -3,6 +3,9 @@
     "../../../tsconfig.base.json",
     "../../../tsconfig.bundler.json"
   ],
+  "compilerOptions": {
+    "jsx": "react-jsx"
+  },
   "include": [
     "src"
   ]

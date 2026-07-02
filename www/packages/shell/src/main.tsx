@@ -2,14 +2,12 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { fetchMeta } from "@tm/core";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import "./index.css";
-import "./index.launcher.css";
-import "./session-canvas/canvas.css";
-import "./session-canvas/viewers/placeholder/placeholder-pane.css";
+import "@tm/inspector/inspector.css";
+import "@tm/canvas/index.css";
 import { queryClient } from "@tm/core";
 import { mountWindowChrome } from "@tm/host";
 import { RootShell } from "./rootShell";
-import { selectRootRoute } from "./session-canvas/route";
+import { selectRootRoute } from "./route";
 
 // Warm the meta cache before the first render so OverlaysView can
 // stamp real cwds onto project-scoped drafts the moment a user saves.

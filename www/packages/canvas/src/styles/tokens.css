@@ -1,0 +1,126 @@
+/* ── Canvas design tokens ──
+   The canvas product's own token set. Values that also exist in the
+   inspector's Tailwind @theme are deliberate copies: separate tokens
+   per product is a locked separation decision, and the two products
+   never share a stylesheet. The theme system (applyThemeTokens,
+   theme/theme.ts) overrides the accent and pane knobs inline on :root
+   at runtime; everything here is the unthemed default. ── */
+:root {
+  /* ── Canvas layers (pure neutral charcoals) ── */
+  --color-well: #040404;
+  --color-canvas: #080808;
+  --color-surface: #0e0e0e;
+  --color-raised: #171717;
+  --color-hover: #1f1f1f;
+
+  /* ── Borders ── */
+  --color-edge: #242424;
+  --color-edge-strong: #2d2d2d;
+  --color-edge-subtle: #171717;
+
+  /* ── Text ── */
+  --color-txt: #dcdcdc;
+  --color-txt-2: #949494;
+  --color-txt-3: #707070;
+  --color-label: #7c7c7c;
+
+  /* ── Muted pastel accents ── */
+  --color-sage: #7ec9a0;
+  --color-rose: #d4879c;
+  --color-lavender: #a88bda;
+  --color-sky: #7ab3d4;
+  --color-amber: #d4b07e;
+
+  /* ── Agent rails ──
+     Six categorical rail colors consumed through @tm/core's
+     agentRailStyle (var(--color-agent-rail-N) / var(--agent-rail-N-rgb)). ── */
+  --color-agent-rail-0: #7ab3d4;
+  --color-agent-rail-1: #7ec9a0;
+  --color-agent-rail-2: #d4b07e;
+  --color-agent-rail-3: #a88bda;
+  --color-agent-rail-4: #d4879c;
+  --color-agent-rail-5: #6ebcb0;
+  --agent-rail-0-rgb: 122 179 212;
+  --agent-rail-1-rgb: 126 201 160;
+  --agent-rail-2-rgb: 212 176 126;
+  --agent-rail-3-rgb: 168 139 218;
+  --agent-rail-4-rgb: 212 135 156;
+  --agent-rail-5-rgb: 110 188 176;
+
+  /* ── Chiaroscuro ── */
+  --shadow-rgb: 0 0 0;
+  --highlight-rgb: 255 255 255;
+
+  /* ── Semantic accent ──
+     The canvas's own unthemed default. Canvas CSS consumes these as
+     fallbacks when no theme is active; an active theme overrides them
+     inline on :root. ── */
+  --color-accent: #e8e4dc;
+  --accent-rgb: 232 228 220;
+
+  /* ── Typography ── */
+  --font-sans: "JetBrains Mono", monospace;
+  --font-mono: "JetBrains Mono", monospace;
+
+  /* ── Corner policy ── */
+  --radius-sm: 0;
+
+  /* ── Canvas layout constants ── */
+  --canvas-command-inset: 16px;
+  --canvas-command-gap: 12px;
+  --canvas-gap: 10px;
+  --canvas-resize-size: 18px;
+  --canvas-row-padding: 12px;
+  --canvas-focus-ring: 0 0 0 2px rgb(var(--accent-rgb) / 0.72);
+
+  /* ── Theme pipeline knobs ──
+     Stylesheet defaults for the pane custom properties the theme
+     system overrides inline on :root at runtime. ── */
+  --pane-radius: 0;
+  --pane-surface-alpha: 0.74;
+  --pane-border-color: var(--color-edge-strong);
+  --pane-blur: none;
+  --pane-shadow: 0 22px 70px rgb(var(--shadow-rgb) / 0.46);
+
+  /* ── Pane treatment (static) ── */
+  --pane-border: 1px solid var(--pane-border-color);
+  --pane-padding: 14px;
+  --pane-header: 58px;
+}
+
+/* ── Global resets ──
+   Same values as the inspector's; duplicated by design so the canvas
+   bundle stands alone once it ships separately (P6). ── */
+html,
+body {
+  background: var(--color-canvas);
+}
+body {
+  color: var(--color-txt);
+  font-family: var(--font-sans);
+  font-feature-settings: "ss01", /* JetBrains stylistic alt */ "zero"; /* slashed zero */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ── Scrollbars: none, anywhere ── */
+* {
+  scrollbar-width: none;
+}
+::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+/* ── Selection ── */
+::selection {
+  background: rgb(var(--accent-rgb) / 0.25);
+  color: var(--color-txt);
+}
+
+/* ── Focus ring ── */
+:focus-visible {
+  outline: 1px solid var(--color-accent);
+  outline-offset: 1px;
+}

@@ -62,14 +62,6 @@ export default defineConfig({
   define: {
     __TRANSPORT_MATTERS_VERSION__: JSON.stringify(resolveVersion()),
   },
-  resolve: {
-    alias: [
-      {
-        find: "@",
-        replacement: shellSrcRoot,
-      },
-    ],
-  },
   server: {
     fs: {
       allow: [workspaceRoot],
@@ -88,6 +80,8 @@ export default defineConfig({
       "src/**/*.test.{ts,tsx}",
       "../host/src/**/*.test.{ts,tsx}",
       "../core/src/**/*.test.{ts,tsx}",
+      "../inspector/src/**/*.test.{ts,tsx}",
+      "../canvas/src/**/*.test.{ts,tsx}",
     ],
   },
 });

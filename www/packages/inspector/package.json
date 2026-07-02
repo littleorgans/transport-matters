@@ -4,9 +4,20 @@
   "version": "0.1.0",
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./inspector.css": "./src/inspector.css",
+    "./storageKeys": "./src/stores/persistence.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@tanstack/react-query": "^5.97.0",
+    "@tanstack/react-virtual": "^3.13.23",
+    "@tm/core": "workspace:*",
+    "diff": "^9.0.0",
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5",
+    "zustand": "^5.0.12"
   }
 }

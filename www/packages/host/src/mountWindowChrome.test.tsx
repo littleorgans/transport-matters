@@ -1,7 +1,7 @@
 import { act, screen } from "@testing-library/react";
 import { queryClient } from "@tm/core";
+import { installMockTransport, jsonResponse, restoreTransport } from "@tm/core/testing";
 import { afterEach, describe, expect, it } from "vitest";
-import { installMockTransport, jsonResponse, restoreTransport } from "@/session-canvas/testUtils";
 import { type MountedWindowChrome, mountWindowChrome } from "./mountWindowChrome";
 
 function previewMeta() {

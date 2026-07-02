@@ -1,0 +1,821 @@
+@import "tailwindcss";
+
+/* The inspector is its own Tailwind root: scan this package's sources
+   explicitly so utilities keep generating when the shell (whose cwd drives
+   automatic detection) builds the composed bundle. */
+@source "./";
+
+@theme {
+  /* ── Canvas layers (pure neutral charcoals) ──
+     Each step is deliberate: canvas is the deepest void, surface
+     the default card plane, raised the hover/active state. Values
+     are luminance-matched to the prior blue-tinted palette so the
+     step structure is preserved; only the hue bias is removed. ── */
+  --color-well: #040404;
+  --color-canvas: #080808;
+  --color-surface: #0e0e0e;
+  --color-raised: #171717;
+  --color-hover: #1f1f1f;
+
+  /* ── Borders ──
+     edge is the default hairline; edge-strong marks primary
+     containers; edge-subtle lives inside nested blocks. ── */
+  --color-edge: #242424;
+  --color-edge-strong: #2d2d2d;
+  --color-edge-subtle: #171717;
+
+  /* ── Text ──
+     txt:   primary content (body values)
+     txt-2: secondary text (helper copy, inline metadata)
+     txt-3: labels — uppercase section titles, metric captions
+     label: explicit alias for txt-3 at call sites ── */
+  --color-txt: #dcdcdc;
+  --color-txt-2: #949494;
+  --color-txt-3: #707070;
+  --color-label: #7c7c7c;
+
+  /* ── Muted pastel accents ──
+     A fixed palette of categorical colors used for role badges,
+     token bars, tool group distinction, and syntax highlighting.
+     These stay put across theme changes. ── */
+  --color-sage: #7ec9a0;
+  --color-rose: #d4879c;
+  --color-lavender: #a88bda;
+  --color-sky: #7ab3d4;
+  --color-amber: #d4b07e;
+  --color-teal: #6ebcb0;
+
+  /* ── Agent rails ──
+     Six categorical side-border colors for subagent tracks. These
+     are stable by track id so a specific agent keeps its rail color
+     throughout the session. ── */
+  --color-agent-rail-0: #7ab3d4;
+  --color-agent-rail-1: #7ec9a0;
+  --color-agent-rail-2: #d4b07e;
+  --color-agent-rail-3: #a88bda;
+  --color-agent-rail-4: #d4879c;
+  --color-agent-rail-5: #6ebcb0;
+
+  /* ── RGB triplets ──
+     Space-separated R G B values for each pastel, used anywhere
+     we need a translucent variant via rgb(var(...) / alpha). Must
+     stay in sync with the hex values above. ── */
+  --sage-rgb: 126 201 160;
+  --rose-rgb: 212 135 156;
+  --lavender-rgb: 168 139 218;
+  --sky-rgb: 122 179 212;
+  --amber-rgb: 212 176 126;
+  --teal-rgb: 110 188 176;
+  --agent-rail-0-rgb: 122 179 212;
+  --agent-rail-1-rgb: 126 201 160;
+  --agent-rail-2-rgb: 212 176 126;
+  --agent-rail-3-rgb: 168 139 218;
+  --agent-rail-4-rgb: 212 135 156;
+  --agent-rail-5-rgb: 110 188 176;
+
+  /* ── Chiaroscuro ──
+     Raw black and white at variable alpha — the basis of every
+     inset highlight (light from above) and gravity shadow (below)
+     in the UI. These are physical, not tonal, so they do not
+     change with the theme. ── */
+  --shadow-rgb: 0 0 0;
+  --highlight-rgb: 255 255 255;
+
+  /* ── Semantic accent ──
+     The single color used to mark active, selected, focused, and
+     live state. Swap these two values to reflavor the whole app.
+     --accent-rgb is the same color in R G B form for rgb()/rgba()
+     calls inside plain CSS (box-shadows, gradients, selection).
+
+     Current: bone — warm ivory. Against the pure-neutral canvas
+     it reads as illumination rather than color: the top strip of
+     the pressed tab and the left rail of the selected row become
+     light-from-above cues, and the FORWARD button stands out as
+     the brightest thing in its row — the primary action.
+
+     Alternatives to try:
+       platinum    #c8ccd8  —  200 204 216   (cool neutral)
+       ivory       #f0ede4  —  240 237 228   (brighter warm)
+       ghost       #e4e4e4  —  228 228 228   (pure off-white)
+       pewter      #5a5a68  —  90 90 104     (dark charcoal)
+       graphite    #4a4a58  —  74 74 88      (dark charcoal, dimmer)
+       sky         #7ab3d4  —  122 179 212   (original blue) ── */
+  --color-accent: #e8e4dc;
+  --accent-rgb: 232 228 220;
+
+  /* ── Typography ── */
+  --font-sans: "JetBrains Mono", monospace;
+  --font-mono: "JetBrains Mono", monospace;
+
+  /* ── Corner policy ──
+     The design language is square. Override Tailwind's default
+     radius scale to 0 so every rounded-* utility generates with
+     no radius. rounded-full stays circular because it uses
+     calc(infinity * 1px), not the scale. ── */
+  --radius-xs: 0;
+  --radius-sm: 0;
+  --radius-md: 0;
+  --radius-lg: 0;
+  --radius-xl: 0;
+  --radius-2xl: 0;
+  --radius-3xl: 0;
+  --radius-4xl: 0;
+  --radius: 0;
+
+  /* ── Frame width ──
+     The .frame craft primitive's readable maximum. The canvas layout
+     and pane tokens live in @tm/canvas (styles/tokens.css); the token
+     split per product is a locked separation decision. ── */
+  --max-frame: 1200px;
+}
+
+/* ── Global resets ── */
+html,
+body {
+  background: var(--color-canvas);
+}
+body {
+  color: var(--color-txt);
+  font-family: var(--font-sans);
+  font-feature-settings: "ss01", /* JetBrains stylistic alt */ "zero"; /* slashed zero */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ── Scrollbars: none, anywhere ──
+   Content still scrolls (wheel, trackpad, keys); only the chrome is hidden.
+   scrollbar-width covers modern engines; the -webkit pseudo covers engines
+   that only honor the legacy pseudo-element styling. Widgets that draw their
+   own DOM scrollbars hide them in their co-located CSS. ── */
+* {
+  scrollbar-width: none;
+}
+::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+/* ── Button press feedback ── */
+.btn {
+  transition:
+    transform 80ms ease,
+    opacity 80ms ease,
+    box-shadow 120ms ease;
+}
+.btn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* ── Spinner animation ── */
+@keyframes spin-slow {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.spinner {
+  animation: spin-slow 0.8s linear infinite;
+}
+
+/* ── Pulse dot ── */
+@keyframes pulse-dot {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
+.pulse-dot {
+  animation: pulse-dot 1.5s ease-in-out infinite;
+}
+
+@keyframes transport-scan {
+  0% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(320%);
+  }
+}
+.transport-scan {
+  animation: transport-scan 1.25s linear infinite;
+}
+
+@keyframes token-segment {
+  0%,
+  100% {
+    background: var(--color-surface);
+    border-color: var(--color-edge-strong);
+    box-shadow: none;
+    opacity: 0.58;
+  }
+  42% {
+    background: rgb(var(--accent-rgb) / 0.9);
+    border-color: rgb(var(--accent-rgb) / 0.95);
+    box-shadow: 0 0 18px rgb(var(--accent-rgb) / 0.35);
+    opacity: 1;
+  }
+}
+.token-segment {
+  animation: token-segment 1.65s ease-in-out infinite;
+}
+
+/* ── Tick spin (entry page icon) ──
+   13 spokes, one notch = 27.69deg. Each tick: quick ease-out
+   snap (~150ms) then hold (~850ms). Like a clock second hand. ── */
+@keyframes spin-tick {
+  0% {
+    transform: rotate(0deg);
+  }
+  1.15% {
+    transform: rotate(27.69deg);
+  }
+  7.69% {
+    transform: rotate(27.69deg);
+  }
+  8.85% {
+    transform: rotate(55.38deg);
+  }
+  15.38% {
+    transform: rotate(55.38deg);
+  }
+  16.54% {
+    transform: rotate(83.08deg);
+  }
+  23.08% {
+    transform: rotate(83.08deg);
+  }
+  24.23% {
+    transform: rotate(110.77deg);
+  }
+  30.77% {
+    transform: rotate(110.77deg);
+  }
+  31.92% {
+    transform: rotate(138.46deg);
+  }
+  38.46% {
+    transform: rotate(138.46deg);
+  }
+  39.62% {
+    transform: rotate(166.15deg);
+  }
+  46.15% {
+    transform: rotate(166.15deg);
+  }
+  47.31% {
+    transform: rotate(193.85deg);
+  }
+  53.85% {
+    transform: rotate(193.85deg);
+  }
+  55.00% {
+    transform: rotate(221.54deg);
+  }
+  61.54% {
+    transform: rotate(221.54deg);
+  }
+  62.69% {
+    transform: rotate(249.23deg);
+  }
+  69.23% {
+    transform: rotate(249.23deg);
+  }
+  70.38% {
+    transform: rotate(276.92deg);
+  }
+  76.92% {
+    transform: rotate(276.92deg);
+  }
+  78.08% {
+    transform: rotate(304.62deg);
+  }
+  84.62% {
+    transform: rotate(304.62deg);
+  }
+  85.77% {
+    transform: rotate(332.31deg);
+  }
+  92.31% {
+    transform: rotate(332.31deg);
+  }
+  93.46% {
+    transform: rotate(360deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+.spin-gentle {
+  animation: spin-tick 48s ease-out infinite 4s;
+}
+
+/* ── Fade in ── */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.fade-in {
+  animation: fade-in 200ms ease-out;
+}
+
+/* ── Selection ── */
+::selection {
+  background: rgb(var(--accent-rgb) / 0.25);
+  color: var(--color-txt);
+}
+
+/* ── Focus ring ── */
+:focus-visible {
+  outline: 1px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
+/* ────────────────────────────────────────────────────────────────
+   CRAFT PRIMITIVES
+   Reusable atoms that give every surface a consistent identity.
+   ──────────────────────────────────────────────────────────────── */
+
+/* ── Frame ──
+   Constrains the app to a readable maximum width and draws two
+   faint vertical rules at its boundary so the viewport never
+   feels empty on ultrawide screens. ── */
+.frame {
+  max-width: var(--max-frame);
+  margin-inline: auto;
+  position: relative;
+}
+.frame::before,
+.frame::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: linear-gradient(
+    to bottom,
+    transparent,
+    var(--color-edge) 8%,
+    var(--color-edge) 92%,
+    transparent
+  );
+  pointer-events: none;
+}
+.frame::before {
+  left: 0;
+}
+.frame::after {
+  right: 0;
+}
+
+/* ── Hairlines ──
+   1px gradient lines that fade at the ends, replacing flat
+   borders for dividers and section rules. ── */
+.hairline-x {
+  height: 1px;
+  background: linear-gradient(
+    to right,
+    transparent,
+    var(--color-edge) 12%,
+    var(--color-edge) 88%,
+    transparent
+  );
+}
+
+/* ── Card ──
+   Default elevated surface. A flat fill plus:
+   - top inset highlight (1px light from above)
+   - bottom inset shadow (1px gravity)
+   - outer shadow (catches raking light)
+   All at opacity low enough to feel like honest materials. ── */
+.card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-edge);
+  box-shadow:
+    inset 0 1px 0 0 rgb(var(--highlight-rgb) / 0.025),
+    inset 0 -1px 0 0 rgb(var(--shadow-rgb) / 0.25),
+    0 1px 0 0 rgb(var(--shadow-rgb) / 0.4),
+    0 2px 10px -4px rgb(var(--shadow-rgb) / 0.6);
+}
+
+/* ── Card, flush (no outer shadow) ──
+   For cards that sit inside another card. ── */
+.card-flush {
+  background: var(--color-surface);
+  border: 1px solid var(--color-edge);
+  box-shadow:
+    inset 0 1px 0 0 rgb(var(--highlight-rgb) / 0.02),
+    inset 0 -1px 0 0 rgb(var(--shadow-rgb) / 0.2);
+}
+
+/* ── Label ──
+   Uppercase micro-label typography. One source of truth for
+   every section title, metric caption, and axis label. ── */
+.label {
+  font-size: 11px;
+  line-height: 1;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--color-label);
+  font-weight: 500;
+}
+
+/* ── Field validation ──
+   Inline error hint shown only after the user has interacted
+   with an input whose value violates min/max constraints.
+   :user-invalid fires after user interaction, not on load. ── */
+input:user-invalid {
+  border-color: var(--color-rose);
+}
+.field-error {
+  display: none;
+  font-size: 11px;
+  color: var(--color-rose);
+  margin-top: 2px;
+}
+input:user-invalid + .field-error {
+  display: block;
+}
+
+/* ── Chip ──
+   Filled dark badge used for content-block type markers and
+   role markers. The same label typography as .label, but with
+   a recessed darker fill and a 1px edge so it reads as its own
+   element inside a card. Corners are square by design; colour
+   is overridable with utility text-* / border-* classes. ── */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 7px 3px;
+  background: var(--color-raised);
+  border: 1px solid var(--color-edge-subtle);
+  font-size: 11px;
+  line-height: 1;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  font-weight: 500;
+  color: var(--color-label);
+  box-shadow:
+    inset 0 1px 0 0 rgb(var(--highlight-rgb) / 0.02),
+    inset 0 -1px 0 0 rgb(var(--shadow-rgb) / 0.25);
+}
+
+/* ── Section rule ──
+   A label flanked by gradient hairlines. Used for top-level
+   section headers inside a tab body. ── */
+.section-rule {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.section-rule::before,
+.section-rule::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(to right, transparent, var(--color-edge) 50%, var(--color-edge));
+}
+.section-rule::after {
+  background: linear-gradient(to right, var(--color-edge), var(--color-edge) 50%, transparent);
+}
+
+/* ── Metric number ──
+   Numeric display tuned for readability: tabular figures,
+   slashed zero, tight leading. ── */
+.metric-num {
+  font-feature-settings: "tnum", "zero";
+  font-variant-numeric: tabular-nums slashed-zero;
+  line-height: 1;
+}
+
+/* ── Top highlight ──
+   1px gradient along the top edge suggesting light from above.
+   Apply to headers and the primary detail frame. ── */
+.top-highlight {
+  position: relative;
+}
+.top-highlight::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(
+    to right,
+    transparent,
+    rgb(var(--highlight-rgb) / 0.04) 20%,
+    rgb(var(--highlight-rgb) / 0.04) 80%,
+    transparent
+  );
+  pointer-events: none;
+}
+
+/* ── Tab: pressed-key active state ──
+   A physical recess cut into the tab bar. The active tab becomes
+   a well: the surrounding surface is raised, this tile drops into
+   the canvas. A thin accent strip runs across the top lip catching
+   light from an imaginary bezel; below it an accent bloom bleeds
+   downward into the cavity; a raking shadow darkens the upper
+   cavity so the eye reads depth; side walls trap shadow at the
+   left and right edges. The label color is unchanged from the
+   hover state — the shadow stack carries all the weight. ── */
+.tab-pressed {
+  background: var(--color-well);
+  box-shadow:
+    inset 0 2px 0 0 var(--color-accent),
+    inset 0 8px 14px -6px rgb(var(--accent-rgb) / 0.22),
+    inset 0 12px 20px -10px rgb(var(--shadow-rgb) / 0.8),
+    inset 2px 0 4px -2px rgb(var(--shadow-rgb) / 0.55),
+    inset -2px 0 4px -2px rgb(var(--shadow-rgb) / 0.55),
+    inset 0 -1px 0 0 rgb(var(--highlight-rgb) / 0.02);
+}
+.tab-pressed::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: 5px;
+  width: 28px;
+  height: 1.5px;
+  transform: translateX(-50%);
+  background: linear-gradient(
+    to right,
+    transparent,
+    rgb(var(--accent-rgb) / 0.6) 25%,
+    rgb(var(--accent-rgb) / 0.6) 75%,
+    transparent
+  );
+}
+
+/* ── Tab rest state ──
+   Counterpart to .tab-pressed. Sits on the surface with a faint
+   top highlight so the whole bar reads as raised — which in turn
+   makes the pressed tab read as a well cut through it. ── */
+.tab-rest {
+  background: var(--color-surface);
+  box-shadow:
+    inset 0 1px 0 0 rgb(var(--highlight-rgb) / 0.025),
+    inset 0 -1px 0 0 rgb(var(--shadow-rgb) / 0.3);
+}
+.tab-rest:hover {
+  background: var(--color-raised);
+}
+
+/* ── Row: selected state ──
+   A list row that has been locked in for inspection. The selected
+   frame keeps an even border weight on every edge, with only a soft
+   left bloom to give the latched row depth. ── */
+.row-selected {
+  background: var(--color-raised);
+  box-shadow:
+    inset 12px 0 24px -10px rgb(var(--accent-rgb) / 0.28),
+    inset 0 1px 0 0 rgb(var(--highlight-rgb) / 0.04),
+    inset 0 -1px 0 0 rgb(var(--shadow-rgb) / 0.5),
+    0 1px 0 0 rgb(var(--accent-rgb) / 0.22),
+    0 -1px 0 0 rgb(var(--accent-rgb) / 0.22);
+}
+
+/* ── Block recess ──
+   The 1px inset gravity applied to expanded-block preformatted
+   regions (ContentBlocks, InspectTab system parts). Reads as
+   "the content sinks into the card". ── */
+.block-recess {
+  box-shadow: inset 0 1px 0 0 rgb(var(--shadow-rgb) / 0.4);
+}
+
+/* ── Bar track ──
+   Deeper recess used by the token bar and similar inset meters.
+   Top gravity pulls the eye down; a whisper-thin lip along the
+   bottom suggests the raised edge of the cavity. ── */
+.bar-track {
+  box-shadow:
+    inset 0 1px 2px 0 rgb(var(--shadow-rgb) / 0.6),
+    inset 0 -1px 0 0 rgb(var(--highlight-rgb) / 0.03);
+}
+
+/* ── Key caps ──
+   The two Toggle states. Checked is a convex key pressed flush
+   (light above, gravity below); unchecked is a dark cavity with
+   a single gravity rim at the top. ── */
+.key-on {
+  box-shadow:
+    inset 0 1px 0 0 rgb(var(--highlight-rgb) / 0.15),
+    inset 0 -1px 0 0 rgb(var(--shadow-rgb) / 0.2);
+}
+.key-off {
+  box-shadow: inset 0 1px 0 0 rgb(var(--shadow-rgb) / 0.4);
+}
+
+/* ── Arm toggle (armed state) ──
+   Color, border, background, and the sage inner shadow all share
+   one 420ms curve so the flip lands as one motion. The dot's
+   spring easing gives the state change its click. ── */
+.arm-toggle {
+  transition:
+    color 420ms cubic-bezier(0.4, 0, 0.2, 1),
+    border-color 420ms cubic-bezier(0.4, 0, 0.2, 1),
+    background-color 420ms cubic-bezier(0.4, 0, 0.2, 1),
+    box-shadow 420ms cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: inset 0 0 16px -4px rgb(var(--sage-rgb) / 0.25);
+}
+.arm-dot {
+  height: 0.375rem;
+  width: 0.375rem;
+  transform: scale(1.4);
+  transition:
+    background-color 420ms cubic-bezier(0.4, 0, 0.2, 1),
+    transform 420ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* ── Galaxy effect — adapted from Jhey Tompkins' galaxy-button ──
+   https://codepen.io/jh3y
+   Scoped with .galaxy-btn so the styles can't leak onto other
+   buttons. Hover is the activation trigger; --active ramps 0→1
+   and drives the background, ring opacity, spark brightness, and
+   inset highlight in lockstep. ── */
+.galaxy-btn {
+  --transition: 0.25s;
+  --spark: 1.8s;
+  --hue: 245;
+  --active: 0;
+  --cut: 1px;
+
+  --bg:
+    radial-gradient(
+      120% 120% at 126% 126%,
+      hsl(var(--hue) calc(var(--active) * 97%) 98% / calc(var(--active) * 0.9)) 40%,
+      transparent 50%
+    )
+    calc(100px - (var(--active) * 100px)) 0 / 100% 100% no-repeat,
+    radial-gradient(
+      120% 120% at 120% 120%,
+      hsl(var(--hue) calc(var(--active) * 97%) 70% / calc(var(--active) * 1)) 30%,
+      transparent 70%
+    )
+    calc(100px - (var(--active) * 100px)) 0 / 100% 100% no-repeat,
+    hsl(var(--hue) calc(var(--active) * 100%) calc(12% - (var(--active) * 8%)));
+  background: var(--bg);
+  border: 1px solid transparent;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6em;
+  white-space: nowrap;
+  position: relative;
+  width: 148px;
+  padding: 6px 14px;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  box-shadow:
+    0 0 calc(var(--active) * 6em) calc(var(--active) * 3em) hsl(var(--hue) 97% 61% / 0.5),
+    0 1px 0 0 hsl(var(--hue) calc(var(--active) * 97%) calc((var(--active) * 50%) + 30%)) inset,
+    0 -1px 0 0 hsl(var(--hue) calc(var(--active) * 97%) calc(var(--active) * 10%)) inset;
+  transition:
+    box-shadow var(--transition),
+    scale var(--transition),
+    background var(--transition);
+  scale: calc(1 + (var(--active) * 0.04));
+  transform-style: preserve-3d;
+  perspective: 100vmin;
+  overflow: hidden;
+}
+.galaxy-btn:active {
+  scale: 1;
+}
+.galaxy-btn:is(:hover, :focus-visible) {
+  --active: 1;
+}
+.galaxy-btn .star {
+  height: var(--size, 3px);
+  aspect-ratio: 1;
+  background: white;
+  border-radius: 50%;
+  position: absolute;
+  opacity: var(--alpha, 0.7);
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) rotate(10deg) rotate(var(--angle, 0deg))
+    translateY(var(--distance, 80px));
+  animation-name: galaxy-orbit;
+  animation-duration: var(--duration, 10s);
+  animation-delay: calc(-1 * var(--delay, 0s));
+  animation-iteration-count: infinite;
+  animation-timing-function: linear;
+}
+@keyframes galaxy-orbit {
+  to {
+    transform: translate(-50%, -50%) rotate(10deg) rotate(calc(var(--angle, 0deg) + 360deg))
+      translateY(var(--distance, 80px));
+  }
+}
+.galaxy-btn .galaxy {
+  position: absolute;
+  width: 100%;
+  aspect-ratio: 1;
+  top: 50%;
+  left: 50%;
+  translate: -50% -50%;
+  overflow: hidden;
+  opacity: var(--active);
+  transition: opacity var(--transition);
+}
+.galaxy-btn .galaxy__ring {
+  height: 200%;
+  width: 200%;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  border-radius: 50%;
+  transform: translate(-28%, -40%) rotateX(-24deg) rotateY(-30deg) rotateX(90deg);
+  transform-style: preserve-3d;
+}
+.galaxy-btn .spark {
+  position: absolute;
+  inset: 0;
+  rotate: 0deg;
+  overflow: hidden;
+  mask: linear-gradient(white, transparent 50%);
+  animation: galaxy-flip calc(var(--spark) * 2) infinite steps(2, end);
+}
+@keyframes galaxy-flip {
+  to {
+    rotate: 360deg;
+  }
+}
+.galaxy-btn .spark::before {
+  content: "";
+  position: absolute;
+  width: 200%;
+  aspect-ratio: 1;
+  top: 0%;
+  left: 50%;
+  z-index: -1;
+  translate: -50% -15%;
+  rotate: 0;
+  transform: rotate(-90deg);
+  opacity: calc(var(--active) + 0.4);
+  background: conic-gradient(from 0deg, transparent 0 340deg, white 360deg);
+  transition: opacity var(--transition);
+  animation: galaxy-rotate var(--spark) linear infinite both;
+}
+.galaxy-btn .spark::after {
+  content: "";
+  position: absolute;
+  inset: var(--cut);
+}
+.galaxy-btn .backdrop {
+  position: absolute;
+  inset: var(--cut);
+  background: var(--bg);
+  transition: background var(--transition);
+}
+@keyframes galaxy-rotate {
+  to {
+    transform: rotate(90deg);
+  }
+}
+.galaxy-btn .text {
+  position: relative;
+  line-height: 1;
+  z-index: 2;
+  display: inline-grid;
+}
+.galaxy-btn .text-rest,
+.galaxy-btn .text-hover {
+  grid-area: 1 / 1;
+  position: relative;
+  z-index: 2;
+  color: hsl(0 0% 60%);
+  transition:
+    opacity var(--transition),
+    color var(--transition);
+}
+.galaxy-btn:is(:hover, :focus-visible) .text-rest,
+.galaxy-btn:is(:hover, :focus-visible) .text-hover {
+  color: #fff;
+}
+.galaxy-btn .text-hover {
+  opacity: 0;
+}
+.galaxy-btn:is(:hover, :focus-visible) .text-rest {
+  opacity: 0;
+}
+.galaxy-btn:is(:hover, :focus-visible) .text-hover {
+  opacity: 1;
+}

@@ -1,0 +1,8 @@
+/* ── Canvas stylesheet entry ──
+   Load order preserved from the pre-split shell: tokens (formerly the
+   shared @theme), launcher chrome, canvas BEM base, placeholder pane.
+   Component-scoped CSS stays co-located and side-effect imported. ── */
+@import "./styles/tokens.css";
+@import "./index.launcher.css";
+@import "./session-canvas/canvas.css";
+@import "./session-canvas/viewers/placeholder/placeholder-pane.css";

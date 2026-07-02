@@ -1,5 +1,5 @@
 import { expect, type Page, test } from "@playwright/test";
-import { FRONTEND_STORAGE_KEYS } from "../../src/stores/persistence";
+import { CANVAS_STORAGE_KEYS } from "@tm/canvas/storageKeys";
 import { seedCanvasExchangePane, setupCanvasApis } from "../visual/fixtures";
 import { pressMod } from "./keyboard";
 
@@ -92,7 +92,7 @@ test("settings persists the Space canvas gesture modifier and keeps Shift as the
         if (!raw) return null;
         return (JSON.parse(raw) as { state?: { canvasGestureModifier?: string } }).state
           ?.canvasGestureModifier;
-      }, FRONTEND_STORAGE_KEYS.keymapStore),
+      }, CANVAS_STORAGE_KEYS.keymapStore),
     )
     .toBe("Space");
 

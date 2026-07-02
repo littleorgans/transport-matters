@@ -1,6 +1,6 @@
 import type { Page, Route } from "@playwright/test";
 import type { IndexEntry } from "@tm/core/types/exchanges";
-import { FRONTEND_STORAGE_KEYS } from "../../../src/stores/persistence";
+import { INSPECTOR_STORAGE_KEYS } from "@tm/inspector/storageKeys";
 import { mockExchangeDetails } from "./details";
 import { mockExchanges, mockVisualRunId } from "./exchanges";
 import { mockPausedFlow } from "./pausedFlow";
@@ -72,7 +72,7 @@ export async function setupVisualTest(page: Page, opts: SetupOptions = {}): Prom
         localStorage.setItem(uiStoreKey, JSON.stringify({ state: { selectedId }, version: 0 }));
       }
     },
-    { selectedId: selectedExchangeId, uiStoreKey: FRONTEND_STORAGE_KEYS.uiStore },
+    { selectedId: selectedExchangeId, uiStoreKey: INSPECTOR_STORAGE_KEYS.uiStore },
   );
 
   const fulfillExchangeDetail = async (route: Route, encodedId: string) => {
