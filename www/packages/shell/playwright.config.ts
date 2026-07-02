@@ -25,12 +25,20 @@ const DEV_SERVER_COMMAND = USE_PREVIEW_SERVER
 
 // The bundle matrix runs the REAL production artifacts: each product is
 // built and served by `vite preview` at its production base (inspector at
-// "/", canvas at "/canvas"). Only booted when a matrix project is
-// requested, so the default dev-shell runs stay fast.
-const RUN_BUNDLE_MATRIX =
-  process.env.PLAYWRIGHT_MATRIX === "1" ||
-  projectRequested("matrix-inspector") ||
-  projectRequested("matrix-canvas");
+// "/", canvas at "/canvas"). The matrix projects and their preview servers
+// register together, gated on one flag: a plain unfiltered run never sees
+// the matrix projects, so it cannot execute them against dead ports, and
+// the default dev-shell runs stay fast.
+//
+// Workers re-evaluate this config in fresh processes WITHOUT the runner's
+// CLI args, so argv detection alone deregisters the projects there
+// ("project not found in the worker process"). Promote the argv signal
+// into the environment: workers inherit env, keeping the project list
+// identical across runner and workers.
+if (projectRequested("matrix-inspector") || projectRequested("matrix-canvas")) {
+  process.env.PLAYWRIGHT_MATRIX = "1";
+}
+const RUN_BUNDLE_MATRIX = process.env.PLAYWRIGHT_MATRIX === "1";
 
 export default defineConfig({
   testDir: "./tests",
@@ -56,16 +64,20 @@ export default defineConfig({
     { name: "webkit", testDir: "./tests/e2e", use: { ...devices["Desktop Safari"] } },
     { name: "visual", testDir: "./tests/visual", use: { ...devices["Desktop Chrome"] } },
     { name: "perf", testDir: "./tests/perf", use: { ...devices["Desktop Chrome"] } },
-    {
-      name: "matrix-inspector",
-      testDir: "./tests/matrix/inspector",
-      use: { ...devices["Desktop Chrome"], baseURL: INSPECTOR_PREVIEW_URL },
-    },
-    {
-      name: "matrix-canvas",
-      testDir: "./tests/matrix/canvas",
-      use: { ...devices["Desktop Chrome"], baseURL: CANVAS_PREVIEW_URL },
-    },
+    ...(RUN_BUNDLE_MATRIX
+      ? [
+          {
+            name: "matrix-inspector",
+            testDir: "./tests/matrix/inspector",
+            use: { ...devices["Desktop Chrome"], baseURL: INSPECTOR_PREVIEW_URL },
+          },
+          {
+            name: "matrix-canvas",
+            testDir: "./tests/matrix/canvas",
+            use: { ...devices["Desktop Chrome"], baseURL: CANVAS_PREVIEW_URL },
+          },
+        ]
+      : []),
   ],
   webServer: [
     {
