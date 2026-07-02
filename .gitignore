@@ -65,3 +65,8 @@ TLDR.md
 !/TLDR.md
 
 review-slice-*.md
+
+# post-P3 workspace-root build outputs
+www/*.tsbuildinfo
+www/playwright-report/
+www/test-results/
