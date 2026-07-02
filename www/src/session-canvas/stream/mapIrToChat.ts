@@ -1,3 +1,4 @@
+import { isRecord } from "../../lib/isRecord";
 import type { ContentBlock, ImageBlock, UnknownBlock } from "../../types";
 import type { SessionEventView } from "../api/sessionEvents";
 
@@ -183,8 +184,4 @@ function unknownBlock(kind: string, payload: unknown): UnknownBlock {
 
 function providerData(value: Record<string, unknown>): Record<string, unknown> | null {
   return isRecord(value.provider_data) ? value.provider_data : null;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

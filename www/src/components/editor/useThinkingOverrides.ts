@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useRef } from "react";
+import { useSyncedLocalValue } from "../../hooks/useSyncedLocalValue";
 import { hasOverride } from "../../lib/overrides";
 import type { Override, SamplingParams } from "../../types";
 import {
@@ -43,10 +44,7 @@ export function useThinkingOverrides({
   const budgetRef = useRef(budget);
   if (budgetEnabled) budgetRef.current = budget;
 
-  const [localBudget, setLocalBudget] = useState(String(budget));
-  useEffect(() => {
-    setLocalBudget(String(budget));
-  }, [budget]);
+  const [localBudget, setLocalBudget] = useSyncedLocalValue(String(budget));
 
   const thinkingModified = hasOverride(overrides, "provider_extras_set", THINKING_TARGET);
   const displayModified = hasOverride(overrides, "provider_extras_set", DISPLAY_TARGET);

@@ -1,4 +1,5 @@
 import type { ContentBlock, InternalRequest, ToolDef } from "../types";
+import { isRecord } from "./isRecord";
 
 export interface CharBreakdown {
   system: number;
@@ -6,8 +7,6 @@ export interface CharBreakdown {
   messages: number;
   total: number;
 }
-
-type JsonRecord = Record<string, unknown>;
 
 const MAX_DECIMAL_INTEGER_FLOAT = 1e21;
 const EXPONENT_PATTERN = /e([+-]?)(0*)(\d+)$/;
@@ -79,10 +78,6 @@ function canonicalString(value: string): string {
     throw new Error("unsupported char-accounting JSON string");
   }
   return json;
-}
-
-function isRecord(value: unknown): value is JsonRecord {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 export function canonicalJson(value: unknown): string {

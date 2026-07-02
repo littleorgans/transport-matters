@@ -1,0 +1,18 @@
+.channel-badge {
+  position: fixed;
+  top: 0.625rem;
+  right: 0.75rem;
+  z-index: 50;
+  border-radius: 999rem;
+  padding: 0.1875rem 0.5625rem;
+  color: var(--color-well);
+  font-size: 0.6875rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  line-height: 1.4;
+  pointer-events: none;
+}
+
+.channel-badge--amber {
+  background: var(--color-amber);
+}

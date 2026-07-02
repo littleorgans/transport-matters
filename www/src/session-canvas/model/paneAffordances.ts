@@ -111,6 +111,27 @@ export function stripPaneFlyIntent(
   return stateTransition;
 }
 
+export function commitPaneAffordanceTransition(
+  transition: PaneAffordanceTransition | null,
+  commit: (transition: PaneAffordanceStateTransition) => void,
+  onFly?: (intent: PaneFlyIntent) => void,
+): void {
+  if (!transition) return;
+  onFly?.(transition.fly);
+  commit(stripPaneFlyIntent(transition));
+}
+
+export function closeDockedPaneWithLifecycle(
+  docked: readonly DockedPane[],
+  paneId: PaneId,
+  options: { allowClose?: (entry: DockedPane) => boolean } = {},
+): DockedPane[] | null {
+  const entry = docked.find((candidate) => candidate.paneId === paneId);
+  if (!entry || options.allowClose?.(entry) === false) return null;
+  invokeDockedPaneCloseLifecycle(entry);
+  return removeDockedPane(docked, paneId);
+}
+
 export function planAffordanceLayout(
   state: PaneAffordancePlanningState,
   fitToContent = state.fitToContent,

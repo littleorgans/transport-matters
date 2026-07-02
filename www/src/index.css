@@ -688,7 +688,6 @@ input:user-invalid + .field-error {
   justify-content: center;
   gap: 0.6em;
   white-space: nowrap;
-  border-radius: 0;
   position: relative;
   width: 148px;
   padding: 6px 14px;
@@ -763,7 +762,6 @@ input:user-invalid + .field-error {
 .galaxy-btn .spark {
   position: absolute;
   inset: 0;
-  border-radius: 0;
   rotate: 0deg;
   overflow: hidden;
   mask: linear-gradient(white, transparent 50%);
@@ -794,13 +792,11 @@ input:user-invalid + .field-error {
   content: "";
   position: absolute;
   inset: var(--cut);
-  border-radius: 0;
 }
 .galaxy-btn .backdrop {
   position: absolute;
   inset: var(--cut);
   background: var(--bg);
-  border-radius: 0;
   transition: background var(--transition);
 }
 @keyframes galaxy-rotate {

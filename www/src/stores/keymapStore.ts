@@ -5,7 +5,7 @@ import {
   DEFAULT_CANVAS_GESTURE_MODIFIER,
   isCanvasGestureModifier,
 } from "../keybindings/gestureModifier";
-import { isRecord } from "../theme/types";
+import { isRecord } from "../lib/isRecord";
 import { createFrontendPersistStorage, FRONTEND_STORAGE_KEYS } from "./persistence";
 
 export {

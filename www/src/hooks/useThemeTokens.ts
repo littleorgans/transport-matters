@@ -38,5 +38,6 @@ export function useThemeTokens(): void {
     } else {
       clearThemeTokens();
     }
+    return clearThemeTokens;
   }, [theme]);
 }

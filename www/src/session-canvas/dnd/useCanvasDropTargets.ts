@@ -1,4 +1,5 @@
 import { type RefObject, useCallback, useEffect, useRef, useState } from "react";
+import { canResolveDroppedFiles, getDroppedFilePathResolver } from "../../desktopHost";
 import type { EngineLayoutState } from "../../engine";
 import type { CanvasPaneRef, PaneContentRef } from "../model/paneRecords";
 import { resolvePasteHandle } from "../viewers/terminal/pasteRegistry";
@@ -85,7 +86,7 @@ export function useCanvasDropTargets(
       } else if (
         event.dataTransfer !== null &&
         dataTransferHasFiles(event.dataTransfer) &&
-        !window.transportMattersDesktop?.getPathForFile
+        !canResolveDroppedFiles()
       ) {
         setDropTarget({ kind: "hint" });
       } else {
@@ -120,7 +121,7 @@ export function useCanvasDropTargets(
       }
 
       handleCanvasDrop(current.getLayout(), point, event.dataTransfer, {
-        resolvePath: window.transportMattersDesktop?.getPathForFile ?? null,
+        resolvePath: getDroppedFilePathResolver(),
         spawnPane: current.spawnPane,
         dockPane: current.dockPane,
         showHint: setDropHint,

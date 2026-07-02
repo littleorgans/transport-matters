@@ -20,6 +20,18 @@ const findCanvasShell = () => screen.findByRole("main", {}, { timeout: 10_000 })
 // gone), which calls the store's cycleTheme — drive that directly.
 const cycleTheme = () => act(() => useThemeStore.getState().cycleTheme());
 
+function metaPayload() {
+  return {
+    channel: "stable",
+    channel_badge: null,
+    channel_label: "Stable",
+    cwd: "/tmp/project",
+    harnesses: [],
+    run_id: null,
+    workspace_id: "project/hash",
+  };
+}
+
 describe("RootShell", () => {
   beforeEach(() => {
     // Tests drive the cycle from the unthemed state; the shipped default is
@@ -48,6 +60,19 @@ describe("RootShell", () => {
     expect(document.documentElement.style.getPropertyValue("--pane-blur")).toBe(
       "blur(18px) saturate(120%)",
     );
+  });
+
+  it("leaves inspector accent tokens at stylesheet defaults when a canvas theme is persisted", async () => {
+    window.history.pushState({}, "", "/");
+    installMockTransport(() => jsonResponse(metaPayload()));
+    cycleTheme();
+
+    renderWithQuery(<RootShell />);
+
+    expect(await screen.findByText("Waiting for exchanges")).toBeInTheDocument();
+    expect(useThemeStore.getState().theme?.id).toBe("open-water");
+    expect(document.documentElement.style.getPropertyValue("--color-accent")).toBe("");
+    expect(document.documentElement.style.getPropertyValue("--pane-blur")).toBe("");
   });
 
   it("clears the tokens again when the cycle returns to unthemed", async () => {

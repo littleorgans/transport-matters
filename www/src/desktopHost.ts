@@ -33,8 +33,31 @@ declare global {
   }
 }
 
+export function getDesktopBridge(
+  win: Window | undefined = globalWindow(),
+): TransportMattersDesktopBridge | undefined {
+  return win?.[DESKTOP_BRIDGE_KEY];
+}
+
+export function getDroppedFilePathResolver(
+  win: Window | undefined = globalWindow(),
+): ((file: File) => string) | null {
+  return getDesktopBridge(win)?.getPathForFile ?? null;
+}
+
+export function getPathForDroppedFile(
+  file: File,
+  win: Window | undefined = globalWindow(),
+): string | null {
+  return getDroppedFilePathResolver(win)?.(file) ?? null;
+}
+
+export function canResolveDroppedFiles(win: Window | undefined = globalWindow()): boolean {
+  return getDroppedFilePathResolver(win) !== null;
+}
+
 export function isDesktopHost(win: Window | undefined = globalWindow()): boolean {
-  return win !== undefined && DESKTOP_BRIDGE_KEY in win;
+  return getDesktopBridge(win) !== undefined;
 }
 
 export function globalWindow(): Window | undefined {

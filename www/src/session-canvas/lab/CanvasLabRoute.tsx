@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { LayoutCanvas, type PaneId } from "../../engine";
 import { CANVAS_LAYOUT_MARGIN, listLayouts } from "../../engine/layout";
 import { useMeta } from "../../hooks/useMeta";
+import { useThemeTokens } from "../../hooks/useThemeTokens";
 import type { HarnessName } from "../../types";
 import { AmbientBackdrop } from "../components/AmbientBackdrop";
 import { CanvasDropHint } from "../components/CanvasDropHint";
@@ -376,6 +377,7 @@ function useCanvasLabResize(
 }
 
 export function CanvasLabRoute() {
+  useThemeTokens();
   const layout = useCanvasLabStore((state) => state.layout);
   const flying = useCanvasLabStore((state) => state.flying);
   const paneMotion = useCanvasLabStore((state) => state.paneMotion);

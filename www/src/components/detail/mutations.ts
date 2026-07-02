@@ -70,88 +70,80 @@ export interface ToolResultMutation {
 
 // ── Audit-driven detectors (primary path) ────────────────────────
 
-export function detectSystemPartMutations(
+type AuditMutationParser<TMutation> = (entry: OverrideAuditEntry) => TMutation | null;
+
+function detectAppliedAuditMutations<TMutation>(
   audit: OverrideAuditEntry[] | undefined,
-): SystemPartMutation[] {
-  const mutations: SystemPartMutation[] = [];
+  parse: AuditMutationParser<TMutation>,
+): TMutation[] {
+  const mutations: TMutation[] = [];
   if (!audit) return mutations;
 
   for (const entry of audit) {
     if (!entry.applied) continue;
-
-    if (entry.kind === "system_part_toggle") {
-      const index = parseSystemIndex(entry.target);
-      if (index === null) continue;
-      // Server applies this kind only when disabling (toggle=true is a
-      // noop in ``_apply_system_part_toggle``), so an applied audit
-      // entry of this kind unambiguously means the part was dropped.
-      mutations.push({ index, kind: "deleted" });
-    } else if (entry.kind === "system_part_text") {
-      const index = parseSystemIndex(entry.target);
-      if (index === null) continue;
-      if (entry.curated_value === null) continue;
-      mutations.push({ index, kind: "edited", curatedText: entry.curated_value });
-    }
+    const mutation = parse(entry);
+    if (mutation !== null) mutations.push(mutation);
   }
 
   return mutations;
 }
 
+export function detectSystemPartMutations(
+  audit: OverrideAuditEntry[] | undefined,
+): SystemPartMutation[] {
+  return detectAppliedAuditMutations<SystemPartMutation>(audit, (entry) => {
+    if (entry.kind === "system_part_toggle") {
+      const index = parseSystemIndex(entry.target);
+      if (index === null) return null;
+      // Server applies this kind only when disabling (toggle=true is a
+      // noop in ``_apply_system_part_toggle``), so an applied audit
+      // entry of this kind unambiguously means the part was dropped.
+      return { index, kind: "deleted" };
+    }
+    if (entry.kind !== "system_part_text" || entry.curated_value === null) return null;
+    const index = parseSystemIndex(entry.target);
+    return index === null ? null : { index, kind: "edited", curatedText: entry.curated_value };
+  });
+}
+
 export function detectToolMutations(audit: OverrideAuditEntry[] | undefined): ToolMutation[] {
-  const mutations: ToolMutation[] = [];
-  if (!audit) return mutations;
-
-  for (const entry of audit) {
-    if (!entry.applied) continue;
-
+  return detectAppliedAuditMutations<ToolMutation>(audit, (entry) => {
     if (entry.kind === "tool_toggle") {
       const name = parseToolName(entry.target);
-      if (name === null) continue;
-      mutations.push({ name, kind: "disabled" });
-    } else if (entry.kind === "tool_description") {
-      const name = parseToolName(entry.target);
-      if (name === null) continue;
-      if (entry.curated_value === null) continue;
-      mutations.push({
-        name,
-        kind: "description_edited",
-        curatedDescription: entry.curated_value,
-      });
+      return name === null ? null : { name, kind: "disabled" };
     }
-  }
-
-  return mutations;
+    if (entry.kind !== "tool_description" || entry.curated_value === null) return null;
+    const name = parseToolName(entry.target);
+    return name === null
+      ? null
+      : {
+          name,
+          kind: "description_edited",
+          curatedDescription: entry.curated_value,
+        };
+  });
 }
 
 export function detectMessageMutations(
   audit: OverrideAuditEntry[] | undefined,
 ): MessageBlockMutation[] {
-  const mutations: MessageBlockMutation[] = [];
-  if (!audit) return mutations;
-
-  for (const entry of audit) {
-    if (!entry.applied) continue;
-
+  return detectAppliedAuditMutations<MessageBlockMutation>(audit, (entry) => {
+    const parsed = parseMessageTarget(entry.target);
+    if (parsed === null) return null;
     if (entry.kind === "message_block_toggle") {
-      const parsed = parseMessageTarget(entry.target);
-      if (parsed === null) continue;
       // Same as system_part_toggle: applied + disable is the only
       // structurally relevant case (enable is a noop on the server).
-      mutations.push({ msgIdx: parsed.msgIdx, blkIdx: parsed.blkIdx, kind: "disabled" });
-    } else if (entry.kind === "message_text") {
-      const parsed = parseMessageTarget(entry.target);
-      if (parsed === null) continue;
-      if (entry.curated_value === null) continue;
-      mutations.push({
-        msgIdx: parsed.msgIdx,
-        blkIdx: parsed.blkIdx,
-        kind: "edited",
-        curatedText: entry.curated_value,
-      });
+      return { msgIdx: parsed.msgIdx, blkIdx: parsed.blkIdx, kind: "disabled" };
     }
-  }
-
-  return mutations;
+    return entry.kind === "message_text" && entry.curated_value !== null
+      ? {
+          msgIdx: parsed.msgIdx,
+          blkIdx: parsed.blkIdx,
+          kind: "edited",
+          curatedText: entry.curated_value,
+        }
+      : null;
+  });
 }
 
 function toolResultText(block: ContentBlock | undefined): string | null {
