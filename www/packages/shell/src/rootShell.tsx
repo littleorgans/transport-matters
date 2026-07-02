@@ -1,22 +1,22 @@
 import { lazy, Suspense, useMemo } from "react";
-import { selectRootRoute } from "./session-canvas/route";
+import { selectRootRoute } from "./route";
 
 /**
  * The route fork, extracted from main.tsx so the full page composition is
  * testable. main.tsx stays a dumb entry point (createRoot + window chrome);
- * everything an app surface shares across routes mounts here.
+ * the shell only composes the two products — it owns no product UI.
  */
 const SessionCanvasRoute = lazy(() =>
-  import("./session-canvas/SessionCanvasRoute").then(({ SessionCanvasRoute }) => ({
+  import("@tm/canvas").then(({ SessionCanvasRoute }) => ({
     default: SessionCanvasRoute,
   })),
 );
 const CanvasLabRoute = lazy(() =>
-  import("./session-canvas/lab/CanvasLabRoute").then(({ CanvasLabRoute }) => ({
+  import("@tm/canvas").then(({ CanvasLabRoute }) => ({
     default: CanvasLabRoute,
   })),
 );
-const InspectorApp = lazy(() => import("./app").then(({ App }) => ({ default: App })));
+const InspectorApp = lazy(() => import("@tm/inspector").then(({ App }) => ({ default: App })));
 
 const routeComponents = {
   canvas: SessionCanvasRoute,

@@ -4,9 +4,9 @@
  * test replaces the uniqueness the old single FRONTEND_STORAGE_KEYS
  * registry guaranteed by construction.
  */
+import { CANVAS_STORAGE_KEYS } from "@tm/canvas";
+import { INSPECTOR_STORAGE_KEYS } from "@tm/inspector";
 import { describe, expect, it } from "vitest";
-import { CANVAS_STORAGE_KEYS } from "../session-canvas/persistence/storageKeys";
-import { INSPECTOR_STORAGE_KEYS } from "../stores/persistence";
 
 describe("cross-product storage keys", () => {
   it("never collide between inspector and canvas", () => {

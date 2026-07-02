@@ -1,11 +1,11 @@
 import { screen, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   installMockTransport,
   jsonResponse,
   renderWithQuery,
   restoreTransport,
-} from "@/session-canvas/testUtils";
+} from "@tm/core/testing";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { ChannelBadge } from "./ChannelBadge";
 
 function metaPayload(channel: "stable" | "preview") {

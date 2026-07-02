@@ -1,5 +1,3 @@
-export type RootRoute = "canvas" | "canvas-lab" | "inspector";
-
 export interface CanvasLaunchContext {
   owner: "local";
   workspaceHash: string | null;
@@ -8,12 +6,6 @@ export interface CanvasLaunchContext {
   canvasId: string | null;
   harness: string | null;
   runId: string | null;
-}
-
-export function selectRootRoute(pathname: string): RootRoute {
-  if (pathname === "/canvas") return "canvas";
-  if (pathname === "/canvas-lab") return "canvas-lab";
-  return "inspector";
 }
 
 export function parseCanvasLaunchContext(search: string | URLSearchParams): CanvasLaunchContext {

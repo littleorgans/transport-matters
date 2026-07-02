@@ -9,10 +9,16 @@ import {
   resolveLocalSpecifier,
   sourceFile,
   sourceFiles,
-} from "../testSupport/importGraph";
+} from "./importGraph";
 
-const SESSION_CANVAS_ROOT = path.dirname(fileURLToPath(import.meta.url));
-const SRC_ROOT = path.resolve(SESSION_CANVAS_ROOT, "..");
+const CANVAS_SRC = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "../../..",
+  "canvas",
+  "src",
+);
+const SESSION_CANVAS_ROOT = path.join(CANVAS_SRC, "session-canvas");
+const SRC_ROOT = CANVAS_SRC;
 const LAB_ROOT = path.join(SESSION_CANVAS_ROOT, "lab");
 const FORBIDDEN_LAB_EXPORTS = new Set([
   "useCapturedRunStore",

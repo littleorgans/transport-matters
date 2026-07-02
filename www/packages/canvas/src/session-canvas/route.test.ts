@@ -3,17 +3,10 @@ import {
   defaultCanvasId,
   isStressCanvas,
   parseCanvasLaunchContext,
-  selectRootRoute,
   worktreeSwitchUrl,
 } from "./route";
 
 describe("session canvas route", () => {
-  it("selects the canvas only for the real canvas path", () => {
-    expect(selectRootRoute("/canvas")).toBe("canvas");
-    expect(selectRootRoute("/")).toBe("inspector");
-    expect(selectRootRoute("/inspector")).toBe("inspector");
-  });
-
   it("parses launch context from query params", () => {
     expect(
       parseCanvasLaunchContext("?owner=local&workspace_hash=hash-1&harness=codex&run_id=run-1"),

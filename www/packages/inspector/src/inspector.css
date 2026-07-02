@@ -1,5 +1,10 @@
 @import "tailwindcss";
 
+/* The inspector is its own Tailwind root: scan this package's sources
+   explicitly so utilities keep generating when the shell (whose cwd drives
+   automatic detection) builds the composed bundle. */
+@source "./";
+
 @theme {
   /* ── Canvas layers (pure neutral charcoals) ──
      Each step is deliberate: canvas is the deepest void, surface
@@ -117,30 +122,11 @@
   --radius-4xl: 0;
   --radius: 0;
 
-  /* ── Canvas layout constants ── */
+  /* ── Frame width ──
+     The .frame craft primitive's readable maximum. The canvas layout
+     and pane tokens live in @tm/canvas (styles/tokens.css); the token
+     split per product is a locked separation decision. ── */
   --max-frame: 1200px;
-  --canvas-command-inset: 16px;
-  --canvas-command-gap: 12px;
-  --canvas-gap: 10px;
-  --canvas-resize-size: 18px;
-  --canvas-row-padding: 12px;
-  --canvas-focus-ring: 0 0 0 2px rgb(var(--accent-rgb) / 0.72);
-
-  /* ── Theme pipeline knobs ──
-     Stylesheet defaults for the pane custom properties the theme
-     system (applyThemeTokens, src/theme/theme.ts) overrides inline
-     on :root at runtime. Values mirror the previous hardcoded pane
-     treatment so the unthemed app is unchanged. ── */
-  --pane-radius: 0;
-  --pane-surface-alpha: 0.74;
-  --pane-border-color: var(--color-edge-strong);
-  --pane-blur: none;
-  --pane-shadow: 0 22px 70px rgb(var(--shadow-rgb) / 0.46);
-
-  /* ── Pane treatment (static) ── */
-  --pane-border: 1px solid var(--pane-border-color);
-  --pane-padding: 14px;
-  --pane-header: 58px;
 }
 
 /* ── Global resets ── */

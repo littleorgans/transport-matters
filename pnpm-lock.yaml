@@ -72,7 +72,47 @@ importers:
         specifier: ^39.2.6
         version: 39.8.9
 
-  www/packages/canvas: {}
+  www/packages/canvas:
+    dependencies:
+      '@ark-ui/react':
+        specifier: ^5.37.2
+        version: 5.37.2(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
+      '@dnd-kit/core':
+        specifier: 6.3.1
+        version: 6.3.1(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
+      '@dnd-kit/sortable':
+        specifier: 10.0.0
+        version: 10.0.0(@dnd-kit/core@6.3.1(react-dom@19.2.5(react@19.2.5))(react@19.2.5))(react@19.2.5)
+      '@dnd-kit/utilities':
+        specifier: 3.2.2
+        version: 3.2.2(react@19.2.5)
+      '@tanstack/react-query':
+        specifier: ^5.97.0
+        version: 5.97.0(react@19.2.5)
+      '@tm/core':
+        specifier: workspace:*
+        version: link:../core
+      '@use-gesture/react':
+        specifier: ^10.3.1
+        version: 10.3.1(react@19.2.5)
+      '@xterm/addon-fit':
+        specifier: ^0.11.0
+        version: 0.11.0
+      '@xterm/xterm':
+        specifier: ^6.0.0
+        version: 6.0.0
+      framer-motion:
+        specifier: ^12.40.0
+        version: 12.40.0(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
+      react:
+        specifier: ^19.2.5
+        version: 19.2.5
+      tinykeys:
+        specifier: ^4.0.0
+        version: 4.0.0
+      zustand:
+        specifier: ^5.0.12
+        version: 5.0.12(@types/react@19.2.14)(react@19.2.5)
 
   www/packages/core:
     dependencies:
@@ -101,22 +141,8 @@ importers:
         specifier: ^19.2.5
         version: 19.2.5(react@19.2.5)
 
-  www/packages/inspector: {}
-
-  www/packages/shell:
+  www/packages/inspector:
     dependencies:
-      '@ark-ui/react':
-        specifier: ^5.37.2
-        version: 5.37.2(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
-      '@dnd-kit/core':
-        specifier: 6.3.1
-        version: 6.3.1(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
-      '@dnd-kit/sortable':
-        specifier: 10.0.0
-        version: 10.0.0(@dnd-kit/core@6.3.1(react-dom@19.2.5(react@19.2.5))(react@19.2.5))(react@19.2.5)
-      '@dnd-kit/utilities':
-        specifier: 3.2.2
-        version: 3.2.2(react@19.2.5)
       '@tanstack/react-query':
         specifier: ^5.97.0
         version: 5.97.0(react@19.2.5)
@@ -126,36 +152,42 @@ importers:
       '@tm/core':
         specifier: workspace:*
         version: link:../core
-      '@tm/host':
-        specifier: workspace:*
-        version: link:../host
-      '@use-gesture/react':
-        specifier: ^10.3.1
-        version: 10.3.1(react@19.2.5)
-      '@xterm/addon-fit':
-        specifier: ^0.11.0
-        version: 0.11.0
-      '@xterm/xterm':
-        specifier: ^6.0.0
-        version: 6.0.0
       diff:
         specifier: ^9.0.0
         version: 9.0.0
-      framer-motion:
-        specifier: ^12.40.0
-        version: 12.40.0(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       react:
         specifier: ^19.2.5
         version: 19.2.5
       react-dom:
         specifier: ^19.2.5
         version: 19.2.5(react@19.2.5)
-      tinykeys:
-        specifier: ^4.0.0
-        version: 4.0.0
       zustand:
         specifier: ^5.0.12
         version: 5.0.12(@types/react@19.2.14)(react@19.2.5)
+
+  www/packages/shell:
+    dependencies:
+      '@tanstack/react-query':
+        specifier: ^5.97.0
+        version: 5.97.0(react@19.2.5)
+      '@tm/canvas':
+        specifier: workspace:*
+        version: link:../canvas
+      '@tm/core':
+        specifier: workspace:*
+        version: link:../core
+      '@tm/host':
+        specifier: workspace:*
+        version: link:../host
+      '@tm/inspector':
+        specifier: workspace:*
+        version: link:../inspector
+      react:
+        specifier: ^19.2.5
+        version: 19.2.5
+      react-dom:
+        specifier: ^19.2.5
+        version: 19.2.5(react@19.2.5)
 
 packages:
 
