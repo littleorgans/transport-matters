@@ -1,4 +1,4 @@
-import { blockKey, blockSummary } from "../../../components/detail/ContentBlocks";
+import { blockKey, blockSummary } from "../../../lib/contentBlocks";
 import { formatClockTime } from "../../../lib/formatting";
 import type { ContentBlock } from "../../../types";
 import type { TranscriptMessageModel } from "../../stream/mapIrToChat";
@@ -40,7 +40,8 @@ export function TranscriptMessage({ message, hidden = false }: TranscriptMessage
   );
 }
 
-function TranscriptBlock({ block }: { block: ContentBlock }) {
+/** Canvas-native content-block renderer, shared with the exchange viewer. */
+export function TranscriptBlock({ block }: { block: ContentBlock }) {
   if (block.type === "text") {
     return (
       <pre className="canvas-transcript-block canvas-transcript-block--text">{block.text}</pre>

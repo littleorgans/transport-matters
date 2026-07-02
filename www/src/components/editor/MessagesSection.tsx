@@ -1,11 +1,11 @@
 import { useMemo } from "react";
 import { useCollapsibleSet } from "../../hooks/useCollapsibleSet";
+import { blockKey } from "../../lib/contentBlocks";
 import { overrideValue } from "../../lib/overrides";
 import { messageBlockTarget, toolResultTarget } from "../../lib/overrideTargets";
 import { useUIStore } from "../../stores/uiStore";
 import type { Message, Override } from "../../types";
 import { MasterBar, SECTION_TONE } from "../detail/atoms";
-import { blockKey } from "../detail/ContentBlocks";
 import { BlockRow } from "./BlockRow";
 import { noopOverride, overrideCountLabel } from "./overrideUtils";
 

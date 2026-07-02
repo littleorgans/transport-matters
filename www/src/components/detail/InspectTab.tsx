@@ -1,4 +1,5 @@
 import { useCollapsibleSet } from "../../hooks/useCollapsibleSet";
+import { blockKey } from "../../lib/contentBlocks";
 import {
   messageBlockTarget,
   systemTarget,
@@ -23,7 +24,7 @@ import { SystemSection } from "../editor/SystemSection";
 import { ToolsSection } from "../editor/ToolsSection";
 import { MasterBar, SECTION_TONE } from "./atoms";
 import { CodexTimeline } from "./CodexTimeline";
-import { blockKey, ContentBlockRow } from "./ContentBlocks";
+import { ContentBlockRow } from "./ContentBlocks";
 import { ExchangeCard } from "./ExchangeCard";
 import {
   detectMessageMutations,
