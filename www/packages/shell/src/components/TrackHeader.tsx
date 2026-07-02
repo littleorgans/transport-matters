@@ -1,6 +1,5 @@
-import { agentRailStyle, type DepthRailStyle } from "../lib/agentPalette";
-import { pluralize } from "../lib/formatting";
-import type { ExchangeTrack } from "../types";
+import { agentRailStyle, type DepthRailStyle, pluralize } from "@tm/core";
+import type { ExchangeTrack } from "@tm/core/types/exchanges";
 import type { OrphanAnchorMeta } from "./exchangeListRows";
 
 interface TrackHeaderProps {

@@ -7,9 +7,10 @@ from typing import TypeGuard
 REPO_ROOT = Path(__file__).resolve().parents[3]
 PY_IR = Path(__file__).with_name("ir.py")
 PY_OVERRIDES = Path(__file__).with_name("overrides.py")
+CORE_TYPES_ROOT = REPO_ROOT / "www" / "packages" / "core" / "src" / "types"
 TS_TYPE_FILES = (
-    REPO_ROOT / "www" / "packages" / "shell" / "src" / "types" / "ir.ts",
-    REPO_ROOT / "www" / "packages" / "shell" / "src" / "types" / "overrides.ts",
+    CORE_TYPES_ROOT / "ir.ts",
+    CORE_TYPES_ROOT / "overrides.ts",
 )
 
 NON_BLOCK_MIRRORED_MODELS = (

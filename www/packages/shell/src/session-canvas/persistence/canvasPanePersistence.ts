@@ -1,3 +1,4 @@
+import { isRecord } from "@tm/core";
 import {
   createPaneNode,
   type EngineLayoutState,
@@ -7,7 +8,6 @@ import {
   type WorldRect,
 } from "../../engine";
 import { type LayoutParams, type ParamValue, sanitizeParam, seedParams } from "../../engine/layout";
-import { isRecord } from "../../lib/isRecord";
 import {
   type CanvasPaneRef,
   type DockedPane,

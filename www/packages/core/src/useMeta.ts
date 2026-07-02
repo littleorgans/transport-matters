@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { fetchMeta, type Meta } from "../api";
+import { fetchMeta, type Meta } from "./transport";
 
 /**
  * Backend meta: resolved cwd and workspace id. Prefetched at app mount

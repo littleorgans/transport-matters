@@ -1,4 +1,5 @@
-import type { InternalRequest, OverrideAudit } from "../../types";
+import type { InternalRequest } from "@tm/core/types/ir";
+import type { OverrideAudit } from "@tm/core/types/overrides";
 import { type CharBreakdown, CharsLedger, countCharsParts } from "./EditorLedger";
 
 interface EditorActionsProps {

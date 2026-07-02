@@ -1,8 +1,7 @@
+import { createFrontendPersistStorage, isRecord } from "@tm/core";
 import type { PersistOptions } from "zustand/middleware";
 import type { EngineLayoutState, PaneId } from "../../engine";
 import { type LayoutParams, seedParams } from "../../engine/layout";
-import { isRecord } from "../../lib/isRecord";
-import { createFrontendPersistStorage } from "../../stores/persistence";
 import { INITIAL_STRATEGY_ID } from "../model/layoutPlanning";
 import type { CanvasPaneRef, DockedPane } from "../model/paneRecords";
 import {

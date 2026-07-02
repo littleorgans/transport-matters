@@ -1,5 +1,5 @@
+import { isEditableTarget } from "@tm/core/keybindings";
 import { useEffect } from "react";
-import { isEditableTarget } from "../lib/domFocus";
 import type { Route } from "../stores/uiStore";
 import { useUIStore } from "../stores/uiStore";
 

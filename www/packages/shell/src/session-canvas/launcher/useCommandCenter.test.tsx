@@ -1,9 +1,9 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, fireEvent, renderHook, waitFor } from "@testing-library/react";
+import type { KeybindingPlatform } from "@tm/core/keybindings";
 import { createElement, type KeyboardEvent, type ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { KeybindingEngineProvider } from "../../keybindings/engine";
-import type { KeybindingPlatform } from "../../keybindings/platform";
 import type { LauncherCommand } from "./commandModel";
 import { useCommandCenter } from "./useCommandCenter";
 

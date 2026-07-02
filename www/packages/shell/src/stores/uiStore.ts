@@ -1,7 +1,8 @@
+import { createFrontendPersistStorage } from "@tm/core";
+import type { PausedFlow } from "@tm/core/types/exchanges";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import type { PausedFlow } from "../types";
-import { createFrontendPersistStorage, FRONTEND_STORAGE_KEYS } from "./persistence";
+import { FRONTEND_STORAGE_KEYS } from "./persistence";
 
 /**
  * Four lenses on the same exchange stream.

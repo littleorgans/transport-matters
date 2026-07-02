@@ -1,4 +1,4 @@
-import type { PausedFlow } from "../../../src/types";
+import type { PausedFlow } from "@tm/core/types/exchanges";
 import { PAUSED_AT_MS } from "./time";
 
 export const mockPausedFlow: PausedFlow = {

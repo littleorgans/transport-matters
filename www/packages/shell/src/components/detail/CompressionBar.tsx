@@ -1,4 +1,4 @@
-import { formatCompactChars } from "../../lib/formatting";
+import { formatCompactChars } from "@tm/core";
 import { HoverCard } from "../HoverCard";
 
 export function CompressionBar({

@@ -1,19 +1,19 @@
-import { create } from "zustand";
-import { persist } from "zustand/middleware";
+import { createFrontendPersistStorage, isRecord } from "@tm/core";
 import {
   type CanvasGestureModifier,
   DEFAULT_CANVAS_GESTURE_MODIFIER,
   isCanvasGestureModifier,
-} from "../keybindings/gestureModifier";
-import { isRecord } from "../lib/isRecord";
-import { createFrontendPersistStorage, FRONTEND_STORAGE_KEYS } from "./persistence";
+} from "@tm/core/keybindings";
+import { create } from "zustand";
+import { persist } from "zustand/middleware";
+import { FRONTEND_STORAGE_KEYS } from "./persistence";
 
 export {
   CANVAS_GESTURE_MODIFIERS,
   type CanvasGestureModifier,
   DEFAULT_CANVAS_GESTURE_MODIFIER,
   isCanvasGestureModifier,
-} from "../keybindings/gestureModifier";
+} from "@tm/core/keybindings";
 
 export interface PersistedKeymapSlice {
   canvasGestureModifier: CanvasGestureModifier;

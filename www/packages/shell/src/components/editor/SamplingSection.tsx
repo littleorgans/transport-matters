@@ -1,4 +1,5 @@
-import type { Override, SamplingParams } from "../../types";
+import type { SamplingParams } from "@tm/core/types/ir";
+import type { Override } from "@tm/core/types/overrides";
 import { overrideCountLabel } from "./overrideUtils";
 import {
   ProviderExtrasRow,

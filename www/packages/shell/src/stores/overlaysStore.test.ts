@@ -1,5 +1,5 @@
+import type { Override } from "@tm/core/types/overrides";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { Override } from "../types";
 import { UNKNOWN_CWD, useOverlaysStore } from "./overlaysStore";
 
 const toolToggle: Override = { kind: "tool_toggle", target: "Read", value: false };

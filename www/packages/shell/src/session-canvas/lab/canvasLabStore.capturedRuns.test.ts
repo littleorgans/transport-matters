@@ -7,7 +7,8 @@ const { createCapturedRunMock, terminateRunMock } = vi.hoisted(() => ({
   createCapturedRunMock: vi.fn(),
   terminateRunMock: vi.fn(),
 }));
-vi.mock("../../api", () => ({
+vi.mock("@tm/core", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@tm/core")>()),
   createCapturedRun: createCapturedRunMock,
   terminateRun: terminateRunMock,
 }));

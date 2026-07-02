@@ -1,5 +1,5 @@
-import { formatClockTime, pluralize } from "../../lib/formatting";
-import type { CodexSemanticEvent, CodexTurnStatus, CodexTurnSummary } from "../../types";
+import { formatClockTime, pluralize } from "@tm/core";
+import type { CodexSemanticEvent, CodexTurnStatus, CodexTurnSummary } from "@tm/core/types/codex";
 
 const STATUS_TONE: Record<CodexTurnStatus, string> = {
   open: "text-amber",

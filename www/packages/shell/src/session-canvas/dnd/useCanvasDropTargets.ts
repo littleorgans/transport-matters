@@ -1,5 +1,5 @@
+import { canResolveDroppedFiles, getDroppedFilePathResolver } from "@tm/core";
 import { type RefObject, useCallback, useEffect, useRef, useState } from "react";
-import { canResolveDroppedFiles, getDroppedFilePathResolver } from "../../desktopHost";
 import type { EngineLayoutState } from "../../engine";
 import type { CanvasPaneRef, PaneContentRef } from "../model/paneRecords";
 import { resolvePasteHandle } from "../viewers/terminal/pasteRegistry";

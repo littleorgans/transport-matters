@@ -1,4 +1,4 @@
-import type { IndexEntry } from "../../../src/types";
+import type { IndexEntry } from "@tm/core/types/exchanges";
 import { FROZEN_NOW } from "./time";
 
 type VisualExchangeFixtures = [IndexEntry, IndexEntry, IndexEntry, IndexEntry, IndexEntry];

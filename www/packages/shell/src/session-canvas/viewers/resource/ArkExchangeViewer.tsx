@@ -12,13 +12,17 @@
 
 import { Tabs } from "@ark-ui/react/tabs";
 import { useQuery } from "@tanstack/react-query";
+import {
+  displayCwd,
+  displayModel,
+  exchangeKey,
+  fetchExchange,
+  formatClockTime,
+  useMeta,
+} from "@tm/core";
+import type { ExchangeDetail } from "@tm/core/types/exchanges";
 import { type ReactElement, useState } from "react";
-import { fetchExchange } from "../../../api";
 import { useFullscreen } from "../../../hooks/useFullscreen";
-import { useMeta } from "../../../hooks/useMeta";
-import { displayCwd, displayModel, formatClockTime } from "../../../lib/formatting";
-import { exchangeKey } from "../../../lib/queryKeys";
-import type { ExchangeDetail } from "../../../types";
 import {
   ExchangeInspectPanel,
   ExchangeJsonPanel,

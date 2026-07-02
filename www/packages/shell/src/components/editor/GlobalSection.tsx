@@ -1,6 +1,7 @@
+import type { ContentBlock, Message } from "@tm/core/types/ir";
+import type { Override } from "@tm/core/types/overrides";
 import { overrideValue } from "../../lib/overrides";
 import { messageBlockTarget } from "../../lib/overrideTargets";
-import type { ContentBlock, Message, Override } from "../../types";
 
 /**
  * GLOBAL section. Sweeping toggles that disable or re-enable whole

@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
-import { fetchRuntimeTemplates } from "../../api";
-import type { RuntimeTemplateSummary } from "../../types";
+import { fetchRuntimeTemplates } from "@tm/core";
+import type { RuntimeTemplateSummary } from "@tm/core/types/runtimeTemplates";
 import { deriveFetchStatus, type FetchStatus } from "./commandModel";
 
 export interface RuntimeTemplatesResult {

@@ -1,3 +1,4 @@
+import type { ExchangeTrack, IndexEntry, PausedFlow } from "@tm/core/types/exchanges";
 import { ArmToggle } from "./components/ArmToggle";
 import { ExchangeDetail } from "./components/ExchangeDetail";
 import { ExchangeList } from "./components/ExchangeList";
@@ -9,7 +10,6 @@ import { RouteAtmosphere } from "./components/routes/RouteAtmosphere";
 import { TraceView } from "./components/routes/TraceView";
 import { TransportMattersIcon } from "./components/TransportMattersIcon";
 import type { Route } from "./stores/uiStore";
-import type { ExchangeTrack, IndexEntry, PausedFlow } from "./types";
 
 function ConnectionDot({ connected }: { connected: boolean }) {
   return (

@@ -1,8 +1,8 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import type { Meta } from "@tm/core";
+import type { Override } from "@tm/core/types/overrides";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { Meta } from "../../api";
 import { UNKNOWN_CWD, useOverlaysStore } from "../../stores/overlaysStore";
-import type { Override } from "../../types";
 import { OverlaysView } from "./OverlaysView";
 
 const toolToggle: Override = { kind: "tool_toggle", target: "Read", value: false };
@@ -13,7 +13,8 @@ const systemEdit: Override = { kind: "system_part_text", target: "sys:0", value:
 // before mounting to exercise the "cold" (undefined) or "hydrate"
 // transitions.
 const mockMeta: { value: Meta | undefined } = { value: undefined };
-vi.mock("../../hooks/useMeta", () => ({
+vi.mock("@tm/core", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@tm/core")>()),
   useMeta: () => ({ meta: mockMeta.value, isLoading: mockMeta.value === undefined }),
 }));
 

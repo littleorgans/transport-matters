@@ -1,5 +1,5 @@
-import { contextTokens, formatCompactChars } from "../../lib/formatting";
-import type { UsageStats } from "../../types";
+import { contextTokens, formatCompactChars } from "@tm/core";
+import type { UsageStats } from "@tm/core/types/ir";
 import { HoverCard } from "../HoverCard";
 
 // output_tokens is intentionally absent from this bar: it measures

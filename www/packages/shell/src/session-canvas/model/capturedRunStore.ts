@@ -1,8 +1,8 @@
+import { createCapturedRun, createFrontendPersistStorage, terminateRun } from "@tm/core";
+import type { HarnessName } from "@tm/core/types/capabilities";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { createCapturedRun, terminateRun } from "../../api";
-import { createFrontendPersistStorage, FRONTEND_STORAGE_KEYS } from "../../stores/persistence";
-import type { HarnessName } from "../../types";
+import { FRONTEND_STORAGE_KEYS } from "../../stores/persistence";
 
 export type CapturedRunKey = string;
 

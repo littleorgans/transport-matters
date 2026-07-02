@@ -1,6 +1,6 @@
+import type { ExchangeTrackStub } from "@tm/core/types/exchanges";
 import type { ComponentProps } from "react";
 import { buildExchangeTrackTree } from "../../hooks/useExchanges";
-import type { ExchangeTrackStub } from "../../types";
 import { ExchangeList } from "../ExchangeList";
 
 type ExchangeListWithTrackTreeProps = Omit<ComponentProps<typeof ExchangeList>, "trackTree"> & {

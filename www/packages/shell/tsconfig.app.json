@@ -13,9 +13,6 @@
     "allowImportingTsExtensions": true,
     "baseUrl": ".",
     "paths": {
-      "@/host/*": [
-        "../host/src/*"
-      ],
       "@/*": [
         "./src/*"
       ]

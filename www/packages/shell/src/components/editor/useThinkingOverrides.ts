@@ -1,7 +1,8 @@
+import type { SamplingParams } from "@tm/core/types/ir";
+import type { Override } from "@tm/core/types/overrides";
 import { useRef } from "react";
 import { useSyncedLocalValue } from "../../hooks/useSyncedLocalValue";
 import { hasOverride } from "../../lib/overrides";
-import type { Override, SamplingParams } from "../../types";
 import {
   DISPLAY_TARGET,
   type DisplayMode,

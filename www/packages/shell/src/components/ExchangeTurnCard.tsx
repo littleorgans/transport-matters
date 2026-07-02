@@ -1,8 +1,14 @@
+import {
+  agentRailStyle,
+  contextTokens,
+  type DepthRailStyle,
+  displayModel,
+  formatRelativeAge,
+} from "@tm/core";
+import type { CodexTurnListSummary } from "@tm/core/types/codex";
+import type { IndexEntry } from "@tm/core/types/exchanges";
 import { useEffect, useState } from "react";
 import { useTurnContent } from "../hooks/useTurnContent";
-import { agentRailStyle, type DepthRailStyle } from "../lib/agentPalette";
-import { contextTokens, displayModel, formatRelativeAge } from "../lib/formatting";
-import type { CodexTurnListSummary, IndexEntry } from "../types";
 import { ExchangePreview } from "./ExchangePreview";
 
 interface ExchangeTurnCardProps {

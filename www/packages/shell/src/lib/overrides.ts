@@ -1,4 +1,4 @@
-import type { Override, OverrideKind } from "../types";
+import type { Override, OverrideKind } from "@tm/core/types/overrides";
 
 /** Find an override by kind and target, returning its typed value or undefined. */
 export function overrideValue<T extends string | boolean | number>(

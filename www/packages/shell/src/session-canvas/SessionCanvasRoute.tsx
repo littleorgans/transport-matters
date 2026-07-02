@@ -1,6 +1,5 @@
+import { getRun, type RunView, useMeta } from "@tm/core";
 import { useEffect, useMemo, useState } from "react";
-import { getRun, type RunView } from "../api";
-import { useMeta } from "../hooks/useMeta";
 import { useThemeTokens } from "../hooks/useThemeTokens";
 import { KeybindingEngineProvider } from "../keybindings/engine";
 import { CanvasSurface } from "./components/CanvasSurface";

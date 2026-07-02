@@ -1,5 +1,5 @@
 import "./window-drag-region.css";
-import { isDesktopHost } from "@/desktopHost";
+import { isDesktopHost } from "@tm/core";
 
 export interface WindowDragRegionProps {
   // Injectable for tests; defaults to detecting the Electron shell at render.

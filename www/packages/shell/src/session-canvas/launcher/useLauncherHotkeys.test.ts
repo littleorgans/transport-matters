@@ -1,8 +1,8 @@
 import { cleanup, fireEvent, renderHook } from "@testing-library/react";
+import type { KeybindingPlatform } from "@tm/core/keybindings";
 import { createElement, type ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { KeybindingEngineProvider } from "../../keybindings/engine";
-import type { KeybindingPlatform } from "../../keybindings/platform";
 import { useLauncherHotkeys } from "./useLauncherHotkeys";
 
 const MAC_PLATFORM: KeybindingPlatform = {

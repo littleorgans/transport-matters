@@ -1,8 +1,8 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderHook, waitFor } from "@testing-library/react";
+import { resetApiTransport, setApiTransport } from "@tm/core";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { resetApiTransport, setApiTransport } from "../../api";
 import { useSpaces } from "./useSpaces";
 
 function wrapper({ children }: { children: ReactNode }) {

@@ -1,10 +1,10 @@
+import { createFrontendPersistStorage, isRecord } from "@tm/core";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { isRecord } from "../lib/isRecord";
 import { normalizeLegacyTheme } from "../theme/migrate";
 import { presetTheme, presetThemes } from "../theme/presets";
 import type { ThemeDefinition } from "../theme/types";
-import { createFrontendPersistStorage, FRONTEND_STORAGE_KEYS } from "./persistence";
+import { FRONTEND_STORAGE_KEYS } from "./persistence";
 
 /**
  * The active theme. Null means unthemed: every surface falls back to the

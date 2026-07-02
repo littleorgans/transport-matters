@@ -1,5 +1,5 @@
+import { useMeta } from "@tm/core";
 import { useCallback, useEffect, useMemo, useReducer, useState } from "react";
-import { useMeta } from "../../../hooks/useMeta";
 import type { SessionEventView } from "../../api/sessionEvents";
 import { useSessionEvents } from "../../hooks/useSessionEvents";
 import type { ViewerProps } from "../../model/paneRecords";

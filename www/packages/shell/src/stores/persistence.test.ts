@@ -1,6 +1,6 @@
+import { createFrontendPersistStorage } from "@tm/core";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
-  createFrontendPersistStorage,
   dismissedPanelKey,
   FRONTEND_STORAGE_KEYS,
   hasDismissedPanel,

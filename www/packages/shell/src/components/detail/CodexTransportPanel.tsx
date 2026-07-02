@@ -1,11 +1,11 @@
-import { type MutableRefObject, useEffect, useRef } from "react";
-import { formatClockTime, pluralize, truncatePreview } from "../../lib/formatting";
+import { formatClockTime, pluralize, truncatePreview } from "@tm/core";
 import type {
   TransportArtifacts,
   TransportHeader,
   TransportHttpArtifacts,
   TransportMessageArtifact,
-} from "../../types";
+} from "@tm/core/types/transport";
+import { type MutableRefObject, useEffect, useRef } from "react";
 import { JsonView } from "./JsonView";
 
 interface CodexTransportPanelProps {

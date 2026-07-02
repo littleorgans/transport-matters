@@ -11,7 +11,6 @@ export const DEV_API_BASE_URL_ENV = "TRANSPORT_MATTERS_DEV_API_BASE_URL";
 const packageRoot = path.dirname(fileURLToPath(import.meta.url));
 const workspaceRoot = searchForWorkspaceRoot(packageRoot);
 const shellSrcRoot = path.resolve(packageRoot, "src");
-const hostSrcRoot = path.resolve(workspaceRoot, "www/packages/host/src");
 
 // Single source of truth is the git tag (same source hatch-vcs uses for
 // the Python wheel). TRANSPORT_MATTERS_VERSION wins when set explicitly (e.g. from
@@ -66,10 +65,6 @@ export default defineConfig({
   resolve: {
     alias: [
       {
-        find: "@/host",
-        replacement: hostSrcRoot,
-      },
-      {
         find: "@",
         replacement: shellSrcRoot,
       },
@@ -89,6 +84,10 @@ export default defineConfig({
     globals: true,
     environment: "jsdom",
     setupFiles: [path.resolve(shellSrcRoot, "test-setup.ts")],
-    include: ["src/**/*.test.{ts,tsx}", "../host/src/**/*.test.{ts,tsx}"],
+    include: [
+      "src/**/*.test.{ts,tsx}",
+      "../host/src/**/*.test.{ts,tsx}",
+      "../core/src/**/*.test.{ts,tsx}",
+    ],
   },
 });

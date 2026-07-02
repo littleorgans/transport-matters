@@ -1,3 +1,4 @@
+import type { HarnessName } from "@tm/core/types/capabilities";
 import type {
   CanvasViewport,
   EngineLayoutState,
@@ -6,7 +7,6 @@ import type {
   WorldRect,
 } from "../../engine";
 import type { LayoutParams, ParamValue } from "../../engine/layout";
-import type { HarnessName } from "../../types";
 import type { FramingState } from "../model/paneAffordances";
 import type { DockedPane, PaneContentRef } from "../model/paneRecords";
 

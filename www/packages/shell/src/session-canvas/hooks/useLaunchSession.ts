@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { launchSessionKey } from "../../lib/queryKeys";
+import { launchSessionKey } from "@tm/core";
 import { resolveLaunchSession } from "../api/launchResolution";
 import { listSessions } from "../api/sessionClient";
 import type { CanvasLaunchContext } from "../route";

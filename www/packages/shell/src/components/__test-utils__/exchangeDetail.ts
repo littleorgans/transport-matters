@@ -1,10 +1,5 @@
-import type {
-  CodexTurnListSummary,
-  ExchangeDetail,
-  IndexEntry,
-  ReqStats,
-  ResStats,
-} from "../../types";
+import type { CodexTurnListSummary } from "@tm/core/types/codex";
+import type { ExchangeDetail, IndexEntry, ReqStats, ResStats } from "@tm/core/types/exchanges";
 
 type DetailOverrides = Partial<Omit<ExchangeDetail, "entry">> & { entry?: Partial<IndexEntry> };
 

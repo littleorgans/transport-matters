@@ -1,9 +1,9 @@
+import { useMeta } from "@tm/core";
+import type { HarnessName } from "@tm/core/types/capabilities";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { LayoutCanvas, type PaneId } from "../../engine";
 import { CANVAS_LAYOUT_MARGIN, listLayouts } from "../../engine/layout";
-import { useMeta } from "../../hooks/useMeta";
 import { useThemeTokens } from "../../hooks/useThemeTokens";
-import type { HarnessName } from "../../types";
 import { AmbientBackdrop } from "../components/AmbientBackdrop";
 import { CanvasDropHint } from "../components/CanvasDropHint";
 import { CanvasDropTargetOverlay } from "../components/CanvasDropTargetOverlay";

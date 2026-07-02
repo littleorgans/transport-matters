@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { resourceContentKey } from "../../lib/queryKeys";
+import { resourceContentKey } from "@tm/core";
 import {
   loadResourceContent,
   type ResourceContentFilters,

@@ -4,8 +4,8 @@
  * this module is core-bound (P4 of the separation plan).
  */
 
-import type { ContentBlock } from "../types";
 import { truncatePreview } from "./formatting";
+import type { ContentBlock } from "./types/ir";
 
 export function blockSummary(block: ContentBlock, maxPreview = 220): string {
   switch (block.type) {

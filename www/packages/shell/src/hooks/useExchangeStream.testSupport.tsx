@@ -1,9 +1,9 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act } from "@testing-library/react";
+import type { PausedFlow } from "@tm/core/types/exchanges";
 import type { ReactNode } from "react";
 import { beforeEach, vi } from "vitest";
 import { useUIStore } from "../stores/uiStore";
-import type { PausedFlow } from "../types";
 
 let mockSource: {
   url: string;

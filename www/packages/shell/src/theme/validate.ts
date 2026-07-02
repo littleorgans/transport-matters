@@ -1,4 +1,4 @@
-import { isRecord } from "../lib/isRecord";
+import { isRecord } from "@tm/core";
 import { normalizeLegacyTheme } from "./migrate";
 import type { AmbientSceneRegistry, SceneParamId, ThemePhotoLookup } from "./types";
 import {

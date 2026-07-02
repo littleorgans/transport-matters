@@ -1,5 +1,5 @@
+import { formatRelativeAge } from "@tm/core";
 import { useEffect, useMemo, useState } from "react";
-import { formatRelativeAge } from "../../../lib/formatting";
 import type { SessionSummary } from "../../api/sessionClient";
 import { useSessions } from "../../hooks/useSessions";
 import type { PickerPaneRef, ViewerProps } from "../../model/paneRecords";

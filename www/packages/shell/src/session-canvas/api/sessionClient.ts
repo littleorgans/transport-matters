@@ -1,4 +1,4 @@
-import { requestApiJson } from "../../api";
+import { requestApiJson } from "@tm/core";
 
 export type SessionPurpose =
   | "user"

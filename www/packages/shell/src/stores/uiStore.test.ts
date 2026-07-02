@@ -1,5 +1,5 @@
+import type { PausedFlow } from "@tm/core/types/exchanges";
 import { beforeEach, describe, expect, it } from "vitest";
-import type { PausedFlow } from "../types";
 import { useUIStore } from "./uiStore";
 
 const mockPausedFlow: PausedFlow = {

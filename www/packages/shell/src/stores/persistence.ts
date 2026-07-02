@@ -1,5 +1,3 @@
-import { createJSONStorage, type PersistStorage, type StateStorage } from "zustand/middleware";
-
 export const FRONTEND_STORAGE_KEYS = {
   uiStore: "transport-matters-ui",
   themeStore: "transport-matters-theme",
@@ -11,20 +9,12 @@ export const FRONTEND_STORAGE_KEYS = {
   dismissedPanelPrefix: "transport-matters.panel.dismissed.",
 } as const;
 
-function getBrowserStorage(): StateStorage {
-  return globalThis.localStorage;
-}
-
 function getAvailableStorage(): Storage | null {
   try {
     return globalThis.localStorage;
   } catch {
     return null;
   }
-}
-
-export function createFrontendPersistStorage<S>(): PersistStorage<S> | undefined {
-  return createJSONStorage<S>(getBrowserStorage);
 }
 
 export function dismissedPanelKey(id: string): string {

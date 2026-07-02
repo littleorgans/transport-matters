@@ -1,8 +1,8 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import type { ExchangeDetail } from "@tm/core/types/exchanges";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { InspectTab } from "../components/detail/InspectTab";
-import type { ExchangeDetail } from "../types";
 
 const GOOGLE_FONT_HREF =
   "https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&display=swap";

@@ -1,10 +1,13 @@
+import type { HarnessCapability } from "@tm/core/types/capabilities";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { HarnessCapability } from "../../types";
 
 // The store's only side effect is GET /api/capabilities via fetchCapabilities;
 // mock that so the test controls install state without a server.
 const fetchCapabilities = vi.hoisted(() => vi.fn());
-vi.mock("../../api", () => ({ fetchCapabilities }));
+vi.mock("@tm/core", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@tm/core")>()),
+  fetchCapabilities,
+}));
 
 import {
   harnessInstalled,

@@ -1,4 +1,4 @@
-import { requestApiJson } from "../../api";
+import { requestApiJson } from "@tm/core";
 
 // Resource content response union. Mirrors the shipped slice-7 endpoint
 // (api/src/transport_matters/session/resource_content_models.py). The endpoint's

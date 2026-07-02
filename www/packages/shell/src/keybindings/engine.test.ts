@@ -1,4 +1,5 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import type { Command, CommandContext, KeybindingPlatform } from "@tm/core/keybindings";
 import { createElement, useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
@@ -8,8 +9,7 @@ import {
   selectCommand,
   useFullscreenKeybindings,
 } from "./engine";
-import type { KeybindingPlatform } from "./platform";
-import { COMMANDS, type Command, type CommandContext } from "./registry";
+import { COMMANDS } from "./registry";
 
 const MAC_PLATFORM: KeybindingPlatform = {
   isMac: true,

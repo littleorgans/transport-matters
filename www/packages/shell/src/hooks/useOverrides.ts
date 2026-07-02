@@ -1,4 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import type { InternalRequest } from "@tm/core/types/ir";
+import type { Override, OverrideAudit, OverrideScope } from "@tm/core/types/overrides";
 import type { OverrideMutateResponse, ToggleResponse } from "../api";
 import {
   clearOverrides as apiClear,
@@ -6,7 +8,6 @@ import {
   toggleOverrides as apiToggle,
   fetchOverrides,
 } from "../api";
-import type { InternalRequest, Override, OverrideAudit, OverrideScope } from "../types";
 
 export interface UseOverridesResult {
   overrides: Override[];

@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
+import type { SamplingParams } from "@tm/core/types/ir";
 import { describe, expect, it, vi } from "vitest";
-import type { SamplingParams } from "../../types";
 import { SamplingSection } from "./SamplingSection";
 import { renderSection } from "./SamplingSection.testSupport";
 

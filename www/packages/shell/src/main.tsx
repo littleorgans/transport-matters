@@ -1,13 +1,13 @@
 import { QueryClientProvider } from "@tanstack/react-query";
+import { fetchMeta } from "@tm/core";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { fetchMeta } from "./api";
 import "./index.css";
 import "./index.launcher.css";
 import "./session-canvas/canvas.css";
 import "./session-canvas/viewers/placeholder/placeholder-pane.css";
-import { mountWindowChrome } from "@/host/mountWindowChrome";
-import { queryClient } from "./lib/queryClient";
+import { queryClient } from "@tm/core";
+import { mountWindowChrome } from "@tm/host";
 import { RootShell } from "./rootShell";
 import { selectRootRoute } from "./session-canvas/route";
 

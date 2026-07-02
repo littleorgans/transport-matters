@@ -1,4 +1,6 @@
-import type { InternalRequest, Override, PausedFlow } from "../../types";
+import type { PausedFlow } from "@tm/core/types/exchanges";
+import type { InternalRequest } from "@tm/core/types/ir";
+import type { Override } from "@tm/core/types/overrides";
 import { JsonView } from "../detail/JsonView";
 import type { EditorViewMode } from "./BreakpointEditorTabs";
 import { GlobalSection } from "./GlobalSection";

@@ -1,4 +1,4 @@
-import type { TranscriptDenyRule } from "../../api";
+import type { TranscriptDenyRule } from "@tm/core";
 import type { TranscriptMessageModel } from "./mapIrToChat";
 
 /**

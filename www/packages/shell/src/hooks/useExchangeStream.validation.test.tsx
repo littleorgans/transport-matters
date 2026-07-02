@@ -1,8 +1,8 @@
 import { renderHook } from "@testing-library/react";
+import { exchangeKey, exchangesKey, turnContentKey } from "@tm/core";
+import type { IndexEntry } from "@tm/core/types/exchanges";
 import { describe, expect, it, vi } from "vitest";
-import { exchangeKey, exchangesKey, turnContentKey } from "../lib/queryKeys";
 import { useUIStore } from "../stores/uiStore";
-import type { IndexEntry } from "../types";
 import { useExchangeStream } from "./useExchangeStream";
 import { fireSSE, makeWrapper } from "./useExchangeStream.testSupport";
 

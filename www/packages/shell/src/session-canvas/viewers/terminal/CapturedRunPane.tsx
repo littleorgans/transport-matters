@@ -1,5 +1,5 @@
+import type { HarnessName } from "@tm/core/types/capabilities";
 import { type ReactElement, useCallback, useEffect, useState } from "react";
-import type { HarnessName } from "../../../types";
 import { useCapturedRunStore } from "../../model/capturedRunStore";
 import { harnessLabel } from "../../model/paneRecords";
 import { parseRunErrorFrame, type RunErrorFrame } from "./runTerminalFrames";

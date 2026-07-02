@@ -12,7 +12,7 @@ import {
   resetApiTransport,
   setApiTransport,
   terminateRun,
-} from "./api";
+} from "./transport";
 
 function stubFetch(body: unknown, status = 200) {
   const fetchMock = vi.fn().mockResolvedValue(

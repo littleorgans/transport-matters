@@ -2,17 +2,14 @@
 // React, no stores — every builder is a deterministic function of its inputs so
 // the row grammar and the four Agents states are unit-testable in isolation.
 
-import {
-  CANVAS_GESTURE_MODIFIERS,
-  type CanvasGestureModifier,
-} from "../../keybindings/gestureModifier";
+import type { SpaceSummary } from "@tm/core";
+import { CANVAS_GESTURE_MODIFIERS, type CanvasGestureModifier } from "@tm/core/keybindings";
+import type { HarnessName } from "@tm/core/types/capabilities";
 import type {
-  HarnessName,
   RuntimeTemplateHarness,
   RuntimeTemplateSummary,
   RuntimeTemplateVendor,
-  SpaceSummary,
-} from "../../types";
+} from "@tm/core/types/runtimeTemplates";
 import type { SessionSummary } from "../api/sessionClient";
 import {
   CAPTURED_RUN_PROVIDERS,

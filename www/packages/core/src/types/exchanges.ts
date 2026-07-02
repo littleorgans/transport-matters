@@ -4,6 +4,7 @@ import type {
   CodexTurnListSummary,
   CodexTurnSummary,
 } from "./codex";
+import type { InternalRequest, Message, SamplingParams, SystemPart, ToolDef } from "./ir";
 import type { OverrideAudit, OverrideAuditEntry } from "./overrides";
 import type { TransportArtifacts, TransportDiagnostic } from "./transport";
 
@@ -113,4 +114,40 @@ export interface PipelineStats {
   // render a placeholder rather than fall back to a chars/4 estimate.
   tokens_before: number | null;
   tokens_after: number | null;
+}
+
+/**
+ * An exchange paused in flight, as emitted on the exchange stream ("paused"
+ * event) and by `GET /api/breakpoint/paused/{flow_id}`. Wire-level exchange
+ * lifecycle data: the core stream primitive parses and constructs it, so it
+ * lives with the exchange types rather than the breakpoint control surface.
+ */
+export interface PausedFlow {
+  flow_id: string;
+  transport: "http" | "websocket";
+  provisional_exchange_id?: string | null;
+  run_id?: string | null;
+  track_id?: string | null;
+  parent_track_id?: string | null;
+  track_display_name?: string | null;
+  track_role?: TrackRole | null;
+  spawn_anchor?: SpawnAnchor | null;
+  ir: InternalRequest;
+  original_tools: ToolDef[];
+  original_system: SystemPart[];
+  original_messages: Message[];
+  /**
+   * Pristine sampling/provider_extras as the client sent them before override.
+   * The editor uses these as the revert reference when a user clears a
+   * sampling_set or provider_extras_set override.
+   */
+  original_sampling: SamplingParams;
+  original_provider_extras: Record<string, unknown>;
+  audit: OverrideAudit | null;
+  paused_at_ms: number;
+  /**
+   * count_tokens result for the IR currently staged to be forwarded. Null
+   * until the count lands or when the call fails.
+   */
+  tokens_before: number | null;
 }

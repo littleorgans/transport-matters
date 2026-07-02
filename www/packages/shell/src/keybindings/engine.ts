@@ -1,4 +1,15 @@
 import {
+  type Command,
+  type CommandContext,
+  type DockKeybindingTarget,
+  type FullscreenKeybindingTarget,
+  getKeybindingPlatform,
+  isEditableTarget,
+  type KeybindingPlatform,
+  type LauncherKeybindingTarget,
+  precompileModTokens,
+} from "@tm/core/keybindings";
+import {
   createContext,
   createElement,
   type MutableRefObject,
@@ -9,16 +20,7 @@ import {
   useRef,
 } from "react";
 import { type KeybindingsMap, tinykeys } from "tinykeys";
-import { isEditableTarget } from "../lib/domFocus";
-import { getKeybindingPlatform, type KeybindingPlatform, precompileModTokens } from "./platform";
-import {
-  COMMANDS,
-  type Command,
-  type CommandContext,
-  type DockKeybindingTarget,
-  type FullscreenKeybindingTarget,
-  type LauncherKeybindingTarget,
-} from "./registry";
+import { COMMANDS } from "./registry";
 
 interface KeybindingEngineApi {
   registerDock(target: DockKeybindingTarget): () => void;

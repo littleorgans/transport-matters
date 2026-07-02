@@ -1,7 +1,7 @@
 import { act, renderHook } from "@testing-library/react";
+import { exchangesKey } from "@tm/core";
+import type { IndexEntry } from "@tm/core/types/exchanges";
 import { describe, expect, it } from "vitest";
-import { exchangesKey } from "../lib/queryKeys";
-import type { IndexEntry } from "../types";
 import { useExchangeStream } from "./useExchangeStream";
 import { getMockSource, makeWrapper } from "./useExchangeStream.testSupport";
 

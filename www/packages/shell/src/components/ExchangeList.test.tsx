@@ -1,8 +1,8 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
+import type { IndexEntry } from "@tm/core/types/exchanges";
 import { act } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useTurnContent } from "../hooks/useTurnContent";
-import type { IndexEntry } from "../types";
 import { legacyClaudeRes, makeEntry } from "./__test-utils__/exchangeList";
 import { ExchangeListWithTrackTree as ExchangeList } from "./__test-utils__/exchangeListHarness";
 

@@ -1,10 +1,11 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import type { ExchangeDetail, IndexEntry, PipelineStats } from "@tm/core/types/exchanges";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { ExchangeDetail, IndexEntry, PipelineStats } from "../../types";
 import { ExchangeCard } from "./ExchangeCard";
 
-vi.mock("../../api", () => ({
+vi.mock("@tm/core", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@tm/core")>()),
   fetchPipelineTokens: vi.fn(),
 }));
 
@@ -61,7 +62,7 @@ describe("ExchangeCard pipeline tokens", () => {
   beforeEach(() => vi.clearAllMocks());
 
   it("renders stored pipeline tokens without hitting the lazy endpoint", async () => {
-    const { fetchPipelineTokens } = await import("../../api");
+    const { fetchPipelineTokens } = await import("@tm/core");
 
     renderCard(
       makeDetail({
@@ -84,7 +85,7 @@ describe("ExchangeCard pipeline tokens", () => {
   });
 
   it("keeps chars fallback when the lazy endpoint yields null tokens", async () => {
-    const { fetchPipelineTokens } = await import("../../api");
+    const { fetchPipelineTokens } = await import("@tm/core");
     vi.mocked(fetchPipelineTokens).mockResolvedValue({
       tokens_before: null,
       tokens_after: null,
@@ -112,7 +113,7 @@ describe("ExchangeCard pipeline tokens", () => {
   });
 
   it("swaps chars for tokens once the lazy endpoint resolves", async () => {
-    const { fetchPipelineTokens } = await import("../../api");
+    const { fetchPipelineTokens } = await import("@tm/core");
     vi.mocked(fetchPipelineTokens).mockResolvedValue({
       tokens_before: 333,
       tokens_after: 300,
@@ -137,7 +138,7 @@ describe("ExchangeCard pipeline tokens", () => {
   });
 
   it("does not lazy recount non-anthropic rows", async () => {
-    const { fetchPipelineTokens } = await import("../../api");
+    const { fetchPipelineTokens } = await import("@tm/core");
     const detail = makeDetail({
       overrides_applied: [],
       chars_before: 2048,

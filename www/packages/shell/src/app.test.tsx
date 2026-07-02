@@ -1,10 +1,10 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import type { PausedFlow } from "@tm/core/types/exchanges";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./app";
 import { makeEntry } from "./components/__test-utils__/exchangeList";
 import { useUIStore } from "./stores/uiStore";
-import type { PausedFlow } from "./types";
 
 let eventSourceUrls: string[];
 

@@ -7,7 +7,7 @@ import {
   fetchPausedFlowDetail,
 } from "../api";
 import { useUIStore } from "../stores/uiStore";
-import type { BreakpointStatusDetail } from "../types";
+import type { BreakpointStatusDetail } from "../types/breakpoints";
 
 export function useBreakpoint(): {
   mode: "off" | "armed_once";

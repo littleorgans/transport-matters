@@ -133,12 +133,60 @@ function stringLiteralText(node: ts.Node | undefined): string | null {
 function localSpecifierCandidate(file: string, specifier: string, srcRoot: string): string | null {
   if (specifier.startsWith(".")) return path.resolve(path.dirname(file), specifier);
   if (specifier.startsWith("@/")) return path.resolve(srcRoot, specifier.slice(2));
-  if (
-    specifier.startsWith("@tm/") ||
-    specifier.startsWith("components/") ||
-    specifier.startsWith("session-canvas/")
-  ) {
+  if (specifier.startsWith("@tm/")) return workspacePackageCandidate(specifier, srcRoot);
+  if (specifier.startsWith("components/") || specifier.startsWith("session-canvas/")) {
     return path.resolve(srcRoot, specifier);
+  }
+  return null;
+}
+
+/**
+ * Resolve `@tm/<pkg>[/<subpath>]` through the package's `exports` map, the
+ * same contract the bundler enforces. Unknown packages, packages without an
+ * exports map, and subpaths the map does not declare all resolve to a
+ * nonexistent candidate, so `resolveLocalSpecifier` keeps failing closed on
+ * them: an on-disk file that is not exported is still a forbidden reach-in.
+ */
+function workspacePackageCandidate(specifier: string, srcRoot: string): string {
+  const [, name = "", ...rest] = specifier.split("/");
+  const packageRoot = path.resolve(srcRoot, "../..", name);
+  const subpath = rest.length === 0 ? "." : `./${rest.join("/")}`;
+  const exportsMap = packageExportsMap(packageRoot);
+  const target = exportsMap === null ? null : exportedTarget(exportsMap, subpath);
+  if (target === null) return path.join(packageRoot, "__unexported__");
+  return path.resolve(packageRoot, target);
+}
+
+const packageExportsCache = new Map<string, Record<string, unknown> | null>();
+
+function packageExportsMap(packageRoot: string): Record<string, unknown> | null {
+  const cached = packageExportsCache.get(packageRoot);
+  if (cached !== undefined) return cached;
+  let exportsMap: Record<string, unknown> | null = null;
+  try {
+    const manifest = JSON.parse(readFileSync(path.join(packageRoot, "package.json"), "utf8")) as {
+      exports?: Record<string, unknown>;
+    };
+    exportsMap = manifest.exports ?? null;
+  } catch {
+    exportsMap = null;
+  }
+  packageExportsCache.set(packageRoot, exportsMap);
+  return exportsMap;
+}
+
+function exportedTarget(exportsMap: Record<string, unknown>, subpath: string): string | null {
+  const exact = exportsMap[subpath];
+  if (typeof exact === "string") return exact;
+  for (const [pattern, value] of Object.entries(exportsMap)) {
+    if (typeof value !== "string") continue;
+    const star = pattern.indexOf("*");
+    if (star === -1) continue;
+    const prefix = pattern.slice(0, star);
+    const suffix = pattern.slice(star + 1);
+    if (subpath.length <= prefix.length + suffix.length) continue;
+    if (!subpath.startsWith(prefix) || !subpath.endsWith(suffix)) continue;
+    return value.replace("*", subpath.slice(prefix.length, subpath.length - suffix.length));
   }
   return null;
 }
